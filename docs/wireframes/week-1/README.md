@@ -6,7 +6,7 @@
 
 ## Figma
 
-- [느링고 와이어프레임 전체 보기](https://www.figma.com/design/e8MHxdATXOGFic3C9R68D/%EB%8A%90%EB%A7%81%EA%B3%A0?node-id=11-704&t=PcSMPDdLA8NJkd9w-0)
+- [느링고 와이어프레임 전체 보기](https://www.figma.com/design/e8EONLk4OIDZjLmqF6L8XP/%EB%8A%90%EB%A7%81%EA%B3%A0?node-id=0-1&t=2dkY0KcECz4g9QmW-1)
 
 ## 이번 주 작업 범위
 
