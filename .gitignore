@@ -73,3 +73,4 @@ backend/src/main/resources/application-*-secret.yml
 *.sqlite3
 *.db
 .terraform/
+.claude/
