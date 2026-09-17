@@ -1,0 +1,10 @@
+#!/bin/sh
+# Auto-formats backend Java sources with Spotless before each commit.
+# Enable once per clone: git config core.hooksPath .githooks
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+
+if [ -d "$ROOT/backend" ]; then
+    (cd "$ROOT/backend" && ./gradlew spotlessApply -q) || exit 1
+    git -C "$ROOT" diff --name-only -- backend | grep '\.java$' | xargs -r git -C "$ROOT" add
+fi

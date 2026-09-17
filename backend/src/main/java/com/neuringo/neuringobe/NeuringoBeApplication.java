@@ -9,5 +9,4 @@ public class NeuringoBeApplication {
     public static void main(String[] args) {
         SpringApplication.run(NeuringoBeApplication.class, args);
     }
-
 }

@@ -28,6 +28,8 @@
 | 컨테이너 | Docker Compose | https://docs.docker.com/compose/ |
 | CI | GitHub Actions | https://docs.github.com/actions |
 | 정적 분석 | CodeQL | https://codeql.github.com/docs/ |
+| 코드 포맷 | Spotless | https://github.com/diffplug/spotless |
+| 포맷 스타일 | google-java-format | https://github.com/google/google-java-format |
 
 ## 3. 로컬 환경설정 (육하원칙)
 
@@ -49,3 +51,15 @@
 5. `http://localhost:8080/actuator/health` 응답이 `UP`이면 정상 기동이다.
 
 Docker 없이 직접 설치한 PostgreSQL을 쓰고 싶다면, `local` 프로필로 실행하고 `.env.example`을 참고해 `SPRING_PROFILES_ACTIVE=local`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 직접 지정하면 된다.
+
+## 4. 코드 포맷 (Spotless)
+
+- `google-java-format`(AOSP 스타일, 4-space) 기반으로 `./gradlew build` 시 `spotlessCheck`가 자동으로 같이 돈다. 포맷이 깨져 있으면 빌드가 실패한다.
+- 직접 정렬하려면: `./gradlew spotlessApply`
+- 커밋 전에 자동으로 정렬되게 하려면, 최초 1회만 아래 명령으로 이 레포의 pre-commit 훅을 활성화한다.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+이후로는 커밋할 때마다 `backend/**/*.java`가 자동 포맷되고, 변경된 파일이 있으면 커밋에 다시 포함된다.

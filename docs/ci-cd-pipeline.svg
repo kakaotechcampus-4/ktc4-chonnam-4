@@ -39,7 +39,7 @@
 
   <rect x="504" y="88" width="150" height="55" rx="8" fill="#bbf7d0" stroke="#16a34a" stroke-width="2"/>
   <text x="579" y="112" text-anchor="middle" font-size="12" font-weight="600" fill="#14532d">./gradlew build</text>
-  <text x="579" y="128" text-anchor="middle" font-size="10" fill="#14532d">(test 포함)</text>
+  <text x="579" y="128" text-anchor="middle" font-size="10" fill="#14532d">spotlessCheck + test</text>
 
   <rect x="504" y="168" width="150" height="55" rx="8" fill="#ffe4e6" stroke="#e11d48" stroke-width="2"/>
   <text x="579" y="192" text-anchor="middle" font-size="11" font-weight="600" fill="#881337">Postgres 17 service</text>
