@@ -1,0 +1,101 @@
+<svg viewBox="0 0 1180 540" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrow-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#e11d48"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="540" fill="#ffffff"/>
+
+  <!-- Triggers -->
+  <rect x="20" y="70" width="170" height="75" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="105" y="95" text-anchor="middle" font-size="12" font-weight="600" fill="#0c4a6e">push / pull_request</text>
+  <text x="105" y="112" text-anchor="middle" font-size="11" fill="#0c4a6e">(develop, main)</text>
+  <text x="105" y="129" text-anchor="middle" font-size="10" fill="#0c4a6e">backend/** 변경 시</text>
+
+  <rect x="20" y="378" width="170" height="65" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="105" y="404" text-anchor="middle" font-size="12" font-weight="600" fill="#0c4a6e">schedule</text>
+  <text x="105" y="421" text-anchor="middle" font-size="10" fill="#0c4a6e">매주 월 03:30 UTC</text>
+
+  <!-- Lane A: Backend CI -->
+  <rect x="210" y="40" width="790" height="210" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="228" y="63" font-size="13" font-weight="700" fill="#166534">Backend CI · backend-ci.yml</text>
+
+  <rect x="230" y="88" width="110" height="55" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="285" y="120" text-anchor="middle" font-size="12" fill="#14532d">Checkout</text>
+
+  <rect x="362" y="88" width="120" height="55" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="422" y="112" text-anchor="middle" font-size="12" fill="#14532d">Set up JDK 21</text>
+  <text x="422" y="128" text-anchor="middle" font-size="10" fill="#14532d">+ Gradle</text>
+
+  <rect x="504" y="88" width="150" height="55" rx="8" fill="#bbf7d0" stroke="#16a34a" stroke-width="2"/>
+  <text x="579" y="112" text-anchor="middle" font-size="12" font-weight="600" fill="#14532d">./gradlew build</text>
+  <text x="579" y="128" text-anchor="middle" font-size="10" fill="#14532d">(test 포함)</text>
+
+  <rect x="504" y="168" width="150" height="55" rx="8" fill="#ffe4e6" stroke="#e11d48" stroke-width="2"/>
+  <text x="579" y="192" text-anchor="middle" font-size="11" font-weight="600" fill="#881337">Postgres 17 service</text>
+  <text x="579" y="207" text-anchor="middle" font-size="9" fill="#881337">neuringo_local : 5432</text>
+
+  <rect x="694" y="88" width="140" height="55" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="764" y="120" text-anchor="middle" font-size="12" fill="#14532d">Success / Fail</text>
+
+  <line x1="340" y1="115" x2="360" y2="115" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <line x1="482" y1="115" x2="502" y2="115" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <line x1="654" y1="115" x2="692" y2="115" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <line x1="579" y1="166" x2="579" y2="145" stroke="#e11d48" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrow-rose)"/>
+
+  <!-- Lane B: CodeQL -->
+  <rect x="210" y="268" width="790" height="215" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="228" y="291" font-size="13" font-weight="700" fill="#4c1d95">CodeQL · codeql.yml</text>
+
+  <rect x="230" y="316" width="100" height="55" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="280" y="348" text-anchor="middle" font-size="12" fill="#4c1d95">Checkout</text>
+
+  <rect x="352" y="316" width="110" height="55" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="407" y="348" text-anchor="middle" font-size="12" fill="#4c1d95">Set up JDK 21</text>
+
+  <rect x="484" y="316" width="130" height="55" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="549" y="340" text-anchor="middle" font-size="11" fill="#4c1d95">Initialize CodeQL</text>
+  <text x="549" y="356" text-anchor="middle" font-size="10" fill="#4c1d95">(java-kotlin)</text>
+
+  <rect x="636" y="316" width="120" height="55" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="696" y="340" text-anchor="middle" font-size="11" fill="#4c1d95">Build</text>
+  <text x="696" y="356" text-anchor="middle" font-size="10" fill="#4c1d95">(compileJava)</text>
+
+  <rect x="778" y="316" width="100" height="55" rx="8" fill="#ddd6fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="828" y="348" text-anchor="middle" font-size="12" font-weight="600" fill="#4c1d95">Analyze</text>
+
+  <line x1="330" y1="343" x2="350" y2="343" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-violet)"/>
+  <line x1="462" y1="343" x2="482" y2="343" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-violet)"/>
+  <line x1="614" y1="343" x2="634" y2="343" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-violet)"/>
+  <line x1="756" y1="343" x2="776" y2="343" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-violet)"/>
+
+  <!-- trigger -> lane entries -->
+  <line x1="190" y1="100" x2="228" y2="112" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="190" y1="130" x2="228" y2="335" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="190" y1="405" x2="228" y2="355" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- results -->
+  <rect x="960" y="140" width="180" height="70" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+  <text x="1050" y="170" text-anchor="middle" font-size="13" font-weight="700" fill="#134e4a">GitHub PR Checks</text>
+  <text x="1050" y="188" text-anchor="middle" font-size="10" fill="#134e4a">PR #5 화면에 노출</text>
+
+  <rect x="960" y="360" width="180" height="70" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+  <text x="1050" y="388" text-anchor="middle" font-size="13" font-weight="700" fill="#134e4a">Security 탭</text>
+  <text x="1050" y="406" text-anchor="middle" font-size="10" fill="#134e4a">Code scanning alerts</text>
+
+  <line x1="834" y1="115" x2="958" y2="165" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="878" y1="330" x2="958" y2="185" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="878" y1="350" x2="958" y2="390" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <text x="20" y="500" font-size="11" fill="#64748b">참고: docs/github-actions.md — CI는 Docker Compose가 아닌 위 Postgres service 컨테이너로 DB를 제공함 (developmentOnly 스코프라 test에선 미적용)</text>
+</svg>

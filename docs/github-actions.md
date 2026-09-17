@@ -2,6 +2,10 @@
 
 `feature/minseo-backend-init` 브랜치에서 시범 적용한 백엔드 CI/정적분석/로컬 DB 자동화 내용 정리. develop/main에는 아직 반영 안 됨 ([PR #5](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/5) 리뷰 대기).
 
+## 파이프라인 다이어그램
+
+![CI/CD 파이프라인](ci-cd-pipeline.svg)
+
 ## 배경
 
 기존 `.github/workflows/`에는 멘토 배정, PR 컨벤션 안내, 디스코드 알림만 있고, **PR마다 실제로 빌드·테스트가 자동으로 도는 워크플로가 없었음.** 개발 커뮤니티 트렌드 조사 후, 비용 대비 효과가 큰 항목부터 추가함.
