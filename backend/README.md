@@ -4,29 +4,7 @@
 
 ## 1. 아키텍처
 
-```mermaid
-flowchart LR
-    subgraph Client
-        FE["Frontend\nReact + Vite"]
-    end
-
-    subgraph BE["Backend · Spring Boot 4.1 / Java 21"]
-        WEB["Spring Web MVC"]
-        SEC["Spring Security"]
-        JPA["Spring Data JPA\n(Hibernate)"]
-        FLY["Flyway"]
-        ACT["Actuator\n(health, info)"]
-    end
-
-    DB[("PostgreSQL")]
-
-    FE -->|"HTTP/JSON"| WEB
-    WEB --> SEC
-    WEB --> JPA
-    JPA -->|"JDBC (HikariCP)"| DB
-    FLY -->|"schema migration"| DB
-    ACT -.-> WEB
-```
+![백엔드 아키텍처](../docs/architecture.svg)
 
 로컬 실행 시에는 `spring-boot-docker-compose`가 `compose.yaml`을 자동으로 띄워 PostgreSQL 컨테이너에 연결합니다(아래 3번 참고). `local` / `dev` / `prod` 프로필별로 DB 접속 정보만 바뀌고 나머지 구조는 동일합니다.
 

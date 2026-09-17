@@ -1,0 +1,71 @@
+<svg viewBox="0 0 1000 460" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+    </marker>
+    <marker id="arrow-dashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="460" fill="#ffffff"/>
+
+  <!-- Frontend -->
+  <rect x="30" y="80" width="180" height="60" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="120" y="105" text-anchor="middle" font-size="15" font-weight="600" fill="#0c4a6e">Frontend</text>
+  <text x="120" y="124" text-anchor="middle" font-size="12" fill="#0c4a6e">React + Vite</text>
+
+  <!-- Backend container -->
+  <rect x="250" y="40" width="470" height="360" rx="14" fill="#f8fafc" stroke="#64748b" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="485" y="65" text-anchor="middle" font-size="14" font-weight="700" fill="#334155">Backend · Spring Boot 4.1 / Java 21</text>
+
+  <!-- Web MVC -->
+  <rect x="280" y="80" width="400" height="60" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="480" y="115" text-anchor="middle" font-size="14" font-weight="600" fill="#14532d">Spring Web MVC</text>
+
+  <!-- Security -->
+  <rect x="280" y="160" width="400" height="60" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+  <text x="480" y="195" text-anchor="middle" font-size="14" font-weight="600" fill="#713f12">Spring Security</text>
+
+  <!-- JPA -->
+  <rect x="280" y="240" width="190" height="60" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="375" y="266" text-anchor="middle" font-size="13" font-weight="600" fill="#4c1d95">Spring Data JPA</text>
+  <text x="375" y="284" text-anchor="middle" font-size="11" fill="#4c1d95">(Hibernate)</text>
+
+  <!-- Flyway -->
+  <rect x="490" y="240" width="190" height="60" rx="8" fill="#ffe4e6" stroke="#e11d48" stroke-width="2"/>
+  <text x="585" y="275" text-anchor="middle" font-size="14" font-weight="600" fill="#881337">Flyway</text>
+
+  <!-- Actuator -->
+  <rect x="280" y="320" width="400" height="60" rx="8" fill="#e2e8f0" stroke="#475569" stroke-width="2"/>
+  <text x="480" y="346" text-anchor="middle" font-size="13" font-weight="600" fill="#1e293b">Actuator</text>
+  <text x="480" y="364" text-anchor="middle" font-size="11" fill="#1e293b">(health, info)</text>
+
+  <!-- DB -->
+  <g stroke="#0f766e" stroke-width="2" fill="#ccfbf1">
+    <path d="M 800 200 a 85 18 0 0 1 170 0 v 130 a 85 18 0 0 1 -170 0 z"/>
+    <ellipse cx="885" cy="200" rx="85" ry="18"/>
+  </g>
+  <text x="885" y="285" text-anchor="middle" font-size="14" font-weight="700" fill="#134e4a">PostgreSQL</text>
+
+  <!-- Arrows: request path -->
+  <line x1="210" y1="110" x2="278" y2="110" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="244" y="100" text-anchor="middle" font-size="10" fill="#334155">HTTP/JSON</text>
+
+  <line x1="480" y1="140" x2="480" y2="158" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="410" y1="220" x2="378" y2="238" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Actuator monitors Web MVC (routed along the outer right edge, clear of other boxes) -->
+  <line x1="695" y1="348" x2="695" y2="142" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrow-dashed)"/>
+  <text x="720" y="245" font-size="10" fill="#64748b" transform="rotate(90 720 245)">monitors</text>
+
+  <!-- Data access / migration to DB -->
+  <line x1="470" y1="268" x2="797" y2="252" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-teal)"/>
+  <text x="650" y="245" text-anchor="middle" font-size="10" fill="#0f766e">JDBC (HikariCP)</text>
+
+  <line x1="680" y1="272" x2="797" y2="300" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-teal)"/>
+  <text x="720" y="325" text-anchor="middle" font-size="10" fill="#0f766e">schema migration</text>
+</svg>
