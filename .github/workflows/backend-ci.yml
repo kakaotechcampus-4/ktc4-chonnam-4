@@ -25,7 +25,7 @@ jobs:
     # container instead, matching the `local` profile's expected env vars.
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_DB: neuringo_local
           POSTGRES_USER: neuringo
