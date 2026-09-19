@@ -64,9 +64,13 @@ target/
 .gradle/
 *.class
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+# Spring Boot 비밀 설정
+backend/src/main/resources/application-secret.yml
+backend/src/main/resources/application-*-secret.yml
 
 # ── 기타 ────────────────────────────────────────────
 *.sqlite3
 *.db
 .terraform/
+.claude/
