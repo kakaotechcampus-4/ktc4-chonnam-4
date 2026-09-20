@@ -1,16 +1,25 @@
+# 로컬 개발용 Postgres.
+#
+# 값은 하드코딩하지 않고 backend/.env 에서 읽는다 (.env 는 .gitignore 대상).
+# 처음 받았다면 먼저:
+#
+#   cp backend/.env.example backend/.env    # 그리고 DB_PASSWORD 를 채운다
+#
+# .env 가 없거나 값이 비면 아래 :? 메시지와 함께 즉시 실패한다 — 빈 비밀번호로
+# 조용히 뜨는 것보다 낫다.
 services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_DB: neuringo_local
-      POSTGRES_USER: neuringo
-      POSTGRES_PASSWORD: neuringo
+      POSTGRES_DB: "${DB_NAME:?backend/.env 가 없습니다. .env.example 을 복사해 채워주세요}"
+      POSTGRES_USER: "${DB_USERNAME:?backend/.env 에 DB_USERNAME 이 필요합니다}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?backend/.env 에 DB_PASSWORD 가 필요합니다}"
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U neuringo"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
