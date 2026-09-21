@@ -81,35 +81,56 @@ async function parseApiResponse<T>(res: Response): Promise<T> {
   return body.data
 }
 
-export async function listClassrooms(): Promise<Classroom[]> {
-  const res = await fetch(`${API_BASE_URL}/classrooms`)
-  return parseApiResponse<Classroom[]>(res)
+type CsrfToken = {
+  headerName: string
+  token: string
 }
 
-export async function createClassroom(name: string): Promise<Classroom> {
-  const res = await fetch(`${API_BASE_URL}/classrooms`, {
+// 토큰은 요청마다 다르게 인코딩되어 내려오므로 재사용하지 않고 변경 요청 직전에 받아온다.
+// 서버가 헤더 이름도 함께 내려주므로 프론트에 하드코딩하지 않는다.
+async function fetchCsrfToken(): Promise<CsrfToken> {
+  const res = await fetch(`${API_BASE_URL}/csrf`, { credentials: 'include' })
+  return parseApiResponse<CsrfToken>(res)
+}
+
+async function readRequest<T>(path: string): Promise<T> {
+  // 세션·CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
+  const res = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' })
+  return parseApiResponse<T>(res)
+}
+
+async function writeRequest<T>(path: string, body: unknown): Promise<T> {
+  // 토큰 조회가 실패하면 여기서 ApiError 가 던져져, 생성이 성공한 것처럼 처리되지 않는다.
+  const csrf = await fetchCsrfToken()
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      [csrf.headerName]: csrf.token,
+    },
+    body: JSON.stringify(body),
   })
-  return parseApiResponse<Classroom>(res)
+  return parseApiResponse<T>(res)
 }
 
-export async function getClassroom(classId: string): Promise<Classroom> {
-  const res = await fetch(`${API_BASE_URL}/classrooms/${classId}`)
-  return parseApiResponse<Classroom>(res)
+export function listClassrooms(): Promise<Classroom[]> {
+  return readRequest<Classroom[]>('/classrooms')
 }
 
-export async function listChildren(classId: string): Promise<Child[]> {
-  const res = await fetch(`${API_BASE_URL}/classrooms/${classId}/children`)
-  return parseApiResponse<Child[]>(res)
+export function createClassroom(name: string): Promise<Classroom> {
+  return writeRequest<Classroom>('/classrooms', { name })
 }
 
-export async function createChild(classId: string, displayName: string): Promise<Child> {
-  const res = await fetch(`${API_BASE_URL}/classrooms/${classId}/children`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName }),
-  })
-  return parseApiResponse<Child>(res)
+export function getClassroom(classId: string): Promise<Classroom> {
+  return readRequest<Classroom>(`/classrooms/${classId}`)
+}
+
+export function listChildren(classId: string): Promise<Child[]> {
+  return readRequest<Child[]>(`/classrooms/${classId}/children`)
+}
+
+export function createChild(classId: string, displayName: string): Promise<Child> {
+  return writeRequest<Child>(`/classrooms/${classId}/children`, { displayName })
 }
