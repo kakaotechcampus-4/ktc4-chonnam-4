@@ -63,3 +63,11 @@ git config core.hooksPath .githooks
 ```
 
 이후로는 커밋할 때마다 `backend/**/*.java`가 자동 포맷되고, 변경된 파일이 있으면 커밋에 다시 포함된다.
+
+## 5. AI 제공자 공통 계약
+
+LLM 호출 포트, Spring AI 어댑터, 실패 유형 및 MockServer 테스트 방법은 [AI 제공자 공통 호출 계약](docs/ai-provider-contract.md)에 정리되어 있다. AI는 기본 비활성화 상태이며, 테스트는 실제 외부 AI API나 API Key를 사용하지 않는다.
+
+```bash
+./gradlew test
+```
