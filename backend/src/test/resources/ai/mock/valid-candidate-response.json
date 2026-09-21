@@ -1,0 +1,10 @@
+{
+  "candidate_id": "00000000-0000-0000-0000-000000000009",
+  "turn_id": "00000000-0000-0000-0000-000000000007",
+  "text": "친구가 울고 있어. 어떤 기분일까?",
+  "response_type": "GUIDING_QUESTION",
+  "strategy_used": "PROBE_EMOTION",
+  "target_micro_goal_id": "00000000-0000-0000-0000-000000000008",
+  "support_level": "S1",
+  "previous_failed_candidate_ids": []
+}
