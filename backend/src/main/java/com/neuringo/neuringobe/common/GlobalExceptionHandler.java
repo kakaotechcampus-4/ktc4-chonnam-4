@@ -25,10 +25,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(
                         ApiErrorResponse.of(
-                                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                                HttpStatus.UNPROCESSABLE_CONTENT.value(),
                                 "VALIDATION_FAILED",
                                 "요청 값이 올바르지 않습니다.",
                                 request.getRequestURI()));
