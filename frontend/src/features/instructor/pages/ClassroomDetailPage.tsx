@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createChild, getClassroom, listChildren } from '@/lib/api'
+import { createChild, getClassroom, listChildren } from '../api'
 import { Button } from '@/components/ui/button'
+import { InstructorLayout } from '../layout/InstructorLayout'
 
-export default function ClassroomDetailPage() {
+function ClassroomDetailPage() {
   const { classId } = useParams<{ classId: string }>()
   const [displayName, setDisplayName] = useState('')
   const queryClient = useQueryClient()
@@ -47,8 +48,8 @@ export default function ClassroomDetailPage() {
   }
 
   return (
-    <div className="p-6">
-      <Link to="/" className="mb-4 inline-block text-sm underline">
+    <InstructorLayout>
+      <Link to="/classrooms" className="mb-4 inline-block text-sm underline">
         ← 학급 목록
       </Link>
 
@@ -99,6 +100,8 @@ export default function ClassroomDetailPage() {
           ))}
         </ul>
       )}
-    </div>
+    </InstructorLayout>
   )
 }
+
+export { ClassroomDetailPage }

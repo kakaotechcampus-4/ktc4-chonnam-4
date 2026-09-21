@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createClassroom, listClassrooms } from '@/lib/api'
+import { createClassroom, listClassrooms } from '../api'
 import { Button } from '@/components/ui/button'
+import { InstructorLayout } from '../layout/InstructorLayout'
 
-export default function ClassroomListPage() {
+function ClassroomListPage() {
   const [name, setName] = useState('')
   const queryClient = useQueryClient()
 
@@ -34,7 +35,7 @@ export default function ClassroomListPage() {
   }
 
   return (
-    <div className="p-6">
+    <InstructorLayout>
       <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
         <input
           value={name}
@@ -63,13 +64,15 @@ export default function ClassroomListPage() {
         <ul className="flex flex-col gap-2">
           {classrooms?.map((classroom) => (
             <li key={classroom.classId}>
-              <Link to={`classrooms/${classroom.classId}`}>
+              <Link to={`/classrooms/${classroom.classId}`}>
                 {classroom.name} ({classroom.status})
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </InstructorLayout>
   )
 }
+
+export { ClassroomListPage }
