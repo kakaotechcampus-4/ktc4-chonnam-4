@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Env / secrets — 루트 .gitignore 와 중복이지만, 이 디렉터리만 보는 사람도
+# 바로 알 수 있도록 명시한다. .env.example 만 추적.
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
