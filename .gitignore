@@ -15,7 +15,6 @@
 #   그리고 `.gitignore` 는 **이미 추적 중인 파일에는 효과가 없습니다** — `git rm --cached <파일>` 이 필요합니다.
 
 # ── 비밀 (가장 중요) ────────────────────────────────
-# env 파일 — 이름이 무엇이든 전부. 예시 파일(.env.example)만 추적한다.
 .env
 .env.*
 *.env
@@ -26,13 +25,11 @@ secrets/
 !.env.example
 !*.env.example
 
-# docker compose 로컬 오버라이드 — 로컬 자격증명을 여기에 두는 관행이 흔하다
 docker-compose.override.yml
 docker-compose.override.yaml
 compose.override.yml
 compose.override.yaml
 
-# 키 · 인증서 · 자격증명
 *.pem
 *.key
 *.p12

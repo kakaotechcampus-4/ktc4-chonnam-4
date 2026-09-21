@@ -19,23 +19,6 @@ jobs:
       run:
         working-directory: backend
 
-    # 테스트 DB 는 Testcontainers 가 띄운다.
-    #   backend/src/test/java/com/neuringo/neuringobe/TestcontainersConfiguration.java
-    #
-    #   변경 전 : CI 스크립트 → PostgreSQL 실행,  CI 스크립트 → Gradle 실행
-    #   변경 후 : CI 스크립트 → Gradle 실행,      Gradle 테스트 → PostgreSQL 실행
-    #
-    # 그래서 CI 가 직접 띄우던 postgres service 컨테이너를 제거했다.
-    #
-    # DB_URL / DB_USERNAME / DB_PASSWORD 도 넣지 않는다. 하드코딩은 물론이고
-    # secret 으로 넣을 필요도 없다 — 접속 정보는 @ServiceConnection 이 컨테이너에서
-    # 읽어 런타임에 Spring 으로 직접 주입한다. CI 가 알 필요가 없는 값이다.
-    #
-    # SPRING_PROFILES_ACTIVE 도 설정하지 않는다. local 프로파일이 켜지면
-    # application-local.yml 의 ${DB_USERNAME} 을 찾다가 컨텍스트 로딩이 실패한다.
-    #
-    # ubuntu-latest 러너에는 Docker 가 미리 깔려 있어 따로 준비할 게 없다.
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
