@@ -8,7 +8,12 @@ export default function ClassroomListPage() {
   const [name, setName] = useState('')
   const queryClient = useQueryClient()
 
-  const { data: classrooms, isLoading } = useQuery({
+  const {
+    data: classrooms,
+    isLoading,
+    isError: isListError,
+    error: listError,
+  } = useQuery({
     queryKey: ['classrooms'],
     queryFn: listClassrooms,
   })
@@ -40,8 +45,20 @@ export default function ClassroomListPage() {
         <Button type="submit">학급 생성</Button>
       </form>
 
+      {createMutation.isError && (
+        <p className="mb-4 text-sm text-red-600">
+          {createMutation.error instanceof Error
+            ? createMutation.error.message
+            : '학급 생성에 실패했습니다.'}
+        </p>
+      )}
+
       {isLoading ? (
         <p>불러오는 중...</p>
+      ) : isListError ? (
+        <p className="text-sm text-red-600">
+          {listError instanceof Error ? listError.message : '학급 목록을 불러오지 못했습니다.'}
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {classrooms?.map((classroom) => (

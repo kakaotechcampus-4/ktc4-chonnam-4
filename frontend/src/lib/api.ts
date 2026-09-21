@@ -23,61 +23,68 @@ type ApiEnvelope<T> = {
   meta: { traceId: string }
 }
 
-// TODO(human): 아래 다섯 함수의 본문을 채워주세요.
-//
-// 공통 패턴: fetch로 요청 보내기 -> await res.json()으로 파싱 -> ApiEnvelope<T>의 .data 꺼내서 반환
-// POST 요청은 세 번째 인자로 옵션 객체가 필요합니다:
-//   fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-//
-// 1) listClassrooms(): Promise<Classroom[]>
-//    - GET `${API_BASE_URL}/classrooms`
-//
-// 2) createClassroom(name: string): Promise<Classroom>
-//    - POST `${API_BASE_URL}/classrooms`, body: { name }
-//
-// 3) getClassroom(classId: string): Promise<Classroom>
-//    - GET `${API_BASE_URL}/classrooms/${classId}`
-//
-// 4) listChildren(classId: string): Promise<Child[]>
-//    - GET `${API_BASE_URL}/classrooms/${classId}/children`
-//
-// 5) createChild(classId: string, displayName: string): Promise<Child>
-//    - POST `${API_BASE_URL}/classrooms/${classId}/children`, body: { displayName }
+type ApiErrorBody = {
+  error: {
+    status: number
+    code: string
+    message: string
+    path: string
+    traceId: string
+    fieldErrors: string[]
+  }
+}
+
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string
+
+  constructor(status: number, code: string, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+async function parseApiResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body: ApiErrorBody = await res.json()
+    throw new ApiError(body.error.status, body.error.code, body.error.message)
+  }
+
+  const body: ApiEnvelope<T> = await res.json()
+  return body.data
+}
 
 export async function listClassrooms(): Promise<Classroom[]> {
-    const res = await fetch(`${API_BASE_URL}/classrooms`)
-    const body: ApiEnvelope<Classroom[]> = await res.json()
-    return body.data
+  const res = await fetch(`${API_BASE_URL}/classrooms`)
+  return parseApiResponse<Classroom[]>(res)
 }
 
 export async function createClassroom(name: string): Promise<Classroom> {
   const res = await fetch(`${API_BASE_URL}/classrooms`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    const body: ApiEnvelope<Classroom> = await res.json()
-    return body.data
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  return parseApiResponse<Classroom>(res)
 }
 
 export async function getClassroom(classId: string): Promise<Classroom> {
   const res = await fetch(`${API_BASE_URL}/classrooms/${classId}`)
-    const body: ApiEnvelope<Classroom> = await res.json()
-    return body.data
+  return parseApiResponse<Classroom>(res)
 }
 
 export async function listChildren(classId: string): Promise<Child[]> {
   const res = await fetch(`${API_BASE_URL}/classrooms/${classId}/children`)
-    const body: ApiEnvelope<Child[]> = await res.json()
-    return body.data
+  return parseApiResponse<Child[]>(res)
 }
 
 export async function createChild(classId: string, displayName: string): Promise<Child> {
   const res = await fetch(`${API_BASE_URL}/classrooms/${classId}/children`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName }),
-    })
-    const body: ApiEnvelope<Child> = await res.json()
-    return body.data
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  })
+  return parseApiResponse<Child>(res)
 }

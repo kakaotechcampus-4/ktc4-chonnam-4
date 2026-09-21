@@ -9,13 +9,23 @@ export default function ClassroomDetailPage() {
   const [displayName, setDisplayName] = useState('')
   const queryClient = useQueryClient()
 
-  const { data: classroom, isLoading: isClassroomLoading } = useQuery({
+  const {
+    data: classroom,
+    isLoading: isClassroomLoading,
+    isError: isClassroomError,
+    error: classroomError,
+  } = useQuery({
     queryKey: ['classrooms', classId],
     queryFn: () => getClassroom(classId!),
     enabled: !!classId,
   })
 
-  const { data: children, isLoading: isChildrenLoading } = useQuery({
+  const {
+    data: children,
+    isLoading: isChildrenLoading,
+    isError: isChildrenError,
+    error: childrenError,
+  } = useQuery({
     queryKey: ['classrooms', classId, 'children'],
     queryFn: () => listChildren(classId!),
     enabled: !!classId,
@@ -44,6 +54,12 @@ export default function ClassroomDetailPage() {
 
       {isClassroomLoading ? (
         <p>불러오는 중...</p>
+      ) : isClassroomError ? (
+        <p className="text-sm text-red-600">
+          {classroomError instanceof Error
+            ? classroomError.message
+            : '학급 정보를 불러오지 못했습니다.'}
+        </p>
       ) : (
         <h1 className="mb-4 text-lg font-semibold">
           {classroom?.name} ({classroom?.status})
@@ -60,8 +76,20 @@ export default function ClassroomDetailPage() {
         <Button type="submit">아동 등록</Button>
       </form>
 
+      {createChildMutation.isError && (
+        <p className="mb-4 text-sm text-red-600">
+          {createChildMutation.error instanceof Error
+            ? createChildMutation.error.message
+            : '아동 등록에 실패했습니다.'}
+        </p>
+      )}
+
       {isChildrenLoading ? (
         <p>불러오는 중...</p>
+      ) : isChildrenError ? (
+        <p className="text-sm text-red-600">
+          {childrenError instanceof Error ? childrenError.message : '아동 목록을 불러오지 못했습니다.'}
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {children?.map((child) => (
