@@ -16,7 +16,17 @@ build/
 # Env / secrets
 .env
 .env.*
+*.env
+.envrc
 !.env.example
+compose.override.yml
+compose.override.yaml
+docker-compose.override.yml
+docker-compose.override.yaml
+*.pem
+*.key
+*.jks
+*.keystore
 
 # Logs
 *.log
