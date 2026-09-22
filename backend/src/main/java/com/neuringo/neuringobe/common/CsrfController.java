@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class CsrfController {
 
-    @GetMapping("/csrf")
+    @GetMapping("/api/v1/csrf")
     public ApiResponse<CsrfTokenResponse> csrf(CsrfToken csrfToken) {
         return ApiResponse.of(CsrfTokenResponse.from(csrfToken));
     }

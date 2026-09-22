@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/classrooms/{classId}/children")
+@RequestMapping("/api/v1/classrooms/{classId}/children")
 public class ChildController {
 
     private final ChildRepository childRepository;

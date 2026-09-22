@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/classrooms")
+@RequestMapping("/api/v1/classrooms")
 public class ClassroomController {
 
     private final ClassroomRepository classroomRepository;

@@ -22,7 +22,7 @@ public class SecurityConfig {
     @Profile("local")
     public SecurityFilterChain localSecurityFilterChain(HttpSecurity http) throws Exception {
         // CSRF 토큰은 쿠키에 보관한다(HttpOnly 유지). 프론트는 쿠키를 직접 읽지 않고
-        // GET /csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
+        // GET /api/v1/csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
                 .cors(cors -> cors.configurationSource(localCorsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());

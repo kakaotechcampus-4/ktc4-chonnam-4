@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8080' // TODO: G0 이후 환경변수로 교체
+const API_BASE_URL = 'http://localhost:8080/api/v1' // TODO: G0 이후 환경변수로 교체
 
 export type ClassroomStatus = 'ACTIVE' | 'ARCHIVED'
 
