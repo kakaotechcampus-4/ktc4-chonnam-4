@@ -1,0 +1,17 @@
+{
+  "turn_id": "00000000-0000-0000-0000-000000000007",
+  "response_act": "ANSWER_ATTEMPT",
+  "relevance": "PARTIALLY_RELEVANT",
+  "learning_state": "PARTIAL_UNDERSTANDING",
+  "primary_gap": {
+    "code": "MISSING_EMOTION",
+    "description": "감정 표현이 없다."
+  },
+  "next_strategy": {
+    "type": "PROBE_EMOTION",
+    "target_micro_goal_id": "00000000-0000-0000-0000-000000000008",
+    "purpose": "감정을 파악하도록 돕는다.",
+    "recommended_support_level": "S1"
+  },
+  "analysis_confidence": 0.91
+}

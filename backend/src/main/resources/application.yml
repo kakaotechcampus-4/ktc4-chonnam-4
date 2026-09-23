@@ -2,6 +2,17 @@ spring:
   application:
     name: neuringo-be
 
+  ai:
+    model:
+      chat: ${AI_CHAT_PROVIDER:none}
+    openai:
+      base-url: ${AI_BASE_URL:https://api.openai.com}
+      api-key: ${AI_API_KEY:not-configured}
+      timeout: ${AI_TIMEOUT:10s}
+      max-retries: ${AI_MAX_RETRIES:0}
+      chat:
+        model: ${AI_MODEL:not-configured}
+
   jpa:
     open-in-view: false
     show-sql: false
@@ -37,3 +48,9 @@ logging:
   level:
     root: INFO
     com.neuringo: INFO
+
+neuringo:
+  ai:
+    provider-name: ${AI_PROVIDER_NAME:openai-compatible}
+    request-timeout: ${AI_TIMEOUT:10s}
+    max-retries: ${AI_MAX_RETRIES:0}

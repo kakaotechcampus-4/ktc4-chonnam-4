@@ -1,0 +1,8 @@
+{
+  "candidate_id": "00000000-0000-0000-0000-000000000009",
+  "decision": "PASS",
+  "retry_target": null,
+  "critical_failure_count": 0,
+  "failure_codes": [],
+  "revision_instruction": null
+}
