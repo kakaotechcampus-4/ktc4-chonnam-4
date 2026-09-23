@@ -14,6 +14,7 @@ import com.openai.errors.PermissionDeniedException;
 import com.openai.errors.RateLimitException;
 import com.openai.errors.UnauthorizedException;
 import com.openai.errors.UnprocessableEntityException;
+import java.io.InterruptedIOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpConnectTimeoutException;
@@ -64,6 +65,7 @@ public final class OpenAiFailureClassifier {
         if (throwable instanceof HttpTimeoutException
                 || throwable instanceof HttpConnectTimeoutException
                 || throwable instanceof SocketTimeoutException
+                || throwable instanceof InterruptedIOException
                 || throwable instanceof TimeoutException) {
             return mapping(
                     AiFailureType.TIMEOUT,

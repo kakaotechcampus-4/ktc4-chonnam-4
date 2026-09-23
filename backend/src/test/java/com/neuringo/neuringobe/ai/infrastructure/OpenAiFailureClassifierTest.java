@@ -10,6 +10,7 @@ import com.neuringo.neuringobe.ai.infrastructure.springai.FailureMappingSource;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
 import com.openai.errors.OpenAIServiceException;
 import com.openai.errors.RateLimitException;
+import java.io.InterruptedIOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
@@ -38,6 +39,18 @@ class OpenAiFailureClassifierTest {
         FailureMapping mapping = required(classifier.classify(outer));
 
         assertThat(mapping.failure().type()).isEqualTo(AiFailureType.TIMEOUT);
+        assertThat(mapping.source()).isEqualTo(FailureMappingSource.JDK_EXCEPTION_TYPE);
+    }
+
+    @Test
+    void mapsInterruptedIoFromHttpClientToTimeout() {
+        RuntimeException outer =
+                new RuntimeException(new InterruptedIOException("request interrupted"));
+
+        FailureMapping mapping = required(classifier.classify(outer));
+
+        assertThat(mapping.failure().type()).isEqualTo(AiFailureType.TIMEOUT);
+        assertThat(mapping.failure().retryable()).isTrue();
         assertThat(mapping.source()).isEqualTo(FailureMappingSource.JDK_EXCEPTION_TYPE);
     }
 
