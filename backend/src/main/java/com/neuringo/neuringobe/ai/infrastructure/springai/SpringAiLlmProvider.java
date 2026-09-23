@@ -21,19 +21,19 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 public final class SpringAiLlmProvider implements LlmProvider {
 
     private final ChatModel chatModel;
-    private final SpringAiFailureMapper failureMapper;
+    private final OpenAiFailureClassifier failureClassifier;
     private final String providerName;
     private final Duration requestTimeout;
     private final int maxRetries;
 
     public SpringAiLlmProvider(
             ChatModel chatModel,
-            SpringAiFailureMapper failureMapper,
+            OpenAiFailureClassifier failureClassifier,
             String providerName,
             Duration requestTimeout,
             int maxRetries) {
         this.chatModel = Objects.requireNonNull(chatModel);
-        this.failureMapper = Objects.requireNonNull(failureMapper);
+        this.failureClassifier = Objects.requireNonNull(failureClassifier);
         this.providerName = Objects.requireNonNull(providerName);
         this.requestTimeout = Objects.requireNonNull(requestTimeout);
         this.maxRetries = maxRetries;
@@ -43,53 +43,59 @@ public final class SpringAiLlmProvider implements LlmProvider {
     public AiCallResult<LlmCompletion> complete(LlmRequest request) {
         long startedAt = System.nanoTime();
 
+        Prompt prompt = createPrompt(request);
+        ChatResponse response;
         try {
-            Prompt prompt =
-                    new Prompt(
-                            List.of(
-                                    new SystemMessage(request.systemPrompt()),
-                                    new UserMessage(request.userPrompt())),
-                            OpenAiChatOptions.builder()
-                                    .timeout(requestTimeout)
-                                    .maxRetries(maxRetries)
-                                    .build());
-            ChatResponse response = chatModel.call(prompt);
-            var result = response == null ? null : response.getResult();
-            var responseMetadata = response == null ? null : response.getMetadata();
-            String content =
-                    result == null || result.getOutput() == null
-                            ? null
-                            : result.getOutput().getText();
-            String model = responseMetadata == null ? null : responseMetadata.getModel();
-            String finishReason =
-                    result == null || result.getMetadata() == null
-                            ? null
-                            : result.getMetadata().getFinishReason();
-            Integer inputTokens =
-                    responseMetadata == null || responseMetadata.getUsage() == null
-                            ? null
-                            : responseMetadata.getUsage().getPromptTokens();
-            Integer outputTokens =
-                    responseMetadata == null || responseMetadata.getUsage() == null
-                            ? null
-                            : responseMetadata.getUsage().getCompletionTokens();
-            AiCallMetadata metadata =
-                    metadata(request, startedAt, model, inputTokens, outputTokens, finishReason);
-
-            if (content == null || content.isBlank()) {
-                AiFailure failure = new AiFailure(AiFailureType.EMPTY_OUTPUT, true, null);
-                return new AiCallResult.Failure<>(failure, metadata);
-            }
-
-            LlmCompletion completion =
-                    new LlmCompletion(
-                            content, providerName, model, finishReason, inputTokens, outputTokens);
-            return new AiCallResult.Success<>(completion, metadata);
+            response = chatModel.call(prompt);
         } catch (RuntimeException exception) {
-            AiFailure failure = failureMapper.map(exception);
+            FailureMapping mapping =
+                    failureClassifier.classify(exception).orElseThrow(() -> exception);
             return new AiCallResult.Failure<>(
-                    failure, metadata(request, startedAt, null, null, null, null));
+                    mapping.failure(), metadata(request, startedAt, null, null, null, null));
         }
+
+        return convertResponse(request, startedAt, response);
+    }
+
+    private Prompt createPrompt(LlmRequest request) {
+        return new Prompt(
+                List.of(
+                        new SystemMessage(request.systemPrompt()),
+                        new UserMessage(request.userPrompt())),
+                OpenAiChatOptions.builder().timeout(requestTimeout).maxRetries(maxRetries).build());
+    }
+
+    private AiCallResult<LlmCompletion> convertResponse(
+            LlmRequest request, long startedAt, ChatResponse response) {
+        var result = response == null ? null : response.getResult();
+        var responseMetadata = response == null ? null : response.getMetadata();
+        String content =
+                result == null || result.getOutput() == null ? null : result.getOutput().getText();
+        String model = responseMetadata == null ? null : responseMetadata.getModel();
+        String finishReason =
+                result == null || result.getMetadata() == null
+                        ? null
+                        : result.getMetadata().getFinishReason();
+        Integer inputTokens =
+                responseMetadata == null || responseMetadata.getUsage() == null
+                        ? null
+                        : responseMetadata.getUsage().getPromptTokens();
+        Integer outputTokens =
+                responseMetadata == null || responseMetadata.getUsage() == null
+                        ? null
+                        : responseMetadata.getUsage().getCompletionTokens();
+        AiCallMetadata metadata =
+                metadata(request, startedAt, model, inputTokens, outputTokens, finishReason);
+
+        if (content == null || content.isBlank()) {
+            AiFailure failure = new AiFailure(AiFailureType.EMPTY_OUTPUT, true, null);
+            return new AiCallResult.Failure<>(failure, metadata);
+        }
+
+        LlmCompletion completion =
+                new LlmCompletion(
+                        content, providerName, model, finishReason, inputTokens, outputTokens);
+        return new AiCallResult.Success<>(completion, metadata);
     }
 
     private AiCallMetadata metadata(

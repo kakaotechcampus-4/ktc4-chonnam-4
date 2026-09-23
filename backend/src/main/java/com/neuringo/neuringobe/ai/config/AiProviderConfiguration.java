@@ -1,7 +1,7 @@
 package com.neuringo.neuringobe.ai.config;
 
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
-import com.neuringo.neuringobe.ai.infrastructure.springai.SpringAiFailureMapper;
+import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
 import com.neuringo.neuringobe.ai.infrastructure.springai.SpringAiLlmProvider;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,7 +18,7 @@ public class AiProviderConfiguration {
     LlmProvider llmProvider(ChatModel chatModel, AiProviderProperties properties) {
         return new SpringAiLlmProvider(
                 chatModel,
-                new SpringAiFailureMapper(),
+                new OpenAiFailureClassifier(),
                 properties.providerName(),
                 properties.requestTimeout(),
                 properties.maxRetries());

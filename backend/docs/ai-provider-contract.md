@@ -68,9 +68,11 @@ AND criticalFailureCount == 0
 | `PROVIDER_RESPONSE_ERROR` | 제공자 응답 본문을 해석할 수 없음 | 예 |
 | `EMPTY_OUTPUT` | LLM 생성 결과가 비어 있음 | 예 |
 | `INVALID_OUTPUT_FORMAT` | 생성 결과가 느링고 출력 계약과 맞지 않음 | 예 |
-| `UNKNOWN` | 분류되지 않은 오류 | 아니요 |
+| `UNKNOWN` | OpenAI SDK 계열이지만 세부 유형을 분류할 수 없는 오류 | 아니요 |
 
 Spring AI와 OpenAI SDK의 자동 재시도는 0회로 설정한다. 동일 요청 재호출 횟수와 복구 경로는 느링고 오케스트레이터가 관리한다.
+
+제공자 오류는 구체 예외 타입, HTTP 상태 코드, Spring·JDK 네트워크 예외 타입, 예외 클래스명 fallback 순서로 분류한다. 알려진 제공자 오류와 이름 fallback은 실패 결과로 반환하지만, 어느 규칙으로도 제공자 오류라고 판단할 수 없는 런타임 예외는 내부 결함을 숨기지 않도록 호출자에게 다시 전파한다.
 
 ## 환경 설정
 
