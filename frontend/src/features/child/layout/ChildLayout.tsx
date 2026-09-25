@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useChildSessionStore } from "../store/childSessionStore"
+import { useWarnBeforeUnload } from "../hooks/useWarnBeforeUnload"
 
 /**
  * 아동 코드·퀴즈·역할극 화면이 공유하는 레이아웃 셸.
@@ -21,6 +22,7 @@ function ChildLayout({
 }) {
   const navigate = useNavigate()
   const endSession = useChildSessionStore((state) => state.endSession)
+  useWarnBeforeUnload()
 
   const handleExit = () => {
     endSession()
