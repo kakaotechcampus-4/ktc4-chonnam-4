@@ -1,4 +1,4 @@
-package com.neuringo.neuringobe.classroom;
+package com.neuringo.neuringobe.classroom.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

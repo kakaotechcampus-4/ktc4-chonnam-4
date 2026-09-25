@@ -1,4 +1,4 @@
-package com.neuringo.neuringobe.child;
+package com.neuringo.neuringobe.child.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

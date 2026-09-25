@@ -1,5 +1,7 @@
-package com.neuringo.neuringobe.classroom;
+package com.neuringo.neuringobe.classroom.dto;
 
+import com.neuringo.neuringobe.classroom.domain.Classroom;
+import com.neuringo.neuringobe.classroom.domain.ClassroomStatus;
 import java.util.UUID;
 
 public record ClassroomResponse(

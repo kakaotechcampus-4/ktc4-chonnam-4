@@ -1,5 +1,6 @@
-package com.neuringo.neuringobe.child;
+package com.neuringo.neuringobe.child.repository;
 
+import com.neuringo.neuringobe.child.domain.Child;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
