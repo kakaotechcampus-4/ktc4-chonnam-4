@@ -1,0 +1,10 @@
+{
+  "turn_id": "00000000-0000-0000-0000-000000000007",
+  "response_act": "ANSWER_ATTEMPT",
+  "learning_state": "PARTIAL_UNDERSTANDING",
+  "next_strategy": {
+    "type": "PROBE_EMOTION",
+    "target_micro_goal_id": "00000000-0000-0000-0000-000000000008"
+  },
+  "analysis_confidence": 0.91
+}

@@ -19,31 +19,6 @@ jobs:
       run:
         working-directory: backend
 
-    # spring-boot-docker-compose is a developmentOnly dependency (bootRun/IDE
-    # convenience) and isn't on the test classpath, so `./gradlew test` never
-    # triggers backend/compose.yaml. CI provides Postgres via a service
-    # container instead, matching the `local` profile's expected env vars.
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: neuringo_local
-          POSTGRES_USER: neuringo
-          POSTGRES_PASSWORD: neuringo
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U neuringo"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      SPRING_PROFILES_ACTIVE: local
-      DB_URL: jdbc:postgresql://localhost:5432/neuringo_local
-      DB_USERNAME: neuringo
-      DB_PASSWORD: neuringo
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4

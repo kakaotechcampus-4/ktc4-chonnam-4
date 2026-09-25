@@ -6,7 +6,7 @@
 
 ![백엔드 아키텍처](../docs/architecture.svg)
 
-로컬 실행 시에는 `spring-boot-docker-compose`가 `compose.yaml`을 자동으로 띄워 PostgreSQL 컨테이너에 연결합니다(아래 3번 참고). `local` / `dev` / `prod` 프로필별로 DB 접속 정보만 바뀌고 나머지 구조는 동일합니다.
+로컬 실행 시에는 `spring-boot-docker-compose`가 `compose.yml`을 자동으로 띄워 PostgreSQL 컨테이너에 연결합니다(아래 3번 참고). `local` / `dev` / `prod` 프로필별로 DB 접속 정보만 바뀌고 나머지 구조는 동일합니다.
 
 ## 2. 기술 스택 공식 링크
 
@@ -47,7 +47,7 @@
 1. JDK 21을 준비한다. (IntelliJ 사용 시 `Settings → Gradle → Gradle JVM`도 21 이상으로 맞춘다.)
 2. Docker가 설치·실행 중인지 확인한다. (별도 Postgres 설치 없이 자동 실행됨)
 3. `backend/` 에서 `./gradlew bootRun` 을 실행한다.
-4. `spring-boot-docker-compose`가 `compose.yaml`을 읽어 PostgreSQL 컨테이너를 자동으로 띄운다.
+4. `spring-boot-docker-compose`가 `compose.yml`을 읽어 PostgreSQL 컨테이너를 자동으로 띄운다.
 5. `http://localhost:8080/actuator/health` 응답이 `UP`이면 정상 기동이다.
 
 Docker 없이 직접 설치한 PostgreSQL을 쓰고 싶다면, `local` 프로필로 실행하고 `.env.example`을 참고해 `SPRING_PROFILES_ACTIVE=local`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 직접 지정하면 된다.
@@ -63,3 +63,11 @@ git config core.hooksPath .githooks
 ```
 
 이후로는 커밋할 때마다 `backend/**/*.java`가 자동 포맷되고, 변경된 파일이 있으면 커밋에 다시 포함된다.
+
+## 5. AI 제공자 공통 계약
+
+LLM 호출 포트, Spring AI 어댑터, 실패 유형 및 MockServer 테스트 방법은 [AI 제공자 공통 호출 계약](docs/ai-provider-contract.md)에 정리되어 있다. AI는 기본 비활성화 상태이며, 테스트는 실제 외부 AI API나 API Key를 사용하지 않는다.
+
+```bash
+./gradlew test
+```
