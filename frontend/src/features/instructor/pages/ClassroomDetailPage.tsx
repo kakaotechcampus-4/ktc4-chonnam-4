@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createChild, getClassroom, listChildren } from '../api'
@@ -43,13 +43,20 @@ function ClassroomDetailPage() {
   const trimmedDisplayName = displayName.trim()
   // 요청 중 재클릭·Enter 로 같은 아동이 여러 번 등록되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
   const isSubmitDisabled = createChildMutation.isPending || trimmedDisplayName === ''
+  // isPending 은 다음 렌더부터 반영되어, 같은 순간 들어온 두 번째 제출은 통과할 수 있다. ref 로 즉시 잠근다.
+  const isSubmittingRef = useRef(false)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isSubmitDisabled) {
+    if (isSubmitDisabled || isSubmittingRef.current) {
       return
     }
-    createChildMutation.mutate(trimmedDisplayName)
+    isSubmittingRef.current = true
+    createChildMutation.mutate(trimmedDisplayName, {
+      onSettled: () => {
+        isSubmittingRef.current = false
+      },
+    })
   }
 
   return (
