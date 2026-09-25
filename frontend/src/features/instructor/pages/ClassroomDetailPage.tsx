@@ -40,11 +40,16 @@ function ClassroomDetailPage() {
     },
   })
 
+  const trimmedDisplayName = displayName.trim()
+  // 요청 중 재클릭·Enter 로 같은 아동이 여러 번 등록되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
+  const isSubmitDisabled = createChildMutation.isPending || trimmedDisplayName === ''
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (displayName !== '') {
-      createChildMutation.mutate(displayName)
+    if (isSubmitDisabled) {
+      return
     }
+    createChildMutation.mutate(trimmedDisplayName)
   }
 
   return (
@@ -68,13 +73,19 @@ function ClassroomDetailPage() {
       )}
 
       <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
+        <label htmlFor="child-display-name" className="sr-only">
+          아동 이름
+        </label>
         <input
+          id="child-display-name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="아동 이름"
           className="rounded-lg border border-border px-2.5 py-1 text-sm"
         />
-        <Button type="submit">아동 등록</Button>
+        <Button type="submit" disabled={isSubmitDisabled}>
+          {createChildMutation.isPending ? '등록 중...' : '아동 등록'}
+        </Button>
       </form>
 
       {createChildMutation.isError && (

@@ -27,23 +27,34 @@ function ClassroomListPage() {
     },
   })
 
+  const trimmedName = name.trim()
+  // 요청 중 재클릭·Enter 로 같은 학급이 여러 번 생성되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
+  const isSubmitDisabled = createMutation.isPending || trimmedName === ''
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (name !== '') {
-      createMutation.mutate(name)
+    if (isSubmitDisabled) {
+      return
     }
+    createMutation.mutate(trimmedName)
   }
 
   return (
     <InstructorLayout>
       <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
+        <label htmlFor="classroom-name" className="sr-only">
+          학급 이름
+        </label>
         <input
+          id="classroom-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="학급 이름"
           className="rounded-lg border border-border px-2.5 py-1 text-sm"
         />
-        <Button type="submit">학급 생성</Button>
+        <Button type="submit" disabled={isSubmitDisabled}>
+          {createMutation.isPending ? '생성 중...' : '학급 생성'}
+        </Button>
       </form>
 
       {createMutation.isError && (
