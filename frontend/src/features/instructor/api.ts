@@ -30,7 +30,7 @@ type ApiErrorBody = {
     message: string
     path: string
     traceId: string
-    fieldErrors: string[]
+    fieldErrors: { field: string; message: string }[]
   }
 }
 

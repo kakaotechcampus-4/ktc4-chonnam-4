@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createChild, getClassroom, listChildren } from '../api'
@@ -40,11 +40,23 @@ function ClassroomDetailPage() {
     },
   })
 
+  const trimmedDisplayName = displayName.trim()
+  // 요청 중 재클릭·Enter 로 같은 아동이 여러 번 등록되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
+  const isSubmitDisabled = createChildMutation.isPending || trimmedDisplayName === ''
+  // isPending 은 다음 렌더부터 반영되어, 같은 순간 들어온 두 번째 제출은 통과할 수 있다. ref 로 즉시 잠근다.
+  const isSubmittingRef = useRef(false)
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (displayName !== '') {
-      createChildMutation.mutate(displayName)
+    if (isSubmitDisabled || isSubmittingRef.current) {
+      return
     }
+    isSubmittingRef.current = true
+    createChildMutation.mutate(trimmedDisplayName, {
+      onSettled: () => {
+        isSubmittingRef.current = false
+      },
+    })
   }
 
   return (
@@ -68,13 +80,19 @@ function ClassroomDetailPage() {
       )}
 
       <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
+        <label htmlFor="child-display-name" className="sr-only">
+          아동 이름
+        </label>
         <input
+          id="child-display-name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="아동 이름"
           className="rounded-lg border border-border px-2.5 py-1 text-sm"
         />
-        <Button type="submit">아동 등록</Button>
+        <Button type="submit" disabled={isSubmitDisabled}>
+          {createChildMutation.isPending ? '등록 중...' : '아동 등록'}
+        </Button>
       </form>
 
       {createChildMutation.isError && (

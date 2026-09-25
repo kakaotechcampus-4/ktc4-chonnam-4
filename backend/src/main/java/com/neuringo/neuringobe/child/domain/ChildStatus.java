@@ -1,4 +1,4 @@
-package com.neuringo.neuringobe.child;
+package com.neuringo.neuringobe.child.domain;
 
 public enum ChildStatus {
     ACTIVE,

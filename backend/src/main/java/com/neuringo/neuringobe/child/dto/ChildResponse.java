@@ -1,5 +1,7 @@
-package com.neuringo.neuringobe.child;
+package com.neuringo.neuringobe.child.dto;
 
+import com.neuringo.neuringobe.child.domain.Child;
+import com.neuringo.neuringobe.child.domain.ChildStatus;
 import java.util.UUID;
 
 public record ChildResponse(UUID childId, UUID classId, String displayName, ChildStatus status) {

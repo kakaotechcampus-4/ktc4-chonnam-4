@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClassroom, listClassrooms } from '../api'
@@ -27,23 +27,41 @@ function ClassroomListPage() {
     },
   })
 
+  const trimmedName = name.trim()
+  // 요청 중 재클릭·Enter 로 같은 학급이 여러 번 생성되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
+  const isSubmitDisabled = createMutation.isPending || trimmedName === ''
+  // isPending 은 다음 렌더부터 반영되어, 같은 순간 들어온 두 번째 제출은 통과할 수 있다. ref 로 즉시 잠근다.
+  const isSubmittingRef = useRef(false)
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (name !== '') {
-      createMutation.mutate(name)
+    if (isSubmitDisabled || isSubmittingRef.current) {
+      return
     }
+    isSubmittingRef.current = true
+    createMutation.mutate(trimmedName, {
+      onSettled: () => {
+        isSubmittingRef.current = false
+      },
+    })
   }
 
   return (
     <InstructorLayout>
       <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
+        <label htmlFor="classroom-name" className="sr-only">
+          학급 이름
+        </label>
         <input
+          id="classroom-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="학급 이름"
           className="rounded-lg border border-border px-2.5 py-1 text-sm"
         />
-        <Button type="submit">학급 생성</Button>
+        <Button type="submit" disabled={isSubmitDisabled}>
+          {createMutation.isPending ? '생성 중...' : '학급 생성'}
+        </Button>
       </form>
 
       {createMutation.isError && (
