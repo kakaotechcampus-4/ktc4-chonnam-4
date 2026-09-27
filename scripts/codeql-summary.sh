@@ -63,7 +63,7 @@ for f in "${files[@]}"; do
          line: ($loc.region.startLine // 1),
          msg: (.message.text // "")}] as $found
     | ([.runs[] as $run | rules($run)[]] | length) as $nrules
-    | "### \($name)",
+    | "### \({java: "백엔드 (Java)", javascript: "프론트 (JS/TS)"}[$name] // $name)",
       "",
       "검사 규칙 **\($nrules)개** · 발견 **\($found | length)건**",
       "",
