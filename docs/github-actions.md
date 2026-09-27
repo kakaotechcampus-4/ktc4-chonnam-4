@@ -21,7 +21,12 @@
 ### 2. CodeQL — `.github/workflows/codeql.yml`
 
 - **트리거**: `push`/`pull_request` (`main`, `develop`) + 매주 월요일 03:30 UTC 정기 스캔
-- **동작**: `java-kotlin` 언어로 정적분석, GitHub Security 탭에 결과 표시
+- **동작**: `java-kotlin`(백엔드)·`javascript-typescript`(프론트) 두 언어를 따로 정적분석해 GitHub Security 탭에 올린다. JS/TS 는 빌드 없이 소스만 본다
+- **결과 보는 곳**
+  - PR: **CodeQL 코멘트** 하나가 달리고 push 할 때마다 같은 코멘트를 고쳐 쓴다. 언어별 검사 규칙 수·발견 건수, 발견하면 심각도·규칙·파일:줄 표. 0건이어도 적힌다
+  - develop push·매주 실행: Actions → CodeQL 실행의 **Summary** 에 같은 표
+  - 고침·무시 이력과 규칙 설명: 레포 **Security → Code scanning** (로그인한 레포 멤버만 보인다). 오탐이면 여기서 이유를 적고 Dismiss 한다
+  - 표는 `scripts/codeql-summary.sh` 가 SARIF 에서 만든다(Report job)
 - **비용**: public repo라 무료
 - **PR #5 실행**: [Actions 탭](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/actions/runs/35173248143)에서 확인 가능
 
