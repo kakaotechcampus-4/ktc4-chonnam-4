@@ -5,13 +5,18 @@ import { hasAccessToken, login } from '../api'
 import { Button } from '@/components/ui/button'
 import { AuthLayout } from '../layout/AuthLayout'
 
+// 다른 화면이 로그인 화면으로 보낼 때 넘기는 값.
+// from: 보호 화면에서 튕겨 온 경로(로그인 뒤 돌아갈 곳), notice·email: 가입 직후 자동 로그인이 실패했을 때의 안내.
+type LoginLocationState = { from?: string; notice?: string; email?: string } | null
+
 function LoginPage() {
-  const [email, setEmail] = useState('')
+  const location = useLocation()
+  const locationState = location.state as LoginLocationState
+  const [email, setEmail] = useState(locationState?.email ?? '')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
-  const location = useLocation()
-  // 보호 화면에서 튕겨 왔으면 로그인 뒤 그 화면으로 돌려보낸다.
-  const from = (location.state as { from?: string } | null)?.from ?? '/classrooms'
+  const from = locationState?.from ?? '/classrooms'
+  const notice = locationState?.notice
 
   const loginMutation = useMutation({
     mutationFn: () => login(email.trim(), password),
@@ -42,6 +47,12 @@ function LoginPage() {
 
   return (
     <AuthLayout title="로그인">
+      {notice && (
+        <p role="status" className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm">
+          {notice}
+        </p>
+      )}
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <label htmlFor="login-email" className="flex flex-col gap-1 text-sm">
           이메일

@@ -24,6 +24,7 @@ function SignupPage() {
   const navigate = useNavigate()
 
   // 가입에 성공하면 같은 자격으로 바로 로그인해 학급 화면으로 보낸다.
+  // 가입 뒤 로그인만 실패하면 계정은 이미 있으므로, 이 화면에서 다시 가입하게 두지 않고(409) 로그인 화면으로 안내한다.
   const signupMutation = useMutation({
     mutationFn: async () => {
       const trimmedEmail = email.trim()
@@ -33,9 +34,23 @@ function SignupPage() {
         name: name.trim(),
         orgName: orgName.trim() === '' ? undefined : orgName.trim(),
       })
-      await login(trimmedEmail, password)
+      try {
+        await login(trimmedEmail, password)
+        return { loggedIn: true, email: trimmedEmail }
+      } catch {
+        return { loggedIn: false, email: trimmedEmail }
+      }
     },
-    onSuccess: () => navigate('/classrooms', { replace: true }),
+    onSuccess: ({ loggedIn, email: signedUpEmail }) => {
+      if (loggedIn) {
+        navigate('/classrooms', { replace: true })
+        return
+      }
+      navigate('/login', {
+        replace: true,
+        state: { notice: '가입이 완료됐습니다. 로그인해 주세요.', email: signedUpEmail },
+      })
+    },
   })
 
   const isPasswordTooShort = password !== '' && password.length < PASSWORD_MIN_LENGTH
