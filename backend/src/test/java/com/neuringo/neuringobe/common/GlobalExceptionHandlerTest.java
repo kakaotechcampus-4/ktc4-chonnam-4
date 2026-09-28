@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.neuringo.neuringobe.auth.service.AuthService;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.config.SecurityConfig;
@@ -45,6 +46,9 @@ class GlobalExceptionHandlerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private ClassroomService classroomService;
+
+    // SecurityConfig 의 Bearer 토큰 필터가 필요로 한다. 이 테스트는 헤더를 싣지 않으므로 호출되지 않는다.
+    @MockitoBean private AuthService authService;
 
     @Test
     void fillsFieldErrorsForInvalidRequestBody() throws Exception {
