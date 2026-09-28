@@ -52,5 +52,6 @@ logging:
 neuringo:
   ai:
     provider-name: ${AI_PROVIDER_NAME:openai-compatible}
+    model: ${AI_MODEL:}
     request-timeout: ${AI_TIMEOUT:10s}
     max-retries: ${AI_MAX_RETRIES:0}

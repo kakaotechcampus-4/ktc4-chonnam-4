@@ -25,18 +25,21 @@ public final class SpringAiLlmProvider implements LlmProvider {
     private final String providerName;
     private final Duration requestTimeout;
     private final int maxRetries;
+    private final String model;
 
     public SpringAiLlmProvider(
             ChatModel chatModel,
             OpenAiFailureClassifier failureClassifier,
             String providerName,
             Duration requestTimeout,
-            int maxRetries) {
+            int maxRetries,
+            String model) {
         this.chatModel = Objects.requireNonNull(chatModel);
         this.failureClassifier = Objects.requireNonNull(failureClassifier);
         this.providerName = Objects.requireNonNull(providerName);
         this.requestTimeout = Objects.requireNonNull(requestTimeout);
         this.maxRetries = maxRetries;
+        this.model = model;
     }
 
     @Override
@@ -62,7 +65,20 @@ public final class SpringAiLlmProvider implements LlmProvider {
                 List.of(
                         new SystemMessage(request.systemPrompt()),
                         new UserMessage(request.userPrompt())),
-                OpenAiChatOptions.builder().timeout(requestTimeout).maxRetries(maxRetries).build());
+                chatOptions());
+    }
+
+    /**
+     * 호출마다 넘기는 옵션은 ChatModel 의 기본 옵션을 대체한다. 따라서 모델 이름을 여기서 함께
+     * 넣지 않으면 설정값이 아니라 Spring AI 내장 기본값이 제공자로 나간다.
+     */
+    private OpenAiChatOptions chatOptions() {
+        OpenAiChatOptions.Builder options =
+                OpenAiChatOptions.builder().timeout(requestTimeout).maxRetries(maxRetries);
+        if (model != null && !model.isBlank()) {
+            options.model(model);
+        }
+        return options.build();
     }
 
     private AiCallResult<LlmCompletion> convertResponse(
