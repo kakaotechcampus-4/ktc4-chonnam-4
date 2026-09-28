@@ -10,7 +10,6 @@ import com.neuringo.neuringobe.user.dto.UserResponse;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.time.Clock;
 import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -37,9 +36,6 @@ public class UserService {
     @Transactional
     public UserResponse signup(SignupRequest request) {
         String email = UserAccount.normalizeEmail(request.email());
-        if (userAccountRepository.existsByEmail(email)) {
-            throw duplicateEmail();
-        }
 
         UserAccount user =
                 new UserAccount(
@@ -52,12 +48,22 @@ public class UserService {
                         AccountStatus.ACTIVE,
                         clock.instant());
 
-        try {
-            // 같은 이메일 가입이 동시에 들어오면 위 검사를 둘 다 통과할 수 있다. DB UNIQUE 위반을 여기서 409 로 바꾼다.
-            return UserResponse.from(userAccountRepository.saveAndFlush(user));
-        } catch (DataIntegrityViolationException ex) {
+        // 먼저 조회하고 저장하면 동시 가입이 조회를 함께 통과할 수 있어, 중복 판단을 DB UNIQUE 하나에 맡긴다.
+        // 충돌을 예외가 아닌 0 행으로 받아 이메일 원문이 DB 오류 로그에 남지 않게 한다(insertIfEmailAbsent 참고).
+        int inserted =
+                userAccountRepository.insertIfEmailAbsent(
+                        user.getUserId(),
+                        user.getEmail(),
+                        user.getPasswordHash(),
+                        user.getName(),
+                        user.getOrgName(),
+                        user.getRole().name(),
+                        user.getStatus().name(),
+                        user.getCreatedAt());
+        if (inserted == 0) {
             throw duplicateEmail();
         }
+        return UserResponse.from(user);
     }
 
     public UserResponse get(UUID userId) {
