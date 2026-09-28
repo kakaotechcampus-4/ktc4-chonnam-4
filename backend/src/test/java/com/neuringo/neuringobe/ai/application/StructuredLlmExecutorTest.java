@@ -155,7 +155,7 @@ class StructuredLlmExecutorTest {
 
     @Test
     void preservesProviderFailureWithoutParsing() {
-        AiFailure failure = new AiFailure(AiFailureType.TIMEOUT, true, "TimeoutException");
+        AiFailure failure = new AiFailure(AiFailureType.TIMEOUT, "TimeoutException");
         provider.willReturn(new AiCallResult.Failure<>(failure, metadata));
 
         AiCallResult<AnalysisResult> result =
