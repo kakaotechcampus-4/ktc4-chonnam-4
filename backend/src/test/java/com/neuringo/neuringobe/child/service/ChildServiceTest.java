@@ -33,14 +33,19 @@ class ChildServiceTest {
 
     @InjectMocks private ChildService childService;
 
+    private static final UUID INSTRUCTOR_ID = UUID.randomUUID();
+
     @Test
     void doesNotSaveChildWhenClassroomIsMissing() {
         UUID classId = UUID.randomUUID();
         willThrow(new ResourceNotFoundException("CLASSROOM_NOT_FOUND", "학급을 찾을 수 없습니다"))
                 .given(classroomService)
-                .validateClassroomExists(classId);
+                .validateClassroomExists(INSTRUCTOR_ID, classId);
 
-        assertThatThrownBy(() -> childService.create(classId, new CreateChildRequest("테스트아동")))
+        assertThatThrownBy(
+                        () ->
+                                childService.create(
+                                        INSTRUCTOR_ID, classId, new CreateChildRequest("테스트아동")))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(childRepository, never()).save(any());
@@ -52,7 +57,8 @@ class ChildServiceTest {
         given(childRepository.save(any(Child.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
-        ChildResponse response = childService.create(classId, new CreateChildRequest("테스트아동"));
+        ChildResponse response =
+                childService.create(INSTRUCTOR_ID, classId, new CreateChildRequest("테스트아동"));
 
         ArgumentCaptor<Child> saved = ArgumentCaptor.forClass(Child.class);
         verify(childRepository).save(saved.capture());
@@ -73,9 +79,9 @@ class ChildServiceTest {
         UUID classId = UUID.randomUUID();
         willThrow(new ResourceNotFoundException("CLASSROOM_NOT_FOUND", "학급을 찾을 수 없습니다"))
                 .given(classroomService)
-                .validateClassroomExists(classId);
+                .validateClassroomExists(INSTRUCTOR_ID, classId);
 
-        assertThatThrownBy(() -> childService.list(classId))
+        assertThatThrownBy(() -> childService.list(INSTRUCTOR_ID, classId))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(childRepository, never()).findByClassId(any());
@@ -88,7 +94,7 @@ class ChildServiceTest {
         Child paused = new Child(UUID.randomUUID(), classId, "테스트아동2", ChildStatus.PAUSED);
         given(childRepository.findByClassId(classId)).willReturn(List.of(active, paused));
 
-        List<ChildResponse> responses = childService.list(classId);
+        List<ChildResponse> responses = childService.list(INSTRUCTOR_ID, classId);
 
         assertThat(responses)
                 .containsExactly(

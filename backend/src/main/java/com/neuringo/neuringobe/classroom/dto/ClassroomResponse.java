@@ -5,7 +5,7 @@ import com.neuringo.neuringobe.classroom.domain.ClassroomStatus;
 import java.util.UUID;
 
 public record ClassroomResponse(
-        UUID classId, String instructorId, String name, ClassroomStatus status) {
+        UUID classId, UUID instructorId, String name, ClassroomStatus status) {
 
     public static ClassroomResponse from(Classroom classroom) {
         return new ClassroomResponse(

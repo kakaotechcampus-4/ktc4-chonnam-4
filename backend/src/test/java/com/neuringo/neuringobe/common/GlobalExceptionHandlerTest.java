@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.common;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -17,6 +18,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.config.SecurityConfig;
+import com.neuringo.neuringobe.support.WithAuthenticatedUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +31,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -37,7 +38,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 // 기본 프로필 보안 체인은 인증을 요구하고 CSRF 가 켜져 있어, 인증 사용자와 CSRF 토큰을 넣어야 요청이 Controller 까지 온다.
 @WebMvcTest(ClassroomController.class)
 @Import(SecurityConfig.class)
-@WithMockUser
+@WithAuthenticatedUser
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
@@ -121,7 +122,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void hidesExceptionMessageAndLogsSameTraceIdForUnexpectedError(CapturedOutput output)
             throws Exception {
-        given(classroomService.list()).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
+        given(classroomService.list(any())).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
 
         String body =
                 mockMvc.perform(get("/api/v1/classrooms"))

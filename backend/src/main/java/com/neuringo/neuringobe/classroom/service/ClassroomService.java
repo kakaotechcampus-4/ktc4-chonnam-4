@@ -22,7 +22,7 @@ public class ClassroomService {
     }
 
     @Transactional
-    public ClassroomResponse create(String instructorId, CreateClassroomRequest request) {
+    public ClassroomResponse create(UUID instructorId, CreateClassroomRequest request) {
         Classroom classroom =
                 new Classroom(
                         UUID.randomUUID(), instructorId, request.name(), ClassroomStatus.ACTIVE);
@@ -35,11 +35,11 @@ public class ClassroomService {
      *
      * <p>TODO: 강사 인증·세션 방식이 정해지면 담당 강사의 학급만 반환하도록 바꾼다(정본: 목록 권한 필터는 DB 조회 조건에 포함).
      */
-    public List<ClassroomResponse> list() {
+    public List<ClassroomResponse> list(UUID instructorId) {
         return classroomRepository.findAll().stream().map(ClassroomResponse::from).toList();
     }
 
-    public ClassroomResponse get(UUID classId) {
+    public ClassroomResponse get(UUID instructorId, UUID classId) {
         Classroom classroom =
                 classroomRepository.findById(classId).orElseThrow(() -> notFound(classId));
 
@@ -53,7 +53,7 @@ public class ClassroomService {
      * <p>TODO: 강사 인증·세션 방식이 정해지면 요청한 강사가 담당하는 학급인지도 확인한다(정본: 권한 밖 리소스도 404). ARCHIVED 학급에 대한 등록·조회
      * 규칙이 정해지면 상태 검사는 별도 메서드로 둔다.
      */
-    public void validateClassroomExists(UUID classId) {
+    public void validateClassroomExists(UUID instructorId, UUID classId) {
         if (!classroomRepository.existsById(classId)) {
             throw notFound(classId);
         }
