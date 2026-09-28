@@ -69,8 +69,8 @@ public final class SpringAiLlmProvider implements LlmProvider {
     }
 
     /**
-     * 호출마다 넘기는 옵션은 ChatModel 의 기본 옵션을 대체한다. 따라서 모델 이름을 여기서 함께
-     * 넣지 않으면 설정값이 아니라 Spring AI 내장 기본값이 제공자로 나간다.
+     * 호출마다 넘기는 옵션은 ChatModel 의 기본 옵션을 대체한다. 따라서 모델 이름을 여기서 함께 넣지 않으면 설정값이 아니라 Spring AI 내장 기본값이
+     * 제공자로 나간다.
      */
     private OpenAiChatOptions chatOptions() {
         OpenAiChatOptions.Builder options =
