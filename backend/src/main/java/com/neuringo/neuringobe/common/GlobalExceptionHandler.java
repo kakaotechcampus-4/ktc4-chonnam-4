@@ -3,7 +3,6 @@ package com.neuringo.neuringobe.common;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -23,30 +22,28 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * 응답이 이미 전송되기 시작한 경우는 제외한다.
  *
  * <p>Spring·DB 등 외부에서 온 예외의 메시지는 응답과 로그에 쓰지 않는다. 요청 값(아동 이름 등)이 섞일 수 있기 때문이다. 직접 정의한 {@link
- * ResourceNotFoundException} 의 메시지는 문구를 통제하고 식별자만 담으므로 응답에 그대로 쓴다.
+ * ApiException} 의 메시지는 문구를 통제하고 식별자만 담으므로 응답에 그대로 쓴다.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleNotFound(
-            ResourceNotFoundException ex,
-            HttpServletRequest request,
-            HttpServletResponse response) {
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ApiErrorResponse> handleApiException(
+            ApiException ex, HttpServletRequest request, HttpServletResponse response) {
         if (isCommitted(response, ex)) {
             return null;
         }
 
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        return ResponseEntity.status(ex.getStatus())
                 .body(
                         ApiErrorResponse.of(
-                                HttpStatus.NOT_FOUND.value(),
+                                ex.getStatus().value(),
                                 ex.getCode(),
                                 ex.getMessage(),
                                 request.getRequestURI(),
-                                newTraceId()));
+                                TraceIds.newTraceId()));
     }
 
     // 본문만 만들고 응답은 handleExceptionInternal 에 맡긴다(응답 전송 여부 확인을 한곳에서 하기 위함).
@@ -70,7 +67,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                         "VALIDATION_FAILED",
                         "요청 값이 올바르지 않습니다.",
                         pathOf(request),
-                        newTraceId(),
+                        TraceIds.newTraceId(),
                         fieldErrors);
 
         return handleExceptionInternal(
@@ -100,7 +97,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                             codeOf(statusCode),
                             messageOf(statusCode),
                             pathOf(request),
-                            newTraceId());
+                            TraceIds.newTraceId());
         }
 
         if (statusCode.is5xxServerError()) {
@@ -117,7 +114,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return null;
         }
 
-        String traceId = newTraceId();
+        String traceId = TraceIds.newTraceId();
         logServerError(traceId, ex);
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -179,9 +176,5 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return servletWebRequest.getRequest().getRequestURI();
         }
         return null;
-    }
-
-    private String newTraceId() {
-        return UUID.randomUUID().toString();
     }
 }
