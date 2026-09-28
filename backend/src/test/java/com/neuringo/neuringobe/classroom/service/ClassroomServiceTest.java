@@ -32,7 +32,8 @@ class ClassroomServiceTest {
     @Test
     void rejectsMissingClassroomWithNotFound() {
         UUID classId = UUID.randomUUID();
-        given(classroomRepository.existsById(classId)).willReturn(false);
+        given(classroomRepository.existsByClassIdAndInstructorId(classId, INSTRUCTOR_ID))
+                .willReturn(false);
 
         assertThatThrownBy(() -> classroomService.validateClassroomExists(INSTRUCTOR_ID, classId))
                 .isInstanceOf(ResourceNotFoundException.class)
