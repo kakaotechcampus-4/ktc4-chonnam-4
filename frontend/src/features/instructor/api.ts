@@ -120,24 +120,73 @@ async function parseApiResponse<T>(res: Response): Promise<T> {
   return body.data
 }
 
+// 요청은 "시작할 때의 로그인 세션"에 묶는다. 변경 요청은 CSRF 조회를 기다리는 사이 로그아웃하거나 다른 강사로
+// 로그인할 수 있는데, 전송 직전에 토큰을 다시 읽으면 이전 강사가 입력한 작업이 다음 강사의 인증으로 실행된다.
+// 그래서 토큰은 시작 시 한 번만 읽고, 전송 전에 세션이 바뀌었으면 보내지 않는다.
+type RequestSession = {
+  authenticated: boolean
+  // 요청을 시작할 때의 토큰. 인증 요청이 아니면 null.
+  token: string | null
+}
+
+function startSession(authenticated: boolean): RequestSession {
+  return { authenticated, token: authenticated ? getAccessToken() : null }
+}
+
+function isSessionChanged(session: RequestSession): boolean {
+  return session.authenticated && getAccessToken() !== session.token
+}
+
+function authHeaders(session: RequestSession): Record<string, string> {
+  return session.token ? { Authorization: `Bearer ${session.token}` } : {}
+}
+
 // 인증 요청에 401 이 오면 토큰이 만료·폐기된 것이다. 토큰을 지우고 로그인 화면으로 보낸다(DEC-001 1.1절 프론트 규칙).
 // 전체 페이지 이동이라 React Query 캐시에 남은 이전 강사의 데이터도 함께 사라진다.
+// 요청 당시 토큰이 지금 토큰과 같을 때만 처리한다. 이전 강사의 요청이 늦게 401 을 받아도 새로 로그인한 강사의 토큰을 지우지 않는다.
 // 가입·로그인 요청은 여기를 거치지 않는다. 로그인 실패(401 INVALID_CREDENTIALS)는 화면에서 오류로 보여 줘야 하기 때문이다.
-function redirectToLoginOnUnauthorized(res: Response) {
-  if (res.status === 401) {
+function redirectToLoginOnUnauthorized(res: Response, session: RequestSession) {
+  if (res.status === 401 && session.authenticated && !isSessionChanged(session)) {
     clearAccessToken()
     window.location.replace('/login')
+  }
+}
+
+export const REQUEST_CANCELLED = 'REQUEST_CANCELLED'
+
+// 세션이 바뀌어 취소한 요청. 상태 0 은 서버 응답이 없다는 뜻이다. 재시도해도 소용없으므로 main.tsx 의 재시도 대상에서 뺀다.
+function cancelledError(): ApiError {
+  return new ApiError(0, REQUEST_CANCELLED, '로그인 상태가 바뀌어 요청을 취소했습니다.')
+}
+
+// 진행 중인 요청. 로그아웃할 때 모두 취소해, 이전 강사의 대기 중인 요청이 끝까지 가지 않게 한다.
+const pendingRequests = new Set<AbortController>()
+
+function cancelPendingRequests() {
+  for (const controller of pendingRequests) {
+    controller.abort()
+  }
+  pendingRequests.clear()
+}
+
+async function withCancellation<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController()
+  pendingRequests.add(controller)
+  try {
+    return await run(controller.signal)
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw cancelledError()
+    }
+    throw error
+  } finally {
+    pendingRequests.delete(controller)
   }
 }
 
 type RequestOptions = {
   // false 면 Authorization 을 싣지 않고 401 이어도 로그인 화면으로 보내지 않는다(가입·로그인 전용).
   authenticated?: boolean
-}
-
-function authHeaders(authenticated: boolean): Record<string, string> {
-  const token = authenticated ? getAccessToken() : null
-  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 type CsrfToken = {
@@ -147,44 +196,55 @@ type CsrfToken = {
 
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 재사용하지 않고 변경 요청 직전에 받아온다.
 // 서버가 헤더 이름도 함께 내려주므로 프론트에 하드코딩하지 않는다.
-async function fetchCsrfToken(): Promise<CsrfToken> {
-  const res = await fetch(`${API_BASE_URL}/csrf`, { credentials: 'include' })
+async function fetchCsrfToken(signal: AbortSignal): Promise<CsrfToken> {
+  const res = await fetch(`${API_BASE_URL}/csrf`, { credentials: 'include', signal })
   return parseApiResponse<CsrfToken>(res)
 }
 
-async function readRequest<T>(path: string): Promise<T> {
-  // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: 'include',
-    headers: authHeaders(true),
+function readRequest<T>(path: string): Promise<T> {
+  const session = startSession(true)
+  return withCancellation(async (signal) => {
+    // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: 'include',
+      headers: authHeaders(session),
+      signal,
+    })
+    redirectToLoginOnUnauthorized(res, session)
+    return parseApiResponse<T>(res)
   })
-  redirectToLoginOnUnauthorized(res)
-  return parseApiResponse<T>(res)
 }
 
-async function writeRequest<T>(
+function writeRequest<T>(
   method: 'POST' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true }: RequestOptions = {},
 ): Promise<T> {
-  // 토큰 조회가 실패하면 여기서 ApiError 가 던져져, 생성이 성공한 것처럼 처리되지 않는다.
-  const csrf = await fetchCsrfToken()
+  // 첫 대기(CSRF 조회) 전에 세션을 고정한다.
+  const session = startSession(authenticated)
+  return withCancellation(async (signal) => {
+    // 토큰 조회가 실패하면 여기서 ApiError 가 던져져, 생성이 성공한 것처럼 처리되지 않는다.
+    const csrf = await fetchCsrfToken(signal)
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    credentials: 'include',
-    headers: {
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      [csrf.headerName]: csrf.token,
-      ...authHeaders(authenticated),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    if (isSessionChanged(session)) {
+      throw cancelledError()
+    }
+
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      credentials: 'include',
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        [csrf.headerName]: csrf.token,
+        ...authHeaders(session),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    })
+    redirectToLoginOnUnauthorized(res, session)
+    return parseApiResponse<T>(res)
   })
-  if (authenticated) {
-    redirectToLoginOnUnauthorized(res)
-  }
-  return parseApiResponse<T>(res)
 }
 
 export type SignupInput = {
@@ -215,8 +275,11 @@ export async function getCurrentUser(): Promise<User> {
   return result.user
 }
 
-/** 서버 세션을 폐기하고 토큰을 지운다. 서버 요청이 실패해도 이 브라우저에서는 로그아웃한다. */
+/**
+ * 대기 중인 요청을 모두 취소한 뒤 서버 세션을 폐기하고 토큰을 지운다. 서버 요청이 실패해도 이 브라우저에서는 로그아웃한다.
+ */
 export async function logout(): Promise<void> {
+  cancelPendingRequests()
   try {
     await writeRequest<void>('DELETE', '/auth/session')
   } finally {
