@@ -2,6 +2,7 @@ import * as React from "react"
 import { useNavigate } from "react-router-dom"
 import { LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Character } from "../components/Character"
 import { useChildSessionStore } from "../store/childSessionStore"
 import { useWarnBeforeUnload } from "../hooks/useWarnBeforeUnload"
 
@@ -37,6 +38,7 @@ function ChildLayout({
             "flex items-center gap-2 rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-4 py-2 shadow-sm"
           )}
         >
+          <Character name="turtle" size="xs" className="-my-1" />
           <span className="text-sm font-extrabold text-[var(--child-primary)]">
             느링고
           </span>
