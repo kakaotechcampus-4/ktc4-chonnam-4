@@ -70,7 +70,8 @@ class SpringAiLlmProviderTest {
                 new OpenAiFailureClassifier(),
                 "test-provider",
                 Duration.ofSeconds(10),
-                0);
+                0,
+                "test-model");
     }
 
     private LlmRequest request() {

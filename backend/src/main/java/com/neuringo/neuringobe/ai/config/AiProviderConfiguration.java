@@ -21,6 +21,7 @@ public class AiProviderConfiguration {
                 new OpenAiFailureClassifier(),
                 properties.providerName(),
                 properties.requestTimeout(),
-                properties.maxRetries());
+                properties.maxRetries(),
+                properties.model());
     }
 }

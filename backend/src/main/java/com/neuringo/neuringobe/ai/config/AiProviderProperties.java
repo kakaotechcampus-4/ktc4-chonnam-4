@@ -4,7 +4,8 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "neuringo.ai")
-public record AiProviderProperties(String providerName, Duration requestTimeout, int maxRetries) {
+public record AiProviderProperties(
+        String providerName, Duration requestTimeout, int maxRetries, String model) {
 
     public AiProviderProperties {
         if (providerName == null || providerName.isBlank()) {
@@ -18,6 +19,9 @@ public record AiProviderProperties(String providerName, Duration requestTimeout,
         }
         if (maxRetries < 0) {
             throw new IllegalArgumentException("maxRetries must not be negative");
+        }
+        if (model != null && model.isBlank()) {
+            model = null;
         }
     }
 }
