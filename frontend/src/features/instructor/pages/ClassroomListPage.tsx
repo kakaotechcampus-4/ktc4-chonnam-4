@@ -16,7 +16,9 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ]
 
 // 시안(T-CLS-01)의 열 중 목록 API가 아직 주지 않는 값. 데이터가 생기면 "—" 대신 값을 채운다.
-const PENDING_COLUMNS = ['아동 수', '진행중 활동', '승인 대기', '최근 학습']
+// 시안 순서(학급명·아동 수·진행중 활동·승인 대기·상태·최근 학습)를 지키려고 상태 열 앞뒤로 나눈다.
+const PENDING_COLUMNS_BEFORE_STATUS = ['아동 수', '진행중 활동', '승인 대기']
+const PENDING_COLUMNS_AFTER_STATUS = ['최근 학습']
 
 function ClassroomListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -96,7 +98,7 @@ function ClassroomListPage() {
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
                     학급명
                   </th>
-                  {PENDING_COLUMNS.map((column) => (
+                  {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
                     <th key={column} scope="col" className="px-4 py-3 text-left font-semibold">
                       {column}
                     </th>
@@ -104,6 +106,11 @@ function ClassroomListPage() {
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
                     상태
                   </th>
+                  {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
+                    <th key={column} scope="col" className="px-4 py-3 text-left font-semibold">
+                      {column}
+                    </th>
+                  ))}
                   <th scope="col" className="px-4 py-3">
                     <span className="sr-only">상세</span>
                   </th>
@@ -121,7 +128,7 @@ function ClassroomListPage() {
                       )}
                     >
                       <td className={cn('px-4 py-3.5', !isArchived && 'font-semibold')}>{classroom.name}</td>
-                      {PENDING_COLUMNS.map((column) => (
+                      {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
                         <td key={column} className="px-4 py-3.5 text-[var(--instructor-text-disabled)]">
                           —
                         </td>
@@ -129,6 +136,11 @@ function ClassroomListPage() {
                       <td className="px-4 py-3.5">
                         <ClassroomStatusBadge status={classroom.status} />
                       </td>
+                      {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
+                        <td key={column} className="px-4 py-3.5 text-[var(--instructor-text-disabled)]">
+                          —
+                        </td>
+                      ))}
                       <td className="px-4 py-3.5 text-right">
                         <Link
                           to={`/classrooms/${classroom.classId}`}
