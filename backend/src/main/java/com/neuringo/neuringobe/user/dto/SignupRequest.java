@@ -1,5 +1,7 @@
 package com.neuringo.neuringobe.user.dto;
 
+import com.neuringo.neuringobe.common.validation.NameText;
+import com.neuringo.neuringobe.common.validation.NoControlCharacters;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -7,10 +9,10 @@ import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 
 public record SignupRequest(
-        @NotBlank @Email @Size(max = 254) String email,
+        @NotBlank @Email @Size(max = 254) @NoControlCharacters String email,
         @NotBlank @Size(min = 8, max = 72) String password,
-        @NotBlank @Size(max = 100) String name,
-        @Size(max = 100) String orgName) {
+        @NotBlank @Size(max = 100) @NameText String name,
+        @Size(max = 100) @NoControlCharacters String orgName) {
 
     private static final int BCRYPT_MAX_BYTES = 72;
 

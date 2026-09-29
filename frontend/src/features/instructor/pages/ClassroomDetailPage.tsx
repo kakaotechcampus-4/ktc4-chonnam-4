@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createChild, getClassroom, listChildren, type ChildStatus } from '../api'
+import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
 import {
@@ -196,9 +197,7 @@ function ClassroomDetailPage() {
 
           {createChildMutation.isError && (
             <p role="alert" className={errorTextClass}>
-              {createChildMutation.error instanceof Error
-                ? createChildMutation.error.message
-                : '아동 등록에 실패했습니다.'}
+              {describeError(createChildMutation.error, '아동 등록에 실패했습니다.')}
             </p>
           )}
 

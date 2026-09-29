@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClassroom } from '../api'
+import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { cn } from '@/lib/utils'
 import {
@@ -71,9 +72,7 @@ function ClassroomCreatePage() {
 
           {createMutation.isError && (
             <p role="alert" className={errorTextClass}>
-              {createMutation.error instanceof Error
-                ? createMutation.error.message
-                : '학급 생성에 실패했습니다.'}
+              {describeError(createMutation.error, '학급 생성에 실패했습니다.')}
             </p>
           )}
         </section>

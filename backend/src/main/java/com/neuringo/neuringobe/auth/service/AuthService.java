@@ -6,6 +6,7 @@ import com.neuringo.neuringobe.auth.dto.LoginResponse;
 import com.neuringo.neuringobe.auth.repository.AuthSessionRepository;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.common.ApiException;
+import com.neuringo.neuringobe.common.validation.TextRules;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.dto.UserResponse;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
@@ -59,8 +60,13 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
+        // 제어 문자가 든 이메일은 가입 검증을 통과할 수 없어 계정이 있을 수 없다. DB 로 보내면 U+0000 에서 500 이 나므로 조회하지 않고
+        // 없는 계정으로 처리한다(가짜 해시 비교는 그대로 해서 응답 시간 차이를 만들지 않는다).
         Optional<UserAccount> found =
-                userAccountRepository.findByEmail(UserAccount.normalizeEmail(request.email()));
+                TextRules.containsControlCharacter(request.email())
+                        ? Optional.empty()
+                        : userAccountRepository.findByEmail(
+                                UserAccount.normalizeEmail(request.email()));
 
         String hashToCompare = found.map(UserAccount::getPasswordHash).orElse(dummyPasswordHash);
         boolean matches = passwordEncoder.matches(request.password(), hashToCompare);
