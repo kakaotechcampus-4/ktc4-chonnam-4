@@ -7,14 +7,20 @@ import { ChildActivitiesPage } from './features/child/pages/ChildActivitiesPage'
 import { ChildQuizPage } from './features/child/pages/ChildQuizPage'
 import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
+import { RequireChildSession } from './features/child/routes/RequireChildSession'
 
 export const router = createBrowserRouter([
   { path: '/', element: <App /> },
   { path: '/classrooms', element: <ClassroomListPage /> },
   { path: '/classrooms/:classId', element: <ClassroomDetailPage /> },
   { path: '/child', element: <ChildAccessPage /> },
-  { path: '/child/activities', element: <ChildActivitiesPage /> },
-  { path: '/child/quiz/:activityId', element: <ChildQuizPage /> },
-  { path: '/child/roleplay/:activityId', element: <ChildRoleplayPage /> },
+  {
+    element: <RequireChildSession />,
+    children: [
+      { path: '/child/activities', element: <ChildActivitiesPage /> },
+      { path: '/child/quiz/:activityId', element: <ChildQuizPage /> },
+      { path: '/child/roleplay/:activityId', element: <ChildRoleplayPage /> },
+    ],
+  },
   { path: '/child/_dev/states', element: <ChildStatePreviewPage /> },
 ])
