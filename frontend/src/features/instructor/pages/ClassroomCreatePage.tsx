@@ -24,11 +24,11 @@ function ClassroomCreatePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
+  // 목록 캐시는 화면을 떠났어도 갱신한다(학급은 이미 만들어졌다).
   const createMutation = useMutation({
     mutationFn: createClassroom,
-    onSuccess: (classroom) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classrooms'] })
-      navigate(`/classrooms/${classroom.classId}`, { replace: true })
     },
   })
 
@@ -45,6 +45,11 @@ function ClassroomCreatePage() {
     }
     isSubmittingRef.current = true
     createMutation.mutate(trimmedName, {
+      // 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 저장 중 취소하고 다른 화면(또는 새 생성 화면)으로
+      // 옮긴 뒤 이전 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
+      onSuccess: (classroom) => {
+        navigate(`/classrooms/${classroom.classId}`, { replace: true })
+      },
       onSettled: () => {
         isSubmittingRef.current = false
       },
