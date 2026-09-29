@@ -30,6 +30,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(ApiDomainException.class)
+    public ResponseEntity<ApiErrorResponse> handleDomain(
+            ApiDomainException ex, HttpServletRequest request, HttpServletResponse response) {
+        if (isCommitted(response, ex)) {
+            return null;
+        }
+        return ResponseEntity.status(ex.getStatus())
+                .body(
+                        ApiErrorResponse.of(
+                                ex.getStatus().value(),
+                                ex.getCode(),
+                                ex.getMessage(),
+                                request.getRequestURI(),
+                                newTraceId()));
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(
             ResourceNotFoundException ex,

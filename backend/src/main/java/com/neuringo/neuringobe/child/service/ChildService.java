@@ -24,8 +24,8 @@ public class ChildService {
     }
 
     @Transactional
-    public ChildResponse create(UUID classId, CreateChildRequest request) {
-        classroomService.validateClassroomExists(classId);
+    public ChildResponse create(UUID classId, CreateChildRequest request, String instructorId) {
+        classroomService.validateClassroomOwned(classId, instructorId);
 
         Child child =
                 new Child(UUID.randomUUID(), classId, request.displayName(), ChildStatus.ACTIVE);
@@ -33,8 +33,8 @@ public class ChildService {
         return ChildResponse.from(childRepository.save(child));
     }
 
-    public List<ChildResponse> list(UUID classId) {
-        classroomService.validateClassroomExists(classId);
+    public List<ChildResponse> list(UUID classId, String instructorId) {
+        classroomService.validateClassroomOwned(classId, instructorId);
 
         return childRepository.findByClassId(classId).stream().map(ChildResponse::from).toList();
     }

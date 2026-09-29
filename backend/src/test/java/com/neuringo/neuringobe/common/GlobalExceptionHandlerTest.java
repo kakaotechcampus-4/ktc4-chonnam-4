@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
+import com.neuringo.neuringobe.config.ApiSecurityFailureHandler;
 import com.neuringo.neuringobe.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,8 +37,8 @@ import org.springframework.web.context.request.ServletWebRequest;
 
 // 기본 프로필 보안 체인은 인증을 요구하고 CSRF 가 켜져 있어, 인증 사용자와 CSRF 토큰을 넣어야 요청이 Controller 까지 온다.
 @WebMvcTest(ClassroomController.class)
-@Import(SecurityConfig.class)
-@WithMockUser
+@Import({SecurityConfig.class, ApiSecurityFailureHandler.class})
+@WithMockUser(roles = "INSTRUCTOR")
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
@@ -121,7 +122,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void hidesExceptionMessageAndLogsSameTraceIdForUnexpectedError(CapturedOutput output)
             throws Exception {
-        given(classroomService.list()).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
+        given(classroomService.list("user")).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
 
         String body =
                 mockMvc.perform(get("/api/v1/classrooms"))

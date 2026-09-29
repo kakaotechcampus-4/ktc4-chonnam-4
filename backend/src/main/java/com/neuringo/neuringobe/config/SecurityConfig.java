@@ -20,10 +20,15 @@ public class SecurityConfig {
      */
     @Bean
     @Profile("local")
-    public SecurityFilterChain localSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain localSecurityFilterChain(
+            HttpSecurity http, ApiSecurityFailureHandler failures) throws Exception {
         // CSRF 토큰은 쿠키에 보관한다(HttpOnly 유지). 프론트는 쿠키를 직접 읽지 않고
         // GET /api/v1/csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
+                .exceptionHandling(
+                        errors ->
+                                errors.authenticationEntryPoint(failures)
+                                        .accessDeniedHandler(failures))
                 .cors(cors -> cors.configurationSource(localCorsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
@@ -32,8 +37,50 @@ public class SecurityConfig {
     /** local 이 아닌 모든 환경(prod 포함, 테스트 기본 프로필)의 정책. 개발용 전체 허용이 새어 나가지 않도록 기본값을 차단으로 둔다. */
     @Bean
     @Profile("!local")
-    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated());
+    public SecurityFilterChain defaultSecurityFilterChain(
+            HttpSecurity http, ApiSecurityFailureHandler failures) throws Exception {
+        http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
+                .exceptionHandling(
+                        errors ->
+                                errors.authenticationEntryPoint(failures)
+                                        .accessDeniedHandler(failures))
+                .authorizeHttpRequests(
+                        auth ->
+                                auth.requestMatchers("/api/v1/csrf")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.POST,
+                                                "/api/v1/child-access-sessions")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.DELETE,
+                                                "/api/v1/child-access-sessions/current")
+                                        .hasRole("CHILD")
+                                        .requestMatchers("/actuator/health", "/actuator/health/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.GET,
+                                                "/api/v1/children/*/activities",
+                                                "/api/v1/activities/*/quiz-items",
+                                                "/api/v1/activities/*/quiz-result",
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasAnyRole("CHILD", "INSTRUCTOR")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.PUT,
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasRole("CHILD")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.PATCH,
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasRole("SYSTEM")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.POST,
+                                                "/api/v1/activity-quiz-items/*/hints")
+                                        .hasRole("CHILD")
+                                        // Future child-scoped APIs must be explicitly allowed.
+                                        // A child session must not access instructor endpoints.
+                                        .anyRequest()
+                                        .hasRole("INSTRUCTOR"));
         return http.build();
     }
 
