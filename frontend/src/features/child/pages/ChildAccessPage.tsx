@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { ExpiredState, NetworkState } from "../components/state"
+import { ExpiredState, NetworkState, StateDialog } from "../components/state"
 import { ChildApiError, verifyAccessCode } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
 
@@ -67,6 +67,8 @@ function ChildAccessPage() {
   // PC에서는 실제 키보드의 숫자·Backspace·Enter도 받는다.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // 오류 모달이 떠 있는 동안에는 뒤 화면 입력을 받지 않는다.
+      if (isExpired || isNetworkError) return
       if (/^[0-9]$/.test(event.key)) pressDigit(event.key)
       else if (event.key === "Backspace") pressBackspace()
       // 포커스된 키패드 버튼에서 Enter를 누르면 버튼 클릭이 따로 처리되므로 입장 요청은 보내지 않는다.
@@ -75,25 +77,6 @@ function ChildAccessPage() {
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   })
-
-  if (isExpired) {
-    return (
-      <div className="child-scope flex min-h-svh flex-col items-center justify-center gap-6 px-6">
-        <ExpiredState />
-        <ChildButton variant="outline" onClick={restart}>
-          다시 입력하기
-        </ChildButton>
-      </div>
-    )
-  }
-
-  if (isNetworkError) {
-    return (
-      <div className="child-scope flex min-h-svh flex-col items-center justify-center px-6">
-        <NetworkState onRetry={() => verifyMutation.mutate(code)} />
-      </div>
-    )
-  }
 
   return (
     <div className="child-scope flex min-h-svh items-center justify-center px-6 py-10">
@@ -161,6 +144,13 @@ function ChildAccessPage() {
           </ChildButton>
         </section>
       </div>
+
+      <StateDialog open={isExpired}>
+        <ExpiredState onRetry={restart} />
+      </StateDialog>
+      <StateDialog open={isNetworkError}>
+        <NetworkState onRetry={() => verifyMutation.mutate(code)} />
+      </StateDialog>
     </div>
   )
 }
