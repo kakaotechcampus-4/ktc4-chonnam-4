@@ -3,7 +3,9 @@ import App from './App'
 import { ClassroomListPage } from './features/instructor/pages/ClassroomListPage'
 import { ClassroomDetailPage } from './features/instructor/pages/ClassroomDetailPage'
 import { ChildAccessPage } from './features/child/pages/ChildAccessPage'
+import { ChildWelcomePage } from './features/child/pages/ChildWelcomePage'
 import { ChildActivitiesPage } from './features/child/pages/ChildActivitiesPage'
+import { ChildActivityIntroPage } from './features/child/pages/ChildActivityIntroPage'
 import { ChildQuizPage } from './features/child/pages/ChildQuizPage'
 import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
@@ -17,7 +19,9 @@ export const router = createBrowserRouter([
   {
     element: <RequireChildSession />,
     children: [
+      { path: '/child/hello', element: <ChildWelcomePage /> },
       { path: '/child/activities', element: <ChildActivitiesPage /> },
+      { path: '/child/activities/:activityId', element: <ChildActivityIntroPage /> },
       { path: '/child/quiz/:activityId', element: <ChildQuizPage /> },
       { path: '/child/roleplay/:activityId', element: <ChildRoleplayPage /> },
     ],

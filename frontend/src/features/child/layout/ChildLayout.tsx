@@ -15,10 +15,19 @@ import { useWarnBeforeUnload } from "../hooks/useWarnBeforeUnload"
 function ChildLayout({
   activityTitle,
   stepLabel,
+  headerCenter,
+  backgroundImage,
+  wide = false,
   children,
 }: {
   activityTitle?: string
   stepLabel?: string
+  /** 헤더 가운데에 activityTitle 대신 넣을 요소 (예: 내 활동의 "서연이의 활동" 제목) */
+  headerCenter?: React.ReactNode
+  /** 화면 전체 배경 이미지 URL (예: 내 활동 열기구 배경) */
+  backgroundImage?: string
+  /** 본문 폭 제한(768px)을 풀어 화면 전체를 쓴다 (예: 열기구를 화면 끝까지 펼치는 내 활동) */
+  wide?: boolean
   children: React.ReactNode
 }) {
   const navigate = useNavigate()
@@ -31,8 +40,21 @@ function ChildLayout({
   }
 
   return (
-    <div className="child-scope flex min-h-svh flex-col">
-      <header className="flex items-center justify-between gap-4 px-6 py-4 sm:px-10">
+    <div
+      className="child-scope flex min-h-svh flex-col"
+      // .child-scope의 background가 Tailwind 클래스보다 우선하므로 인라인 스타일로 덮는다.
+      style={
+        backgroundImage
+          ? {
+              // Vite가 작은 SVG를 data URI로 인라인하므로 따옴표로 감싸야 url()이 깨지지 않는다.
+              backgroundImage: `url("${backgroundImage}")`,
+              backgroundSize: "cover",
+              backgroundPosition: "center bottom",
+            }
+          : undefined
+      }
+    >
+      <header className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 sm:flex-nowrap sm:px-10">
         <div
           className={cn(
             "flex items-center gap-2 rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-4 py-2 shadow-sm"
@@ -44,7 +66,12 @@ function ChildLayout({
           </span>
         </div>
 
-        {activityTitle ? (
+        {headerCenter ? (
+          // 좁은 화면에서는 로고·사용 종료 아래 줄로 내려 제목이 잘리지 않게 한다.
+          <div className="order-last flex basis-full justify-center sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto">
+            {headerCenter}
+          </div>
+        ) : activityTitle ? (
           <div className="flex min-w-0 flex-1 flex-col items-center text-center">
             <p className="truncate text-lg font-semibold text-[var(--child-text)]">
               {activityTitle}
@@ -67,7 +94,12 @@ function ChildLayout({
         </button>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 pb-10 sm:px-10">
+      <main
+        className={cn(
+          "mx-auto flex w-full flex-1 flex-col px-6 pb-10 sm:px-10",
+          !wide && "max-w-3xl"
+        )}
+      >
         {children}
       </main>
     </div>

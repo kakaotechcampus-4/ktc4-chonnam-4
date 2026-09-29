@@ -26,7 +26,7 @@ function ChildAccessPage() {
     mutationFn: verifyAccessCode,
     onSuccess: (access) => {
       startSession(access)
-      navigate("/child/activities", { replace: true })
+      navigate("/child/hello", { replace: true })
     },
     onError: (error) => {
       // 틀린 코드만 비워 다시 누르게 한다. 네트워크 오류는 같은 코드로 재시도한다.
