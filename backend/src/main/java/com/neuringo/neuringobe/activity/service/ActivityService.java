@@ -1,0 +1,83 @@
+package com.neuringo.neuringobe.activity.service;
+
+import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.dto.ActivityResponse;
+import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
+import com.neuringo.neuringobe.activity.repository.ActivityRepository;
+import com.neuringo.neuringobe.child.security.ChildAccessScope;
+import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ResourceNotFoundException;
+import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class ActivityService {
+    private final ActivityRepository activities;
+    private final ChildAccessScope access;
+    private final LearningGoalRepository goals;
+
+    public ActivityService(
+            ActivityRepository activities, ChildAccessScope access, LearningGoalRepository goals) {
+        this.activities = activities;
+        this.access = access;
+        this.goals = goals;
+    }
+
+    @Transactional
+    public ActivityResponse create(CreateActivityRequest request, Authentication authentication) {
+        access.requireInstructor(authentication, request.childId());
+        var goal =
+                goals.findById(request.goalId())
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다."));
+        if (!goal.getChildId().equals(request.childId())) {
+            throw new ResourceNotFoundException("GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.");
+        }
+        Activity created =
+                new Activity(UUID.randomUUID(), request.childId(), request.goalId(), Instant.now());
+        return ActivityResponse.from(activities.save(created));
+    }
+
+    public List<ActivityResponse> list(
+            UUID childId,
+            ActivityStatus status,
+            int page,
+            int size,
+            Authentication authentication) {
+        access.requireOwnerOrInstructor(authentication, childId);
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ApiDomainException(
+                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
+        }
+        PageRequest paging = PageRequest.of(page, size);
+        return (status == null
+                        ? activities.findByChildIdOrderByAssignedAtDesc(childId, paging)
+                        : activities.findByChildIdAndStatusOrderByAssignedAtDesc(
+                                childId, status, paging))
+                .map(ActivityResponse::from)
+                .getContent();
+    }
+
+    public Activity requireActivity(UUID activityId, Authentication authentication) {
+        Activity activity =
+                activities
+                        .findById(activityId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
+        access.requireOwnerOrInstructor(authentication, activity.getChildId());
+        return activity;
+    }
+}
