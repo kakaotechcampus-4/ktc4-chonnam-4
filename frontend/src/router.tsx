@@ -8,6 +8,7 @@ import { ChildActivitiesPage } from './features/child/pages/ChildActivitiesPage'
 import { ChildActivityIntroPage } from './features/child/pages/ChildActivityIntroPage'
 import { ChildQuizPage } from './features/child/pages/ChildQuizPage'
 import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
+import { ChildDonePage } from './features/child/pages/ChildDonePage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
 import { RequireChildSession } from './features/child/routes/RequireChildSession'
 
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: '/child/activities/:activityId', element: <ChildActivityIntroPage /> },
       { path: '/child/quiz/:activityId', element: <ChildQuizPage /> },
       { path: '/child/roleplay/:activityId', element: <ChildRoleplayPage /> },
+      { path: '/child/done/:activityId', element: <ChildDonePage /> },
     ],
   },
   { path: '/child/_dev/states', element: <ChildStatePreviewPage /> },

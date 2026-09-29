@@ -60,6 +60,8 @@ export type ChildActivity = {
   status: ChildActivityStatus
   quizCount: number
   roleplayCount: number
+  /** 완료 시각(ISO). 홈 열기구에 캐릭터를 완료한 순서대로 태우는 데 쓴다. */
+  completedAt?: string
 }
 
 /** 세션이 다른 아동의 캐시를 섞어 쓰지 않도록 childId를 키에 포함한다. */
@@ -92,13 +94,15 @@ const MOCK_ACTIVITIES: ChildActivity[] = [
     status: "COMPLETED",
     quizCount: 3,
     roleplayCount: 1,
+    completedAt: "2026-09-29T10:00:00+09:00",
   },
 ]
 
 /** 현재 아동 세션에 배정된 활동만 돌려준다. 실제 API는 세션 쿠키로 아동을 식별한다 (VS-003). */
 export async function getMyActivities(): Promise<ChildActivity[]> {
   await wait(MOCK_DELAY_MS)
-  return MOCK_ACTIVITIES
+  // 완료 처리로 mock 상태가 바뀌므로, 캐시와 참조를 공유하지 않게 복사해서 돌려준다.
+  return MOCK_ACTIVITIES.map((activity) => ({ ...activity }))
 }
 
 export type Emotion = "HAPPY" | "SAD" | "ANGRY" | "SURPRISED" | "UPSET"
@@ -284,4 +288,38 @@ export async function sendRoleplayTurn(input: RoleplayTurnInput): Promise<Rolepl
   await wait(MOCK_DELAY_MS * 2)
   const scripted = MOCK_ROLEPLAY_REPLIES[Math.min(input.turnIndex, MOCK_ROLEPLAY_REPLIES.length - 1)]
   return { status: "DELIVERED", ...scripted }
+}
+
+export type ActivityCompletion = {
+  activityId: string
+  /** 이번 요청으로 스탬프가 지급됐는지. 정확도와 무관하게 활동당 1개다 (VS-013). */
+  stampGranted: boolean
+}
+
+export type CompleteActivityInput = {
+  activityId: string
+  /** 재전송해도 스탬프가 두 번 지급되지 않도록 같은 값을 다시 보낸다 (VS-013 중복 완료 방지). */
+  requestId: string
+}
+
+const mockCompletions = new Map<string, ActivityCompletion>()
+
+/**
+ * 활동 완료 처리와 스탬프 지급.
+ * 완료를 서버가 마지막 턴에서 자동 처리할지, FE가 요청할지는 API 계약이 아직 없다.
+ * 서버 자동 처리로 정해지면 이 함수 안쪽만 "완료 결과 조회"로 바꾸고 화면은 그대로 둔다.
+ */
+export async function completeActivity(input: CompleteActivityInput): Promise<ActivityCompletion> {
+  await wait(MOCK_DELAY_MS)
+  const previous = mockCompletions.get(input.requestId)
+  if (previous) return previous
+
+  const activity = MOCK_ACTIVITIES.find((item) => item.activityId === input.activityId)
+  if (!activity) throw new Error("알 수 없는 활동입니다.")
+
+  const completion = { activityId: activity.activityId, stampGranted: activity.status !== "COMPLETED" }
+  if (activity.status !== "COMPLETED") activity.completedAt = new Date().toISOString()
+  activity.status = "COMPLETED"
+  mockCompletions.set(input.requestId, completion)
+  return completion
 }

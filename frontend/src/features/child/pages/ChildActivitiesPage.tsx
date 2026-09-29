@@ -1,10 +1,11 @@
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import homeBackgroundUrl from "@/assets/child/home-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { HotAirBalloon, type BalloonColor, type BalloonPassenger } from "../components/HotAirBalloon"
 import { SpeechBubble } from "../components/SpeechBubble"
+import { NextActivityDialog } from "../components/NextActivityDialog"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import { getMyActivities, myActivitiesQueryKey, type ChildActivityStatus } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
@@ -38,6 +39,7 @@ const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: str
  */
 function ChildActivitiesPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const childId = useChildSessionStore((state) => state.childId)
   const childName = useChildSessionStore((state) => state.childName) ?? ""
 
@@ -50,11 +52,29 @@ function ChildActivitiesPage() {
   const isLoading = activitiesQuery.isPending || (activitiesQuery.isError && activitiesQuery.isFetching)
   const showError = activitiesQuery.isError && !activitiesQuery.isFetching
 
-  let completedCount = 0
+  // 완료 화면(C-DONE-02)에서 넘어왔으면 남은 활동을 제안한다. 진행 중인 활동을 먼저 고른다.
+  const cameFromCompletion = Boolean(
+    (location.state as { completedActivityId?: string } | null)?.completedActivityId
+  )
+  const nextActivity = cameFromCompletion && activitiesQuery.isSuccess
+    ? activities.find((item) => item.status === "IN_PROGRESS") ??
+      activities.find((item) => item.status === "NOT_STARTED") ??
+      null
+    : null
+
+  // 한 번 닫거나 이동하면 뒤로 가기·재진입 때 다시 뜨지 않도록 기록을 지운다.
+  const clearCompletionState = () => navigate(location.pathname, { replace: true, state: null })
+
+  // 목록 순서가 아니라 완료한 순서대로 태워야, 새 활동을 끝내도 이미 탄 캐릭터가 바뀌지 않는다.
+  const completionOrder = activities
+    .filter((item) => item.status === "COMPLETED")
+    .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""))
+    .map((item) => item.activityId)
   const balloons = activities.map((activity, index) => {
     const isCompleted = activity.status === "COMPLETED"
+    const completedIndex = completionOrder.indexOf(activity.activityId)
     const passenger = isCompleted
-      ? PASSENGER_ORDER[completedCount++ % PASSENGER_ORDER.length]
+      ? PASSENGER_ORDER[completedIndex % PASSENGER_ORDER.length]
       : undefined
     return {
       activity,
@@ -132,6 +152,15 @@ function ChildActivitiesPage() {
           </>
         )}
       </div>
+
+      <NextActivityDialog
+        activity={nextActivity}
+        onClose={clearCompletionState}
+        onStart={(activity) => {
+          clearCompletionState()
+          navigate(`/child/activities/${activity.activityId}`)
+        }}
+      />
 
       <StateDialog open={showError}>
         <ErrorState message="활동을 불러오지 못했어요" onRetry={() => activitiesQuery.refetch()} />

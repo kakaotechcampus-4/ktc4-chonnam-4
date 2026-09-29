@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
-import { Keyboard, Mic } from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Keyboard, Loader2, Mic } from "lucide-react"
 import themeparkBackgroundUrl from "@/assets/child/themepark-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
@@ -10,6 +10,7 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import {
+  completeActivity,
   getMyActivities,
   getRoleplayScenario,
   myActivitiesQueryKey,
@@ -60,10 +61,12 @@ function RoleplayWrapUpView({
   childName,
   lastReply,
   onNext,
+  isPending,
 }: {
   childName: string
   lastReply: string | null
   onNext: () => void
+  isPending: boolean
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center">
@@ -83,8 +86,9 @@ function RoleplayWrapUpView({
             “{lastReply}” 라고 스스로 말했어요
           </p>
         ) : null}
-        <ChildButton className="h-16 w-full text-xl" onClick={onNext}>
-          다음으로
+        {/* 완료 요청 중에는 다시 누르지 못하게 하고 로딩 아이콘만 보여준다. */}
+        <ChildButton className="h-16 w-full text-xl" onClick={onNext} disabled={isPending}>
+          {isPending ? <Loader2 className="size-6 animate-spin" aria-label="처리 중" /> : "다음으로"}
         </ChildButton>
       </div>
     </div>
@@ -107,6 +111,9 @@ function ChildRoleplayPage() {
   const [isWrappedUp, setIsWrappedUp] = useState(false)
   const [lastDeliveredReply, setLastDeliveredReply] = useState<string | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
+  // 완료 요청을 다시 보내도 스탬프가 두 번 지급되지 않도록 화면에 머무는 동안 같은 값을 쓴다.
+  const [completionRequestId] = useState(() => crypto.randomUUID())
 
   const activitiesQuery = useQuery({
     queryKey: myActivitiesQueryKey(childId),
@@ -130,6 +137,15 @@ function ChildRoleplayPage() {
     },
   })
 
+  const completeMutation = useMutation({
+    mutationFn: completeActivity,
+    onSuccess: (completion) => {
+      navigate(`/child/done/${completion.activityId}`, { state: { completion } })
+      // 홈으로 돌아갔을 때 완료 상태(열기구 탑승)가 바로 보이도록 목록을 다시 받는다.
+      queryClient.invalidateQueries({ queryKey: myActivitiesQueryKey(childId) })
+    },
+  })
+
   // 새 말풍선이 생기면 맨 아래로 내려 보여준다.
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
@@ -146,6 +162,7 @@ function ChildRoleplayPage() {
     !activitiesQuery.isFetching &&
     !scenarioQuery.isFetching
   const showSendError = turnMutation.isError && !turnMutation.isPending
+  const showCompleteError = completeMutation.isError && !completeMutation.isPending
 
   // 내 배정 목록에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003, 최종 차단은 서버 403).
   if (activitiesQuery.isSuccess && (!activity || activity.status === "COMPLETED")) {
@@ -177,11 +194,13 @@ function ChildRoleplayPage() {
           <LoadingState message="역할극을 준비하고 있어요" />
         </div>
       ) : isWrappedUp ? (
-        // 완료·스탬프 화면(C-DONE-02)은 5단계에서 연결한다. 그 전까지는 내 활동으로 돌아간다.
         <RoleplayWrapUpView
           childName={childName}
           lastReply={lastDeliveredReply}
-          onNext={() => navigate("/child/activities")}
+          isPending={completeMutation.isPending}
+          onNext={() => {
+            if (activityId) completeMutation.mutate({ activityId, requestId: completionRequestId })
+          }}
         />
       ) : scenarioQuery.data ? (
         <div className="flex flex-1 flex-col gap-4 break-keep">
@@ -213,6 +232,13 @@ function ChildRoleplayPage() {
         <ErrorState
           onRetry={() => {
             if (turnMutation.variables) turnMutation.mutate(turnMutation.variables)
+          }}
+        />
+      </StateDialog>
+      <StateDialog open={showCompleteError}>
+        <ErrorState
+          onRetry={() => {
+            if (completeMutation.variables) completeMutation.mutate(completeMutation.variables)
           }}
         />
       </StateDialog>
