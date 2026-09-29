@@ -1,12 +1,38 @@
 import { useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createChild, getClassroom, listChildren } from '../api'
-import { Button } from '@/components/ui/button'
+import { createChild, getClassroom, listChildren, type ChildStatus } from '../api'
 import { InstructorLayout } from '../layout/InstructorLayout'
+import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
+import {
+  cardClass,
+  errorTextClass,
+  inputClass,
+  outlineButtonClass,
+  primaryButtonClass,
+} from '../components/styles'
+import { cn } from '@/lib/utils'
 
+type DetailTab = 'overview' | 'children'
+
+const CHILD_STATUS_LABELS: Record<ChildStatus, string> = {
+  ACTIVE: '참여중',
+  PAUSED: '일시 중지',
+  REMOVED: '제외됨',
+}
+
+// 시안(T-CLS-03~06)의 탭 중 배정 활동·리포트는 아직 화면이 없어 비활성으로 보인다.
+const PENDING_TABS = ['배정 활동', '리포트']
+
+/**
+ * 학급 상세 (시안 T-CLS-03 개요 탭 + 아동 목록 탭).
+ * 탭은 주소의 ?tab= 으로 관리해, 개요의 "아동 등록" 버튼이 아동 목록 탭으로 바로 넘어가게 한다.
+ * 개요의 통계·최근 학습·활동 현황은 활동 데이터가 생긴 뒤(S1-BAE-02 이후) 채운다.
+ */
 function ClassroomDetailPage() {
   const { classId } = useParams<{ classId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: DetailTab = searchParams.get('tab') === 'children' ? 'children' : 'overview'
   const [displayName, setDisplayName] = useState('')
   const queryClient = useQueryClient()
 
@@ -59,64 +85,158 @@ function ClassroomDetailPage() {
     })
   }
 
+  function selectTab(next: DetailTab) {
+    setSearchParams(next === 'overview' ? {} : { tab: next }, { replace: true })
+  }
+
+  const tabClass = 'relative -mb-px border-b-2 px-4 py-3 text-sm'
+
   return (
-    <InstructorLayout>
-      <Link to="/classrooms" className="mb-4 inline-block text-sm underline">
+    <InstructorLayout
+      title={classroom ? `학급 상세 · ${classroom.name}` : '학급 상세'}
+      actions={
+        // 학급 수정은 S4-BAE-01 범위라 자리만 둔다.
+        <button type="button" disabled title="준비 중인 기능입니다" className={cn(outlineButtonClass, 'h-9 px-4')}>
+          학급 수정
+        </button>
+      }
+      subheader={
+        <div role="tablist" aria-label="학급 상세" className="flex">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'overview'}
+            onClick={() => selectTab('overview')}
+            className={cn(
+              tabClass,
+              tab === 'overview'
+                ? 'border-[var(--instructor-primary)] font-semibold'
+                : 'border-transparent text-[var(--instructor-text-muted)]'
+            )}
+          >
+            개요
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'children'}
+            onClick={() => selectTab('children')}
+            className={cn(
+              tabClass,
+              tab === 'children'
+                ? 'border-[var(--instructor-primary)] font-semibold'
+                : 'border-transparent text-[var(--instructor-text-muted)]'
+            )}
+          >
+            아동 목록{children ? ` ${children.length}` : ''}
+          </button>
+          {PENDING_TABS.map((label) => (
+            <span
+              key={label}
+              role="tab"
+              aria-disabled="true"
+              aria-selected={false}
+              title="준비 중인 화면입니다"
+              className={cn(tabClass, 'cursor-not-allowed border-transparent text-[var(--instructor-text-disabled)]')}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      }
+    >
+      <Link to="/classrooms" className="mb-4 inline-block text-sm text-[var(--instructor-text-muted)] hover:underline">
         ← 학급 목록
       </Link>
 
       {isClassroomLoading ? (
-        <p>불러오는 중...</p>
+        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
       ) : isClassroomError ? (
-        <p className="text-sm text-red-600">
+        <p className={errorTextClass}>
           {classroomError instanceof Error
             ? classroomError.message
             : '학급 정보를 불러오지 못했습니다.'}
         </p>
+      ) : tab === 'overview' ? (
+        <section className={cn(cardClass, 'max-w-sm p-6')} role="tabpanel" aria-label="개요">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-base font-bold">바로 하기</h2>
+            {classroom && <ClassroomStatusBadge status={classroom.status} />}
+          </div>
+          <div className="flex flex-col gap-2.5">
+            {/* 활동 만들기는 S1-BAE-02, 접근 코드 출력은 후속 범위라 자리만 둔다. */}
+            <button type="button" disabled title="준비 중인 기능입니다" className={primaryButtonClass}>
+              이 학급에 활동 만들기
+            </button>
+            <button type="button" onClick={() => selectTab('children')} className={outlineButtonClass}>
+              아동 등록
+            </button>
+            <button type="button" disabled title="준비 중인 기능입니다" className={outlineButtonClass}>
+              접근 코드 출력
+            </button>
+          </div>
+        </section>
       ) : (
-        <h1 className="mb-4 text-lg font-semibold">
-          {classroom?.name} ({classroom?.status})
-        </h1>
-      )}
+        <section role="tabpanel" aria-label="아동 목록" className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <label htmlFor="child-display-name" className="sr-only">
+              아동 이름
+            </label>
+            <input
+              id="child-display-name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="아동 이름"
+              className={cn(inputClass, 'h-10 w-56')}
+            />
+            <button type="submit" disabled={isSubmitDisabled} className={cn(primaryButtonClass, 'h-10')}>
+              {createChildMutation.isPending ? '등록 중...' : '아동 등록'}
+            </button>
+          </form>
 
-      <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
-        <label htmlFor="child-display-name" className="sr-only">
-          아동 이름
-        </label>
-        <input
-          id="child-display-name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="아동 이름"
-          className="rounded-lg border border-border px-2.5 py-1 text-sm"
-        />
-        <Button type="submit" disabled={isSubmitDisabled}>
-          {createChildMutation.isPending ? '등록 중...' : '아동 등록'}
-        </Button>
-      </form>
+          {createChildMutation.isError && (
+            <p role="alert" className={errorTextClass}>
+              {createChildMutation.error instanceof Error
+                ? createChildMutation.error.message
+                : '아동 등록에 실패했습니다.'}
+            </p>
+          )}
 
-      {createChildMutation.isError && (
-        <p className="mb-4 text-sm text-red-600">
-          {createChildMutation.error instanceof Error
-            ? createChildMutation.error.message
-            : '아동 등록에 실패했습니다.'}
-        </p>
-      )}
-
-      {isChildrenLoading ? (
-        <p>불러오는 중...</p>
-      ) : isChildrenError ? (
-        <p className="text-sm text-red-600">
-          {childrenError instanceof Error ? childrenError.message : '아동 목록을 불러오지 못했습니다.'}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {children?.map((child) => (
-            <li key={child.childId}>
-              {child.displayName} ({child.status})
-            </li>
-          ))}
-        </ul>
+          {isChildrenLoading ? (
+            <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+          ) : isChildrenError ? (
+            <p className={errorTextClass}>
+              {childrenError instanceof Error ? childrenError.message : '아동 목록을 불러오지 못했습니다.'}
+            </p>
+          ) : children?.length === 0 ? (
+            <p className="text-sm text-[var(--instructor-text-muted)]">아직 등록된 아동이 없습니다.</p>
+          ) : (
+            <div className={cn(cardClass, 'overflow-hidden')}>
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--instructor-surface-muted)] text-xs text-[var(--instructor-text-muted)]">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                      이름
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                      상태
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {children?.map((child) => (
+                    <tr key={child.childId} className="border-t border-[var(--instructor-border)]">
+                      <td className="px-4 py-3.5 font-semibold">{child.displayName}</td>
+                      <td className="px-4 py-3.5 text-[var(--instructor-text-muted)]">
+                        {CHILD_STATUS_LABELS[child.status]}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
     </InstructorLayout>
   )

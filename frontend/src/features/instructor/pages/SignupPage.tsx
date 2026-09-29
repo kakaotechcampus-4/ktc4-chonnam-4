@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ApiError, hasAccessToken, login, signup } from '../api'
-import { Button } from '@/components/ui/button'
 import { AuthLayout } from '../layout/AuthLayout'
+import { errorTextClass, fieldLabelClass, inputClass, primaryButtonClass } from '../components/styles'
 
 // 백엔드 가입 규칙(SignupRequest)과 맞춘다. 서버가 최종 검증하고, 여기서는 바로 알 수 있는 실수만 막는다.
 const PASSWORD_MIN_LENGTH = 8
@@ -13,14 +13,33 @@ const FIELD_LABELS: Record<string, string> = {
   password: '비밀번호',
   passwordWithinByteLimit: '비밀번호',
   name: '이름',
-  orgName: '소속 기관',
+}
+
+// 필수 약관 동의. 서버 기록(버전·시각)은 S3 범위라 지금은 가입 버튼을 여는 조건으로만 쓴다.
+type Agreements = { terms: boolean; privacy: boolean }
+
+const AGREEMENT_LABELS: Record<keyof Agreements, string> = {
+  terms: '[필수] 서비스 이용약관 동의',
+  privacy: '[필수] 개인정보 처리방침 동의',
+}
+
+/** 필수 항목이 모두 체크되어 "전체 동의"가 체크된 것으로 보일지 정한다. 선택 항목이 생기면 여기서 제외한다. */
+function isAllAgreed(agreements: Agreements): boolean {
+  return agreements.terms && agreements.privacy
+}
+
+/** "전체 동의"를 눌렀을 때 바뀐 뒤의 동의 상태. 일부만 체크된 상태에서 누르면 모두 체크한다. */
+function toggleAllAgreements(agreements: Agreements): Agreements {
+  const next = !isAllAgreed(agreements)
+  return { terms: next, privacy: next }
 }
 
 function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [name, setName] = useState('')
-  const [orgName, setOrgName] = useState('')
+  const [agreements, setAgreements] = useState<Agreements>({ terms: false, privacy: false })
   const navigate = useNavigate()
 
   // 가입에 성공하면 같은 자격으로 바로 로그인해 학급 화면으로 보낸다.
@@ -32,7 +51,6 @@ function SignupPage() {
         email: trimmedEmail,
         password,
         name: name.trim(),
-        orgName: orgName.trim() === '' ? undefined : orgName.trim(),
       })
       try {
         await login(trimmedEmail, password)
@@ -54,11 +72,14 @@ function SignupPage() {
   })
 
   const isPasswordTooShort = password !== '' && password.length < PASSWORD_MIN_LENGTH
+  const isPasswordMismatch = passwordConfirm !== '' && passwordConfirm !== password
   const isSubmitDisabled =
     signupMutation.isPending ||
     email.trim() === '' ||
     name.trim() === '' ||
-    password.length < PASSWORD_MIN_LENGTH
+    password.length < PASSWORD_MIN_LENGTH ||
+    passwordConfirm !== password ||
+    !isAllAgreed(agreements)
   // isPending 은 다음 렌더부터 반영되어, 같은 순간 들어온 두 번째 제출은 통과할 수 있다. ref 로 즉시 잠근다.
   const isSubmittingRef = useRef(false)
 
@@ -84,59 +105,97 @@ function SignupPage() {
   const fieldErrors = error instanceof ApiError ? error.fieldErrors : []
 
   return (
-    <AuthLayout title="강사 가입">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <label htmlFor="signup-email" className="flex flex-col gap-1 text-sm">
+    <AuthLayout title="강사 가입" description="기본 정보를 입력해 계정을 만드세요">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <label htmlFor="signup-name" className={fieldLabelClass}>
+          이름
+          <input
+            id="signup-name"
+            autoComplete="name"
+            placeholder="홍길동"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <label htmlFor="signup-email" className={fieldLabelClass}>
           이메일
           <input
             id="signup-email"
             type="email"
             autoComplete="email"
+            placeholder="name@school.ac.kr"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-sm"
+            className={inputClass}
           />
         </label>
-        <label htmlFor="signup-password" className="flex flex-col gap-1 text-sm">
-          비밀번호 ({PASSWORD_MIN_LENGTH}자 이상)
-          <input
-            id="signup-password"
-            type="password"
-            autoComplete="new-password"
-            aria-describedby={isPasswordTooShort ? 'signup-password-hint' : undefined}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-sm"
-          />
-        </label>
-        {isPasswordTooShort && (
-          <p id="signup-password-hint" className="-mt-2 text-xs text-red-600">
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-3">
+            <label htmlFor="signup-password" className={fieldLabelClass}>
+              비밀번호
+              <input
+                id="signup-password"
+                type="password"
+                autoComplete="new-password"
+                aria-describedby="signup-password-rule"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+              />
+            </label>
+            <label htmlFor="signup-password-confirm" className={fieldLabelClass}>
+              비밀번호 확인
+              <input
+                id="signup-password-confirm"
+                type="password"
+                autoComplete="new-password"
+                aria-describedby={isPasswordMismatch ? 'signup-password-mismatch' : undefined}
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                className={inputClass}
+              />
+            </label>
+          </div>
+          <p
+            id="signup-password-rule"
+            className={isPasswordTooShort ? 'text-xs text-[var(--instructor-danger-fg)]' : 'text-xs text-[var(--instructor-text-muted)]'}
+          >
             비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다.
           </p>
-        )}
-        <label htmlFor="signup-name" className="flex flex-col gap-1 text-sm">
-          이름
-          <input
-            id="signup-name"
-            autoComplete="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-sm"
-          />
-        </label>
-        <label htmlFor="signup-org" className="flex flex-col gap-1 text-sm">
-          소속 기관 (선택)
-          <input
-            id="signup-org"
-            autoComplete="organization"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-sm"
-          />
-        </label>
+          {isPasswordMismatch && (
+            <p id="signup-password-mismatch" className="text-xs text-[var(--instructor-danger-fg)]">
+              비밀번호가 서로 다릅니다.
+            </p>
+          )}
+        </div>
+
+        <fieldset className="flex flex-col gap-3 border-t border-[var(--instructor-border)] pt-5">
+          <legend className="sr-only">약관 동의</legend>
+          <label className="flex items-center gap-2.5 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={isAllAgreed(agreements)}
+              onChange={() => setAgreements(toggleAllAgreements)}
+              className="size-4 accent-[var(--instructor-primary)]"
+            />
+            전체 동의
+          </label>
+          {(Object.keys(AGREEMENT_LABELS) as (keyof Agreements)[]).map((key) => (
+            <label key={key} className="flex items-center gap-2.5 pl-0.5 text-sm text-[var(--instructor-text-muted)]">
+              <input
+                type="checkbox"
+                checked={agreements[key]}
+                onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
+                className="size-4 accent-[var(--instructor-primary)]"
+              />
+              {AGREEMENT_LABELS[key]}
+            </label>
+          ))}
+        </fieldset>
 
         {signupMutation.isError && (
-          <div role="alert" className="text-sm text-red-600">
+          <div role="alert" className={errorTextClass}>
             <p>{error instanceof Error ? error.message : '가입에 실패했습니다.'}</p>
             {fieldErrors.length > 0 && (
               <ul className="mt-1 list-disc pl-5">
@@ -150,17 +209,17 @@ function SignupPage() {
           </div>
         )}
 
-        <Button type="submit" size="lg" disabled={isSubmitDisabled}>
+        <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
           {signupMutation.isPending ? '가입 중...' : '가입하기'}
-        </Button>
+        </button>
       </form>
 
-      <p className="mt-4 text-center text-sm">
-        이미 계정이 있나요?{' '}
-        <Link to="/login" className="underline">
+      <div className="mt-6 text-center text-sm text-[var(--instructor-text-muted)]">
+        이미 계정이 있으신가요?{' '}
+        <Link to="/login" className="text-[var(--instructor-text)] underline underline-offset-2">
           로그인
         </Link>
-      </p>
+      </div>
     </AuthLayout>
   )
 }

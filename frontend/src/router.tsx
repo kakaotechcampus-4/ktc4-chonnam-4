@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ClassroomListPage } from './features/instructor/pages/ClassroomListPage'
 import { ClassroomDetailPage } from './features/instructor/pages/ClassroomDetailPage'
+import { ClassroomCreatePage } from './features/instructor/pages/ClassroomCreatePage'
 import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
 import { RequireInstructorAuth } from './features/instructor/auth/RequireInstructorAuth'
@@ -20,6 +21,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ClassroomListPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/classrooms/new',
+    element: (
+      <RequireInstructorAuth>
+        <ClassroomCreatePage />
       </RequireInstructorAuth>
     ),
   },
