@@ -88,7 +88,7 @@ public final class SpringAiLlmProvider implements LlmProvider {
                 metadata(request, startedAt, model, inputTokens, outputTokens, finishReason);
 
         if (content == null || content.isBlank()) {
-            AiFailure failure = new AiFailure(AiFailureType.EMPTY_OUTPUT, true, null);
+            AiFailure failure = new AiFailure(AiFailureType.EMPTY_OUTPUT, null);
             return new AiCallResult.Failure<>(failure, metadata);
         }
 

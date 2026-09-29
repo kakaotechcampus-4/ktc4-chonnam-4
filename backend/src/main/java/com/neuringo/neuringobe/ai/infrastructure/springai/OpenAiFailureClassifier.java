@@ -68,10 +68,7 @@ public final class OpenAiFailureClassifier {
                 || throwable instanceof InterruptedIOException
                 || throwable instanceof TimeoutException) {
             return mapping(
-                    AiFailureType.TIMEOUT,
-                    true,
-                    throwable,
-                    FailureMappingSource.JDK_EXCEPTION_TYPE);
+                    AiFailureType.TIMEOUT, throwable, FailureMappingSource.JDK_EXCEPTION_TYPE);
         }
         return null;
     }
@@ -80,7 +77,6 @@ public final class OpenAiFailureClassifier {
         if (throwable instanceof RateLimitException) {
             return mapping(
                     AiFailureType.RATE_LIMITED,
-                    true,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
@@ -88,7 +84,6 @@ public final class OpenAiFailureClassifier {
                 || throwable instanceof PermissionDeniedException) {
             return mapping(
                     AiFailureType.AUTHENTICATION_ERROR,
-                    false,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
@@ -96,7 +91,6 @@ public final class OpenAiFailureClassifier {
                 || throwable instanceof OpenAIRetryableException) {
             return mapping(
                     AiFailureType.PROVIDER_UNAVAILABLE,
-                    true,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
@@ -104,22 +98,19 @@ public final class OpenAiFailureClassifier {
                 || throwable instanceof NotFoundException
                 || throwable instanceof UnprocessableEntityException) {
             return mapping(
-                    AiFailureType.PROVIDER_RESPONSE_ERROR,
-                    false,
+                    AiFailureType.PROVIDER_REQUEST_REJECTED,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
         if (throwable instanceof OpenAIInvalidDataException) {
             return mapping(
                     AiFailureType.PROVIDER_RESPONSE_ERROR,
-                    true,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
         if (throwable instanceof OpenAIIoException) {
             return mapping(
                     AiFailureType.NETWORK_ERROR,
-                    true,
                     throwable,
                     FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
@@ -131,40 +122,14 @@ public final class OpenAiFailureClassifier {
             return null;
         }
 
-        int statusCode = exception.statusCode();
-        if (statusCode == 401 || statusCode == 403) {
-            return mapping(
-                    AiFailureType.AUTHENTICATION_ERROR,
-                    false,
-                    exception,
-                    FailureMappingSource.OPENAI_STATUS_CODE);
-        }
-        if (statusCode == 429) {
-            return mapping(
-                    AiFailureType.RATE_LIMITED,
-                    true,
-                    exception,
-                    FailureMappingSource.OPENAI_STATUS_CODE);
-        }
-        if (statusCode >= 500) {
-            return mapping(
-                    AiFailureType.PROVIDER_UNAVAILABLE,
-                    true,
-                    exception,
-                    FailureMappingSource.OPENAI_STATUS_CODE);
-        }
-        return mapping(
-                AiFailureType.PROVIDER_RESPONSE_ERROR,
-                false,
-                exception,
-                FailureMappingSource.OPENAI_STATUS_CODE);
+        return mapStatusCode(
+                exception.statusCode(), exception, FailureMappingSource.OPENAI_STATUS_CODE);
     }
 
     private FailureMapping mapSpringExceptionType(Throwable throwable) {
         if (throwable instanceof ResourceAccessException) {
             return mapping(
                     AiFailureType.NETWORK_ERROR,
-                    true,
                     throwable,
                     FailureMappingSource.SPRING_EXCEPTION_TYPE);
         }
@@ -181,7 +146,6 @@ public final class OpenAiFailureClassifier {
         if (throwable instanceof ConnectException) {
             return mapping(
                     AiFailureType.NETWORK_ERROR,
-                    true,
                     throwable,
                     FailureMappingSource.JDK_EXCEPTION_TYPE);
         }
@@ -191,10 +155,7 @@ public final class OpenAiFailureClassifier {
     private FailureMapping mapOpenAiBaseType(Throwable throwable) {
         if (throwable instanceof OpenAIException) {
             return mapping(
-                    AiFailureType.UNKNOWN,
-                    false,
-                    throwable,
-                    FailureMappingSource.OPENAI_EXCEPTION_TYPE);
+                    AiFailureType.UNKNOWN, throwable, FailureMappingSource.OPENAI_EXCEPTION_TYPE);
         }
         return null;
     }
@@ -202,15 +163,11 @@ public final class OpenAiFailureClassifier {
     private FailureMapping mapNameFallback(Throwable throwable) {
         String typeName = throwable.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         if (typeName.contains("timeout")) {
-            return mapping(
-                    AiFailureType.TIMEOUT, true, throwable, FailureMappingSource.NAME_FALLBACK);
+            return mapping(AiFailureType.TIMEOUT, throwable, FailureMappingSource.NAME_FALLBACK);
         }
         if (typeName.contains("ratelimit") || typeName.contains("toomanyrequests")) {
             return mapping(
-                    AiFailureType.RATE_LIMITED,
-                    true,
-                    throwable,
-                    FailureMappingSource.NAME_FALLBACK);
+                    AiFailureType.RATE_LIMITED, throwable, FailureMappingSource.NAME_FALLBACK);
         }
         if (typeName.contains("authentication")
                 || typeName.contains("unauthorized")
@@ -218,7 +175,6 @@ public final class OpenAiFailureClassifier {
                 || typeName.contains("forbidden")) {
             return mapping(
                     AiFailureType.AUTHENTICATION_ERROR,
-                    false,
                     throwable,
                     FailureMappingSource.NAME_FALLBACK);
         }
@@ -227,7 +183,6 @@ public final class OpenAiFailureClassifier {
                 || typeName.contains("badgateway")) {
             return mapping(
                     AiFailureType.PROVIDER_UNAVAILABLE,
-                    true,
                     throwable,
                     FailureMappingSource.NAME_FALLBACK);
         }
@@ -236,16 +191,12 @@ public final class OpenAiFailureClassifier {
                 || typeName.contains("parse")) {
             return mapping(
                     AiFailureType.PROVIDER_RESPONSE_ERROR,
-                    true,
                     throwable,
                     FailureMappingSource.NAME_FALLBACK);
         }
         if (typeName.contains("connect") || typeName.contains("network")) {
             return mapping(
-                    AiFailureType.NETWORK_ERROR,
-                    true,
-                    throwable,
-                    FailureMappingSource.NAME_FALLBACK);
+                    AiFailureType.NETWORK_ERROR, throwable, FailureMappingSource.NAME_FALLBACK);
         }
         return null;
     }
@@ -253,15 +204,15 @@ public final class OpenAiFailureClassifier {
     private FailureMapping mapStatusCode(
             int statusCode, Throwable throwable, FailureMappingSource source) {
         if (statusCode == 401 || statusCode == 403) {
-            return mapping(AiFailureType.AUTHENTICATION_ERROR, false, throwable, source);
+            return mapping(AiFailureType.AUTHENTICATION_ERROR, throwable, source);
         }
         if (statusCode == 429) {
-            return mapping(AiFailureType.RATE_LIMITED, true, throwable, source);
+            return mapping(AiFailureType.RATE_LIMITED, throwable, source);
         }
         if (statusCode >= 500) {
-            return mapping(AiFailureType.PROVIDER_UNAVAILABLE, true, throwable, source);
+            return mapping(AiFailureType.PROVIDER_UNAVAILABLE, throwable, source);
         }
-        return mapping(AiFailureType.PROVIDER_RESPONSE_ERROR, false, throwable, source);
+        return mapping(AiFailureType.PROVIDER_REQUEST_REJECTED, throwable, source);
     }
 
     private Optional<FailureMapping> firstMatch(List<Throwable> causes, ExceptionMappingRule rule) {
@@ -285,15 +236,12 @@ public final class OpenAiFailureClassifier {
     }
 
     private FailureMapping mapping(
-            AiFailureType type,
-            boolean retryable,
-            Throwable throwable,
-            FailureMappingSource source) {
+            AiFailureType type, Throwable throwable, FailureMappingSource source) {
         String errorCode =
                 throwable instanceof OpenAIServiceException exception
                         ? exception.code().orElse(throwable.getClass().getSimpleName())
                         : throwable.getClass().getSimpleName();
-        return new FailureMapping(new AiFailure(type, retryable, errorCode), source);
+        return new FailureMapping(new AiFailure(type, errorCode), source);
     }
 
     @FunctionalInterface
