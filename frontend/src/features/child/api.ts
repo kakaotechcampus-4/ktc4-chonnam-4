@@ -225,3 +225,63 @@ export async function submitQuizAnswer(input: QuizAnswerInput): Promise<QuizAnsw
     hint: { level, text: item.hintTexts[level - 1], choiceIds: item.hintChoiceIds },
   }
 }
+
+export type RoleplaySpeaker = "turtle" | "rabbit"
+
+export type RoleplayMessage = {
+  speaker: RoleplaySpeaker
+  text: string
+}
+
+export type RoleplayScenario = {
+  scenarioId: string
+  /** 헤더에 보여줄 장소. 예: 놀이터에서 */
+  place: string
+  opening: RoleplayMessage
+}
+
+export type RoleplayTurnInput = {
+  activityId: string
+  turnIndex: number
+  text: string
+  /** 네트워크 재전송 시 같은 턴이 두 번 만들어지지 않도록 같은 값을 다시 보낸다 (VS-011). */
+  requestId: string
+}
+
+export type RoleplayTurnResult =
+  | { status: "DELIVERED"; reply: RoleplayMessage; isFinished: boolean }
+  /** 응답 생성·검증에 실패해 사전 승인된 고정 안내를 대신 보낸다. 턴은 소모하지 않는다 (VS-011·013). */
+  | { status: "FALLBACK"; reply: RoleplayMessage }
+
+export function roleplayScenarioQueryKey(childId: string | null, activityId: string | undefined) {
+  return ["child", childId, "roleplay", activityId] as const
+}
+
+// Figma C-RP-02 대사로 만든 mock 대본. 실제 응답은 STT→LLM→안전 검사를 거친다 (S1-JIN-02).
+const MOCK_ROLEPLAY_REPLIES: { reply: RoleplayMessage; isFinished: boolean }[] = [
+  {
+    reply: { speaker: "rabbit", text: "친구 눈썹이 아래로 축 처져 있어. 어떤 마음일 때 이런 표정이 될까?" },
+    isFinished: false,
+  },
+  {
+    reply: { speaker: "turtle", text: "맞아, 넘어지면 아프고 속상하지. 친구 마음을 잘 알아줬어!" },
+    isFinished: true,
+  },
+]
+
+export async function getRoleplayScenario(activityId: string): Promise<RoleplayScenario> {
+  void activityId
+  await wait(MOCK_DELAY_MS)
+  return {
+    scenarioId: "mock-scenario-1",
+    place: "놀이터에서",
+    opening: { speaker: "turtle", text: "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?" },
+  }
+}
+
+// mock은 항상 대본대로 응답한다. 고정 안내(FALLBACK) 응답은 실제 API(S1-JIN-02)가 나오면 연동해 확인한다.
+export async function sendRoleplayTurn(input: RoleplayTurnInput): Promise<RoleplayTurnResult> {
+  await wait(MOCK_DELAY_MS * 2)
+  const scripted = MOCK_ROLEPLAY_REPLIES[Math.min(input.turnIndex, MOCK_ROLEPLAY_REPLIES.length - 1)]
+  return { status: "DELIVERED", ...scripted }
+}

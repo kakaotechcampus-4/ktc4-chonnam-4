@@ -8,13 +8,7 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import { getMyActivities, myActivitiesQueryKey } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
-
-/** 받침이 있으면 "아", 없으면 "야"를 붙인다. 예: 서연아, 지우야 */
-function withVocative(name: string) {
-  const code = name.charCodeAt(name.length - 1) - 0xac00
-  const hasFinalConsonant = code >= 0 && code <= 11171 && code % 28 !== 0
-  return `${name}${hasFinalConsonant ? "아" : "야"}`
-}
+import { withVocative } from "../lib/childName"
 
 /**
  * C-ACC-02 본인 활동 확인 (VS-003).

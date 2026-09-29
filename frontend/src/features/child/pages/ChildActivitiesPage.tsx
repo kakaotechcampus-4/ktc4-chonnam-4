@@ -8,6 +8,7 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import { getMyActivities, myActivitiesQueryKey, type ChildActivityStatus } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
+import { withNameSuffix } from "../lib/childName"
 
 const BALLOON_COLOR_ORDER: BalloonColor[] = ["pink", "yellow", "purple"]
 // 원본 시안처럼 가운데 열기구가 가장 높이 뜨도록 높이를 번갈아 준다. 한 줄로 쌓이는 모바일에서는 주지 않는다.
@@ -28,13 +29,6 @@ const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: str
     label: "완료!",
     className: "bg-[var(--child-success-bg)] text-[var(--child-success-fg)]",
   },
-}
-
-/** 받침이 있으면 "이"를 붙인다. 예: 서연이의 활동, 지우의 활동 */
-function withNameSuffix(name: string) {
-  const code = name.charCodeAt(name.length - 1) - 0xac00
-  const hasFinalConsonant = code >= 0 && code <= 11171 && code % 28 !== 0
-  return hasFinalConsonant ? `${name}이` : name
 }
 
 /**
