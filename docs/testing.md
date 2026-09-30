@@ -18,7 +18,7 @@
 | 유형 | 무엇을 막나 | 백엔드 | 프론트·E2E |
 |---|---|---|---|
 | API 명세 일치(FE ↔ BE) | 실제 API 와 프론트 테스트의 가짜 서버(MSW)가 서로 달라짐 | `contract/ApiContractTest` | `src/test/contract/apiContract.test.ts` — 둘 다 [`contracts/api-v1.json`](../contracts/README.md) 을 읽는다 |
-| 경계값(매개변수화) | 이름 검증 경계(공백·제어 문자·보이지 않는 문자·100자·이모지·특수문자)가 학급·아동·강사 이름에서 달라짐 | `NameInputBoundaryIntegrationTest` | — |
+| 경계값(매개변수화) | 이름 검증 경계(공백·제어 문자·짝 없는 서로게이트·보이지 않는 문자·100자·이모지·특수문자)가 학급·아동·강사 이름에서 달라짐 | `NameInputBoundaryIntegrationTest` | — |
 | 인증(VS-001) | 가입·로그인·본인 조회, 토큰 없음·틀림·만료·로그아웃은 401, 비밀번호 해시 저장·8자 규칙, 이메일 정규화·중복 409, 로그인 실패는 모두 같은 응답·잠금 없음, 보호 화면은 로그인 화면으로 | `AuthIntegrationTest` | `instructor/auth/authFlow.test.tsx` · `e2e/instructor-auth.spec.ts` |
 | HTTP 통합 | 학급·강사 격리(다른 강사의 학급은 없는 학급과 같은 404)·동명이인, 실패한 요청의 부수 효과, 본문으로 서버 값 바꿔치기 | `ClassroomChildIntegrationTest` · `ErrorResponseIntegrationTest` | — |
 | 화면 통합 | 강사·아동 화면의 정상·실패 흐름(로딩·422·403·네트워크·중복 제출·사용 종료·입장 가드) | — | `ClassroomListPage.test.tsx` · `ClassroomCreatePage.test.tsx` · `ClassroomDetailPage.test.tsx` · `childFlow.test.tsx` · `router.test.tsx` · `useWarnBeforeUnload.test.ts` |
@@ -26,7 +26,7 @@
 | 개인정보 | 아동 이름·강사 이메일·비밀번호가 로그·오류 응답·AI 요청에 섞임, 스키마에 실명 외 인적 정보 컬럼, 비밀번호·토큰 원문 저장 | `LogPrivacyIntegrationTest` · `SchemaIntegrityIntegrationTest` · `AuthIntegrationTest` · `ai/infrastructure/AiProviderContractTest` | E2E 마커 스캔 |
 | DB 스키마 | enum ↔ CHECK, FK, UNIQUE(이메일·토큰 해시), NOT NULL, 이름·이메일 길이 ↔ `@Size` | `SchemaConstraintIntegrationTest` · `SchemaIntegrityIntegrationTest` | — |
 | 동시성 | 동시에 들어온 등록의 유실·학급 혼입, 같은 이메일 동시 가입 | `ConcurrentRegistrationIntegrationTest` | — |
-| 결정 표 | AI 평가 결과 전달 게이트(안전·PASS·치명 실패 0건) | `ai/application/EvaluationResultDeliveryGateTest` | — |
+| 결정 표 | AI 평가 결과 전달 게이트(안전·PASS·치명 실패 0건), 형식이 틀린 평가 결과는 게이트 전에 형식 오류 | `ai/application/EvaluationResultDeliveryGateTest` | — |
 | AI 제공자 연동 규칙 | `ai-provider-contract.md` 의 실패 분류·재시도 가능 여부·자동 재시도 0회·추적 ID 미포함 | `ai/infrastructure/AiProviderContractTest`(MockServer) | — |
 | 아키텍처 | 계층 방향, 엔티티 노출, 트랜잭션 위치, 도메인 순환, 로그 경로 | `ArchitectureTest` | — |
 | 속성 기반 | 응답 해석이 어떤 본문·상태 코드에서도 깨지지 않음(무작위 입력 수백 개) | — | `api.property.test.ts`(fast-check) |
@@ -162,14 +162,14 @@ class ChildApiTest {
 | `config/DefaultSecurityPolicyTest` | 배포 프로필(dev·prod): 공개 경로 밖 조회는 401 `AUTHENTICATION_REQUIRED`(health·info 포함), 막힌 변경은 저장 안 됨, 지어낸 CSRF 막음, 가입 → 로그인 → 토큰으로 조회·생성이 됨(세션 CSRF), CORS preflight 막음, 막힌 응답에도 보안 헤더 |
 | `AuthIntegrationTest` | VS-001: 가입 → 로그인 → 본인 조회, 보호 요청은 토큰 없음 401 `AUTHENTICATION_REQUIRED`·틀림·형식 오류·만료·로그아웃 401 `INVALID_TOKEN`, 로그아웃은 그 세션만 끝냄, 막힌 변경은 저장 안 됨, 공개 경로는 틀린 토큰이 달려도 열림, 비밀번호는 BCrypt 해시만·토큰은 해시만 저장, 7자 422·8자는 조합 규칙 없이 가입, 72바이트 초과는 422, 이메일 대소문자·공백 정규화와 중복 409, 로그인 실패(틀린 비밀번호·없는 이메일·제어 문자)는 같은 401, 여러 번 틀려도 잠기지 않음 |
 | `ClassroomChildIntegrationTest` | 학급 격리, 강사 격리(다른 강사의 학급은 목록에 없고 상세·아동 목록·아동 등록은 404, 없는 학급과 같은 오류 본문), 동명이인, 이름 한글 100자 저장·101자 422 |
-| `NameInputBoundaryIntegrationTest` | 학급·아동·강사 이름 경계: 공백뿐·빈 값·null·키 없음·제어 문자(NUL 등)·보이지 않는 문자만(NBSP·폭 없는 공백·BOM)은 422(그 필드)이고 저장 안 됨, UTF-16 100 까지 저장(이모지 50개), 넘으면 422, 마크업·SQL 모양도 글자 그대로 |
+| `NameInputBoundaryIntegrationTest` | 학급·아동·강사 이름 경계: 공백뿐·빈 값·null·키 없음·제어 문자(NUL 등)·짝 없는 서로게이트·보이지 않는 문자만(NBSP·폭 없는 공백·BOM)은 422(그 필드)이고 저장 안 됨, UTF-16 100 까지 저장(이모지 50개), 넘으면 422, 마크업·SQL 모양도 글자 그대로 |
 | `ErrorResponseIntegrationTest` | 실패한 요청은 아무것도 저장하지 않음(404·400·415), 본문의 classId·status·instructorId 는 무시(강사는 로그인한 강사), 오류 본문(401·409·422 포함)에 예외·스택·SQL 없음, 응답마다 새 traceId |
 | `contract/ApiContractTest` | 실제 API 응답이 API 명세(`contracts/api-v1.json`)와 같음 |
 | `LogPrivacyIntegrationTest` | 아동 이름(성공·422·404·400)과 강사 이메일·비밀번호(가입·중복 409·로그인·401·422)가 서버 로그와 오류 응답에 남지 않음 |
 | `SchemaConstraintIntegrationTest` | enum 값 ↔ status·role CHECK, FK(아동 → 학급, 학급 → 강사, 세션 → 강사), UNIQUE(이메일·토큰 해시) |
 | `SchemaIntegrityIntegrationTest` | 아동 테이블은 ID·학급·실명·상태만(인적 정보 컬럼 없음), 학급·강사 계정·세션 테이블도 정한 컬럼만(토큰 원문 없음), 이름·이메일 VARCHAR ↔ `@Size(max)`, 필수 컬럼 NOT NULL, 학급의 강사는 강사 계정 UUID, 조회 인덱스, 마이그레이션 전부 성공 |
 | `ConcurrentRegistrationIntegrationTest` | 동시에 들어온 등록(12건)이 빠짐·중복·학급 혼입 없이 한 번씩 저장, 동명이인 동시 등록, 같은 이메일 동시 가입은 한 명만(나머지 409) |
-| `ai/application/EvaluationResultDeliveryGateTest` | 안전·PASS·치명 실패 0건일 때만 전달(8조합, PASS 아닌 판정 전부, 치명 실패 2건 이상 전부) |
+| `ai/application/EvaluationResultDeliveryGateTest` | 안전·PASS·치명 실패 0건일 때만 전달(8조합, PASS 아닌 판정 전부, 치명 실패 2건 이상 전부). 평가 결과 JSON 의 문자열 "true"·숫자 1·숫자 판정·소수 건수와 JSON null 은 형식 오류(INVALID_OUTPUT_FORMAT) |
 | `ai/infrastructure/AiProviderContractTest` | AI 요청 본문에 추적 ID(아동·학급·세션 등) 없음, HTTP 상태별 실패 유형·재시도 가능 여부가 `ai-provider-contract.md` 의 표와 같음(4xx 는 `PROVIDER_REQUEST_REJECTED`, 해석할 수 없는 응답은 `PROVIDER_RESPONSE_ERROR`), 실패해도 한 번만 호출, 프롬프트·completion·제공자 오류 본문이 로그·실패 결과에 없음 |
 | `ArchitectureTest` | `ai.application` 은 infrastructure·config·Spring AI·OpenAI SDK 에 의존하지 않음<br>controller → service → repository 방향만 허용. Controller 는 Repository 를 직접 쓰지 않음(#17)<br>Controller 는 엔티티를 쓰지 않고 dto 는 record, `@Transactional` 은 service 에만, common 은 도메인을 모름, 도메인 순환 없음, 필드 주입·System.out·java.util.logging 없음 |
 
@@ -184,7 +184,7 @@ Playwright 로 실제 백엔드(local 프로필)·PostgreSQL·프론트 빌드�
 - 지금 있는 흐름
   - `instructor-classroom.spec.ts`: 가입 → 학급 생성 → 상세 → 동명이인 "김하늘" 두 명 등록 → 새로고침 뒤에도 유지 → 목록에 한 번만
     - 버튼은 전부 `dblclick` 으로 누르고, 생성 요청(POST)이 누를 때마다 한 번만 나가는지 센다(중복 제출 방지, #17). 방지 코드를 빼면 같은 학급이 두 개 생겨 실패한다.
-  - `instructor-failures.spec.ts`: 실패 경로 — 너무 긴 이름(실제 422), 서버 500(`page.route` 로 흉내), 연결 끊김 뒤 재시도(한 번만 저장), 없는 학급(문구 한 번, 다시 시도 없이 5초 안에)·다른 강사의 학급(없는 학급과 같게)·UUID 가 아닌 주소
+  - `instructor-failures.spec.ts`: 실패 경로 — 너무 긴 이름(실제 422), 서버 500(`page.route` 로 흉내), 서버 연결 실패(영어 대신 한국어 안내), 연결 끊김 뒤 재시도(한 번만 저장), 없는 학급(문구 한 번, 다시 시도 없이 5초 안에)·다른 강사의 학급(없는 학급과 같게)·UUID 가 아닌 주소
   - `instructor-auth.spec.ts`: 로그인 없이 강사 화면 → 로그인 화면 → 로그인하면 원래 화면, 틀린·폐기된 토큰은 첫 요청에서 로그인 화면(토큰 삭제), 로그아웃 뒤 뒤로 가기, 대소문자만 다른 이메일 중복 가입, 여러 번 틀린 뒤 로그인
   - `child-flow.spec.ts`: 아동 입장 → 내 활동 → 퀴즈 → 사용 종료, 입장 없이 활동 주소 열기·사용 종료 뒤 뒤로 가기는 코드 입력 화면(#22 의 5번), 활동 중 창 닫기 확인창(#18), 버튼 크기(WCAG 2.5.8 24px, 아동 주요 버튼 44px). **PC(chromium)와 태블릿(Galaxy Tab S4 설정) 두 프로젝트**에서 돈다
   - `accessibility.spec.ts`: 모든 화면에 axe-core(WCAG A·AA, 색 대비 포함). 강사 화면은 가입한 뒤, 아동 활동 화면은 입장한 뒤 화면 안의 링크로 옮겨 가서 본다(아동 상태는 새로고침에 남지 않는다)

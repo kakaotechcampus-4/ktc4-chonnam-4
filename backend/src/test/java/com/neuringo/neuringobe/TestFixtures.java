@@ -170,7 +170,12 @@ public class TestFixtures {
 
     /** 로그인 없이 부르는 공개 경로(가입·로그인)에 CSRF 만 실어 POST 한다. */
     public MvcTestResult postPublicJson(String uri, Object body) {
-        return jsonPost(uri, JSON.writeValueAsString(body)).exchange();
+        return postPublicJsonText(uri, JSON.writeValueAsString(body));
+    }
+
+    /** {@link #postPublicJson} 과 같지만 본문 문자열을 그대로 보낸다. */
+    public MvcTestResult postPublicJsonText(String uri, String json) {
+        return jsonPost(uri, json).exchange();
     }
 
     /** 기본 강사의 토큰을 싣는다. 요청을 직접 만들어야 하는 테스트(헤더·쿠키를 바꿔 보는 보안 검사)가 쓴다. */

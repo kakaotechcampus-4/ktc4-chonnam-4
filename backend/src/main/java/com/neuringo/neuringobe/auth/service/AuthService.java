@@ -60,10 +60,11 @@ public class AuthService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        // 제어 문자가 든 이메일은 가입 검증을 통과할 수 없어 계정이 있을 수 없다. DB 로 보내면 U+0000 에서 500 이 나므로 조회하지 않고
-        // 없는 계정으로 처리한다(가짜 해시 비교는 그대로 해서 응답 시간 차이를 만들지 않는다).
+        // 제어 문자·짝 없는 서로게이트가 든 이메일은 가입 검증을 통과할 수 없어 계정이 있을 수 없다. DB 로 보내면 U+0000 에서 500 이 나고
+        // 서로게이트는 "?" 로 바뀐 다른 이메일로 조회되므로, 조회하지 않고 없는 계정으로 처리한다(가짜 해시 비교는 그대로 해서 응답 시간 차이를
+        // 만들지 않는다).
         Optional<UserAccount> found =
-                TextRules.containsControlCharacter(request.email())
+                TextRules.containsUnusableCharacter(request.email())
                         ? Optional.empty()
                         : userAccountRepository.findByEmail(
                                 UserAccount.normalizeEmail(request.email()));

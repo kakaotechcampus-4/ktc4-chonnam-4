@@ -76,6 +76,21 @@ test("서버가 500 을 주면 오류 문구를 보여 주고 학급은 생기�
   await expectNoClassroomNamed(page, name)
 })
 
+test("서버에 연결되지 않으면 브라우저 영어 문구 대신 한국어로 안내하고 학급은 생기지 않는다(#22 의 6번)", async ({ page }) => {
+  const name = `연결 실패 학급 ${marker}`
+  await page.route("**/api/v1/classrooms", (route) =>
+    route.request().method() === "POST" ? route.abort("connectionrefused") : route.fallback(),
+  )
+  await openCreatePage(page)
+
+  await page.getByLabel(/학급명/).fill(name)
+  await page.getByRole("button", { name: "저장" }).click()
+
+  await expect(page.getByRole("alert")).toHaveText("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+  await page.unroute("**/api/v1/classrooms")
+  await expectNoClassroomNamed(page, name)
+})
+
 test("연결이 끊긴 동안 누른 생성은 기다렸다가, 다시 연결되면 한 번만 저장된다", async ({ page, context }) => {
   const name = `오프라인 학급 ${marker}`
   const posts = countClassroomPosts(page)

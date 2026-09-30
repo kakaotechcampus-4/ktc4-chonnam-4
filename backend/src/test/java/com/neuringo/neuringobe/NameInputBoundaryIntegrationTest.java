@@ -16,6 +16,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
+import tools.jackson.core.json.JsonWriteFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 사람이 입력하는 이름의 경계값(VS-002 "학급 생성·아동 실명 등록", VS-001 가입의 강사 이름). 요청 검증은 {@code @NotBlank @Size(max =
@@ -25,12 +27,14 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>공백뿐인 이름(스페이스·탭·줄바꿈·전각 공백)과 빈 문자열·null·키 없음은 422 이고, 오류는 그 필드를 가리키며, 아무것도 저장되지 않는다.
  *   <li>제어 문자(U+0000 NUL·벨·DEL 등)가 든 이름과, 보이지 않는 문자(NBSP·U+2007·폭 없는 공백·BOM)만 있는 이름도 422 이고 저장되지
  *       않는다. NUL 은 PostgreSQL 이 저장하지 못해 500 이 났고, 보이지 않는 문자만 있는 이름은 빈 이름처럼 저장됐다(#22 의 1번).
+ *   <li>짝 없는 서로게이트(U+D800~U+DFFF 가 홀로 있는 것)가 든 이름도 422 다. UTF-8 로 바꿀 수 없어 저장하면 "?" 로 바뀐 다른 이름이 남는다.
  *   <li>길이는 UTF-16 기준 100 까지 받는다. 이모지처럼 두 칸을 쓰는 글자는 50개까지다. 넘으면 422 이고 저장되지 않는다.
  *   <li>마크업·따옴표·SQL 처럼 보이는 문자열도 이름 그대로 저장되고 그대로 돌아온다(변형·실행 없음).
  * </ul>
  *
- * <p>한글 100자·101자는 {@link ClassroomChildIntegrationTest} 에 있다. 짝 없는 서로게이트(예: {@code "ab\uD800"})는
- * 아직 저장되면서 "?" 로 바뀌어 여기서 단정하지 않는다(#22 의 1번에 남은 경우).
+ * <p>요청 본문은 한글·서로게이트까지 JSON 유니코드 이스케이프로 바꿔 보낸다. 브라우저 JSON.stringify 도 짝 없는 서로게이트를 이렇게 보낸다. 날 문자로
+ * 보내면 테스트 쪽 UTF-8 변환에서 먼저 "?" 가 되어 서버 검증을 볼 수 없다. 한글 100자·101자는 {@link
+ * ClassroomChildIntegrationTest} 에 있다.
  */
 @LocalProfileIntegrationTest
 class NameInputBoundaryIntegrationTest {
@@ -52,6 +56,11 @@ class NameInputBoundaryIntegrationTest {
     private static final String FIGURE_SPACE = ch(0x2007);
     private static final String ZERO_WIDTH_SPACE = ch(0x200B);
     private static final String BOM = ch(0xFEFF);
+    private static final String HIGH_SURROGATE = ch(0xD800);
+    private static final String LOW_SURROGATE = ch(0xDC00);
+
+    private static final JsonMapper ASCII_JSON =
+            JsonMapper.builder().enable(JsonWriteFeature.ESCAPE_NON_ASCII).build();
 
     private static final List<Named<String>> NAMES_WITH_CONTROL_CHARACTERS =
             List.of(
@@ -59,6 +68,12 @@ class NameInputBoundaryIntegrationTest {
                     named("NUL 만", NUL),
                     named("끝에 벨 U+0007", "김하늘" + BEL),
                     named("가운데 DEL U+007F", "김" + DEL + "하늘"));
+
+    private static final List<Named<String>> NAMES_WITH_UNPAIRED_SURROGATES =
+            List.of(
+                    named("끝에 짝 없는 앞 서로게이트 U+D800", "ab" + HIGH_SURROGATE),
+                    named("앞에 짝 없는 뒤 서로게이트 U+DC00", LOW_SURROGATE + "ab"),
+                    named("순서가 뒤집힌 서로게이트", "김" + LOW_SURROGATE + HIGH_SURROGATE + "하늘"));
 
     private static final List<Named<String>> INVISIBLE_ONLY_NAMES =
             List.of(
@@ -109,6 +124,10 @@ class NameInputBoundaryIntegrationTest {
         return everyField(NAMES_WITH_CONTROL_CHARACTERS);
     }
 
+    static Stream<Arguments> namesWithUnpairedSurrogates() {
+        return everyField(NAMES_WITH_UNPAIRED_SURROGATES);
+    }
+
     static Stream<Arguments> invisibleOnlyNames() {
         return everyField(INVISIBLE_ONLY_NAMES);
     }
@@ -143,6 +162,12 @@ class NameInputBoundaryIntegrationTest {
     @ParameterizedTest(name = "{0} {1}")
     @MethodSource("namesWithControlCharacters")
     void rejectsNamesWithControlCharactersAndStoresNothing(NameField target, String name) {
+        assertRejectedAndNotStored(target, name);
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("namesWithUnpairedSurrogates")
+    void rejectsNamesWithUnpairedSurrogatesAndStoresNothing(NameField target, String name) {
         assertRejectedAndNotStored(target, name);
     }
 
@@ -224,6 +249,10 @@ class NameInputBoundaryIntegrationTest {
         return Character.toString(codePoint);
     }
 
+    private static String ascii(Map<String, Object> body) {
+        return ASCII_JSON.writeValueAsString(body);
+    }
+
     private static Stream<Arguments> everyField(List<Named<String>> names) {
         return Stream.of(NameField.values())
                 .flatMap(target -> names.stream().map(name -> Arguments.of(target, name)));
@@ -247,7 +276,7 @@ class NameInputBoundaryIntegrationTest {
 
         @Override
         public MvcTestResult post(Map<String, Object> nameFields) {
-            MvcTestResult result = fixtures.postJson("/api/v1/classrooms", nameFields);
+            MvcTestResult result = fixtures.postJsonText("/api/v1/classrooms", ascii(nameFields));
             if (result.getResponse().getStatus() == 200) {
                 created =
                         UUID.fromString(JsonPath.read(TestFixtures.body(result), "$.data.classId"));
@@ -279,7 +308,8 @@ class NameInputBoundaryIntegrationTest {
 
         @Override
         public MvcTestResult post(Map<String, Object> nameFields) {
-            return fixtures.postJson("/api/v1/classrooms/" + classId + "/children", nameFields);
+            return fixtures.postJsonText(
+                    "/api/v1/classrooms/" + classId + "/children", ascii(nameFields));
         }
 
         @Override
@@ -306,7 +336,7 @@ class NameInputBoundaryIntegrationTest {
             Map<String, Object> body = new HashMap<>(nameFields);
             body.put("email", credentials.email());
             body.put("password", credentials.password());
-            return fixtures.postPublicJson("/api/v1/users", body);
+            return fixtures.postPublicJsonText("/api/v1/users", ascii(body));
         }
 
         @Override

@@ -308,10 +308,20 @@ describe("instructor api 명세", () => {
     ])
   })
 
-  it("네트워크가 끊기면 성공한 것처럼 처리하지 않고 실패한다", async () => {
-    server.use(http.post("*/api/v1/classrooms", () => HttpResponse.error()))
+  // fetch 는 서버에 닿지 못하면 브라우저마다 다른 영어 문구("Failed to fetch" 등)의 TypeError 를 던진다. 그 문구가 화면에 그대로 보이지 않고
+  // 한국어 안내가 담긴 공통 오류가 되어야 한다(#22 의 6번). 상태 0 은 서버 응답이 없다는 뜻이다.
+  it.each([
+    ["조회", () => listClassrooms(), http.get("*/api/v1/classrooms", () => HttpResponse.error())],
+    ["변경", () => createClassroom("햇살반"), http.post("*/api/v1/classrooms", () => HttpResponse.error())],
+    ["CSRF 토큰 조회", () => createClassroom("햇살반"), http.get("*/api/v1/csrf", () => HttpResponse.error())],
+  ] as const)("%s 중 네트워크가 끊기면 성공한 것처럼 처리하지 않고 한국어 안내가 담긴 오류를 던진다", async (_label, call, handler) => {
+    server.use(handler)
 
-    await expect(createClassroom("햇살반")).rejects.toThrow()
+    await expect(call()).rejects.toMatchObject({
+      status: 0,
+      code: "NETWORK_ERROR",
+      message: "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    })
   })
 
   it("없는 학급의 아동 목록은 404 공통 오류로 읽는다", async () => {

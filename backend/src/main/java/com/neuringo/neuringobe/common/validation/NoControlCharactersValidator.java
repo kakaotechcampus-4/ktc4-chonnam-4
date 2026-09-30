@@ -10,6 +10,6 @@ public class NoControlCharactersValidator
 
     @Override
     public boolean isValid(String value, ConstraintValidatorContext context) {
-        return value == null || !TextRules.containsControlCharacter(value);
+        return value == null || !TextRules.containsUnusableCharacter(value);
     }
 }

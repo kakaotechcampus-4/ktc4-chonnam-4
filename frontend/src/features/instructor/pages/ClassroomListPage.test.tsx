@@ -77,6 +77,14 @@ describe("학급 목록 화면", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
   })
 
+  it("서버에 연결할 수 없으면 브라우저 영어 문구 대신 한국어로 안내한다(#22 의 6번)", async () => {
+    server.use(http.get("*/api/v1/classrooms", () => HttpResponse.error()))
+    renderListPage()
+
+    expect(await screen.findByText("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.")).toBeInTheDocument()
+    expect(screen.queryByText(/fetch/i)).not.toBeInTheDocument()
+  })
+
   it("학급이 하나도 없으면 안내를 보이고, 학급 생성으로 갈 수 있다", async () => {
     server.use(http.get("*/api/v1/classrooms", () => HttpResponse.json(envelope([]))))
     renderListPage()

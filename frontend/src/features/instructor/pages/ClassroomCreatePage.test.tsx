@@ -154,7 +154,8 @@ describe("학급 생성 화면", () => {
     await user.type(input, "구름반")
 
     await user.click(screen.getByRole("button", { name: "저장" }))
-    expect(await screen.findByRole("alert")).toBeInTheDocument()
+    // 브라우저 영어 문구("Failed to fetch") 대신 한국어로 안내한다(#22 의 6번).
+    expect(await screen.findByRole("alert")).toHaveTextContent("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.")
     expect(input).toHaveValue("구름반")
 
     await user.click(screen.getByRole("button", { name: "저장" }))
