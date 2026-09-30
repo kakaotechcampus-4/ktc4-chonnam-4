@@ -1,0 +1,55 @@
+name: Docker build
+# 백엔드 이미지를 빌드하고 deploy/compose.dev.yml 로 PostgreSQL 과 함께 띄워 요청을 받는지(GET /api/v1/csrf 200) 본다.
+# 이미지를 레지스트리에 올리지는(push) 않는다. 배포는 deploy-dev.yml(수동 실행)이 한다.
+# 로컬에서 같은 검사: bash scripts/verify.sh docker
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/src/main/**'
+      - 'backend/build.gradle'
+      - 'backend/settings.gradle'
+      - 'backend/gradle/**'
+      - 'backend/gradlew'
+      - 'backend/Dockerfile'
+      - 'backend/.dockerignore'
+      - 'deploy/**'
+      - 'scripts/docker-smoke.sh'
+      - '.github/workflows/docker-build.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/src/main/**'
+      - 'backend/build.gradle'
+      - 'backend/settings.gradle'
+      - 'backend/gradle/**'
+      - 'backend/gradlew'
+      - 'backend/Dockerfile'
+      - 'backend/.dockerignore'
+      - 'deploy/**'
+      - 'scripts/docker-smoke.sh'
+      - '.github/workflows/docker-build.yml'
+
+# 같은 PR 에 새로 push 하면 이전 실행을 취소한다. develop·main push 는 취소하지 않는다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image and smoke test
+        run: bash scripts/verify.sh docker

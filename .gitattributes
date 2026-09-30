@@ -21,3 +21,13 @@
 # 셸 스크립트·git hook 은 CRLF 면 실행이 실패하니 LF 로 고정하는 게 좋습니다:
 #   *.sh        text eol=lf
 #   .githooks/* text eol=lf
+
+# Windows(core.autocrlf=true) 에서 받아도 Git Bash·CI 에서 그대로 실행되게 LF 로 고정한다.
+# CRLF 로 체크아웃된 gradlew 는 `$'\r': command not found` 로 실패한다.
+*.sh              text eol=lf
+.githooks/*       text eol=lf
+backend/gradlew   text eol=lf
+*.sql             text eol=lf
+# 컨테이너 빌드 파일도 리눅스에서 읽히므로 LF 로 둔다.
+Dockerfile        text eol=lf
+.dockerignore     text eol=lf

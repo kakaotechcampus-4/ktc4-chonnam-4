@@ -1,0 +1,53 @@
+name: 수직 슬라이스 (대표 Issue)
+description: VS-001 ~ VS-017. 개인 Task Issue 와 PR 을 여기에 체크리스트로 모은다.
+title: "[VS-xxx] "
+labels: ["todo"]
+body:
+  - type: input
+    id: slice_id
+    attributes:
+      label: 슬라이스 ID
+      placeholder: VS-017
+    validations:
+      required: true
+
+  - type: input
+    id: owner
+    attributes:
+      label: Slice Owner
+      placeholder: 정민서
+    validations:
+      required: true
+
+  - type: textarea
+    id: result
+    attributes:
+      label: 사용자에게 생기는 결과
+      description: 02_MVP_수직_슬라이스_백로그 의 한 줄
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 인수 조건
+      description: 03_MVP_기능_명세 의 인수 조건을 체크박스로. 전부 통과해야 이 Issue 를 닫는다.
+      value: |
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: 연결 Task · PR
+      value: |
+        - [ ] #
+        - [ ] #
+
+  - type: textarea
+    id: blocked
+    attributes:
+      label: 선행 결정 (Decision Needed)
+      description: 없으면 비워둠
