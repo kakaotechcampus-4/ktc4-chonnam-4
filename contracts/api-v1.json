@@ -1,0 +1,453 @@
+{
+  "$comment": "FE ↔ BE API 명세. 백엔드 ApiContractTest 와 프론트 apiContract.test.ts 가 같은 시나리오를 돌린다. 규칙은 contracts/README.md.",
+  "placeholders": {
+    "classId": "로그인한 강사의 학급 ID. 백엔드는 시나리오마다 학급과 아동 한 명을 만들고, 프론트 MSW 는 픽스처 A1 을 쓴다",
+    "otherClassId": "다른 강사의 학급 ID. 백엔드는 다른 강사를 가입시켜 만들고, 프론트 MSW 는 픽스처 C1 을 쓴다",
+    "unknownClassId": "어디에도 없는 UUID",
+    "malformedId": "UUID 형식이 아닌 값",
+    "instructorId": "로그인한 강사의 userId",
+    "instructorEmail": "로그인한 강사의 이메일",
+    "instructorPassword": "로그인한 강사의 비밀번호. 실행마다 새로 만든다",
+    "newEmail": "아직 가입하지 않은 이메일. 시나리오마다 새로 만든다",
+    "newPassword": "가입 규칙(8자 이상)을 지키는 새 비밀번호. 시나리오마다 새로 만든다"
+  },
+  "scenarios": [
+    {
+      "name": "CSRF 토큰을 헤더 이름과 함께 준다",
+      "request": { "method": "GET", "path": "/api/v1/csrf", "auth": false },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "headerName": "X-XSRF-TOKEN", "token": "<string>" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "가입",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/users",
+        "auth": false,
+        "body": { "email": "{newEmail}", "password": "{newPassword}", "name": "테스트 강사" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "userId": "<uuid>",
+            "role": "INSTRUCTOR",
+            "email": "{newEmail}",
+            "name": "테스트 강사",
+            "orgName": null,
+            "status": "ACTIVE"
+          },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "이미 가입된 이메일은 409 DUPLICATE_RESOURCE",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/users",
+        "auth": false,
+        "body": { "email": "{instructorEmail}", "password": "{newPassword}", "name": "테스트 강사" }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "status": 409,
+            "code": "DUPLICATE_RESOURCE",
+            "message": "이미 가입된 이메일입니다.",
+            "path": "/api/v1/users",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "7자 비밀번호는 422 VALIDATION_FAILED(password)",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/users",
+        "auth": false,
+        "body": { "email": "{newEmail}", "password": "abcdefg", "name": "테스트 강사" }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/users",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "password", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "로그인",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/sessions",
+        "auth": false,
+        "body": { "email": "{instructorEmail}", "password": "{instructorPassword}" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "accessToken": "<string>",
+            "expiresAt": "<string>",
+            "user": {
+              "userId": "{instructorId}",
+              "role": "INSTRUCTOR",
+              "email": "{instructorEmail}",
+              "name": "테스트 강사",
+              "orgName": null,
+              "status": "ACTIVE"
+            }
+          },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "틀린 비밀번호로 로그인하면 401 INVALID_CREDENTIALS",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/sessions",
+        "auth": false,
+        "body": { "email": "{instructorEmail}", "password": "wrong-password" }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "status": 401,
+            "code": "INVALID_CREDENTIALS",
+            "message": "이메일 또는 비밀번호가 올바르지 않습니다.",
+            "path": "/api/v1/auth/sessions",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "현재 세션의 강사",
+      "request": { "method": "GET", "path": "/api/v1/auth/session" },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": {
+            "user": {
+              "userId": "{instructorId}",
+              "role": "INSTRUCTOR",
+              "email": "{instructorEmail}",
+              "name": "테스트 강사",
+              "orgName": null,
+              "status": "ACTIVE"
+            }
+          },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "토큰 없는 요청은 401 AUTHENTICATION_REQUIRED",
+      "request": { "method": "GET", "path": "/api/v1/classrooms", "auth": false },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "status": 401,
+            "code": "AUTHENTICATION_REQUIRED",
+            "message": "로그인이 필요합니다.",
+            "path": "/api/v1/classrooms",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "틀린 토큰은 401 INVALID_TOKEN",
+      "request": { "method": "GET", "path": "/api/v1/classrooms", "auth": "invalid" },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": {
+            "status": 401,
+            "code": "INVALID_TOKEN",
+            "message": "인증 정보가 만료되었거나 올바르지 않습니다.",
+            "path": "/api/v1/classrooms",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "학급 목록은 로그인한 강사의 학급만",
+      "request": { "method": "GET", "path": "/api/v1/classrooms" },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            { "classId": "<uuid>", "instructorId": "{instructorId}", "name": "<string>", "status": "<string>" }
+          ],
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "학급 생성",
+      "request": { "method": "POST", "path": "/api/v1/classrooms", "body": { "name": "햇살반" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "classId": "<uuid>", "instructorId": "{instructorId}", "name": "햇살반", "status": "ACTIVE" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "학급 조회",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{classId}" },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "classId": "{classId}", "instructorId": "{instructorId}", "name": "<string>", "status": "<string>" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "없는 학급 조회는 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{unknownClassId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {unknownClassId}",
+            "path": "/api/v1/classrooms/{unknownClassId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 학급 조회는 없는 학급과 같은 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{otherClassId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "UUID 가 아닌 학급 ID 는 400 INVALID_REQUEST",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{malformedId}" },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/classrooms/{malformedId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "공백뿐인 학급 이름은 422 VALIDATION_FAILED(name)",
+      "request": { "method": "POST", "path": "/api/v1/classrooms", "body": { "name": "   " } },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/classrooms",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "name", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "101자 학급 이름은 422 VALIDATION_FAILED(name)",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/classrooms",
+        "body": {
+          "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/classrooms",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "name", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "학급의 아동 목록",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{classId}/children" },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [
+            { "childId": "<uuid>", "classId": "{classId}", "displayName": "<string>", "status": "<string>" }
+          ],
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "없는 학급의 아동 목록은 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{unknownClassId}/children" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {unknownClassId}",
+            "path": "/api/v1/classrooms/{unknownClassId}/children",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "아동 등록",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/classrooms/{classId}/children",
+        "body": { "displayName": "김하늘" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "childId": "<uuid>", "classId": "{classId}", "displayName": "김하늘", "status": "ACTIVE" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "빈 아동 이름은 422 VALIDATION_FAILED(displayName)",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/classrooms/{classId}/children",
+        "body": { "displayName": "" }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/classrooms/{classId}/children",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "displayName", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 학급에 아동 등록은 404 CLASSROOM_NOT_FOUND",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/classrooms/{unknownClassId}/children",
+        "body": { "displayName": "김하늘" }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {unknownClassId}",
+            "path": "/api/v1/classrooms/{unknownClassId}/children",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 학급에 아동 등록은 404 CLASSROOM_NOT_FOUND",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/classrooms/{otherClassId}/children",
+        "body": { "displayName": "김하늘" }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}/children",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "깨진 JSON 본문은 400 INVALID_REQUEST",
+      "request": { "method": "POST", "path": "/api/v1/classrooms", "rawBody": "{\"name\":" },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/classrooms",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "CSRF 토큰 없는 변경 요청은 로그인했어도 403",
+      "request": { "method": "POST", "path": "/api/v1/classrooms", "body": { "name": "햇살반" }, "csrf": false },
+      "response": { "status": 403, "body": "<any>" }
+    }
+  ]
+}
