@@ -1,60 +1,144 @@
-# GitHub Actions 도입 정리 (백엔드)
+# GitHub Actions 정리
 
-백엔드 CI/정적분석/로컬 DB 자동화 내용 정리. [PR #8](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/8)로 `develop`에 반영했고, 테스트 DB 구성은 [PR #9](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/9)·[PR #10](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/10)에서 Testcontainers 방식으로 바뀌었다.
+PR 과 `develop`·`main` push 에서 도는 검사를 정리한다. 모든 팀 워크플로는 로컬에서 같은 명령으로 재현할 수 있다.
 
-## 파이프라인 다이어그램
-
-![CI/CD 파이프라인](ci-cd-pipeline.svg)
-
-## 배경
-
-기존 `.github/workflows/`에는 멘토 배정, PR 컨벤션 안내, 디스코드 알림만 있고, **PR마다 실제로 빌드·테스트가 자동으로 도는 워크플로가 없었음.** 개발 커뮤니티 트렌드 조사 후, 비용 대비 효과가 큰 항목부터 추가함.
-
-## 추가한 것
-
-### 1. Backend CI — `.github/workflows/backend-ci.yml`
-
-- **트리거**: `backend/**` 변경이 있는 `push`/`pull_request`. `branches`는 **머지 대상(base) 브랜치** 필터라 base가 `main`이거나 `develop`인 PR 전부에서 돈다 — `feature/*` → `develop` PR 도 포함이며, 이게 의도한 동작이다.
-- **동작**: JDK 21 세팅 → `./gradlew build` (테스트 포함). 테스트 DB는 CI가 준비하지 않고 Testcontainers가 띄운다.
-- **DB 접속 정보**: 워크플로에 넣지 않는다. `@ServiceConnection`이 컨테이너에서 읽어 런타임에 Spring으로 주입하므로 CI가 계정·비밀번호를 알 필요가 없다 — 하드코딩도 secret도 불필요.
-
-### 2. CodeQL — `.github/workflows/codeql.yml`
-
-- **트리거**: `push`/`pull_request` (`main`, `develop`) + 매주 월요일 03:30 UTC 정기 스캔
-- **동작**: `java-kotlin` 언어로 정적분석, GitHub Security 탭에 결과 표시
-- **비용**: public repo라 무료
-- **PR #5 실행**: [Actions 탭](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/actions/runs/35173248143)에서 확인 가능
-
-### 3. 로컬 Postgres 자동 기동 — `spring-boot-docker-compose` + `backend/compose.yml`
-
-- `backend/build.gradle`에 `developmentOnly 'org.springframework.boot:spring-boot-docker-compose'` 추가
-- `backend/compose.yml`에 Postgres 18 서비스 정의 (포트 5432). DB 이름·계정·비밀번호는 파일에 적지 않고 `backend/.env`에서 읽는다 — `.env`는 `.gitignore` 대상이라 레포에 올라가지 않는다. 처음 받았다면 `cp backend/.env.example backend/.env` 후 값을 채운다 (값이 비면 컨테이너가 즉시 실패한다).
-- 프로필 지정 없이 `./gradlew bootRun`(또는 IDE 실행)하면 Spring Boot가 `compose.yml`을 읽어 컨테이너를 자동으로 띄우고 연결까지 자동 설정
-- 로컬 검증 로그: 컨테이너 생성 → `Healthy` → 앱 기동 → `/actuator/health` → `{"status":"UP"}` 확인
-- 기존처럼 로컬에 Postgres를 직접 설치해서 쓰고 싶다면, `SPRING_PROFILES_ACTIVE=local` + `.env.example` 참고해서 `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`를 지정하는 기존 방식도 그대로 유지됨 (두 방식 공존).
-
-## 설계 메모 — 테스트 DB는 누가 띄우는가
-
-`spring-boot-docker-compose`는 **developmentOnly** 스코프라 `test` 태스크의 클래스패스에는 포함되지 않는다. 그래서 처음엔 CI도 `compose.yml` 자동 기동에 맡기려 했지만 `DataSource` 빈 생성부터 실패했다 (`Failed to determine a suitable driver class`). 그다음 단계로 GitHub Actions의 `services` 블록에 Postgres를 띄우고 `local` 프로필로 테스트를 돌렸는데, 이 방식은 **워크플로 파일에 DB 접속 정보를 적어야 한다**는 문제가 남았다. public repo 라 더 그렇다.
-
-지금은 테스트 코드가 직접 컨테이너를 띄운다 (Testcontainers).
-
-```text
-변경 전
-CI 스크립트 → PostgreSQL 실행
-CI 스크립트 → Gradle 실행
-
-변경 후
-CI 스크립트 → Gradle 실행
-Gradle 테스트 → PostgreSQL 실행
+```bash
+bash scripts/verify.sh            # frontend + backend + workflows + security
+bash scripts/verify.sh frontend   # 하나만
+bash scripts/verify.sh e2e        # 종단 테스트 (무거워서 전체에 넣지 않았다)
+bash scripts/verify.sh docker     # 백엔드 이미지 빌드·기동 (마찬가지로 따로 돌린다)
 ```
 
-- **로컬 개발(bootRun/IDE, 무프로필)** → `spring-boot-docker-compose`가 `compose.yml` 자동 기동
-- **테스트(`./gradlew test`, 로컬·CI 동일)** → Testcontainers 가 `postgres:18-alpine` 기동, `@ServiceConnection` 이 접속 정보 주입
-- CI 는 `SPRING_PROFILES_ACTIVE` 를 설정하지 않는다. `local` 프로필이 켜지면 `application-local.yml` 의 `${DB_USERNAME}`(기본값 없음)을 찾다가 컨텍스트 로딩이 깨진다.
+테스트를 쓰는 법과 **CI 가 빨간색일 때 보는 표**는 [testing.md](testing.md) 에 있다.
+
+## 워크플로 한눈에
+
+| 파일 | 언제 | 무엇 | 실패하면 | 로컬 재현 |
+|---|---|---|---|---|
+| `frontend-ci.yml` | `frontend/**` 변경 PR·push | `npm ci` → lint → build(tsc 타입검사) → 테스트+커버리지 | 막음 | `verify.sh frontend` |
+| `backend-ci.yml` | `backend/**` 변경 PR·push | 마이그레이션 가드(PR) → `./gradlew build`(Spotless·테스트) → JaCoCo 리포트 | 막음 | `verify.sh backend` |
+| `compose-check.yml` | `backend/compose.yml` 변경 | 로컬 DB 컨테이너가 실제로 뜨는지 | 막음 | `docker compose up --wait` |
+| `e2e.yml` | FE `src`·`e2e`·설정, BE `main`·`build.gradle`, `scripts/e2e.sh` 변경 PR · develop push | 실제 백엔드(local)·DB·프론트 빌드로 강사 흐름 브라우저 테스트 → 경고 기록 → 개인정보 마커 스캔 | E2E: PR 경고·develop 막음<br>마커 스캔: 항상 막음 | `verify.sh e2e` |
+| `security.yml` | 모든 PR · develop push · 매주 월 03:00 KST | gitleaks(PR 은 그 PR 커밋, 그 밖에는 전체 이력) · dependency-review(develop 로 가는 PR 의 npm) | gitleaks 막음 · dependency-review 경고 | `verify.sh security` |
+| `docker-build.yml` | BE `main`·Gradle 설정·`Dockerfile`·`deploy/**` 변경 PR·push | 백엔드 이미지 빌드 → root 아님 확인 → `deploy/compose.dev.yml` 로 기동해 local 프로필이 요청을 받는지(`GET /api/v1/csrf` 200). push 없음 | 막음 | `verify.sh docker` |
+| `deploy-dev.yml` | 수동 실행만 | GHCR 에 이미지 push → SSH 로 개발 서버 배포. secret 이 없으면 건너뛰고 Summary 에 이유 | — (G0 이후 사용) | — ([deploy/README.md](../deploy/README.md)) |
+| `codeql.yml` | 모든 PR·push + 매주 월 03:30 UTC | 백엔드(Java)·프론트(JS/TS) 정적 보안 분석 → Security 탭. 두 언어 결과를 표로 모아 PR 코멘트·실행 요약에 남긴다(Report job) | GitHub 기본(새 고위험 경고) | — |
+| `workflow-lint.yml` | 워크플로·`scripts/` 변경 | actionlint·shellcheck·스크립트 자체 검사(막음), zizmor(경고만) | 일부 막음 | `verify.sh workflows` |
+| `assign-mentor.yml` · `convention-check.yml` · `notify-discord.yml` | `develop → main` PR | 멘토 배정·컨벤션 안내·Discord 알림 | — | **운영진 소유 — 수정 금지(CODEOWNERS)** |
+
+- 팀 워크플로의 `pull_request` 는 base 를 좁히지 않는다. `feature/* → develop` PR 에서도 돈다.
+- 같은 PR 에 다시 push 하면 이전 실행을 취소한다. `develop`·`main` push 는 취소하지 않는다.
+
+```mermaid
+flowchart LR
+  PR["PR · push"] --> FE["Frontend CI<br/>lint · build · test"]
+  PR --> BE["Backend CI<br/>마이그레이션 가드 · build · test"]
+  PR --> CC["Compose check"]
+  PR --> CQ["CodeQL<br/>Java · JS/TS"]
+  PR --> WL["Workflow lint<br/>actionlint · zizmor · shellcheck"]
+  PR --> E2E["E2E<br/>Playwright → 마커 스캔"]
+  PR --> SEC["Security<br/>gitleaks · dependency-review"]
+  PR --> DK["Docker build<br/>이미지 → compose 기동"]
+  BE --> TC[("Testcontainers<br/>postgres:18.6-alpine")]
+  E2E --> DB[("postgres:18.6<br/>+ bootJar(local)")]
+  FE --> OUT["실행 요약 표 · 아티팩트"]
+  BE --> OUT
+  E2E --> OUT
+  CQ --> CMT["PR 코멘트 1개<br/>(push 마다 고쳐 씀)"]
+  MAN["수동 실행"] -.-> DEP["Deploy (dev)<br/>GHCR → SSH<br/>(G0 이후)"]
+```
+
+## 결과 보는 곳
+
+| 볼 것 | 어디 |
+|---|---|
+| 테스트 통과·실패 표 | 해당 실행의 **Summary**. JUnit XML 을 test-summary 가 표로 만든다. 포크 PR 에서도 보인다 |
+| 커버리지 | Artifacts 의 `frontend-coverage`·`backend-coverage`(7일). 참고용이고 통과 기준이 아니다 |
+| 백엔드 테스트 리포트 | 실패했을 때만 Artifacts 의 `backend-test-report` |
+| E2E 리포트 | 실패했거나 재시도 끝에 통과했을 때 Artifacts 의 `e2e-report`(7일): Playwright HTML 리포트·trace, 백엔드·DB 로그 |
+| E2E 경고 기록 | Issue "E2E 경고 기록". 실패·재시도 끝에 통과한 테스트가 댓글로 계속 쌓이고, 원인은 확인한 사람이 인용 댓글로 적는다 |
+| lint·zizmor 지적 | PR 의 Files changed 에 줄 단위 주석 |
+| gitleaks | Security 실행 로그. 비밀 값은 가려서(`--redact`) 파일·줄·규칙만 나온다 |
+| dependency-review | Security 실행의 **Summary** |
+| 배포를 건너뛴 이유 | Deploy (dev) 실행의 **Summary**(등록되지 않은 secret 이름) |
+| CodeQL | PR: **CodeQL 코멘트** 하나. 언어별 검사 규칙 수·발견 건수, 발견하면 심각도·규칙·파일:줄 표. 0건이어도 적히고, push 할 때마다 같은 코멘트를 고쳐 쓴다(포크 PR 은 쓰기 권한이 없어 Summary 에만)<br>develop push·매주 실행: CodeQL 실행의 **Summary** 에 같은 표<br>고침·무시 이력과 규칙 설명: 레포 **Security → Code scanning**(로그인한 레포 멤버만). 오탐이면 여기서 이유를 적고 Dismiss 한다<br>표는 `scripts/codeql-summary.sh` 가 SARIF 에서 만든다 |
+
+## 버전 고정 — LTS 기준
+
+| 대상 | 값 | 이유 |
+|---|---|---|
+| 러너 | `ubuntu-24.04` | `ubuntu-latest` 는 2026-10-19 ~ 11-19 에 26.04 로 바뀐다. 스프린트 5~8·코드 동결과 겹쳐서 LTS 로 고정했다 |
+| Java | Temurin 21 (LTS) | `backend/build.gradle` toolchain 과 같다 |
+| 백엔드 이미지 | `eclipse-temurin:21.0.12_8-jdk-noble` → `-jre-noble` | 패치 버전까지 고정한다. 올릴 때는 `backend/Dockerfile` 의 두 `FROM` 을 같이 바꾼다 |
+| Node | `frontend/.nvmrc` = 24 (LTS) | vitest 5·jsdom 30 이 지원하는 LTS |
+| PostgreSQL | `postgres:18.6` / `18.6-alpine` | `18` 은 받는 시점마다 18.x 가 바뀌는 태그다. compose 와 Testcontainers 를 같이 올린다 |
+| 액션 | 커밋 SHA + 버전 주석 | 태그는 움직일 수 있다. 올릴 때는 SHA 와 주석을 같이 바꾼다 |
+| 검사 도구 이미지 | actionlint 1.7.12 · zizmor 1.30.1 · shellcheck 0.11.0 · gitleaks 8.30.1 | `scripts/verify.sh` 맨 위에 모아 두었다. 로컬과 CI 가 같은 이미지를 쓴다 |
+| Playwright | `@playwright/test` 1.63(`package-lock.json`) · Chromium headless 셸 | 브라우저는 CI 에서 캐시하지 않고 매번 설치한다(Playwright 권장) |
+| 테스트 도구(npm) | `axe-core` 4.13.0 · `@axe-core/playwright` 4.13.0 · `fast-check` 4.10.2 | `package.json` 에 `^` 없이 정확한 버전으로 적었다(`--save-exact`). 올릴 때는 `package.json` 과 `package-lock.json` 을 같은 PR 에서 바꾼다. 쓰는 곳은 [testing.md](testing.md#테스트-유형) |
+| Gradle 캐시 | `setup-gradle` v6 `cache-provider: basic` | v6 기본값은 독점 캐시다. MIT 인 기본 캐시를 쓴다 |
+
+## secret
+
+**머지 전에 새로 등록할 secret 은 없다.** 개발 서버 배포용 secret(`DEV_*`)은 G0 이후 배포할 때 `dev` Environment 에 등록한다([deploy/README.md](../deploy/README.md)).
+- 테스트 DB 계정은 Testcontainers 가 컨테이너마다 만들어 주입한다.
+- compose 검사는 매 실행 `openssl` 로 일회용 값을 만든다.
+- E2E 의 DB 계정도 `scripts/e2e.sh` 가 실행마다 무작위로 만든다.
+- 워크플로에는 어떤 자격증명도 적지 않는다.
+- `GITHUB_TOKEN` 은 GitHub 이 자동으로 넣는다.
+- 포크에서 온 PR 은 secret 을 받지 못하고 토큰이 읽기 전용이다. 그래서 결과는 실행 요약·아티팩트로 남긴다. CodeQL 코멘트만 같은 레포 브랜치에서 온 PR 에 단다.
+
+## 1차 도입 — 막는 검사와 경고
+
+결과가 매번 같은 검사만 막는다. 새로 들어왔거나 판단이 들어가는 검사는 경고로 시작한다. 전환 조건은 [testing.md](testing.md#경고--차단-전환-조건)에 있다.
+
+- **막음**: lint·build·테스트, 마이그레이션 가드, compose 기동, actionlint, shellcheck, 개인정보 마커 스캔, gitleaks(PR 범위), E2E(develop push), 이미지 빌드·기동
+- **경고**: zizmor(워크플로 보안), E2E(PR — 브라우저 테스트는 환경 탓으로 흔들릴 수 있다), dependency-review
+- 머지를 실제로 막는 "필수 체크" 지정은 브랜치 보호 설정이라 운영진·멘토와 DEC-021 로 정한다.
+
+## 설계 메모 — 테스트 DB 는 누가 띄우는가
+
+`spring-boot-docker-compose` 는 **developmentOnly** 스코프라 `test` 태스크의 클래스패스에는 없다. 처음에는 CI 도 `compose.yml` 자동 기동에 맡기려 했지만 `DataSource` 빈 생성부터 실패했다(`Failed to determine a suitable driver class`). 다음으로 GitHub Actions 의 `services` 블록에 Postgres 를 띄웠더니 워크플로에 DB 접속 정보를 적어야 했다. public repo 라 더 곤란했다.
+
+지금은 테스트 코드가 직접 컨테이너를 띄운다(Testcontainers).
+
+```text
+변경 전: CI 스크립트 → PostgreSQL 실행, CI 스크립트 → Gradle 실행
+변경 후: CI 스크립트 → Gradle 실행 → Gradle 테스트가 PostgreSQL 실행
+```
+
+- **테스트**(`./gradlew test`, 로컬·CI 동일): Testcontainers 가 `postgres:18.6-alpine` 을 띄우고 `@ServiceConnection` 이 접속 정보를 주입한다.
+- **CI 는 `SPRING_PROFILES_ACTIVE` 를 설정하지 않는다.** `local` 프로필이 켜지면 `application-local.yml` 의 `${DB_USERNAME}`(기본값 없음)을 찾다가 컨텍스트 로딩이 깨진다.
+- **로컬 개발**
+  - 무프로필 `bootRun` 이면 `spring-boot-docker-compose` 가 `compose.yml` 을 자동으로 띄운다.
+  - PR #28 이후 모든 프로필이 같은 토큰 인증을 쓴다. 가입·로그인·CSRF 토큰(`GET /api/v1/csrf`) 말고는 로그인해야 하고(없으면 401), `/actuator/health` 도 지금은 로그인해야 본다(공개 여부는 팀 결정 전). 그래서 E2E·Docker 검사는 `GET /api/v1/csrf` 200 으로 앱이 떴는지 본다.
+  - 프론트에서 API 를 부르려면 `local` 프로필로 실행하고 `DB_USERNAME`·`DB_PASSWORD` 를 **환경변수**로 넘겨야 한다. Spring 은 `backend/.env` 파일을 읽지 않는다. 그 파일은 docker compose 만 읽는다.
+
+## 마이그레이션 가드
+
+`scripts/check-migrations.sh` 는 PR 에서 base 브랜치와 비교해 아래를 막는다.
+- 이미 있던 `V*.sql` 을 고치거나 지운 경우
+- 새 버전 번호가 기존 최대값 이하이거나 겹치는 경우
+- 파일 이름이 규칙과 다른 경우
+
+적용된 DB 는 체크섬이 달라지면 기동하지 못한다. 그런데 CI 는 매번 빈 DB 에 처음부터 적용하므로 테스트로는 잡을 수 없다. 스크립트 자체의 동작은 `scripts/test-check-migrations.sh` 가 검사한다.
+
+## 이력
+
+- [PR #8](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/8): 백엔드 CI·CodeQL·Spotless·로컬 Docker Compose
+- [PR #9](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/9)·[PR #10](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/10): Testcontainers 기반 테스트 DB, CI 의 DB 자격증명 제거
+- [PR #13](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/13): postgres 18 볼륨 경로 수정, compose 기동 검사
+- `ci/cd_minseo-7`: 스프린트 1 CI/CD·테스트 (커밋 3개 — 테스트·설정·문서)
+  - 프론트 CI·테스트 기반(Vitest·MSW), 마이그레이션 가드, workflow lint, 실행 요약·커버리지 리포트
+  - CodeQL 에 프론트(JS/TS) 분석을 더하고 결과를 PR 코멘트·실행 요약 표로(PR #19 를 이 브랜치로 합침)
+  - 테스트 유형 확대: FE ↔ BE API 명세 일치(`contracts/`), 경계값, 보안 행렬, 로그 개인정보, 스키마 무결성, 동시 등록, AI 제공자 연동 규칙, 속성 기반(fast-check), 접근성(axe), 실패 경로·태블릿 E2E
+  - 러너·버전 LTS 고정, 액션 SHA 고정, postgres 18.6 고정(PR #16 멘토 리뷰 반영)
+  - 백엔드 공통 검사(보안 정책·스키마 제약·학급 격리·AI 전달 게이트·ArchUnit), `@IntegrationTest`·`TestFixtures`
+  - E2E(Playwright) + 개인정보 마커 스캔, Security(gitleaks·dependency-review)
+  - 백엔드 이미지(Temurin 21 멀티스테이지·비루트), Docker build 검사, 개발 서버 배포 골격(`deploy/`, `deploy-dev.yml`)
+  - #17·#18 후속: MSW 422 `fieldErrors: [{ field, message }]`, E2E 중복 제출 확인·`getByLabel`, ArchUnit 계층 방향
 
 ## 참고
 
-- PR: [#8 백엔드 CI/CodeQL/Spotless/로컬 Docker Compose 환경 추가](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/8) · [#9 Testcontainers 기반 테스트 DB](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/9) · [#10 CI 정리 및 DB 자격증명 하드코딩 제거](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/10)
 - 옵션 검토 전체 목록(제외한 항목 포함): [Notion — 백엔드 개발환경 셋업 옵션 정리](https://app.notion.com/p/3de4706aa16381bdba3acc722a19d9a7)
-- [backend/README.md](../backend/README.md) — 아키텍처 다이어그램, 스택별 공식 문서 링크, 로컬 환경설정 절차
+- [backend/README.md](../backend/README.md): 아키텍처, 스택별 공식 문서, 로컬 환경설정 절차
