@@ -31,6 +31,8 @@ class NameTextValidationTest {
     private static final String ZERO_WIDTH_SPACE = ch(0x200B);
     private static final String ZERO_WIDTH_JOINER = ch(0x200D);
     private static final String IDEOGRAPHIC_SPACE = ch(0x3000);
+    private static final String HIGH_SURROGATE = ch(0xD800);
+    private static final String LOW_SURROGATE = ch(0xDC00);
 
     private static ValidatorFactory factory;
     private static Validator validator;
@@ -46,8 +48,14 @@ class NameTextValidationTest {
         factory.close();
     }
 
+    // 짝 없는 서로게이트는 UTF-8 로 바꿀 수 없어 DB 에 "?" 로 저장되던 값이다(#22 의 1번).
     static Stream<String> namesWithControlCharacters() {
-        return Stream.of("햇살" + NUL + "반", "햇살" + BEL + "반", "줄" + LINE_FEED + "바꿈");
+        return Stream.of(
+                "햇살" + NUL + "반",
+                "햇살" + BEL + "반",
+                "줄" + LINE_FEED + "바꿈",
+                "햇살반" + HIGH_SURROGATE,
+                LOW_SURROGATE + "햇살반");
     }
 
     @ParameterizedTest
@@ -75,9 +83,9 @@ class NameTextValidationTest {
                 .contains("보이는 글자를 1자 이상 입력해 주세요.");
     }
 
-    // 내부 공백, 숫자·영문, 보이는 글자 앞에 BOM 이 붙은 이름도 통과한다(값을 고쳐 저장하지는 않는다).
+    // 내부 공백, 숫자·영문, 보이는 글자 앞에 BOM 이 붙은 이름, 짝이 맞는 서로게이트(이모지)도 통과한다(값을 고쳐 저장하지는 않는다).
     static Stream<String> acceptedNames() {
-        return Stream.of("햇살반", "2025 겨울반", "Class A", BOM + "민준");
+        return Stream.of("햇살반", "2025 겨울반", "Class A", BOM + "민준", "햇살반 " + ch(0x1F600));
     }
 
     @ParameterizedTest
@@ -104,6 +112,23 @@ class NameTextValidationTest {
                         .collect(Collectors.toSet());
 
         assertThat(fields).contains("email", "name", "orgName");
+    }
+
+    @Test
+    void rejectsUnpairedSurrogatesInSignupEmailAndOrgName() {
+        SignupRequest request =
+                new SignupRequest(
+                        "a" + HIGH_SURROGATE + "@example.com",
+                        "password1",
+                        "홍길동",
+                        "센터" + LOW_SURROGATE);
+
+        Set<String> fields =
+                validator.validate(request).stream()
+                        .map(violation -> violation.getPropertyPath().toString())
+                        .collect(Collectors.toSet());
+
+        assertThat(fields).contains("email", "orgName");
     }
 
     @Test

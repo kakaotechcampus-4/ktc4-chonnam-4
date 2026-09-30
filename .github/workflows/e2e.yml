@@ -1,0 +1,137 @@
+name: E2E
+# 실제 백엔드(local 프로필)·PostgreSQL·프론트 빌드로 강사 흐름을 브라우저에서 확인한다.
+# 로컬에서 같은 검사: bash scripts/verify.sh e2e (Docker·JDK 21·Node 24 필요)
+#
+#   E2E        PR 에서는 경고, develop push 에서는 차단(브라우저 테스트는 환경 탓으로 흔들릴 수 있다)
+#   경고 기록   실패했거나 재시도 끝에 통과한 테스트를 Issue "E2E 경고 기록" 에 댓글로 쌓는다(scripts/e2e-record.sh)
+#   마커 스캔   항상 차단. E2E 가 만든 아동 이름이 백엔드·DB 로그에 한 줄이라도 있으면 실패한다
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/e2e/**'
+      - 'frontend/index.html'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'frontend/playwright.config.ts'
+      - 'frontend/vite.config.ts'
+      - 'frontend/tsconfig*.json'
+      - 'backend/src/main/**'
+      - 'backend/build.gradle'
+      - 'scripts/e2e.sh'
+      - 'scripts/e2e-record*'
+      - '.github/workflows/e2e.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/e2e/**'
+      - 'frontend/index.html'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'frontend/playwright.config.ts'
+      - 'frontend/vite.config.ts'
+      - 'frontend/tsconfig*.json'
+      - 'backend/src/main/**'
+      - 'backend/build.gradle'
+      - 'scripts/e2e.sh'
+      - 'scripts/e2e-record*'
+      - '.github/workflows/e2e.yml'
+
+# 같은 PR 에 새로 push 하면 이전 실행을 취소한다. develop push 는 취소하지 않는다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write # E2E 경고 기록 Issue 에 댓글을 단다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          # v6 기본값은 독점(proprietary) 캐시다. MIT 인 기본 캐시를 쓴다.
+          cache-provider: basic
+
+      - name: Set up Node (frontend/.nvmrc)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      # 브라우저는 캐시하지 않는다(Playwright 권장. 캐시를 받는 시간이 설치 시간과 비슷하다).
+      # 테스트는 headless 로만 돌므로 headless 셸만 받는다.
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: E2E
+        id: e2e
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: bash scripts/e2e.sh run
+
+      # 기록이 실패해도(예: fork PR 은 토큰이 읽기 전용) E2E 결과는 바꾸지 않는다.
+      - name: Record E2E warnings
+        id: record
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          # 따옴표가 없으면 YAML 이 ' #' 뒤를 주석으로 읽는다.
+          E2E_WHERE: "${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || 'develop push' }}"
+          E2E_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/e2e-record.sh
+
+      - name: Warn on E2E failure (PR)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.e2e.outcome == 'failure' }}
+        run: echo "::warning title=E2E 실패::PR 에서는 막지 않는다. Issue 'E2E 경고 기록' 에 남겼으니 원인을 확인하면 그 댓글에 적어 주세요."
+
+      - name: PII marker scan
+        if: ${{ !cancelled() }}
+        run: bash scripts/e2e.sh scan
+
+      - name: Test summary
+        if: ${{ !cancelled() && hashFiles('frontend/test-results/playwright-junit.xml') != '' }}
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2.6
+        with:
+          paths: frontend/test-results/playwright-junit.xml
+
+      # Playwright HTML 리포트·trace 와 백엔드·DB 로그. 실패했거나 경고를 기록했을 때만 올린다.
+      - name: Upload report
+        if: ${{ !cancelled() && (failure() || steps.e2e.outcome == 'failure' || steps.record.outputs.recorded == 'true') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7

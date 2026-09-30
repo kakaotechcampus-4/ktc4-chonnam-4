@@ -1,0 +1,8 @@
+# 빌드에 필요한 것만 컨텍스트에 넣고 나머지는 전부 뺀다.
+# 로컬 build/·.gradle/ 산출물, IDE 설정, .env 같은 비밀이 이미지·빌드 캐시에 섞이지 않는다.
+*
+!gradlew
+!gradle/
+!settings.gradle
+!build.gradle
+!src/main/

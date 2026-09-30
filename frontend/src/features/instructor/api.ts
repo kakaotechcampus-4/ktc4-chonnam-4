@@ -159,6 +159,26 @@ function cancelledError(): ApiError {
   return new ApiError(0, REQUEST_CANCELLED, '로그인 상태가 바뀌어 요청을 취소했습니다.')
 }
 
+export const NETWORK_ERROR = 'NETWORK_ERROR'
+
+// 서버에 닿지 못한 요청(네트워크 끊김·서버 꺼짐). 일시적일 수 있어 main.tsx 는 조회를 다시 시도한다.
+function networkError(): ApiError {
+  return new ApiError(0, NETWORK_ERROR, '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+}
+
+// fetch 는 서버에 닿지 못하면 브라우저마다 다른 영어 문구("Failed to fetch" 등)의 TypeError 를 던진다. 화면에 그 문구가 그대로
+// 보이지 않게 공통 오류로 바꾼다(#22 의 6번). 로그아웃으로 취소한 요청(AbortError)은 withCancellation 이 따로 처리한다.
+async function send(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw networkError()
+    }
+    throw error
+  }
+}
+
 // 진행 중인 요청. 로그아웃할 때 모두 취소해, 이전 강사의 대기 중인 요청이 끝까지 가지 않게 한다.
 const pendingRequests = new Set<AbortController>()
 
@@ -197,7 +217,7 @@ type CsrfToken = {
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 재사용하지 않고 변경 요청 직전에 받아온다.
 // 서버가 헤더 이름도 함께 내려주므로 프론트에 하드코딩하지 않는다.
 async function fetchCsrfToken(signal: AbortSignal): Promise<CsrfToken> {
-  const res = await fetch(`${API_BASE_URL}/csrf`, { credentials: 'include', signal })
+  const res = await send(`${API_BASE_URL}/csrf`, { credentials: 'include', signal })
   return parseApiResponse<CsrfToken>(res)
 }
 
@@ -205,7 +225,7 @@ function readRequest<T>(path: string): Promise<T> {
   const session = startSession(true)
   return withCancellation(async (signal) => {
     // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const res = await send(`${API_BASE_URL}${path}`, {
       credentials: 'include',
       headers: authHeaders(session),
       signal,
@@ -231,7 +251,7 @@ function writeRequest<T>(
       throw cancelledError()
     }
 
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const res = await send(`${API_BASE_URL}${path}`, {
       method,
       credentials: 'include',
       headers: {
