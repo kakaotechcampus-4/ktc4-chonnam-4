@@ -22,7 +22,7 @@ public class ClassroomService {
     }
 
     @Transactional
-    public ClassroomResponse create(String instructorId, CreateClassroomRequest request) {
+    public ClassroomResponse create(UUID instructorId, CreateClassroomRequest request) {
         Classroom classroom =
                 new Classroom(
                         UUID.randomUUID(), instructorId, request.name(), ClassroomStatus.ACTIVE);
@@ -30,31 +30,30 @@ public class ClassroomService {
         return ClassroomResponse.from(classroomRepository.save(classroom));
     }
 
-    /**
-     * 모든 학급을 반환한다. 담당 강사로 거르지 않는다.
-     *
-     * <p>TODO: 강사 인증·세션 방식이 정해지면 담당 강사의 학급만 반환하도록 바꾼다(정본: 목록 권한 필터는 DB 조회 조건에 포함).
-     */
-    public List<ClassroomResponse> list() {
-        return classroomRepository.findAll().stream().map(ClassroomResponse::from).toList();
+    /** 담당 강사의 학급만 반환한다. 권한 필터는 DB 조회 조건에 둔다(정본: 목록을 가져온 뒤 거르지 않는다). */
+    public List<ClassroomResponse> list(UUID instructorId) {
+        return classroomRepository.findByInstructorId(instructorId).stream()
+                .map(ClassroomResponse::from)
+                .toList();
     }
 
-    public ClassroomResponse get(UUID classId) {
+    public ClassroomResponse get(UUID instructorId, UUID classId) {
         Classroom classroom =
-                classroomRepository.findById(classId).orElseThrow(() -> notFound(classId));
+                classroomRepository
+                        .findByClassIdAndInstructorId(classId, instructorId)
+                        .orElseThrow(() -> notFound(classId));
 
         return ClassroomResponse.from(classroom);
     }
 
     /**
-     * 학급이 없으면 {@link ResourceNotFoundException}(CLASSROOM_NOT_FOUND)을 던진다. 존재 여부만 확인하며 학급
-     * 상태(ACTIVE·ARCHIVED)는 검사하지 않는다.
+     * 요청한 강사가 담당하는 학급이 아니면 {@link ResourceNotFoundException}(CLASSROOM_NOT_FOUND)을 던진다. 다른 강사의 학급도
+     * 없는 학급과 똑같이 404 로 응답해 존재 여부를 드러내지 않는다(정본: 권한 밖 리소스도 404). 학급 상태(ACTIVE·ARCHIVED)는 검사하지 않는다.
      *
-     * <p>TODO: 강사 인증·세션 방식이 정해지면 요청한 강사가 담당하는 학급인지도 확인한다(정본: 권한 밖 리소스도 404). ARCHIVED 학급에 대한 등록·조회
-     * 규칙이 정해지면 상태 검사는 별도 메서드로 둔다.
+     * <p>TODO: ARCHIVED 학급에 대한 등록·조회 규칙이 정해지면 상태 검사는 별도 메서드로 둔다.
      */
-    public void validateClassroomExists(UUID classId) {
-        if (!classroomRepository.existsById(classId)) {
+    public void validateClassroomExists(UUID instructorId, UUID classId) {
+        if (!classroomRepository.existsByClassIdAndInstructorId(classId, instructorId)) {
             throw notFound(classId);
         }
     }

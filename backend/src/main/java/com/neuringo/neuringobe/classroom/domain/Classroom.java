@@ -17,7 +17,7 @@ public class Classroom {
     private UUID classId;
 
     @Column(name = "instructor_id", nullable = false)
-    private String instructorId;
+    private UUID instructorId;
 
     @Column(name = "name", nullable = false)
     private String name;
@@ -28,7 +28,7 @@ public class Classroom {
 
     protected Classroom() {}
 
-    public Classroom(UUID classId, String instructorId, String name, ClassroomStatus status) {
+    public Classroom(UUID classId, UUID instructorId, String name, ClassroomStatus status) {
         this.classId = classId;
         this.instructorId = instructorId;
         this.name = name;
@@ -39,7 +39,7 @@ public class Classroom {
         return classId;
     }
 
-    public String getInstructorId() {
+    public UUID getInstructorId() {
         return instructorId;
     }
 

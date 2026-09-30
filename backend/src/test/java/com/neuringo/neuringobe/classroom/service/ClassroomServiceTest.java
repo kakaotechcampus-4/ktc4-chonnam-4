@@ -27,12 +27,15 @@ class ClassroomServiceTest {
 
     @InjectMocks private ClassroomService classroomService;
 
+    private static final UUID INSTRUCTOR_ID = UUID.randomUUID();
+
     @Test
     void rejectsMissingClassroomWithNotFound() {
         UUID classId = UUID.randomUUID();
-        given(classroomRepository.existsById(classId)).willReturn(false);
+        given(classroomRepository.existsByClassIdAndInstructorId(classId, INSTRUCTOR_ID))
+                .willReturn(false);
 
-        assertThatThrownBy(() -> classroomService.validateClassroomExists(classId))
+        assertThatThrownBy(() -> classroomService.validateClassroomExists(INSTRUCTOR_ID, classId))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .extracting("code")
                 .isEqualTo("CLASSROOM_NOT_FOUND");
@@ -44,18 +47,18 @@ class ClassroomServiceTest {
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         ClassroomResponse response =
-                classroomService.create("test-instructor", new CreateClassroomRequest("테스트반"));
+                classroomService.create(INSTRUCTOR_ID, new CreateClassroomRequest("테스트반"));
 
         ArgumentCaptor<Classroom> saved = ArgumentCaptor.forClass(Classroom.class);
         verify(classroomRepository).save(saved.capture());
         Classroom classroom = saved.getValue();
         assertThat(classroom.getClassId()).isNotNull();
-        assertThat(classroom.getInstructorId()).isEqualTo("test-instructor");
+        assertThat(classroom.getInstructorId()).isEqualTo(INSTRUCTOR_ID);
         assertThat(classroom.getName()).isEqualTo("테스트반");
         assertThat(classroom.getStatus()).isEqualTo(ClassroomStatus.ACTIVE);
 
         assertThat(response.classId()).isEqualTo(classroom.getClassId());
-        assertThat(response.instructorId()).isEqualTo("test-instructor");
+        assertThat(response.instructorId()).isEqualTo(INSTRUCTOR_ID);
         assertThat(response.name()).isEqualTo("테스트반");
         assertThat(response.status()).isEqualTo(ClassroomStatus.ACTIVE);
     }
