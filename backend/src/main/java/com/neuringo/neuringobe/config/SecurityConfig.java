@@ -1,6 +1,5 @@
 package com.neuringo.neuringobe.config;
 
-import com.neuringo.neuringobe.auth.security.ApiAuthenticationEntryPoint;
 import com.neuringo.neuringobe.auth.security.BearerTokenFilter;
 import com.neuringo.neuringobe.auth.security.PublicEndpoints;
 import com.neuringo.neuringobe.auth.service.AuthService;
@@ -18,7 +17,6 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 public class SecurityConfig {
@@ -27,13 +25,13 @@ public class SecurityConfig {
     @Bean
     @Profile("local")
     public SecurityFilterChain localSecurityFilterChain(
-            HttpSecurity http, AuthService authService, ObjectMapper objectMapper)
+            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
             throws Exception {
         // CSRF 토큰은 쿠키에 보관한다(HttpOnly 유지). 프론트는 쿠키를 직접 읽지 않고
         // GET /api/v1/csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
                 .cors(cors -> cors.configurationSource(localCorsConfigurationSource()));
-        applyTokenAuthentication(http, authService, objectMapper);
+        applyAuthentication(http, authService, failures);
         return http.build();
     }
 
@@ -41,9 +39,10 @@ public class SecurityConfig {
     @Bean
     @Profile("!local")
     public SecurityFilterChain defaultSecurityFilterChain(
-            HttpSecurity http, AuthService authService, ObjectMapper objectMapper)
+            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
             throws Exception {
-        applyTokenAuthentication(http, authService, objectMapper);
+        http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()));
+        applyAuthentication(http, authService, failures);
         return http.build();
     }
 
@@ -52,24 +51,53 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // 두 프로필이 같이 쓰는 인증 규칙(DEC-001 1절). 인증 상태는 매 요청 Bearer 토큰으로 정하므로 서버 세션(JSESSIONID)을 만들지 않는다.
-    private void applyTokenAuthentication(
-            HttpSecurity http, AuthService authService, ObjectMapper objectMapper)
+    // 강사는 Bearer 토큰, 아동은 서버 세션으로 인증한다.
+    private void applyAuthentication(
+            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
             throws Exception {
-        ApiAuthenticationEntryPoint entryPoint = new ApiAuthenticationEntryPoint(objectMapper);
-
         http.sessionManagement(
-                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(entryPoint))
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .exceptionHandling(
+                        exceptions ->
+                                exceptions
+                                        .authenticationEntryPoint(failures)
+                                        .accessDeniedHandler(failures))
                 .addFilterBefore(
-                        new BearerTokenFilter(authService, entryPoint),
+                        new BearerTokenFilter(authService, failures),
                         UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(PublicEndpoints.MATCHER)
                                         .permitAll()
+                                        .requestMatchers("/actuator/health", "/actuator/health/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.DELETE,
+                                                "/api/v1/child-access-sessions/current")
+                                        .hasRole("CHILD")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.GET,
+                                                "/api/v1/children/*/activities",
+                                                "/api/v1/activities/*/quiz-items",
+                                                "/api/v1/activities/*/quiz-result",
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasAnyRole("CHILD", "INSTRUCTOR")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.PUT,
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasRole("CHILD")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.PATCH,
+                                                "/api/v1/activity-quiz-items/*/attempt")
+                                        .hasRole("SYSTEM")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.POST,
+                                                "/api/v1/activity-quiz-items/*/hints")
+                                        .hasRole("CHILD")
+                                        .requestMatchers("/api/v1/auth/**", "/api/v1/users/me")
+                                        .hasAnyRole("INSTRUCTOR", "OPERATOR")
                                         .anyRequest()
-                                        .authenticated());
+                                        .hasRole("INSTRUCTOR"));
     }
 
     private CorsConfigurationSource localCorsConfigurationSource() {

@@ -18,6 +18,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.auth.service.AuthService;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
+import com.neuringo.neuringobe.config.ApiSecurityFailureHandler;
 import com.neuringo.neuringobe.config.SecurityConfig;
 import com.neuringo.neuringobe.support.WithAuthenticatedUser;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 
 // 기본 프로필 보안 체인은 인증을 요구하고 CSRF 가 켜져 있어, 인증 사용자와 CSRF 토큰을 넣어야 요청이 Controller 까지 온다.
 @WebMvcTest(ClassroomController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ApiSecurityFailureHandler.class})
 @WithAuthenticatedUser
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {

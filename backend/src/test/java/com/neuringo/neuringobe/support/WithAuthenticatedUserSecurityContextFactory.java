@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.test.context.support.WithSecurityContextFactory;
@@ -19,7 +20,8 @@ public class WithAuthenticatedUserSecurityContextFactory
                         UUID.fromString(annotation.sessionId()));
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+                new UsernamePasswordAuthenticationToken(
+                        principal, null, List.of(new SimpleGrantedAuthority("ROLE_INSTRUCTOR"))));
         return context;
     }
 }

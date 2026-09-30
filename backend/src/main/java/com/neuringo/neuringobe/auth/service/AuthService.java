@@ -7,6 +7,7 @@ import com.neuringo.neuringobe.auth.repository.AuthSessionRepository;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.validation.TextRules;
+import com.neuringo.neuringobe.user.domain.AccountStatus;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.dto.UserResponse;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
@@ -99,7 +100,17 @@ public class AuthService {
         return authSessionRepository
                 .findByTokenHash(sha256Hex(rawToken))
                 .filter(session -> !session.isExpiredAt(clock.instant()))
-                .map(session -> new AuthenticatedUser(session.getUserId(), session.getSessionId()));
+                .flatMap(
+                        session ->
+                                userAccountRepository
+                                        .findById(session.getUserId())
+                                        .filter(user -> user.getStatus() == AccountStatus.ACTIVE)
+                                        .map(
+                                                user ->
+                                                        new AuthenticatedUser(
+                                                                session.getUserId(),
+                                                                session.getSessionId(),
+                                                                user.getRole())));
     }
 
     /** 현재 세션만 폐기한다. 같은 강사의 다른 기기 세션은 그대로 둔다. */
