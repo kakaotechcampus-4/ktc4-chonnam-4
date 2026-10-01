@@ -1,0 +1,78 @@
+name: 개인 Task
+description: 08_스프린트별_전체_Task 의 표 한 행 = Issue 하나
+title: "[Task ID][VS-xxx] "
+labels: ["todo"]
+body:
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: 문서 표의 Task ID 를 그대로. 예 PREP-JEONG-01, S1-JEONG-02
+      placeholder: S1-JEONG-01
+    validations:
+      required: true
+
+  - type: dropdown
+    id: repo_area
+    attributes:
+      label: 대상 영역
+      options:
+        - FE
+        - BEAI
+        - FE·BEAI
+        - EC2·RDS
+    validations:
+      required: true
+
+  - type: input
+    id: slice
+    attributes:
+      label: 연결 슬라이스
+      description: 해당 없으면 "공통" 또는 "P0 공통"
+      placeholder: VS-017
+    validations:
+      required: true
+
+  - type: input
+    id: hours
+    attributes:
+      label: 계획 시간
+      description: 1~2일, 최대 8시간
+      placeholder: 7h
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 작업 범위
+      description: 문서 표의 "작업 범위" 열
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 기준
+      description: 문서 표의 "완료 기준" 열. PR 병합만으로 닫지 않고 이 기준을 확인한 뒤 닫는다.
+    validations:
+      required: true
+
+  - type: input
+    id: slice_issue
+    attributes:
+      label: 대표 Slice Issue
+      placeholder: "#12"
+
+  - type: input
+    id: blocked_by
+    attributes:
+      label: 선행 Issue · 선행 결정
+      description: 없으면 비워둠. Decision Gate 대기 중이면 DEC 번호를 적고 blocked 라벨을 붙인다.
+      placeholder: "#8, DEC-021"
+
+  - type: textarea
+    id: how_to_test
+    attributes:
+      label: 테스트 방법
+      description: 어떻게 확인하면 되는지. 자동 테스트면 어떤 테스트가 도는지.

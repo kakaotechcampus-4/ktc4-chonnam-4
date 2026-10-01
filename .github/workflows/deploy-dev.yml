@@ -1,0 +1,96 @@
+name: Deploy (dev)
+# 개발 서버 배포 골격. 수동 실행(Actions → Deploy (dev) → Run workflow)만 한다. PR·push 에서는 돌지 않는다.
+# 실제 배포는 G0 이후다. 필요한 secret 이 하나라도 없으면 빌드·배포를 건너뛰고 Summary 에 이유를 남긴다.
+#
+# 배포할 때 준비할 것(deploy/README.md):
+#   Environment  dev — 승인자를 지정하면 배포 전에 승인을 받는다
+#   secret       DEV_HOST · DEV_SSH_USER · DEV_SSH_KEY · DEV_SSH_KNOWN_HOSTS
+#                DEV_DB_NAME · DEV_DB_USERNAME · DEV_DB_PASSWORD
+#   GHCR         ghcr.io/<repo>/backend 패키지 공개 범위
+
+on:
+  workflow_dispatch:
+
+# 배포는 한 번에 하나만 하고, 도중에 취소하지 않는다.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: dev
+    permissions:
+      contents: read
+      packages: write # GHCR 에 이미지를 올린다
+
+    steps:
+      - name: Check deploy secrets
+        id: secrets
+        env:
+          DEV_HOST: ${{ secrets.DEV_HOST }}
+          DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
+          DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          DEV_SSH_KNOWN_HOSTS: ${{ secrets.DEV_SSH_KNOWN_HOSTS }}
+          DEV_DB_NAME: ${{ secrets.DEV_DB_NAME }}
+          DEV_DB_USERNAME: ${{ secrets.DEV_DB_USERNAME }}
+          DEV_DB_PASSWORD: ${{ secrets.DEV_DB_PASSWORD }}
+        run: |
+          missing=()
+          for name in DEV_HOST DEV_SSH_USER DEV_SSH_KEY DEV_SSH_KNOWN_HOSTS DEV_DB_NAME DEV_DB_USERNAME DEV_DB_PASSWORD; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >>"$GITHUB_OUTPUT"
+          {
+            echo "### 개발 서버 배포를 건너뛰었다"
+            echo
+            echo "등록되지 않은 secret: \`${missing[*]}\`"
+            echo
+            echo "실배포는 G0 이후다. 준비할 것은 deploy/README.md 에 있다."
+          } >>"$GITHUB_STEP_SUMMARY"
+          echo "::notice title=배포 건너뜀::등록되지 않은 secret: ${missing[*]}"
+
+      - name: Checkout
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and push image
+        id: image
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/backend"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          docker build -t "$image:$GITHUB_SHA" -t "$image:dev" backend
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:dev"
+          docker logout ghcr.io
+          echo "ref=$image:$GITHUB_SHA" >>"$GITHUB_OUTPUT"
+
+      - name: Deploy over SSH
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          DEV_HOST: ${{ secrets.DEV_HOST }}
+          DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
+          DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          DEV_SSH_KNOWN_HOSTS: ${{ secrets.DEV_SSH_KNOWN_HOSTS }}
+          DEV_DB_NAME: ${{ secrets.DEV_DB_NAME }}
+          DEV_DB_USERNAME: ${{ secrets.DEV_DB_USERNAME }}
+          DEV_DB_PASSWORD: ${{ secrets.DEV_DB_PASSWORD }}
+          APP_IMAGE: ${{ steps.image.outputs.ref }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: bash scripts/deploy-dev.sh
