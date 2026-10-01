@@ -206,6 +206,11 @@ public final class OpenAiFailureClassifier {
         if (statusCode == 401 || statusCode == 403) {
             return mapping(AiFailureType.AUTHENTICATION_ERROR, throwable, source);
         }
+        if (statusCode == 408) {
+            // 408 은 "서버가 요청을 다 받기 전에 기다리다 끊었다" 는 뜻이라 같은 요청을 다시 보내면 된다.
+            // 재시도 불가인 나머지 4xx 와 달리 호출 제한 시간 초과와 같은 처리라 TIMEOUT 으로 묶는다.
+            return mapping(AiFailureType.TIMEOUT, throwable, source);
+        }
         if (statusCode == 429) {
             return mapping(AiFailureType.RATE_LIMITED, throwable, source);
         }
