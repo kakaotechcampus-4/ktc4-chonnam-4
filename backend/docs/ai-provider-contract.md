@@ -32,7 +32,7 @@
 - `SPEECH_TRANSCRIPTION` (STT, `LlmRequest` 로는 보낼 수 없음)
 - `SPEECH_SYNTHESIS` (TTS, `LlmRequest` 로는 보낼 수 없음)
 
-현재 구조화 출력 계약은 역할극의 원인 분석, 후보 응답 생성, 후보 평가를 우선 제공한다.
+현재 구조화 출력 계약과 프롬프트(v1)는 역할극의 원인 분석, 후보 응답 생성, 후보 평가를 우선 제공한다.
 
 ## 추적 문맥
 
@@ -94,6 +94,36 @@ AI는 기본적으로 비활성화된다.
 | `AI_MAX_RETRIES` | SDK 내부 자동 재시도 | `0` |
 
 실제 제공자를 사용할 때만 `AI_CHAT_PROVIDER=openai`로 설정한다.
+
+## 역할극 한 턴 프롬프트 (v1)
+
+워크플로우 v3 11·12장의 세 호출을 `RoleplayPromptFactory` 가 만든다. 결과는 `PreparedPrompt(request, parser)` 이며 `StructuredLlmExecutor.execute(request, parser)` 에 그대로 넘긴다.
+
+| 호출 | 메서드 | 시스템 프롬프트 | promptVersion | 출력 |
+| --- | --- | --- | --- | --- |
+| A. 원인 판단 | `causeAnalysis` | `prompts/roleplay/v1/cause-analysis.md` | `roleplay-cause-analysis/v1` | `AnalysisResult` |
+| B. 후보 응답 생성 | `responseGeneration` | `prompts/roleplay/v1/response-generation.md` | `roleplay-response-generation/v1` | `CandidateResponse` |
+| 응답 판단 | `responseEvaluation` | `prompts/roleplay/v1/response-evaluation.md` | `roleplay-response-evaluation/v1` | `EvaluationResult` |
+
+- 사용자 메시지는 `RoleplayTurnInput`(승인 시나리오, 진행 상태, 최근 대화 최대 8줄, 표준 발화)을 JSON 으로 만든 것이다. 재시도일 때만 `retry`(재분석 지시 `AnalysisRetry`, 재생성 지시 `GenerationRetry`)가 붙는다.
+- 프롬프트에는 모델이 돌려줘야 하는 turn·candidate·micro goal ID 만 넣는다. request·activity·class·child·session ID 와 실명은 넣지 않는다.
+- `candidate_id` 는 오케스트레이터가 미리 정해 넘긴다. 모델은 그대로 돌려준다.
+- 원인 판단은 `analysis_basis`, 응답 판단은 `checks` 를 먼저 쓰게 해 근거를 확인한 뒤 결론을 내리게 한다. 이 두 필드는 출력 계약 레코드에 없으며 파싱할 때 버린다.
+
+### 출력 검사
+
+parser 는 JSON 형식에 더해 아래를 검사하고, 어긋나면 `INVALID_OUTPUT_FORMAT`(재시도 가능)으로 돌려준다. 워크플로우 v3 11.6·11.8 의 시스템 사전 차단이다.
+
+| 출력 | 검사 |
+| --- | --- |
+| 공통 | 코드 블록(```json)은 벗겨서 읽음. 코드값은 `RoleplayCodes` 의 허용값만 |
+| `AnalysisResult` | turn_id 일치, target_micro_goal_id 가 시나리오의 목표, 신뢰도 0~1 |
+| `CandidateResponse` | candidate_id·turn_id 일치, 전략·목표·지원 수준이 분석과 같음, 80자 이하, 질문형은 물음표 정확히 1개·그 밖은 0개, 실패 후보 ID 목록 일치, 실패 후보와 같은 문장 금지 |
+| `EvaluationResult` | candidate_id 일치, PASS 면 safe_to_send=true·실패 코드 없음·치명 0, PASS 가 아니면 safe_to_send=false·실패 코드 1개 이상·판정에 맞는 retry_target, 치명 실패 수가 치명 코드 수 이상. `RETRY_EVALUATION`·`SAFE_FALLBACK` 은 오케스트레이터만 정하므로 모델 출력으로 받지 않음 |
+
+### 버전 관리
+
+프롬프트 문구나 `RoleplayCodes` 의 값을 바꾸면 `prompts/roleplay/v2/` 를 새로 만들고 버전 상수를 올린다. 기존 버전 파일은 고치지 않는다(실행 결과의 `promptVersion` 으로 어떤 문구였는지 재현할 수 있어야 한다). `RoleplayPromptFactoryTest.systemPromptsListEveryAllowedCode` 가 프롬프트의 코드표와 `RoleplayCodes` 를 대조한다.
 
 ## 음성 입출력 (STT·TTS)
 
