@@ -39,5 +39,5 @@ export function signIn(instructor: { accessToken: string } = instructors.a) {
 
 /** 아동이 입장한 상태로 만든다(RequireChildSession 가드 통과). 끝나면 각 테스트가 endSession() 으로 비운다. */
 export function enterAsChild(childName = "김하늘") {
-  useChildSessionStore.getState().startSession({ childName, accessCode: "1234" })
+  useChildSessionStore.getState().startSession({ childId: "mock-child-1", childName })
 }

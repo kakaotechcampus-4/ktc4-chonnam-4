@@ -92,7 +92,7 @@ function ChildAccessPage() {
             </p>
           </div>
 
-          <div className="flex gap-3" aria-label={`입력한 숫자 ${code.length}개`}>
+          <div className="flex gap-3" role="group" aria-label={`입력한 숫자 ${code.length}개`}>
             {Array.from({ length: CODE_LENGTH }, (_, index) => {
               const digit = code[index]
               const isCurrent = index === code.length

@@ -15,7 +15,7 @@ function tryToLeave() {
 }
 
 function startSession() {
-  act(() => useChildSessionStore.getState().startSession({ childName: "김하늘", accessCode: "1234" }))
+  act(() => useChildSessionStore.getState().startSession({ childId: "child-1", childName: "김하늘" }))
 }
 
 describe("새로고침·닫기 전 확인", () => {

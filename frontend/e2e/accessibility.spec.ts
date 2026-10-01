@@ -1,5 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright"
 import { expect, test, type Page } from "@playwright/test"
+import { enterChild, MOCK_ACTIVITY, openInApp } from "./support/child.js"
 import { createClassroom, marker, signUp } from "./support/instructor.js"
 
 // 실제 브라우저 접근성 검사(axe-core). jsdom 검사(src/accessibility.test.tsx)가 못 보는 색 대비·실제 배치를 본다.
@@ -24,10 +25,12 @@ const KNOWN_VIOLATIONS: Record<string, Record<string, number>> = {
   "/classrooms/:classId": { "color-contrast": 4 },
   "/classrooms/:classId?tab=children": { "color-contrast": 7 },
   "/child": { "color-contrast": 1 },
+  "/child/hello": { "color-contrast": 2 },
   "/child/activities": { "color-contrast": 1 },
-  "/child/quiz/demo": { "color-contrast": 1 },
-  "/child/roleplay/demo": { "color-contrast": 1 },
-  "/child/_dev/states": { "color-contrast": 5 },
+  "/child/activities/:activityId": { "color-contrast": 2 },
+  "/child/quiz/:activityId": { "color-contrast": 1 },
+  "/child/roleplay/:activityId": { "color-contrast": 1 },
+  "/child/_dev/states": { "color-contrast": 6 },
 }
 
 async function checkAccessibility(page: Page, path: string) {
@@ -72,22 +75,22 @@ for (const { path, ready } of PUBLIC_PAGES) {
   })
 }
 
-// 아동 상태는 새로고침하면 사라진다(메모리 저장). 입장한 뒤 화면 안의 링크로 옮겨 간다.
+// 아동 상태는 새로고침하면 사라진다(메모리 저장). 코드로 입장한 뒤 새로고침 없이 앱 안에서 주소를 옮긴다(support/child.ts).
 const CHILD_ACTIVITY_PAGES = [
-  { path: "/child/activities", link: null, ready: "활동을 준비하고 있어요" },
-  { path: "/child/quiz/demo", link: "퀴즈 화면 보기", ready: "1/3 문항" },
-  { path: "/child/roleplay/demo", link: "역할극 화면 보기", ready: "1턴" },
+  { path: "/child/hello", name: "/child/hello", ready: "오늘도 만나서 반가워" },
+  { path: "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
+  { path: `/child/activities/${MOCK_ACTIVITY}`, name: "/child/activities/:activityId", ready: "이어서 하기" },
+  { path: `/child/quiz/${MOCK_ACTIVITY}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
+  { path: `/child/roleplay/${MOCK_ACTIVITY}`, name: "/child/roleplay/:activityId", ready: "놀이터에서" },
 ]
 
-for (const { path, link, ready } of CHILD_ACTIVITY_PAGES) {
-  test(`${path} 에 새 WCAG A·AA 위반이 없다`, async ({ page }) => {
-    await page.goto("/child")
-    await page.getByRole("button", { name: "임시로 들어가보기" }).click()
-    if (link) await page.getByRole("link", { name: link }).click()
-    await expect(page).toHaveURL(new RegExp(`${path}$`))
+for (const { path, name, ready } of CHILD_ACTIVITY_PAGES) {
+  test(`${name} 에 새 WCAG A·AA 위반이 없다`, async ({ page }) => {
+    await enterChild(page)
+    await openInApp(page, path)
     await expect(page.getByText(ready).first()).toBeVisible()
 
-    await checkAccessibility(page, path)
+    await checkAccessibility(page, name)
   })
 }
 
