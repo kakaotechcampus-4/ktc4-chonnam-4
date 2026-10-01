@@ -7,9 +7,12 @@ import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
 import { RequireInstructorAuth } from './features/instructor/auth/RequireInstructorAuth'
 import { ChildAccessPage } from './features/child/pages/ChildAccessPage'
+import { ChildWelcomePage } from './features/child/pages/ChildWelcomePage'
 import { ChildActivitiesPage } from './features/child/pages/ChildActivitiesPage'
+import { ChildActivityIntroPage } from './features/child/pages/ChildActivityIntroPage'
 import { ChildQuizPage } from './features/child/pages/ChildQuizPage'
 import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
+import { ChildDonePage } from './features/child/pages/ChildDonePage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
 import { RequireChildSession } from './features/child/routes/RequireChildSession'
 
@@ -45,9 +48,12 @@ export const router = createBrowserRouter([
   {
     element: <RequireChildSession />,
     children: [
+      { path: '/child/hello', element: <ChildWelcomePage /> },
       { path: '/child/activities', element: <ChildActivitiesPage /> },
+      { path: '/child/activities/:activityId', element: <ChildActivityIntroPage /> },
       { path: '/child/quiz/:activityId', element: <ChildQuizPage /> },
       { path: '/child/roleplay/:activityId', element: <ChildRoleplayPage /> },
+      { path: '/child/done/:activityId', element: <ChildDonePage /> },
     ],
   },
   { path: '/child/_dev/states', element: <ChildStatePreviewPage /> },

@@ -20,7 +20,7 @@ function ChildButton({
       data-slot="child-button"
       data-variant={variant}
       className={cn(
-        "inline-flex h-14 min-w-40 shrink-0 items-center justify-center gap-2 rounded-[var(--child-radius-pill)] px-6 text-lg font-medium transition-colors outline-none select-none focus-visible:ring-3 focus-visible:ring-[var(--child-primary)]/50 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex h-14 min-w-40 shrink-0 items-center justify-center gap-2 rounded-[var(--child-radius-pill)] px-6 text-lg font-medium transition-colors outline-none select-none focus-visible:ring-3 focus-visible:ring-[var(--child-primary)]/50 disabled:pointer-events-none disabled:opacity-60",
         CHILD_BUTTON_VARIANTS[variant],
         className
       )}
