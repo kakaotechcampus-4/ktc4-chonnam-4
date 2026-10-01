@@ -12,19 +12,19 @@ describe("아동 세션 저장소", () => {
     sessionStorage.clear()
   })
 
-  it("아동 이름과 입장 코드를 브라우저 저장소에 남기지 않는다", () => {
-    useChildSessionStore.getState().startSession({ childName: "김하늘", accessCode: "1234" })
+  it("아동 ID·이름을 브라우저 저장소에 남기지 않는다", () => {
+    useChildSessionStore.getState().startSession({ childId: "child-1", childName: "김하늘" })
 
     expect(useChildSessionStore.getState().childName).toBe("김하늘")
     expect(localStorage.length).toBe(0)
     expect(sessionStorage.length).toBe(0)
   })
 
-  it("사용 종료하면 이름과 입장 코드를 비운다", () => {
-    useChildSessionStore.getState().startSession({ childName: "김하늘", accessCode: "1234" })
+  it("사용 종료하면 아동 ID·이름을 비운다", () => {
+    useChildSessionStore.getState().startSession({ childId: "child-1", childName: "김하늘" })
 
     useChildSessionStore.getState().endSession()
 
-    expect(useChildSessionStore.getState()).toMatchObject({ childName: null, accessCode: null })
+    expect(useChildSessionStore.getState()).toMatchObject({ childId: null, childName: null })
   })
 })

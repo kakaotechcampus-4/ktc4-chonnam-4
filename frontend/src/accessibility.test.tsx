@@ -1,5 +1,5 @@
 import axe from "axe-core"
-import { screen, within } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { fixtures } from "@/test/msw/handlers"
 import { enterAsChild, renderRoutes, signIn } from "@/test/render"
@@ -7,7 +7,7 @@ import { router } from "./router"
 
 // 접근성 검사. 05 추적성 매트릭스 "A11Y → 아동 화면 사용성·상태 문구 검증", 07 "아동 화면의 상태·오류·로딩·접근성"을 자동으로 확인한다.
 // - axe-core 로 WCAG 2.x A·AA 규칙을 모든 화면에 돌린다. 색 대비는 실제 CSS 가 있어야 계산되므로 E2E(e2e/accessibility.spec.ts)가 본다.
-// - 키보드만으로 사용 종료할 수 있고, 아동 상태 화면은 화면 낭독기에 status 로 알려진다.
+// - 키보드만으로 사용 종료할 수 있고, 아동 로딩 상태는 status 로, 오류·권한·만료·네트워크 모달은 이름 있는 대화상자로 알려진다.
 // 새 화면을 라우터에 추가하면 아래 PAGES 에도 넣는다. 위반이 나오면 규칙을 끄지 말고 화면을 고친다.
 
 const WCAG_A_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]
@@ -34,9 +34,11 @@ const PAGES: [string, string, Access][] = [
   [`/classrooms/${fixtures.classroomA1.classId}`, "바로 하기", "강사"],
   [`/classrooms/${fixtures.classroomA1.classId}?tab=children`, "김하늘", "강사"],
   ["/child", "입장 코드를 입력해줘!", "공개"],
-  ["/child/activities", "활동을 준비하고 있어요", "아동"],
-  ["/child/quiz/q-1", "표정 퀴즈", "아동"],
-  ["/child/roleplay/r-1", "1턴", "아동"],
+  ["/child/hello", "오늘도 만나서 반가워", "아동"],
+  ["/child/activities", "친구 마음 알아보기", "아동"],
+  ["/child/activities/mock-activity-1", "이어서 하기", "아동"],
+  ["/child/quiz/mock-activity-1", "친구가 실수로 네 장난감을 밟아서 부서졌어. 지금 네 기분은 어때?", "아동"],
+  ["/child/roleplay/mock-activity-1", "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?", "아동"],
   ["/child/_dev/states", "상태 컴포넌트 미리보기 (개발용)", "공개"],
 ]
 
@@ -87,35 +89,37 @@ describe("접근성", () => {
     expect(memoryRouter.state.location.pathname).toBe("/child")
   })
 
-  it("아동 상태 화면(로딩·오류·권한·만료·네트워크)은 화면 낭독기에 상태로 알려지고 문구가 있다", async () => {
+  it("아동 로딩 상태는 화면 낭독기에 status 로 알려지고 문구가 있다", async () => {
     renderRoutes(router.routes, "/child/_dev/states")
     await screen.findByText("상태 컴포넌트 미리보기 (개발용)")
 
     const statuses = screen.getAllByRole("status")
 
-    expect(statuses).toHaveLength(6)
-    for (const status of statuses) {
-      expect(status.textContent?.trim()).not.toBe("")
-    }
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0].textContent?.trim()).not.toBe("")
   })
 
-  it("다시 시도 버튼은 버튼으로 알려지고 키보드로 누를 수 있다", async () => {
-    renderRoutes(router.routes, "/child/_dev/states")
-    await screen.findByText("상태 컴포넌트 미리보기 (개발용)")
+  // 오류·권한·만료·네트워크 상태는 모달(StateDialog)로 뜬다. 화면 낭독기에는 제목·설명이 붙은 대화상자로 알려지고,
+  // 포커스가 모달 안으로 옮겨져 다시 시도 버튼을 키보드로 바로 누를 수 있어야 한다.
+  it.each([
+    ["오류 모달", "다시 하기"],
+    ["카메라 권한 모달", "다시 확인하기"],
+    ["마이크 권한 모달", "다시 확인하기"],
+    ["코드 만료 모달", "다시 입력하기"],
+    ["네트워크 모달", "다시 시도하기"],
+  ])("%s 은 제목·설명이 있는 대화상자로 알려지고 '%s' 를 키보드로 누를 수 있다", async (opener, retry) => {
+    const { user } = renderRoutes(router.routes, "/child/_dev/states")
+    await user.click(await screen.findByRole("button", { name: opener }))
 
-    const retryButtons = screen
-      .getAllByRole("status")
-      .flatMap((status) => within(status).queryAllByRole("button"))
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog).toHaveAccessibleName()
+    expect(dialog).toHaveAccessibleDescription()
+    expect(await violationsIn(dialog)).toEqual([])
 
-    expect(retryButtons.map((button) => button.textContent)).toEqual([
-      "다시 하기",
-      "다시 확인하기",
-      "다시 확인하기",
-      "다시 시도하기",
-    ])
-    for (const button of retryButtons) {
-      expect(button).not.toHaveAttribute("tabindex", "-1")
-      expect(button).toBeEnabled()
-    }
+    const button = within(dialog).getByRole("button", { name: retry })
+    await waitFor(() => expect(button).toHaveFocus())
+    await user.keyboard("{Enter}")
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 })

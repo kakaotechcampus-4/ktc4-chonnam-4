@@ -12,7 +12,7 @@ describe("ChildLayout 사용 종료", () => {
   afterEach(() => useChildSessionStore.getState().endSession())
 
   it("세션을 비우고 코드 입력 화면으로 replace 이동한다", async () => {
-    useChildSessionStore.getState().startSession({ childName: "김하늘", accessCode: "1234" })
+    useChildSessionStore.getState().startSession({ childId: "child-1", childName: "김하늘" })
     const { router, user } = renderRoutes(
       [
         { path: "/child", element: <p>코드 입력 화면</p> },
@@ -31,7 +31,7 @@ describe("ChildLayout 사용 종료", () => {
     await user.click(screen.getByRole("button", { name: "사용 종료" }))
 
     expect(await screen.findByText("코드 입력 화면")).toBeInTheDocument()
-    expect(useChildSessionStore.getState()).toMatchObject({ childName: null, accessCode: null })
+    expect(useChildSessionStore.getState()).toMatchObject({ childId: null, childName: null })
     expect(router.state.location.pathname).toBe("/child")
     expect(router.state.historyAction).toBe("REPLACE")
   })
