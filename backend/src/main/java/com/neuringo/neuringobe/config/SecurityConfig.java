@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -25,13 +26,16 @@ public class SecurityConfig {
     @Bean
     @Profile("local")
     public SecurityFilterChain localSecurityFilterChain(
-            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
+            HttpSecurity http,
+            AuthService authService,
+            ApiSecurityFailureHandler failures,
+            HttpSessionSecurityContextRepository contextRepository)
             throws Exception {
         // CSRF 토큰은 쿠키에 보관한다(HttpOnly 유지). 프론트는 쿠키를 직접 읽지 않고
         // GET /api/v1/csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
                 .cors(cors -> cors.configurationSource(localCorsConfigurationSource()));
-        applyAuthentication(http, authService, failures);
+        applyAuthentication(http, authService, failures, contextRepository);
         return http.build();
     }
 
@@ -39,11 +43,19 @@ public class SecurityConfig {
     @Bean
     @Profile("!local")
     public SecurityFilterChain defaultSecurityFilterChain(
-            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
+            HttpSecurity http,
+            AuthService authService,
+            ApiSecurityFailureHandler failures,
+            HttpSessionSecurityContextRepository contextRepository)
             throws Exception {
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()));
-        applyAuthentication(http, authService, failures);
+        applyAuthentication(http, authService, failures, contextRepository);
         return http.build();
+    }
+
+    @Bean
+    public HttpSessionSecurityContextRepository childSecurityContextRepository() {
+        return new HttpSessionSecurityContextRepository();
     }
 
     @Bean
@@ -53,10 +65,14 @@ public class SecurityConfig {
 
     // 강사는 Bearer 토큰, 아동은 서버 세션으로 인증한다.
     private void applyAuthentication(
-            HttpSecurity http, AuthService authService, ApiSecurityFailureHandler failures)
+            HttpSecurity http,
+            AuthService authService,
+            ApiSecurityFailureHandler failures,
+            HttpSessionSecurityContextRepository contextRepository)
             throws Exception {
         http.sessionManagement(
                         session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .securityContext(context -> context.securityContextRepository(contextRepository))
                 .exceptionHandling(
                         exceptions ->
                                 exceptions
@@ -69,8 +85,8 @@ public class SecurityConfig {
                         auth ->
                                 auth.requestMatchers(PublicEndpoints.MATCHER)
                                         .permitAll()
-                                        .requestMatchers("/actuator/health", "/actuator/health/**")
-                                        .permitAll()
+                                        .requestMatchers("/actuator/health", "/actuator/info")
+                                        .hasAnyRole("INSTRUCTOR", "OPERATOR")
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.DELETE,
                                                 "/api/v1/child-access-sessions/current")

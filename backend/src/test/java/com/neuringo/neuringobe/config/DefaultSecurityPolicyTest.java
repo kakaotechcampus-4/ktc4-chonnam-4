@@ -19,19 +19,18 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
  * local 이 아닌 환경(dev·prod)의 보안 정책(SecurityConfig#defaultSecurityFilterChain). 테스트는 "test" 프로필로 돌지만
- * {@code @Profile("!local")} 이라 dev·prod 와 같은 정책을 탄다. 인증 규칙은 local 과 같고, 개발용 CORS·쿠키 CSRF 는 없다.
+ * {@code @Profile("!local")} 이라 dev·prod 와 같은 정책을 탄다. 인증·CSRF 규칙은 local 과 같고, 개발용 CORS 만 없다.
  *
  * <ul>
  *   <li>공개 경로(가입·로그인·CSRF 토큰) 밖의 조회는 토큰이 없으면 401 AUTHENTICATION_REQUIRED 다. actuator health·info 도
  *       지금은 로그인해야 본다(공개 여부는 팀 결정 전 — 열기로 하면 PublicEndpoints 와 이 목록을 같이 고친다).
  *   <li>막힌 변경은 아무것도 저장하지 않는다. CSRF 헤더·쿠키를 지어내 보내도 막힌다.
- *   <li>배포 프로필에서도 가입 → 로그인 → 토큰으로 조회·생성이 된다(세션 CSRF). 막기만 하고 열리지 않는 정책이면 배포가 쓸모없어진다.
+ *   <li>배포 프로필에서도 가입 → 로그인 → 토큰으로 조회·생성이 된다(쿠키 CSRF). 막기만 하고 열리지 않는 정책이면 배포가 쓸모없어진다.
  *   <li>local 이 아니면 CORS 를 열지 않는다. 프론트 개발 서버 Origin 의 preflight 도 막힌다.
  *   <li>막힌 응답에도 보안 헤더(nosniff·DENY·no-store)가 붙는다.
  * </ul>
@@ -139,12 +138,10 @@ class DefaultSecurityPolicyTest {
     @Test
     void signsUpLogsInAndUsesTheTokenOutsideLocal() {
         TestFixtures.Credentials credentials = TestFixtures.newCredentials();
-        MockHttpSession session = new MockHttpSession();
         String name = "배포 프로필 학급 " + UUID.randomUUID();
 
         MvcTestResult signup =
                 post(
-                        session,
                         "/api/v1/users",
                         "{\"email\":\""
                                 + credentials.email()
@@ -154,7 +151,6 @@ class DefaultSecurityPolicyTest {
                         null);
         MvcTestResult login =
                 post(
-                        session,
                         "/api/v1/auth/sessions",
                         "{\"email\":\""
                                 + credentials.email()
@@ -166,8 +162,7 @@ class DefaultSecurityPolicyTest {
         assertThat(login).hasStatusOk();
         String token = JsonPath.read(TestFixtures.body(login), "$.data.accessToken");
 
-        MvcTestResult created =
-                post(session, "/api/v1/classrooms", "{\"name\":\"" + name + "\"}", token);
+        MvcTestResult created = post("/api/v1/classrooms", "{\"name\":\"" + name + "\"}", token);
         MvcTestResult list =
                 TestFixtures.bearer(mvc.get().uri("/api/v1/classrooms"), token).exchange();
 
@@ -198,15 +193,16 @@ class DefaultSecurityPolicyTest {
         LocalSecurityMatrixTest.assertSecurityHeaders(result);
     }
 
-    /** 배포 프로필의 CSRF 는 세션에 둔다. 같은 세션으로 GET /api/v1/csrf 를 받아 헤더에 싣는다(프론트도 응답의 헤더 이름을 쓴다). */
-    private MvcTestResult post(MockHttpSession session, String uri, String json, String token) {
-        String csrf = TestFixtures.body(mvc.get().uri("/api/v1/csrf").session(session).exchange());
+    /** 배포 프로필도 CSRF 쿠키와 응답 본문의 헤더 토큰을 함께 보낸다. */
+    private MvcTestResult post(String uri, String json, String token) {
+        MvcTestResult csrfResult = mvc.get().uri("/api/v1/csrf").exchange();
+        String csrf = TestFixtures.body(csrfResult);
         MockMvcTester.MockMvcRequestBuilder request =
                 mvc.post()
                         .uri(uri)
-                        .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json)
+                        .cookie(csrfResult.getResponse().getCookies())
                         .header(
                                 JsonPath.read(csrf, "$.data.headerName"),
                                 JsonPath.<String>read(csrf, "$.data.token"));

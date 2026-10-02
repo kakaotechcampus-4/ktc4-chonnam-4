@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.support;
 
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
+import com.neuringo.neuringobe.user.domain.UserRole;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -17,7 +18,8 @@ public class WithAuthenticatedUserSecurityContextFactory
         AuthenticatedUser principal =
                 new AuthenticatedUser(
                         UUID.fromString(annotation.userId()),
-                        UUID.fromString(annotation.sessionId()));
+                        UUID.fromString(annotation.sessionId()),
+                        UserRole.INSTRUCTOR);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(
                 new UsernamePasswordAuthenticationToken(

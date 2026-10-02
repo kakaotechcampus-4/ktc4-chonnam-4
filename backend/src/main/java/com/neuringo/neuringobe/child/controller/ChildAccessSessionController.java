@@ -4,7 +4,7 @@ import com.neuringo.neuringobe.child.dto.ChildAccessSessionRequest;
 import com.neuringo.neuringobe.child.dto.ChildAccessSessionResponse;
 import com.neuringo.neuringobe.child.security.ChildPrincipal;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ApiResponse;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,11 +32,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChildAccessSessionController {
 
     private final ChildAccessCodeService service;
-    private final HttpSessionSecurityContextRepository contextRepository =
-            new HttpSessionSecurityContextRepository();
+    private final HttpSessionSecurityContextRepository contextRepository;
 
-    public ChildAccessSessionController(ChildAccessCodeService service) {
+    public ChildAccessSessionController(
+            ChildAccessCodeService service,
+            HttpSessionSecurityContextRepository contextRepository) {
         this.service = service;
+        this.contextRepository = contextRepository;
     }
 
     @PostMapping
@@ -69,7 +71,7 @@ public class ChildAccessSessionController {
             HttpServletRequest request,
             HttpServletResponse response) {
         if (authentication == null || !(authentication.getPrincipal() instanceof ChildPrincipal)) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED", "아동 입장이 필요합니다.");
         }
         HttpSession session = request.getSession(false);

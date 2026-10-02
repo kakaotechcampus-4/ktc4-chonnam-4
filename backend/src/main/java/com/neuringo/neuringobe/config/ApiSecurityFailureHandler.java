@@ -1,10 +1,11 @@
 package com.neuringo.neuringobe.config;
 
+import com.neuringo.neuringobe.auth.security.InvalidTokenException;
 import com.neuringo.neuringobe.common.ApiErrorResponse;
+import com.neuringo.neuringobe.common.TraceIds;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -28,7 +29,11 @@ public class ApiSecurityFailureHandler implements AuthenticationEntryPoint, Acce
             HttpServletResponse response,
             AuthenticationException exception)
             throws IOException {
-        write(request, response, 401, "AUTHENTICATION_REQUIRED", "인증이 필요합니다.");
+        if (exception instanceof InvalidTokenException) {
+            write(request, response, 401, "INVALID_TOKEN", "인증 정보가 만료되었거나 올바르지 않습니다.");
+        } else {
+            write(request, response, 401, "AUTHENTICATION_REQUIRED", "로그인이 필요합니다.");
+        }
     }
 
     @Override
@@ -50,7 +55,7 @@ public class ApiSecurityFailureHandler implements AuthenticationEntryPoint, Acce
         if (response.isCommitted()) {
             return;
         }
-        String traceId = UUID.randomUUID().toString();
+        String traceId = TraceIds.newTraceId();
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
