@@ -61,7 +61,9 @@ public class BearerTokenFilter extends OncePerRequestFilter {
         Optional<AuthenticatedUser> user =
                 token.isEmpty() ? Optional.empty() : authService.authenticate(token);
 
-        // 이 필터는 ExceptionTranslationFilter 보다 앞에 있어 throw 하면 500 이 된다. EntryPoint 를 직접 부르고 체인을 멈춘다.
+        // 이 필터는 ExceptionTranslationFilter 보다 앞에 있어 throw 하면 컨테이너가 /error 로 다시 보내고
+        // ApiErrorController
+        // 가 500 으로 응답한다. 토큰 무효는 401 INVALID_TOKEN 이어야 하므로 EntryPoint 를 직접 부르고 체인을 멈춘다.
         if (user.isEmpty()) {
             entryPoint.commence(
                     request, response, new InvalidTokenException("invalid bearer token"));
