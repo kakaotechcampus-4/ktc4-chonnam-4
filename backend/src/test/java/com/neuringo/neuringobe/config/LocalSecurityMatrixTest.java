@@ -73,7 +73,7 @@ class LocalSecurityMatrixTest {
                                         .content("{\"name\":\"토큰 없는 요청\"}"))
                         .exchange();
 
-        assertThat(result).hasStatus(HttpStatus.FORBIDDEN);
+        assertCsrfRejected(result);
     }
 
     /** 이름 하나를 받아 CSRF 가 잘못된 요청을 만든다. 쿠키·토큰은 실제로 GET /api/v1/csrf 로 받은 값을 섞어 쓴다. */
@@ -126,7 +126,7 @@ class LocalSecurityMatrixTest {
                                         json("/api/v1/classrooms", "{\"name\":\"" + name + "\"}")))
                         .exchange();
 
-        assertThat(result).hasStatus(HttpStatus.FORBIDDEN);
+        assertCsrfRejected(result);
         assertThat(JsonPath.<List<String>>read(listClassrooms(), "$.data[*].name"))
                 .doesNotContain(name);
     }
@@ -154,7 +154,7 @@ class LocalSecurityMatrixTest {
                                                         + "\"}")))
                         .exchange();
 
-        assertThat(result).hasStatus(HttpStatus.FORBIDDEN);
+        assertCsrfRejected(result);
         assertThat(JsonPath.<List<String>>read(TestFixtures.body(fixtures.get(uri)), "$.data"))
                 .isEmpty();
     }
@@ -268,6 +268,23 @@ class LocalSecurityMatrixTest {
     void requiresLoginForHealthAndInfoForNow(String uri) {
         assertThat(mvc.get().uri(uri)).hasStatus(HttpStatus.UNAUTHORIZED);
         assertThat(fixtures.get(uri)).hasStatusOk();
+    }
+
+    /**
+     * CSRF 로 막힌 응답은 403 CSRF_TOKEN_INVALID 이고 path 는 원래 경로다. 401 AUTHENTICATION_REQUIRED·path
+     * /error 로 바뀌면 안 된다(PR #35 리뷰). /error 재진입은 MockMvc 가 흉내 내지 않으므로 실제 서버로는
+     * ErrorDispatchIntegrationTest 가 본다.
+     */
+    static void assertCsrfRejected(MvcTestResult result) {
+        assertThat(result)
+                .hasStatus(HttpStatus.FORBIDDEN)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("CSRF_TOKEN_INVALID");
+        assertThat(result)
+                .bodyJson()
+                .extractingPath("$.error.path")
+                .isEqualTo(result.getRequest().getRequestURI());
     }
 
     static void assertSecurityHeaders(MvcTestResult result) {

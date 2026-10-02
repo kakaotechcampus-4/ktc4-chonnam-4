@@ -29,7 +29,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  * <ul>
  *   <li>공개 경로(가입·로그인·CSRF 토큰) 밖의 조회는 토큰이 없으면 401 AUTHENTICATION_REQUIRED 다. actuator health·info 도
  *       지금은 로그인해야 본다(공개 여부는 팀 결정 전 — 열기로 하면 PublicEndpoints 와 이 목록을 같이 고친다).
- *   <li>막힌 변경은 아무것도 저장하지 않는다. CSRF 헤더·쿠키를 지어내 보내도 막힌다.
+ *   <li>막힌 변경은 아무것도 저장하지 않는다. CSRF 헤더·쿠키를 지어내 보내도 막힌다. 로그인한 강사의 CSRF 실패는 403 CSRF_TOKEN_INVALID
+ *       다(401 로 로그인을 요구하지 않는다).
  *   <li>배포 프로필에서도 가입 → 로그인 → 토큰으로 조회·생성이 된다(쿠키 CSRF). 막기만 하고 열리지 않는 정책이면 배포가 쓸모없어진다.
  *   <li>local 이 아니면 CORS 를 열지 않는다. 프론트 개발 서버 Origin 의 preflight 도 막힌다.
  *   <li>막힌 응답에도 보안 헤더(nosniff·DENY·no-store)가 붙는다.
@@ -170,6 +171,34 @@ class DefaultSecurityPolicyTest {
         assertThat(list).hasStatusOk();
         assertThat(JsonPath.<List<String>>read(TestFixtures.body(list), "$.data[*].name"))
                 .containsExactly(name);
+    }
+
+    @Test
+    void answersCsrfFailureOfLoggedInInstructorAsCsrfErrorNotLogin() {
+        TestFixtures.Credentials credentials = TestFixtures.newCredentials();
+        post(
+                "/api/v1/users",
+                "{\"email\":\""
+                        + credentials.email()
+                        + "\",\"password\":\""
+                        + credentials.password()
+                        + "\",\"name\":\"테스트 강사\"}",
+                null);
+        MvcTestResult login =
+                post(
+                        "/api/v1/auth/sessions",
+                        "{\"email\":\""
+                                + credentials.email()
+                                + "\",\"password\":\""
+                                + credentials.password()
+                                + "\"}",
+                        null);
+        String token = JsonPath.read(TestFixtures.body(login), "$.data.accessToken");
+
+        MvcTestResult logoutWithoutCsrf =
+                TestFixtures.bearer(mvc.delete().uri("/api/v1/auth/session"), token).exchange();
+
+        LocalSecurityMatrixTest.assertCsrfRejected(logoutWithoutCsrf);
     }
 
     @Test

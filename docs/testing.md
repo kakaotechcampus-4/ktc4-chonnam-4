@@ -64,7 +64,7 @@ Vitest 5 + jsdom + Testing Library + MSW 를 쓴다.
   - `setup.ts`: jest-dom 매처 등록, 매 테스트 뒤 DOM·sessionStorage(강사 토큰)·아동 세션 정리, MSW 수명주기
   - `msw/handlers.ts`: 백엔드 응답 모양(`{ data, meta }`, `{ error: { ..., fieldErrors: [{ field, message }] } }`)을 흉내 내는 기본 핸들러와 **공통 픽스처**. 테스트 강사 A(`instructors.a`)·B, 강사 A 의 학급 A1(햇살반)·B1(바람반), 강사 B 의 학급 C1(구름반), 아동 A1-1·A1-2 는 동명이인 "김하늘", B1-1 "이바다"
     - 강사 비밀번호·토큰은 실행마다 새로 만든다. 이메일은 예약 도메인(example.com)이다. 레포에 고정 자격증명을 두지 않는다.
-    - 실제 서버와 같은 순서로 막는다: CSRF 없음 403(변경 요청) → 토큰 없음 401 `AUTHENTICATION_REQUIRED`·틀린 토큰 401 `INVALID_TOKEN` → UUID 가 아닌 ID 400 → 깨진 JSON 400 → 입력 검증 422(빈 값·제어 문자·보이지 않는 문자만·101자 이상, 그 필드의 `fieldErrors`) → 없는 학급·다른 강사의 학급 404.
+    - 실제 서버와 같은 순서로 막는다: CSRF 없음 403 `CSRF_TOKEN_INVALID`(변경 요청) → 토큰 없음 401 `AUTHENTICATION_REQUIRED`·틀린 토큰 401 `INVALID_TOKEN` → UUID 가 아닌 ID 400 → 깨진 JSON 400 → 입력 검증 422(빈 값·제어 문자·보이지 않는 문자만·101자 이상, 그 필드의 `fieldErrors`) → 없는 학급·다른 강사의 학급 404.
     - 가입(409 중복)·로그인(401 `INVALID_CREDENTIALS`)·현재 세션·로그아웃도 흉내 낸다. 만든 학급·아동·계정은 다음 요청에 나온다. 테스트가 끝나면 `setup.ts` 가 픽스처만 남긴다(`resetMswData`).
     - 이 모양은 API 명세(`contracts/api-v1.json`)로 백엔드와 같이 검사한다. 핸들러를 고치면 `src/test/contract/apiContract.test.ts` 가 확인한다.
   - `render.tsx`: `renderRoutes(routes, 시작경로)`. 라우터와 React Query 를 붙여 렌더링하고 `user`(user-event)·`router` 를 돌려준다. React Query 재시도는 꺼져 있다. 실제 라우팅 표로 렌더링하려면 `renderRoutes(router.routes, "/child")` 처럼 `@/router` 의 `router.routes` 를 넘긴다.
@@ -157,9 +157,10 @@ class ChildApiTest {
 
 | 테스트 | 약속 |
 |---|---|
-| `config/LocalSecurityPolicyTest` | local: 로그인했어도 CSRF 토큰 헤더 없는 변경 요청은 403, CSRF 쿠키는 HttpOnly, CORS 는 5173 만 |
-| `config/LocalSecurityMatrixTest` | local 행렬(로그인한 강사로): 모든 변경 메서드 × 경로(로그아웃 포함)에서 CSRF 토큰 없음·틀림·쿠키 값 그대로·다른 세션 쿠키는 403 이고 저장 안 됨, 5173 이 아닌 Origin(https·127.0.0.1·다른 포트·null)은 막음, 다른 Origin 의 변경은 토큰이 맞아도 막음, 프론트가 싣는 헤더(Authorization 포함) 허용, 보안 헤더(nosniff·DENY·no-store), actuator 는 health·info 만 노출하고 지금은 로그인해야 봄 |
-| `config/DefaultSecurityPolicyTest` | 배포 프로필(dev·prod): 공개 경로 밖 조회는 401 `AUTHENTICATION_REQUIRED`(health·info 포함), 막힌 변경은 저장 안 됨, 지어낸 CSRF 막음, 가입 → 로그인 → 토큰으로 조회·생성이 됨(세션 CSRF), CORS preflight 막음, 막힌 응답에도 보안 헤더 |
+| `config/LocalSecurityPolicyTest` | local: 로그인했어도 CSRF 토큰 헤더 없는 변경 요청은 403 `CSRF_TOKEN_INVALID`, CSRF 쿠키는 HttpOnly, CORS 는 5173 만 |
+| `config/LocalSecurityMatrixTest` | local 행렬(로그인한 강사로): 모든 변경 메서드 × 경로(로그아웃 포함)에서 CSRF 토큰 없음·틀림·쿠키 값 그대로·다른 세션 쿠키는 403 `CSRF_TOKEN_INVALID`(path 는 원래 경로)이고 저장 안 됨, 5173 이 아닌 Origin(https·127.0.0.1·다른 포트·null)은 막음, 다른 Origin 의 변경은 토큰이 맞아도 막음, 프론트가 싣는 헤더(Authorization 포함) 허용, 보안 헤더(nosniff·DENY·no-store), actuator 는 health·info 만 노출하고 지금은 로그인해야 봄 |
+| `config/DefaultSecurityPolicyTest` | 배포 프로필(dev·prod): 공개 경로 밖 조회는 401 `AUTHENTICATION_REQUIRED`(health·info 포함), 막힌 변경은 저장 안 됨, 지어낸 CSRF 막음, 로그인한 강사의 CSRF 실패는 401 이 아니라 403 `CSRF_TOKEN_INVALID`, 가입 → 로그인 → 토큰으로 조회·생성이 됨(세션 CSRF), CORS preflight 막음, 막힌 응답에도 보안 헤더 |
+| `ErrorDispatchIntegrationTest` | 실제 서버(포트)로 필터 단계 오류가 /error 재진입을 거쳐도 원래 상태로 나감: CSRF 실패는 403 `CSRF_TOKEN_INVALID`, 필터에서 던진 예외(토큰 조회 중 DB 장애)는 500 `INTERNAL_ERROR`, 둘 다 path 는 원래 경로이고 401 로 바뀌지 않음. MockMvc 는 /error 재진입을 흉내 내지 않아 따로 둔다 |
 | `AuthIntegrationTest` | VS-001: 가입 → 로그인 → 본인 조회, 보호 요청은 토큰 없음 401 `AUTHENTICATION_REQUIRED`·틀림·형식 오류·만료·로그아웃 401 `INVALID_TOKEN`, 로그아웃은 그 세션만 끝냄, 막힌 변경은 저장 안 됨, 공개 경로는 틀린 토큰이 달려도 열림, 비밀번호는 BCrypt 해시만·토큰은 해시만 저장, 7자 422·8자는 조합 규칙 없이 가입, 72바이트 초과는 422, 이메일 대소문자·공백 정규화와 중복 409, 로그인 실패(틀린 비밀번호·없는 이메일·제어 문자)는 같은 401, 여러 번 틀려도 잠기지 않음 |
 | `ClassroomChildIntegrationTest` | 학급 격리, 강사 격리(다른 강사의 학급은 목록에 없고 상세·아동 목록·아동 등록은 404, 없는 학급과 같은 오류 본문), 동명이인, 이름 한글 100자 저장·101자 422 |
 | `NameInputBoundaryIntegrationTest` | 학급·아동·강사 이름 경계: 공백뿐·빈 값·null·키 없음·제어 문자(NUL 등)·짝 없는 서로게이트·보이지 않는 문자만(NBSP·폭 없는 공백·BOM)은 422(그 필드)이고 저장 안 됨, UTF-16 100 까지 저장(이모지 50개), 넘으면 422, 마크업·SQL 모양도 글자 그대로 |

@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.config;
 import com.neuringo.neuringobe.auth.security.BearerTokenFilter;
 import com.neuringo.neuringobe.auth.security.PublicEndpoints;
 import com.neuringo.neuringobe.auth.service.AuthService;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -83,7 +84,12 @@ public class SecurityConfig {
                         UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(
                         auth ->
-                                auth.requestMatchers(PublicEndpoints.MATCHER)
+                                // 필터 단계 예외로 컨테이너가 다시 보낸 /error 요청은 Bearer 인증을 거치지 않는다
+                                // (BearerTokenFilter 는 ERROR 디스패치에서 돌지 않는다). 막으면 강사 요청은 원래 상태와
+                                // 상관없이 401 이 되므로 열고, 응답은 ApiErrorController 가 쓴다.
+                                auth.dispatcherTypeMatchers(DispatcherType.ERROR)
+                                        .permitAll()
+                                        .requestMatchers(PublicEndpoints.MATCHER)
                                         .permitAll()
                                         .requestMatchers("/actuator/health", "/actuator/info")
                                         .hasAnyRole("INSTRUCTOR", "OPERATOR")
