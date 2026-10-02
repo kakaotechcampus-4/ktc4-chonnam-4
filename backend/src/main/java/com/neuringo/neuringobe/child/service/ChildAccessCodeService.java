@@ -8,7 +8,7 @@ import com.neuringo.neuringobe.child.dto.ChildAccessSessionResponse;
 import com.neuringo.neuringobe.child.repository.ChildAccessCodeRepository;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -68,7 +68,7 @@ public class ChildAccessCodeService {
                 // Same-key requests are resolved through the idempotency row on the next pass.
             }
         }
-        throw new ApiDomainException(
+        throw new ApiException(
                 HttpStatus.CONFLICT, "ACCESS_CODE_SPACE_EXHAUSTED", "발급 가능한 입장 코드가 없습니다.");
     }
 
@@ -79,12 +79,7 @@ public class ChildAccessCodeService {
                                 () ->
                                         new ResourceNotFoundException(
                                                 "CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
-        boolean owned =
-                classrooms
-                        .findById(child.getClassId())
-                        .map(classroom -> classroom.getInstructorId().equals(instructorId))
-                        .orElse(false);
-        if (!owned) {
+        if (!classrooms.existsByClassIdAndInstructorId(child.getClassId(), instructorId)) {
             throw new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다.");
         }
 
@@ -92,7 +87,7 @@ public class ChildAccessCodeService {
         if (prior != null) {
             if (!prior.getChildId().equals(childId)
                     || !prior.getInstructorId().equals(instructorId)) {
-                throw new ApiDomainException(
+                throw new ApiException(
                         HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "다른 발급 요청에 사용한 키입니다.");
             }
             String original =
@@ -102,7 +97,7 @@ public class ChildAccessCodeService {
                     new AccessCodeResponse(original, koreanTime(prior.getExpiresAt())));
         }
         if (child.getStatus() != ChildStatus.ACTIVE) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.CONFLICT, "CHILD_NOT_ACTIVE", "활성 상태의 아동만 코드를 발급할 수 있습니다.");
         }
 
@@ -138,32 +133,32 @@ public class ChildAccessCodeService {
     @Transactional
     public ChildAccessSessionResponse enter(String code) {
         if (code == null || !code.matches("[0-9]{4}")) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNAUTHORIZED, "INVALID_ACCESS_CODE", "입장 코드가 올바르지 않습니다.");
         }
         ChildAccessCode found =
                 codes.findByCodeDigestAndActiveTrue(cryptography.digest(code))
                         .orElseThrow(
                                 () ->
-                                        new ApiDomainException(
+                                        new ApiException(
                                                 HttpStatus.UNAUTHORIZED,
                                                 "INVALID_ACCESS_CODE",
                                                 "입장 코드가 올바르지 않습니다."));
         if (!found.getExpiresAt().isAfter(Instant.now())) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNAUTHORIZED, "ACCESS_CODE_EXPIRED", "입장 코드가 만료되었습니다.");
         }
         Child child =
                 children.findByIdForUpdate(found.getChildId())
                         .orElseThrow(
                                 () ->
-                                        new ApiDomainException(
+                                        new ApiException(
                                                 HttpStatus.UNAUTHORIZED,
                                                 "INVALID_ACCESS_CODE",
                                                 "입장 코드가 올바르지 않습니다."));
         if (child.getStatus() != ChildStatus.ACTIVE
                 || codes.findByCodeDigestAndActiveTrue(cryptography.digest(code)).isEmpty()) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNAUTHORIZED, "INVALID_ACCESS_CODE", "입장 코드가 올바르지 않습니다.");
         }
         return new ChildAccessSessionResponse(child.getChildId(), child.getDisplayName());

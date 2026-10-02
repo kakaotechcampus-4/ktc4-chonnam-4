@@ -42,12 +42,7 @@ public class ChildAccessScope {
             throw hidden();
         }
         Child child = children.findById(childId).orElseThrow(this::hidden);
-        boolean owned =
-                classrooms
-                        .findById(child.getClassId())
-                        .map(classroom -> classroom.getInstructorId().equals(user.userId()))
-                        .orElse(false);
-        if (!owned) {
+        if (!classrooms.existsByClassIdAndInstructorId(child.getClassId(), user.userId())) {
             throw hidden();
         }
     }

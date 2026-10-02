@@ -52,7 +52,7 @@ public class ClassroomService {
      *
      * <p>TODO: ARCHIVED 학급에 대한 등록·조회 규칙이 정해지면 상태 검사는 별도 메서드로 둔다.
      */
-    public void validateClassroomExists(UUID instructorId, UUID classId) {
+    public void requireOwnedClassroom(UUID instructorId, UUID classId) {
         if (!classroomRepository.existsByClassIdAndInstructorId(classId, instructorId)) {
             throw notFound(classId);
         }
