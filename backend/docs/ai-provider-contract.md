@@ -60,12 +60,12 @@ AND criticalFailureCount == 0
 
 | 실패 유형 | 의미 | 재시도 가능 |
 | --- | --- | --- |
-| `TIMEOUT` | 호출 제한 시간 초과 | 예 |
+| `TIMEOUT` | 호출 제한 시간 초과, HTTP 408 | 예 |
 | `NETWORK_ERROR` | 연결 실패 | 예 |
 | `RATE_LIMITED` | HTTP 429 | 예 |
 | `AUTHENTICATION_ERROR` | HTTP 401·403 | 아니요 |
 | `PROVIDER_UNAVAILABLE` | HTTP 5xx | 예 |
-| `PROVIDER_REQUEST_REJECTED` | 제공자가 요청을 거부함 (HTTP 400·404·422 등 401·403·429를 제외한 4xx) | 아니요 |
+| `PROVIDER_REQUEST_REJECTED` | 제공자가 요청을 거부함 (HTTP 400·404·422 등 401·403·408·429를 제외한 4xx) | 아니요 |
 | `PROVIDER_RESPONSE_ERROR` | 제공자 응답 본문을 해석할 수 없음 | 예 |
 | `EMPTY_OUTPUT` | LLM 생성 결과가 비어 있음 | 예 |
 | `INVALID_OUTPUT_FORMAT` | 생성 결과가 느링고 출력 계약과 맞지 않음 | 예 |

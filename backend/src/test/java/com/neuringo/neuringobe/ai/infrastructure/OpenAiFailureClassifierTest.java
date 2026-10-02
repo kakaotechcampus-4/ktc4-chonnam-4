@@ -127,6 +127,19 @@ class OpenAiFailureClassifierTest {
         assertThat(mapping.source()).isEqualTo(FailureMappingSource.OPENAI_STATUS_CODE);
     }
 
+    @Test
+    void mapsRequestTimeoutStatusCodeToRetryableTimeout() {
+        OpenAIServiceException exception = mock(OpenAIServiceException.class);
+        when(exception.statusCode()).thenReturn(408);
+        when(exception.code()).thenReturn(Optional.empty());
+
+        FailureMapping mapping = required(classifier.classify(exception));
+
+        assertThat(mapping.failure().type()).isEqualTo(AiFailureType.TIMEOUT);
+        assertThat(mapping.failure().retryable()).isTrue();
+        assertThat(mapping.source()).isEqualTo(FailureMappingSource.OPENAI_STATUS_CODE);
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {400, 404, 422})
     void mapsSpringClientErrorResponseToNonRetryableRequestRejected(int statusCode) {
@@ -138,6 +151,19 @@ class OpenAiFailureClassifierTest {
 
         assertThat(mapping.failure().type()).isEqualTo(AiFailureType.PROVIDER_REQUEST_REJECTED);
         assertThat(mapping.failure().retryable()).isFalse();
+        assertThat(mapping.source()).isEqualTo(FailureMappingSource.SPRING_EXCEPTION_TYPE);
+    }
+
+    @Test
+    void mapsSpringRequestTimeoutResponseToRetryableTimeout() {
+        HttpClientErrorException exception =
+                HttpClientErrorException.create(
+                        HttpStatus.REQUEST_TIMEOUT, "request timeout", null, null, null);
+
+        FailureMapping mapping = required(classifier.classify(exception));
+
+        assertThat(mapping.failure().type()).isEqualTo(AiFailureType.TIMEOUT);
+        assertThat(mapping.failure().retryable()).isTrue();
         assertThat(mapping.source()).isEqualTo(FailureMappingSource.SPRING_EXCEPTION_TYPE);
     }
 
