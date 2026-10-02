@@ -20,7 +20,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  * 같고(AuthIntegrationTest), 여기서는 local 에만 더한 쿠키 CSRF 와 CORS 를 본다.
  *
  * <ul>
- *   <li>변경 요청은 로그인한 강사라도 CSRF 토큰 헤더가 없으면 403 이다. 브라우저가 쿠키를 자동으로 실어 보내도 헤더가 없으면 막는다.
+ *   <li>변경 요청은 로그인한 강사라도 CSRF 토큰 헤더가 없으면 403 CSRF_TOKEN_INVALID 다. 브라우저가 쿠키를 자동으로 실어 보내도 헤더가 없으면
+ *       막는다.
  *   <li>GET /api/v1/csrf 응답 본문의 헤더 이름·토큰을 싣고 쿠키를 함께 보내면 통과한다(프론트 흐름).
  *   <li>CSRF 쿠키는 HttpOnly 다. 스크립트는 쿠키를 읽지 못하므로 토큰은 응답 본문으로만 받는다.
  *   <li>CORS 는 프론트 개발 서버(http://localhost:5173)만 허용한다. 다른 Origin 의 preflight 는 403 이다.
@@ -45,8 +46,8 @@ class LocalSecurityPolicyTest {
         MvcTestResult withoutToken = createClassroom(name).exchange();
         MvcTestResult cookieOnly = createClassroom(name).cookie(csrfCookies).exchange();
 
-        assertThat(withoutToken).hasStatus(HttpStatus.FORBIDDEN);
-        assertThat(cookieOnly).hasStatus(HttpStatus.FORBIDDEN);
+        LocalSecurityMatrixTest.assertCsrfRejected(withoutToken);
+        LocalSecurityMatrixTest.assertCsrfRejected(cookieOnly);
         assertThat(fixtures.get("/api/v1/classrooms"))
                 .hasStatusOk()
                 .bodyJson()

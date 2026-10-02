@@ -11,6 +11,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -42,7 +43,12 @@ public class ApiSecurityFailureHandler implements AuthenticationEntryPoint, Acce
             HttpServletResponse response,
             AccessDeniedException exception)
             throws IOException {
-        write(request, response, 403, "ACCESS_DENIED", "접근 권한이 없습니다.");
+        // CSRF 실패는 권한 문제가 아니다. 컨트롤러 전에 막혀 아무것도 바뀌지 않았으므로 토큰을 다시 받아 재시도해도 된다.
+        if (exception instanceof CsrfException) {
+            write(request, response, 403, "CSRF_TOKEN_INVALID", "요청을 확인하지 못했습니다. 다시 시도해 주세요.");
+        } else {
+            write(request, response, 403, "ACCESS_DENIED", "접근 권한이 없습니다.");
+        }
     }
 
     private void write(

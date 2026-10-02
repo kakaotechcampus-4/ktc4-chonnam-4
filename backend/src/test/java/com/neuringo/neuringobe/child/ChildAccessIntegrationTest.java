@@ -129,7 +129,7 @@ class ChildAccessIntegrationTest {
                                 .with(TestInstructors.instructor("teacher-1"))
                                 .header("Idempotency-Key", UUID.randomUUID()))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.error.code").value("CSRF_TOKEN_INVALID"))
                 .andExpect(header().exists("X-Trace-Id"));
     }
 
