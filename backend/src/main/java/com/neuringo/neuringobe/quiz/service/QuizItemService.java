@@ -1,6 +1,6 @@
 package com.neuringo.neuringobe.quiz.service;
 
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.dto.CreateQuizItemRequest;
@@ -42,7 +42,7 @@ public class QuizItemService {
                             1);
             return QuizItemResponse.from(items.save(item));
         } catch (IllegalArgumentException ex) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT, "INVALID_QUIZ_ITEM", "퀴즈 문항 구성이 올바르지 않습니다.");
         }
     }
@@ -67,8 +67,7 @@ public class QuizItemService {
                 || authentication.getAuthorities().stream()
                         .noneMatch(
                                 authority -> "ROLE_INSTRUCTOR".equals(authority.getAuthority()))) {
-            throw new ApiDomainException(
-                    HttpStatus.FORBIDDEN, "ACCESS_DENIED", "강사만 문항을 관리할 수 있습니다.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "강사만 문항을 관리할 수 있습니다.");
         }
     }
 }

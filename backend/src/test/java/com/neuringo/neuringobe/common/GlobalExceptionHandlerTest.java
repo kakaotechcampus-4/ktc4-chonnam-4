@@ -143,6 +143,18 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void preservesApiExceptionStatusAndCode() throws Exception {
+        given(classroomService.list(any()))
+                .willThrow(new ApiException(HttpStatus.CONFLICT, "CLASSROOM_CONFLICT", "학급 충돌"));
+
+        mockMvc.perform(get("/api/v1/classrooms"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CLASSROOM_CONFLICT"))
+                .andExpect(jsonPath("$.error.message").value("학급 충돌"))
+                .andExpect(jsonPath("$.error.traceId").isNotEmpty());
+    }
+
+    @Test
     void skipsErrorResponseWhenResponseIsAlreadyCommitted() {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/classrooms");

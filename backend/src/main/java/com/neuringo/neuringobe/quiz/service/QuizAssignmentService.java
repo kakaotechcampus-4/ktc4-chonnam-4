@@ -4,7 +4,7 @@ import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.domain.ActivityQuiz;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
@@ -54,7 +54,7 @@ public class QuizAssignmentService {
             throw conflict("ACTIVITY_ALREADY_STARTED", "시작한 활동에는 문항을 배정할 수 없습니다.");
         }
         if (assignments.countByActivityId(activityId) >= 3) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "MAX_QUIZ_ITEMS_EXCEEDED",
                     "퀴즈 문항은 최대 3개입니다.");
@@ -67,7 +67,7 @@ public class QuizAssignmentService {
                                                 "QUIZ_ITEM_NOT_FOUND", "퀴즈 문항을 찾을 수 없습니다."));
         if (!"APPROVED".equals(item.getStatus())
                 || item.getItemVersion() != request.itemVersion()) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "UNAPPROVED_QUIZ_ITEM",
                     "승인된 문항 버전만 배정할 수 있습니다.");
@@ -75,7 +75,7 @@ public class QuizAssignmentService {
         try {
             item.validateForAssignment();
         } catch (IllegalArgumentException ex) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT, "INVALID_QUIZ_ITEM", "퀴즈 문항 구성이 올바르지 않습니다.");
         }
         ActivityQuiz assignment =
@@ -120,7 +120,7 @@ public class QuizAssignmentService {
         return item;
     }
 
-    private ApiDomainException conflict(String code, String message) {
-        return new ApiDomainException(HttpStatus.CONFLICT, code, message);
+    private ApiException conflict(String code, String message) {
+        return new ApiException(HttpStatus.CONFLICT, code, message);
     }
 }

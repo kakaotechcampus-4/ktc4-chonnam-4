@@ -6,7 +6,7 @@ import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
 import java.time.Instant;
@@ -57,8 +57,7 @@ public class ActivityService {
             Authentication authentication) {
         access.requireOwnerOrInstructor(authentication, childId);
         if (page < 0 || size < 1 || size > 100) {
-            throw new ApiDomainException(
-                    HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
         }
         PageRequest paging = PageRequest.of(page, size);
         return (status == null

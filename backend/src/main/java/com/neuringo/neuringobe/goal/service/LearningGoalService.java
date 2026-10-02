@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.domain.LearningGoal;
 import com.neuringo.neuringobe.goal.dto.CreateLearningGoalRequest;
@@ -54,7 +54,7 @@ public class LearningGoalService {
         String situation = request.situationType() == null ? null : request.situationType().trim();
         if (required.stream().anyMatch(value -> value == null || value.isBlank())
                 || forbidden.stream().anyMatch(value -> value == null || value.isBlank())) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "INVALID_GOAL_CONDITIONS",
                     "목표 조건이 올바르지 않습니다.");
@@ -93,7 +93,7 @@ public class LearningGoalService {
             return List.of();
         }
         if (values.contains(null)) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "INVALID_GOAL_CONDITIONS",
                     "목표 조건이 올바르지 않습니다.");

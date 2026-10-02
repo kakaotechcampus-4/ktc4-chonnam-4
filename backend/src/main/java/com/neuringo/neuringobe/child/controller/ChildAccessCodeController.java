@@ -3,7 +3,7 @@ package com.neuringo.neuringobe.child.controller;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.dto.AccessCodeResponse;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ApiResponse;
 import java.net.URI;
 import java.util.UUID;
@@ -32,16 +32,15 @@ public class ChildAccessCodeController {
             @RequestHeader("Idempotency-Key") UUID requestKey,
             Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new ApiDomainException(
+            throw new ApiException(
                     HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED", "강사 인증이 필요합니다.");
         }
         if (authentication.getAuthorities().stream()
                 .noneMatch(authority -> "ROLE_INSTRUCTOR".equals(authority.getAuthority()))) {
-            throw new ApiDomainException(
-                    HttpStatus.FORBIDDEN, "ACCESS_DENIED", "담당 강사만 발급할 수 있습니다.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "담당 강사만 발급할 수 있습니다.");
         }
         if (!(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
-            throw new ApiDomainException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "강사 인증이 필요합니다.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "강사 인증이 필요합니다.");
         }
         var issued = service.issue(childId, requestKey, user.userId());
         return ResponseEntity.created(
