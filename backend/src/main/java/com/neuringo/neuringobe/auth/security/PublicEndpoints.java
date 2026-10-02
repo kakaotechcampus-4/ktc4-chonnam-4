@@ -21,6 +21,7 @@ public final class PublicEndpoints {
             new OrRequestMatcher(
                     PATH.matcher(HttpMethod.POST, "/api/v1/users"),
                     PATH.matcher(HttpMethod.POST, "/api/v1/auth/sessions"),
+                    PATH.matcher(HttpMethod.POST, "/api/v1/child-access-sessions"),
                     // 가입·로그인 POST 전에 CSRF 토큰을 받아야 하므로 로그인 전에도 열려 있어야 한다(CSRF 유지, DEC-001 1.2절).
                     PATH.matcher(HttpMethod.GET, "/api/v1/csrf"));
 

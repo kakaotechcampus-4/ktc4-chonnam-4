@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.neuringo.neuringobe.classroom.domain.Classroom;
@@ -35,10 +36,24 @@ class ClassroomServiceTest {
         given(classroomRepository.existsByClassIdAndInstructorId(classId, INSTRUCTOR_ID))
                 .willReturn(false);
 
-        assertThatThrownBy(() -> classroomService.validateClassroomExists(INSTRUCTOR_ID, classId))
+        assertThatThrownBy(() -> classroomService.requireOwnedClassroom(INSTRUCTOR_ID, classId))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .extracting("code")
                 .isEqualTo("CLASSROOM_NOT_FOUND");
+        verify(classroomRepository, never()).findById(classId);
+    }
+
+    @Test
+    void hidesClassroomNotOwnedByInstructor() {
+        UUID classId = UUID.randomUUID();
+        given(classroomRepository.findByClassIdAndInstructorId(classId, INSTRUCTOR_ID))
+                .willReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> classroomService.get(INSTRUCTOR_ID, classId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .extracting("code")
+                .isEqualTo("CLASSROOM_NOT_FOUND");
+        verify(classroomRepository, never()).findById(classId);
     }
 
     @Test

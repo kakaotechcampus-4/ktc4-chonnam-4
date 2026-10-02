@@ -18,6 +18,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.auth.service.AuthService;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
+import com.neuringo.neuringobe.config.ApiSecurityFailureHandler;
 import com.neuringo.neuringobe.config.SecurityConfig;
 import com.neuringo.neuringobe.support.WithAuthenticatedUser;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 
 // 기본 프로필 보안 체인은 인증을 요구하고 CSRF 가 켜져 있어, 인증 사용자와 CSRF 토큰을 넣어야 요청이 Controller 까지 온다.
 @WebMvcTest(ClassroomController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ApiSecurityFailureHandler.class})
 @WithAuthenticatedUser
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
@@ -139,6 +140,18 @@ class GlobalExceptionHandlerTest {
 
         String traceId = JsonPath.read(body, "$.error.traceId");
         assertThat(output).contains("traceId=" + traceId).doesNotContain("테스트아동");
+    }
+
+    @Test
+    void preservesApiExceptionStatusAndCode() throws Exception {
+        given(classroomService.list(any()))
+                .willThrow(new ApiException(HttpStatus.CONFLICT, "CLASSROOM_CONFLICT", "학급 충돌"));
+
+        mockMvc.perform(get("/api/v1/classrooms"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CLASSROOM_CONFLICT"))
+                .andExpect(jsonPath("$.error.message").value("학급 충돌"))
+                .andExpect(jsonPath("$.error.traceId").isNotEmpty());
     }
 
     @Test

@@ -80,6 +80,24 @@ class AuthIntegrationTest {
                 .containsEntry("status", "ACTIVE");
     }
 
+    @Test
+    void operatorKeepsAccountAccessWithoutInstructorClassroomPermission() {
+        TestFixtures.Instructor operator = fixtures.signUpInstructor();
+        jdbcTemplate.update(
+                "UPDATE user_account SET role = 'OPERATOR' WHERE user_id = ?", operator.userId());
+
+        MvcTestResult account =
+                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), operator.accessToken())
+                        .exchange();
+        MvcTestResult classroom =
+                TestFixtures.bearer(mvc.get().uri("/api/v1/classrooms"), operator.accessToken())
+                        .exchange();
+
+        assertThat(account).hasStatusOk();
+        assertThat(classroom).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(classroom).bodyJson().extractingPath("$.error.code").isEqualTo("ACCESS_DENIED");
+    }
+
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */
     static Stream<Arguments> protectedRequests() {
         String someClassroom = "/api/v1/classrooms/" + UUID.randomUUID();
