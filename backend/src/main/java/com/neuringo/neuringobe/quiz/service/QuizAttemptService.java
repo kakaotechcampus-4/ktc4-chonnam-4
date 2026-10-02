@@ -4,7 +4,7 @@ import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
-import com.neuringo.neuringobe.common.ApiDomainException;
+import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.domain.ActivityQuiz;
 import com.neuringo.neuringobe.quiz.domain.InitialDifficultyPolicy;
@@ -15,6 +15,7 @@ import com.neuringo.neuringobe.quiz.domain.QuizJudgement;
 import com.neuringo.neuringobe.quiz.domain.QuizResult;
 import com.neuringo.neuringobe.quiz.domain.QuizResultCalculator;
 import com.neuringo.neuringobe.quiz.domain.QuizType;
+import com.neuringo.neuringobe.quiz.domain.TechnicalFailureReason;
 import com.neuringo.neuringobe.quiz.dto.FinalizeQuizAttemptRequest;
 import com.neuringo.neuringobe.quiz.dto.PutQuizAttemptRequest;
 import com.neuringo.neuringobe.quiz.dto.QuizAttemptResponse;
@@ -148,7 +149,7 @@ public class QuizAttemptService {
         if (authentication == null
                 || authentication.getAuthorities().stream()
                         .noneMatch(a -> "ROLE_SYSTEM".equals(a.getAuthority()))) {
-            throw new ApiDomainException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "내부 처리 권한이 필요합니다.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "내부 처리 권한이 필요합니다.");
         }
         ActivityQuiz assigned = requireAssignment(assignmentId);
         Activity activity =
@@ -175,7 +176,7 @@ public class QuizAttemptService {
                         request.finalResponse(),
                         attempt.getTechnicalFailureReason() == null
                                 ? null
-                                : PutQuizAttemptRequest.TechnicalFailureReason.valueOf(
+                                : TechnicalFailureReason.valueOf(
                                         attempt.getTechnicalFailureReason()));
         return finishExisting(
                         attempt, assignmentService.requireVersion(assigned), activity, complete)
@@ -288,8 +289,7 @@ public class QuizAttemptService {
                             || request.cameraModelVersion().isBlank())) {
                 throw invalidResult();
             }
-            if (request.technicalFailureReason()
-                    == PutQuizAttemptRequest.TechnicalFailureReason.IMAGE_LOAD_FAILED) {
+            if (request.technicalFailureReason() == TechnicalFailureReason.IMAGE_LOAD_FAILED) {
                 throw invalidResult();
             }
         } else {
@@ -299,8 +299,7 @@ public class QuizAttemptService {
             if (request.technicalFailureReason() != null
                     && (item.getQuizType() != QuizType.OTHER_EMOTION_IMAGE
                             || request.technicalFailureReason()
-                                    != PutQuizAttemptRequest.TechnicalFailureReason
-                                            .IMAGE_LOAD_FAILED)) {
+                                    != TechnicalFailureReason.IMAGE_LOAD_FAILED)) {
                 throw invalidResult();
             }
         }
@@ -393,13 +392,13 @@ public class QuizAttemptService {
         }
     }
 
-    private ApiDomainException invalidResult() {
-        return new ApiDomainException(
+    private ApiException invalidResult() {
+        return new ApiException(
                 HttpStatus.UNPROCESSABLE_CONTENT, "INVALID_QUIZ_RESULT", "퀴즈 응답 값이 올바르지 않습니다.");
     }
 
-    private ApiDomainException conflict(String code, String message) {
-        return new ApiDomainException(HttpStatus.CONFLICT, code, message);
+    private ApiException conflict(String code, String message) {
+        return new ApiException(HttpStatus.CONFLICT, code, message);
     }
 
     public record SavedAttempt(QuizAttemptResponse response, boolean created) {}
