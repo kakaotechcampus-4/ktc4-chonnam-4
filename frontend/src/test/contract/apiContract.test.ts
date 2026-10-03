@@ -17,6 +17,8 @@ type Scenario = {
     csrf?: boolean
     // 없거나 true 면 로그인한 강사(A)의 토큰, false 면 싣지 않음, "invalid" 면 틀린 토큰(contracts/README.md).
     auth?: boolean | "invalid"
+    // 더 실을 헤더(Idempotency-Key 등). 값의 {자리표시자} 도 채운다.
+    headers?: Record<string, string>
   }
   response: { status: number; body: unknown }
 }
@@ -33,6 +35,9 @@ const values: Record<string, string> = {
   instructorPassword: instructors.a.password,
   newEmail: `new-${crypto.randomUUID()}@example.com`,
   newPassword: `pw-${crypto.randomUUID()}`,
+  childId: fixtures.childA1_1.childId,
+  otherChildId: fixtures.childC1_1.childId,
+  requestKey: crypto.randomUUID(),
 }
 
 const ORIGIN = "http://localhost:8080"
@@ -52,11 +57,21 @@ function authHeader(auth: Scenario["request"]["auth"]): Record<string, string> {
   return { Authorization: `Bearer ${instructors.a.accessToken}` }
 }
 
+function extraHeaders(headers: Scenario["request"]["headers"]): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers ?? {}).map(([name, value]) => [name, fill(value)]))
+}
+
 async function send({ request }: Scenario) {
   const url = `${ORIGIN}${fill(request.path)}`
-  if (request.method === "GET") return fetch(url, { credentials: "include", headers: authHeader(request.auth) })
+  if (request.method === "GET") {
+    return fetch(url, { credentials: "include", headers: { ...authHeader(request.auth), ...extraHeaders(request.headers) } })
+  }
 
-  const headers: Record<string, string> = { "Content-Type": "application/json", ...authHeader(request.auth) }
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeader(request.auth),
+    ...extraHeaders(request.headers),
+  }
   if (request.csrf !== false) {
     // 실제 프론트(api.ts)처럼 변경 직전에 토큰을 받는다.
     const csrf = (await (await fetch(`${ORIGIN}/api/v1/csrf`, { credentials: "include" })).json()) as {

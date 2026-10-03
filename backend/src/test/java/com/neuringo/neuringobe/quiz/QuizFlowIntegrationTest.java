@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.TestcontainersConfiguration;
+import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
@@ -25,6 +27,7 @@ import com.neuringo.neuringobe.quiz.domain.QuizType;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +54,7 @@ class QuizFlowIntegrationTest {
     @Autowired private UserAccountRepository users;
     @Autowired private ChildRepository children;
     @Autowired private QuizItemRepository items;
+    @Autowired private ActivityRepository activities;
 
     private UUID childId;
     private MockHttpSession childSession;
@@ -318,24 +322,18 @@ class QuizFlowIntegrationTest {
                         .andReturn()
                         .getResponse()
                         .getContentAsString();
-        String goalId = JsonPath.read(goalBody, "$.data.goalId");
-        String body =
-                mvc.perform(
-                                post("/api/v1/activities")
-                                        .with(TestInstructors.instructor("teacher-quiz"))
-                                        .with(csrf())
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(
-                                                "{\"childId\":\""
-                                                        + childId
-                                                        + "\",\"goalId\":\""
-                                                        + goalId
-                                                        + "\"}"))
-                        .andExpect(status().isCreated())
-                        .andReturn()
-                        .getResponse()
-                        .getContentAsString();
-        return UUID.fromString(JsonPath.read(body, "$.data.activityId"));
+        UUID goalId = UUID.fromString(JsonPath.read(goalBody, "$.data.goalId"));
+        // 배정 API 는 서버가 문항을 자동으로 붙인다. 이 테스트는 풀이·결과 흐름을 보려고 문항을 직접 고르므로, 빈 활동을 저장한 뒤
+        // 문항 배정 API 로 붙인다.
+        Activity activity =
+                activities.save(
+                        new Activity(
+                                UUID.randomUUID(),
+                                childId,
+                                goalId,
+                                UUID.randomUUID(),
+                                Instant.now()));
+        return activity.getActivityId();
     }
 
     private UUID saveItem(QuizType type, String correct) {

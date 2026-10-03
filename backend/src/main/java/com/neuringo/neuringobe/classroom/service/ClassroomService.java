@@ -58,6 +58,11 @@ public class ClassroomService {
         }
     }
 
+    /** 요청한 강사가 담당하는 학급인지. 다른 도메인이 "없는 것처럼" 자기 오류 코드로 404 를 낼 때 쓴다. */
+    public boolean isOwnedBy(UUID instructorId, UUID classId) {
+        return classroomRepository.existsByClassIdAndInstructorId(classId, instructorId);
+    }
+
     private ResourceNotFoundException notFound(UUID classId) {
         return new ResourceNotFoundException("CLASSROOM_NOT_FOUND", "학급을 찾을 수 없습니다: " + classId);
     }

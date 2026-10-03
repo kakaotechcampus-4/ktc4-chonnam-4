@@ -64,7 +64,7 @@ class ApiContractTest {
     void backendAnswersAsTheSharedContractSays(String name, JsonNode scenario) {
         TestFixtures.Instructor instructor = fixtures.instructor();
         UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
-        fixtures.createChild(classId, TestFixtures.NAMESAKE);
+        UUID childId = fixtures.createChild(classId, TestFixtures.NAMESAKE);
         TestFixtures.Credentials fresh = TestFixtures.newCredentials();
         Map<String, String> values = new HashMap<>();
         values.put("classId", classId.toString());
@@ -75,12 +75,17 @@ class ApiContractTest {
         values.put("instructorPassword", instructor.password());
         values.put("newEmail", fresh.email());
         values.put("newPassword", fresh.password());
+        values.put("childId", childId.toString());
+        values.put("requestKey", UUID.randomUUID().toString());
         // 다른 강사는 가입·로그인이 느려서(BCrypt) 쓰는 시나리오에서만 만든다.
-        if (scenario.toString().contains("{otherClassId}")) {
+        String text = scenario.toString();
+        if (text.contains("{otherClassId}") || text.contains("{otherChildId}")) {
             TestFixtures.Instructor other = fixtures.signUpInstructor();
+            UUID otherClassId = fixtures.createClassroom(other, TestFixtures.CLASSROOM_B1);
+            values.put("otherClassId", otherClassId.toString());
             values.put(
-                    "otherClassId",
-                    fixtures.createClassroom(other, TestFixtures.CLASSROOM_B1).toString());
+                    "otherChildId",
+                    fixtures.createChild(other, otherClassId, TestFixtures.CHILD_B1_1).toString());
         }
 
         MvcTestResult result = send(scenario.get("request"), values, instructor);
@@ -115,6 +120,12 @@ class ApiContractTest {
             if (withCsrf) {
                 TestFixtures.CsrfCredentials csrf = fixtures.fetchCsrf();
                 builder.header(csrf.headerName(), csrf.token()).cookie(csrf.cookies());
+            }
+        }
+        JsonNode headers = request.get("headers");
+        if (headers != null) {
+            for (String name : headers.propertyNames()) {
+                builder.header(name, fill(headers.get(name).asString(), values));
             }
         }
         return withAuth(builder, request.get("auth"), instructor).exchange();

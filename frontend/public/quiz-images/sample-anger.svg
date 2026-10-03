@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="화가 난 표정의 예시 얼굴 그림">
+  <!-- 퀴즈 시드 문항(OTHER_EMOTION_IMAGE)용 예시 일러스트. 사람 사진은 쓰지 않는다. -->
+  <circle cx="100" cy="100" r="88" fill="#ffd8a8" stroke="#c98a4b" stroke-width="4"/>
+  <path d="M52 70 L86 84" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <path d="M148 70 L114 84" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="74" cy="98" r="8" fill="#4a3b2c"/>
+  <circle cx="126" cy="98" r="8" fill="#4a3b2c"/>
+  <path d="M70 146 Q100 124 130 146" fill="none" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="50" cy="124" rx="12" ry="7" fill="#f28b82" opacity="0.6"/>
+  <ellipse cx="150" cy="124" rx="12" ry="7" fill="#f28b82" opacity="0.6"/>
+</svg>
