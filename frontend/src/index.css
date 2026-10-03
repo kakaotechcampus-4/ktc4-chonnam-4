@@ -308,6 +308,11 @@ code {
   --instructor-neutral-bg: #ebe9e4;
   --instructor-neutral-fg: #5b5852;
   --instructor-danger-fg: #b3261e;
+  /* 진행 중·권장 배지(시안 T-LRN-03 "진행중", T-ACT-02 "권장")와 주의 안내 띠(T-LRN-04 재발급 경고) */
+  --instructor-info-bg: #e6eef8;
+  --instructor-info-fg: #2f5f96;
+  --instructor-warning-bg: #fbeee2;
+  --instructor-warning-fg: #9a5a1f;
 
   --instructor-radius-card: 12px;
   --instructor-radius-control: 8px;
