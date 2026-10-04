@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  globalIgnores(["dist", "coverage", "test-results", "playwright-report", "blob-report", ".vitest"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
@@ -21,6 +21,13 @@ export default defineConfig([
   },
   {
     files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    // 테스트 코드는 Fast Refresh 대상이 아니다.
+    files: ["src/test/**/*.{ts,tsx}", "**/*.test.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

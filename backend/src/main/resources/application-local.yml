@@ -13,6 +13,12 @@ spring:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
 
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+
 management:
   endpoint:
     health:

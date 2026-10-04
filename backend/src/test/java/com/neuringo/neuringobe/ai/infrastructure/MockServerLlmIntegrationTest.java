@@ -151,6 +151,17 @@ class MockServerLlmIntegrationTest {
     }
 
     @Test
+    void mapsBadRequestToRequestRejectedWithoutRetrying() {
+        respondWithError(400);
+
+        AiCallResult<LlmCompletion> result = llmProvider.complete(requestPayload());
+
+        assertFailureType(result, AiFailureType.PROVIDER_REQUEST_REJECTED);
+        assertThat(((AiCallResult.Failure<LlmCompletion>) result).failure().retryable()).isFalse();
+        verifyCalledOnce();
+    }
+
+    @Test
     void mapsBlankCompletionToEmptyOutput() {
         llmMock("/v1/chat/completions")
                 .withProvider(OPENAI)

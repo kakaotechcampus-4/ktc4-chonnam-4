@@ -133,31 +133,6 @@ body {
   margin: 0;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
 p {
   margin: 0;
 }
@@ -299,4 +274,46 @@ code {
   font-size: 18px;
   color: var(--child-text);
   background: var(--child-bg);
+}
+/*
+ * 강사 화면 전용 디자인 토큰 (인증 화면 포함).
+ * Figma 원본 접근이 막혀 있어 시안 PNG에서 눈으로 추정한 값이다.
+ * 인증: T-AUTH-01·02 / 앱 셸: T-HOME-01, T-CLS-01·02·03, T-NOTI-01
+ * Figma에서 실제 값을 확인하면 이 블록만 교체한다.
+ */
+.instructor-scope {
+  --instructor-font-body: 'Pretendard Variable', var(--font-sans);
+
+  --instructor-bg: #f6f5f1;
+  --instructor-auth-bg: #f3f3f3;
+  --instructor-sidebar: #f3f1ec;
+  --instructor-surface: #ffffff;
+  --instructor-surface-muted: #f5f3ee;
+  --instructor-border: #e4e1da;
+  --instructor-input-border: #d6d3cc;
+
+  --instructor-nav-active: #e2dfd8;
+  --instructor-avatar: #dcd8d0;
+
+  --instructor-text: #262522;
+  --instructor-text-muted: #7c7870;
+  --instructor-text-disabled: #b3afa7;
+
+  --instructor-primary: #2c2c2c;
+  --instructor-primary-foreground: #ffffff;
+  --instructor-link: #2f6db5;
+
+  --instructor-success-bg: #e3f0e6;
+  --instructor-success-fg: #2e6b3f;
+  --instructor-neutral-bg: #ebe9e4;
+  --instructor-neutral-fg: #5b5852;
+  --instructor-danger-fg: #b3261e;
+
+  --instructor-radius-card: 12px;
+  --instructor-radius-control: 8px;
+
+  font-family: var(--instructor-font-body);
+  color: var(--instructor-text);
+  /* #root 의 Vite 템플릿 text-align: center 를 강사 화면에서만 되돌린다. */
+  text-align: left;
 }

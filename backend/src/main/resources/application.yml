@@ -33,6 +33,12 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
 
 management:
   endpoints:
@@ -50,7 +56,10 @@ logging:
     com.neuringo: INFO
 
 neuringo:
+  child-access:
+    hmac-secret: ${CHILD_ACCESS_HMAC_SECRET:}
   ai:
     provider-name: ${AI_PROVIDER_NAME:openai-compatible}
+    model: ${AI_MODEL:}
     request-timeout: ${AI_TIMEOUT:10s}
     max-retries: ${AI_MAX_RETRIES:0}

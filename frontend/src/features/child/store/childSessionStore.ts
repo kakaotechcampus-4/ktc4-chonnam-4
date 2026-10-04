@@ -1,8 +1,8 @@
 import { create } from "zustand"
 
 type ChildSession = {
+  childId: string | null
   childName: string | null
-  accessCode: string | null
 }
 
 type ChildSessionStore = ChildSession & {
@@ -13,8 +13,8 @@ type ChildSessionStore = ChildSession & {
 
 // 아동 개인정보는 새로고침 시 함께 사라져야 하므로 persist 미들웨어를 쓰지 않는다.
 export const useChildSessionStore = create<ChildSessionStore>((set) => ({
+  childId: null,
   childName: null,
-  accessCode: null,
   startSession: (session) => set(session),
-  endSession: () => set({ childName: null, accessCode: null }),
+  endSession: () => set({ childId: null, childName: null }),
 }))

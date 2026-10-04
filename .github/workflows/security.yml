@@ -1,0 +1,67 @@
+name: Security
+# 비밀 정보 검사(gitleaks)와 의존성 검토(dependency-review).
+# 로컬에서 같은 검사: bash scripts/verify.sh security (Docker 필요)
+#
+#   gitleaks           PR: 그 PR 의 커밋만 → 차단
+#                      develop push·매주: 모든 브랜치의 전체 이력 → 실패로 알린다(공개 레포라 어느 브랜치든 새면 끝이다)
+#   dependency-review  develop 으로 가는 PR 에서 새로 들어오는 npm 의존성의 알려진 취약점 → 경고만
+#                      (Gradle 의존성은 GitHub 의존성 그래프에 올리지 않아 대상이 아니다)
+#
+# gitleaks-action 은 조직 레포에서 라이선스 키가 필요해서 쓰지 않고 CLI(도커 이미지)를 직접 부른다.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+  schedule:
+    - cron: '0 18 * * 0' # 매주 월요일 03:00 KST
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # 커밋 범위·전체 이력을 보려면 이력이 다 있어야 한다.
+          fetch-depth: 0
+
+      - name: Secret scan (PR commits)
+        if: github.event_name == 'pull_request'
+        env:
+          # PR 은 머지 커밋으로 체크아웃된다. 첫 부모 = base 브랜치라 HEAD^1..HEAD 가 이 PR 의 커밋이다.
+          GITLEAKS_BASE: HEAD^1
+        run: bash scripts/verify.sh security
+
+      - name: Secret scan (full history)
+        if: github.event_name != 'pull_request'
+        env:
+          GITLEAKS_FULL: '1'
+        run: bash scripts/verify.sh security
+
+  dependency-review:
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Dependency review
+        # 1차 도입 동안 경고만 한다. 의존성 그래프가 꺼져 있는 등 도구 자체가 실패해도 PR 을 막지 않고, 체크도 빨간색으로 두지 않는다.
+        # 실패 이유는 이 스텝 로그에 남는다. 레포 Settings → Code security 에서 Dependency graph 를 켜야 실제로 검사한다(운영진).
+        continue-on-error: true
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          warn-only: true

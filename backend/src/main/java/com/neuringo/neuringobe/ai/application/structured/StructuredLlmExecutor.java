@@ -30,7 +30,7 @@ public final class StructuredLlmExecutor {
             T output = parser.parse(completion.content());
             return new AiCallResult.Success<>(output, success.metadata());
         } catch (InvalidLlmOutputException exception) {
-            AiFailure failure = new AiFailure(AiFailureType.INVALID_OUTPUT_FORMAT, true, null);
+            AiFailure failure = new AiFailure(AiFailureType.INVALID_OUTPUT_FORMAT, null);
             return new AiCallResult.Failure<>(failure, success.metadata());
         }
     }

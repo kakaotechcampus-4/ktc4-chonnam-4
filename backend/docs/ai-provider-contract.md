@@ -60,15 +60,18 @@ AND criticalFailureCount == 0
 
 | 실패 유형 | 의미 | 재시도 가능 |
 | --- | --- | --- |
-| `TIMEOUT` | 호출 제한 시간 초과 | 예 |
+| `TIMEOUT` | 호출 제한 시간 초과, HTTP 408 | 예 |
 | `NETWORK_ERROR` | 연결 실패 | 예 |
 | `RATE_LIMITED` | HTTP 429 | 예 |
 | `AUTHENTICATION_ERROR` | HTTP 401·403 | 아니요 |
 | `PROVIDER_UNAVAILABLE` | HTTP 5xx | 예 |
+| `PROVIDER_REQUEST_REJECTED` | 제공자가 요청을 거부함 (HTTP 400·404·422 등 401·403·408·429를 제외한 4xx) | 아니요 |
 | `PROVIDER_RESPONSE_ERROR` | 제공자 응답 본문을 해석할 수 없음 | 예 |
 | `EMPTY_OUTPUT` | LLM 생성 결과가 비어 있음 | 예 |
 | `INVALID_OUTPUT_FORMAT` | 생성 결과가 느링고 출력 계약과 맞지 않음 | 예 |
 | `UNKNOWN` | OpenAI SDK 계열이지만 세부 유형을 분류할 수 없는 오류 | 아니요 |
+
+재시도 가능 여부는 `AiFailureType`이 정하며 `AiFailure.retryable()`은 실패 유형의 값을 따른다. 이 표는 `AiFailureTypeTest`가 enum과 대조한다.
 
 Spring AI와 OpenAI SDK의 자동 재시도는 0회로 설정한다. 동일 요청 재호출 횟수와 복구 경로는 느링고 오케스트레이터가 관리한다.
 
@@ -130,6 +133,7 @@ MockServer 통합 테스트는 실제 외부 AI를 호출하지 않고 다음을
 - 응답 지연에 대한 `TIMEOUT`
 - HTTP 429에 대한 `RATE_LIMITED`
 - HTTP 503에 대한 `PROVIDER_UNAVAILABLE`
+- HTTP 400에 대한 `PROVIDER_REQUEST_REJECTED`
 - 손상된 제공자 응답에 대한 `PROVIDER_RESPONSE_ERROR`
 - SDK 자동 재시도 없이 HTTP 요청이 정확히 한 번 발생하는지
 

@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.common;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -14,9 +15,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.neuringo.neuringobe.auth.service.AuthService;
 import com.neuringo.neuringobe.classroom.controller.ClassroomController;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
+import com.neuringo.neuringobe.config.ApiSecurityFailureHandler;
 import com.neuringo.neuringobe.config.SecurityConfig;
+import com.neuringo.neuringobe.support.WithAuthenticatedUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,21 +33,23 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.request.ServletWebRequest;
 
 // 기본 프로필 보안 체인은 인증을 요구하고 CSRF 가 켜져 있어, 인증 사용자와 CSRF 토큰을 넣어야 요청이 Controller 까지 온다.
 @WebMvcTest(ClassroomController.class)
-@Import(SecurityConfig.class)
-@WithMockUser
+@Import({SecurityConfig.class, ApiSecurityFailureHandler.class})
+@WithAuthenticatedUser
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private ClassroomService classroomService;
+
+    // SecurityConfig 의 Bearer 토큰 필터가 필요로 한다. 이 테스트는 헤더를 싣지 않으므로 호출되지 않는다.
+    @MockitoBean private AuthService authService;
 
     @Test
     void fillsFieldErrorsForInvalidRequestBody() throws Exception {
@@ -121,7 +127,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void hidesExceptionMessageAndLogsSameTraceIdForUnexpectedError(CapturedOutput output)
             throws Exception {
-        given(classroomService.list()).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
+        given(classroomService.list(any())).willThrow(new IllegalStateException("테스트아동 민감 메시지"));
 
         String body =
                 mockMvc.perform(get("/api/v1/classrooms"))
@@ -134,6 +140,18 @@ class GlobalExceptionHandlerTest {
 
         String traceId = JsonPath.read(body, "$.error.traceId");
         assertThat(output).contains("traceId=" + traceId).doesNotContain("테스트아동");
+    }
+
+    @Test
+    void preservesApiExceptionStatusAndCode() throws Exception {
+        given(classroomService.list(any()))
+                .willThrow(new ApiException(HttpStatus.CONFLICT, "CLASSROOM_CONFLICT", "학급 충돌"));
+
+        mockMvc.perform(get("/api/v1/classrooms"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CLASSROOM_CONFLICT"))
+                .andExpect(jsonPath("$.error.message").value("학급 충돌"))
+                .andExpect(jsonPath("$.error.traceId").isNotEmpty());
     }
 
     @Test

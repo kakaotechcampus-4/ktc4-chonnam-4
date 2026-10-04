@@ -1,0 +1,42 @@
+name: Workflow lint
+# 팀 워크플로와 scripts/*.sh 를 검사한다. 로컬에서 같은 검사: bash scripts/verify.sh workflows
+#
+#   actionlint  문법·표현식 타입·action 입력·run: 셸(shellcheck) 오류         → 차단
+#   zizmor      템플릿 인젝션·과한 권한·자격증명 잔존·SHA 로 고정하지 않은 액션  → 1차 도입 동안 경고만
+#   shellcheck  scripts/*.sh                                                    → 차단
+#
+# 운영진 소유 워크플로(assign-mentor·convention-check·notify-discord)는 팀이 고칠 수 없으므로
+# scripts/verify.sh 가 검사 대상에서 뺀다.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint workflows and scripts
+        run: bash scripts/verify.sh workflows

@@ -1,6 +1,6 @@
 # neuringo-be
 
-카카오테크 캠퍼스 4기 2단계 팀 프로젝트(전남대 4팀) 백엔드. Java 21 + Spring Boot 4.1 기반이며, 아직 비즈니스 API 없이 실행 환경(DB 연결·프로필·Actuator)만 구성된 상태입니다.
+카카오테크 캠퍼스 4기 2단계 팀 프로젝트(전남대 4팀) 백엔드. Java 21 + Spring Boot 4.1 기반입니다. 강사 가입·로그인(`/api/v1/users`, `/api/v1/auth/…`), 학급·아동 API(`/api/v1/classrooms`…), AI 제공자 공통 계약이 들어가 있습니다. 학급·아동은 로그인한 강사의 것만 보입니다.
 
 ## 1. 아키텍처
 
@@ -46,9 +46,10 @@
 
 1. JDK 21을 준비한다. (IntelliJ 사용 시 `Settings → Gradle → Gradle JVM`도 21 이상으로 맞춘다.)
 2. Docker가 설치·실행 중인지 확인한다. (별도 Postgres 설치 없이 자동 실행됨)
-3. `backend/` 에서 `./gradlew bootRun` 을 실행한다.
-4. `spring-boot-docker-compose`가 `compose.yml`을 읽어 PostgreSQL 컨테이너를 자동으로 띄운다.
-5. `http://localhost:8080/actuator/health` 응답이 `UP`이면 정상 기동이다.
+3. `cp .env.example .env` 후 `DB_USERNAME`·`DB_PASSWORD` 를 본인이 정한 값으로 채운다. docker compose 가 이 파일로 DB 컨테이너를 만든다. 없으면 compose 가 즉시 실패한다.
+4. `backend/` 에서 `./gradlew bootRun` 을 실행한다. `spring-boot-docker-compose`가 `compose.yml`을 읽어 PostgreSQL 컨테이너를 자동으로 띄운다.
+5. 로그에 `Started NeuringoBeApplication` 이 나오면 기동된 것이다. **가입·로그인·CSRF 토큰(`GET /api/v1/csrf`) 말고는 로그인해야 한다(토큰이 없으면 401). `/actuator/health` 도 지금은 로그인해야 본다(공개 여부는 팀 결정 전).**
+6. 프론트와 붙여 API 를 부르려면 `local` 프로필로 실행한다. `SPRING_PROFILES_ACTIVE=local`, `DB_USERNAME`, `DB_PASSWORD` 를 **환경변수**로 넘긴다(IDE 실행 설정 등). Spring 은 `.env` 파일을 읽지 않는다. 이때 `http://localhost:8080/api/v1/csrf` 가 200 이면 요청을 받는 것이다. API 를 직접 부를 때는 `GET /api/v1/csrf` 로 받은 헤더를 싣고 `POST /api/v1/users`(가입) → `POST /api/v1/auth/sessions`(로그인) 한 뒤, 받은 `accessToken` 을 `Authorization: Bearer` 로 싣는다.
 
 Docker 없이 직접 설치한 PostgreSQL을 쓰고 싶다면, `local` 프로필로 실행하고 `.env.example`을 참고해 `SPRING_PROFILES_ACTIVE=local`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수를 직접 지정하면 된다.
 
@@ -70,4 +71,13 @@ LLM 호출 포트, Spring AI 어댑터, 실패 유형 및 MockServer 테스트 �
 
 ```bash
 ./gradlew test
+```
+
+## 6. 컨테이너 이미지
+
+`Dockerfile` 은 Temurin 21 LTS 멀티스테이지 이미지다. JDK 로 빌드하고 JRE 로 실행하며, root 가 아닌 사용자(uid 10001)로 돈다. 개발 서버 배포 구성과 준비물은 [deploy/README.md](../deploy/README.md) 에 있다.
+
+```bash
+docker build -t neuringo-backend .   # backend/ 에서
+bash scripts/verify.sh docker         # 레포 루트에서: 빌드 → compose 로 기동 → local 프로필로 요청을 받는지
 ```
