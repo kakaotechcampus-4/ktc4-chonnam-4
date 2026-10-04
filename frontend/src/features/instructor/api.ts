@@ -326,12 +326,22 @@ export function getClassroom(classId: string): Promise<Classroom> {
   return readRequest<Classroom>(`/classrooms/${classId}`)
 }
 
+/** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
+export function deleteClassroom(classId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/classrooms/${classId}`)
+}
+
 export function listChildren(classId: string): Promise<Child[]> {
   return readRequest<Child[]>(`/classrooms/${classId}/children`)
 }
 
 export function getChild(childId: string): Promise<Child> {
   return readRequest<Child>(`/children/${childId}`)
+}
+
+/** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
+export function deleteChild(childId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/children/${childId}`)
 }
 
 export function createChild(classId: string, displayName: string): Promise<Child> {
