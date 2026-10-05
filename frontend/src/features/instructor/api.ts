@@ -1,6 +1,7 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from './auth/tokenStorage'
 
-const API_BASE_URL = 'http://localhost:8080/api/v1' // TODO: G0 이후 환경변수로 교체
+// 배포 빌드는 같은 출처의 /api/v1 을 넘긴다(deploy.yml 의 VITE_API_BASE_URL). 없으면 로컬·E2E 처럼 localhost:8080
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1'
 
 export type ClassroomStatus = 'ACTIVE' | 'ARCHIVED'
 
