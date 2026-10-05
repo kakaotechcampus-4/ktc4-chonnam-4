@@ -1,7 +1,9 @@
 name: Security
-# 비밀 정보 검사(gitleaks)와 의존성 검토(dependency-review).
-# 로컬에서 같은 검사: bash scripts/verify.sh security (Docker 필요)
+# 공개하면 안 되는 파일·값 검사, 비밀 정보 검사(gitleaks), 의존성 검토(dependency-review).
+# 로컬에서 같은 검사: bash scripts/verify.sh security (gitleaks 는 Docker 필요)
 #
+#   공개 파일 검사      .env·키·Terraform state·계정 ID 든 ARN·AWS 로그인 포털 주소 등(scripts/check-public-files.sh)
+#                      PR: 지금 파일 + 그 PR 커밋에 한 번이라도 들어온 것 → 차단. AWS 로 가는 것은 전부 이 커밋에서 만든다
 #   gitleaks           PR: 그 PR 의 커밋만 → 차단
 #                      develop push·매주: 모든 브랜치의 전체 이력 → 실패로 알린다(공개 레포라 어느 브랜치든 새면 끝이다)
 #   dependency-review  develop 으로 가는 PR 에서 새로 들어오는 npm 의존성의 알려진 취약점 → 경고만

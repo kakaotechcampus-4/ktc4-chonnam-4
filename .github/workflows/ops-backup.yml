@@ -1,0 +1,109 @@
+name: Ops backup
+# 매일 03:00 KST 서버 DB 를 백업하고(deploy/host/backup.sh → S3, 14일 보관) 그 백업을 서버의 임시 postgres 에
+# 복구해 본다(deploy/host/restore-check.sh). 복구할 수 없는 백업은 백업이 아니다.
+# 데이터는 서버·S3(AWS) 밖으로 나가지 않는다. 결과는 숫자(크기·테이블 수·마이그레이션 버전·행 수)만 Summary 에 남긴다.
+# 수동 실행도 된다(Actions → Ops backup). 아직 배포된 적이 없으면(서버에 current 없음) 실패로 알린다.
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 매일 03:00 KST
+  workflow_dispatch:
+
+concurrency:
+  group: ops-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    # 수동 실행도 develop 에서만(다른 브랜치를 고르면 그 브랜치의 스크립트가 서버에서 돈다). 매일 실행은 develop 에서 돈다.
+    if: github.ref == 'refs/heads/develop'
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Check AWS_ACCOUNT_ID variable
+        id: account
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          if [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >>"$GITHUB_OUTPUT"
+          echo "### 백업을 건너뛰었다(AWS_ACCOUNT_ID 변수 없음)" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout
+        if: steps.account.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.account.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-ops-backup
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        if: steps.account.outputs.ready == 'true'
+        run: bash scripts/infra-outputs.sh dev
+
+      - name: Backup and restore check (SSM)
+        if: steps.account.outputs.ready == 'true' && steps.infra.outputs.ready == 'true'
+        env:
+          BACKUP_BUCKET: ${{ steps.infra.outputs.backup_bucket }}
+        run: |
+          remote="$RUNNER_TEMP/ops-backup.sh"
+          if ! [[ "$BACKUP_BUCKET" =~ ^[a-z0-9.-]{3,63}$ ]]; then
+            echo "::error::백업 버킷 이름 모양이 틀렸다"
+            exit 1
+          fi
+          # 서버에서 돌 스크립트. \$ 는 서버에서 풀린다. 버킷 이름은 로그에 찍지 않는다.
+          cat >"$remote" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cur=/opt/neuringo/current/deploy/host
+          # 75 = 건너뜀(아직 배포 전이라 백업할 DB 가 없다). 실패와 구분한다.
+          [ -d "\$cur" ] || { echo "[ops] 아직 배포된 적이 없다(current 없음)"; exit 75; }
+          # 배포와 겹치지 않게 같은 서버 잠금을 잡는다(배포 중에 백업하거나 current 가 바뀌지 않게).
+          exec 9>/opt/neuringo/state/deploy.lock
+          flock -w 600 9 || { echo "[ops] 배포가 10분 안에 끝나지 않아 백업하지 못했다"; exit 1; }
+          LABEL=daily NEURINGO_ENV=dev BACKUP_BUCKET='$BACKUP_BUCKET' bash "\$cur/backup.sh"
+          LABEL=daily NEURINGO_ENV=dev bash "\$cur/restore-check.sh"
+          EOF
+          code=0
+          out=$(bash scripts/ssm-run.sh "$remote" "daily backup") || code=$?
+          rm -f "$remote"
+          echo "$out"
+          # 69 = 서버가 꺼져 있다(꺼져 있는 동안은 DB 가 바뀌지 않는다), 75 = 아직 배포 전. 실패가 아니라 건너뜀이다.
+          case $code in
+            69 | 75)
+              why=$([ "$code" = 69 ] && echo "서버가 꺼져 있다(꺼져 있는 동안은 DB 가 바뀌지 않는다)" || echo "아직 배포 전이라 백업할 DB 가 없다")
+              printf '### 매일 백업 (dev) — 건너뜀\n\n%s\n' "$why" >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=백업 건너뜀::$why"
+              exit 0
+              ;;
+          esac
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          {
+            echo "### 매일 백업 (dev)"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 백업 | $(value BACKUP_RESULT || true) · $(value BACKUP_BYTES || true) 바이트 |"
+            echo "| 복구 확인 | $(value RESTORE_RESULT || true) · 테이블 $(value RESTORE_TABLES || true)개 · $(value RESTORE_MIGRATION || true) · 행 $(value RESTORE_ROWS || true)개 |"
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"

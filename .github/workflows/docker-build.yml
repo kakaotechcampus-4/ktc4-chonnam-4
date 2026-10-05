@@ -1,6 +1,6 @@
 name: Docker build
 # 백엔드 이미지를 빌드하고 deploy/compose.dev.yml 로 PostgreSQL 과 함께 띄워 요청을 받는지(GET /api/v1/csrf 200) 본다.
-# 이미지를 레지스트리에 올리지는(push) 않는다. 배포는 deploy-dev.yml(수동 실행)이 한다.
+# 이미지를 레지스트리에 올리지는(push) 않는다. 배포는 deploy.yml(OIDC·ECR·SSM)이 한다.
 # 로컬에서 같은 검사: bash scripts/verify.sh docker
 
 on:

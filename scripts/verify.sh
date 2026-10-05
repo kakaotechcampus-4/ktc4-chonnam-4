@@ -2,11 +2,12 @@
 # CI 와 같은 검사를 로컬에서 돌린다. 명령은 워크플로와 똑같이 둔다.
 # 여기서 초록이면 PR 에서도 초록이어야 한다. 다르게 나오면 이 스크립트나 워크플로 중 하나가 틀린 것이다.
 #
-#   bash scripts/verify.sh              # frontend + backend + workflows + security
+#   bash scripts/verify.sh              # frontend + backend + workflows + infra + security
 #   bash scripts/verify.sh frontend     # Frontend CI 와 같다
 #   bash scripts/verify.sh backend      # Backend CI 와 같다 (Docker 필요 — Testcontainers)
 #   bash scripts/verify.sh workflows    # Workflow lint 와 같다 (Docker 필요 — actionlint·zizmor·shellcheck)
-#   bash scripts/verify.sh security     # Security 의 gitleaks 와 같다 (Docker 필요)
+#   bash scripts/verify.sh infra        # Infra 의 check 와 같다 (Docker 필요 — Terraform fmt·validate·test·구성 검사, AWS 호출 없음)
+#   bash scripts/verify.sh security     # Security 와 같다 — 공개하면 안 되는 파일·값 검사 + gitleaks (gitleaks 는 Docker 필요)
 #   bash scripts/verify.sh e2e          # E2E 와 같다 (Docker·JDK 21·Node 24, 8080·5173 이 비어 있어야 한다)
 #   bash scripts/verify.sh docker       # Docker build 와 같다 (Docker 필요 — 이미지 빌드·compose 기동, 18080 을 쓴다)
 #
@@ -112,10 +113,43 @@ zizmor_check() {
   fi
 }
 
-shellcheck_check() { require_docker && in_docker "$SHELLCHECK_IMAGE" scripts/*.sh; }
+shellcheck_check() { require_docker && in_docker "$SHELLCHECK_IMAGE" scripts/*.sh deploy/host/*.sh; }
 migration_guard_selftest() { bash scripts/test-check-migrations.sh; }
 e2e_scan_selftest() { bash scripts/test-e2e-scan.sh; }
 e2e_record_selftest() { bash scripts/test-e2e-record.sh; }
+aws_probe_selftest() { bash scripts/test-aws-probe.sh; }
+host_deploy_selftest() { bash scripts/test-host-deploy.sh; }
+ssm_run_selftest() { bash scripts/test-ssm-run.sh; }
+web_deploy_selftest() { bash scripts/test-web-deploy.sh; }
+host_setup_selftest() { bash scripts/test-host-setup.sh; }
+infra_outputs_selftest() { bash scripts/test-infra-outputs.sh; }
+tf_selftest() { bash scripts/test-tf.sh; }
+public_files_selftest() { bash scripts/test-check-public-files.sh; }
+plan_guard_selftest() { node --test scripts/tf-plan-guard.test.mjs; }
+
+# Terraform 은 scripts/tf-run.sh 가 고정 이미지(hashicorp/terraform:1.16.4)로 돌린다. infra.yml 도 같은 스크립트를 쓴다.
+# .tf 가 있는 디렉터리(모듈·환경)를 모두 찾는다. tests/ 는 .tftest.hcl 이라 따로 잡히지 않는다.
+infra_dirs() { find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u; }
+infra_fmt() { require_docker && bash scripts/tf-run.sh infra fmt -check -recursive -diff; }
+# plan 이 자격증명으로 코드를 돌리기 전에 위험한 구성(provisioner·외부 모듈·외부 provider·비밀값 data)을 막는다.
+infra_policy() { node scripts/tf-plan-guard.mjs --config infra; }
+# backend 없이 init 해서 자격증명 없이 돈다. provider 는 잠금 파일에 있는 것만 받는다. test 는 mock provider 라 AWS 를 부르지 않는다.
+infra_check() { # 디렉터리
+  require_docker || return 1
+  bash scripts/tf-run.sh "$1" init -backend=false -input=false -lockfile=readonly >/dev/null &&
+    bash scripts/tf-run.sh "$1" validate &&
+    bash scripts/tf-run.sh "$1" test
+}
+
+# GitHub·AWS 로 가면 안 되는 파일·값(.env·키·state·계정 ID 든 ARN·로그인 포털 주소 등)이 커밋에 있는지 본다.
+# 범위는 gitleaks 와 같다(PR 은 그 PR 의 커밋, develop push·매주는 지금 파일 전체). Docker 없이 돈다.
+public_files_check() {
+  if [ "${GITLEAKS_FULL:-0}" = 1 ]; then
+    bash scripts/check-public-files.sh
+  else
+    bash scripts/check-public-files.sh "$(git rev-parse "${GITLEAKS_BASE:-$(git merge-base origin/develop HEAD)}")"
+  fi
+}
 
 # 기본은 origin/develop 에서 갈라진 뒤의 커밋만 본다. CI 는 PR 이면 GITLEAKS_BASE=HEAD^1(= PR 의 커밋),
 # develop push·매주 실행이면 GITLEAKS_FULL=1(모든 브랜치의 전체 이력)로 부른다. 비밀 값은 출력에서 가린다(--redact).
@@ -158,9 +192,28 @@ workflows() {
   run "scripts: 마이그레이션 가드 자체 검사" migration_guard_selftest
   run "scripts: 개인정보 마커 스캔 자체 검사" e2e_scan_selftest
   run "scripts: E2E 경고 기록 자체 검사" e2e_record_selftest
+  run "scripts: AWS 권한 확인 자체 검사" aws_probe_selftest
+  run "scripts: 서버 배포·백업·복구 확인·배포 묶음 자체 검사" host_deploy_selftest
+  run "scripts: 서버 기본 설정 자체 검사" host_setup_selftest
+  run "scripts: SSM 실행 자체 검사" ssm_run_selftest
+  run "scripts: 인프라 값 읽기 자체 검사" infra_outputs_selftest
+  run "scripts: 프론트 배포 자체 검사" web_deploy_selftest
+  run "scripts: Terraform 실행·state 버킷 자체 검사" tf_selftest
+  run "scripts: plan 가드 자체 검사" plan_guard_selftest
+  run "scripts: 공개 파일 검사 자체 검사" public_files_selftest
+}
+
+infra() {
+  local dir
+  run "infra: terraform fmt" infra_fmt
+  run "infra: 구성 검사(provisioner·외부 모듈·외부 provider·비밀값 data 금지)" infra_policy
+  while read -r dir; do
+    run "infra: $dir (init·validate·test)" infra_check "$dir"
+  done < <(infra_dirs)
 }
 
 security() {
+  run "security: 공개하면 안 되는 파일·값" public_files_check
   run "security: gitleaks (비밀 정보)" gitleaks_check
 }
 
@@ -179,6 +232,7 @@ case "${1:-all}" in
   frontend) frontend ;;
   backend) backend ;;
   workflows) workflows ;;
+  infra) infra ;;
   security) security ;;
   e2e) e2e ;;
   docker) image ;;
@@ -186,10 +240,11 @@ case "${1:-all}" in
     frontend
     backend
     workflows
+    infra
     security
     ;;
   *)
-    echo "사용법: bash scripts/verify.sh [frontend|backend|workflows|security|e2e|docker|all]" >&2
+    echo "사용법: bash scripts/verify.sh [frontend|backend|workflows|infra|security|e2e|docker|all]" >&2
     exit 2
     ;;
 esac
