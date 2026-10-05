@@ -10,8 +10,11 @@ import java.util.Objects;
 public record SpeechTranscriptionRequest(
         AiTraceContext traceContext, int currentAttempt, byte[] audio, AudioFormat format) {
 
-    /** OpenAI 음성 전사 API 의 업로드 한도(25MB). */
-    public static final int MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+    /**
+     * 역할극 한 턴 발화의 업로드 상한(2MB). webm/opus(약 128kbps) 약 2분, wav(16kHz 모노) 약 1분이다. OpenAI 한도(25MB)까지
+     * 받으면 5~10분 녹음이 들어와 전사만 1분 가까이 걸리고 STT 제한 시간에 걸려 재시도만 반복된다. 녹음 길이 자체는 FE 에서 제한한다.
+     */
+    public static final int MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 
     public SpeechTranscriptionRequest {
         Objects.requireNonNull(traceContext, "traceContext must not be null");

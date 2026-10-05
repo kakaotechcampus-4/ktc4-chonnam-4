@@ -137,7 +137,7 @@ LLM 과 같은 방식으로 제공자 중립 포트를 두고, 결과는 `AiCall
 
 | 구분 | 제공자 | 기본 모델 | 입력 | 출력 |
 | --- | --- | --- | --- | --- |
-| STT | OpenAI 호환 음성 전사 API | `gpt-4o-mini-transcribe` | `SpeechTranscriptionRequest` (webm·ogg·wav·mp3·m4a, 최대 25MB) | `SpeechTranscription` (전사문, 신뢰도, 토큰) |
+| STT | OpenAI 호환 음성 전사 API | `gpt-4o-mini-transcribe` | `SpeechTranscriptionRequest` (webm·ogg·wav·mp3·m4a, 한 턴 발화 기준 최대 2MB) | `SpeechTranscription` (전사문, 신뢰도, 토큰) |
 | TTS | 타입캐스트 | `ssfm-v30` | `SpeechSynthesisRequest` (최대 2000자, 목소리, 감정) | `SynthesizedSpeech` (mp3 또는 wav) |
 
 ### STT 결과 해석
@@ -146,6 +146,7 @@ LLM 과 같은 방식으로 제공자 중립 포트를 두고, 결과는 `AiCall
 - `confidence` 는 토큰 logprob 평균의 지수(0~1)다. `STT_INCLUDE_LOGPROBS=false` 이거나 모델이 logprob 을 주지 않으면 비어 있다. 저신뢰 기준(0.40 이하)은 이 값에 적용하되, 실제 녹음으로 보정하기 전까지는 임시 기준이다.
 - 응답 본문에 `text` 가 없거나 JSON 이 아니면 `PROVIDER_RESPONSE_ERROR` 다.
 - STT 전사문은 입력 처리·안전 처리 전의 원문이므로 그대로 `LlmRequest` 에 넣지 않는다.
+- 음성은 한 턴 발화 기준 최대 2MB 다(webm/opus 약 2분, wav 16kHz 모노 약 1분). OpenAI 한도는 25MB 지만, 긴 녹음은 전사 시간이 길어져 `STT_TIMEOUT` 에 걸리므로 서버로 보내기 전에 막는다. 녹음 길이 제한은 FE 에서 함께 둔다.
 
 ### TTS 결과 해석
 
