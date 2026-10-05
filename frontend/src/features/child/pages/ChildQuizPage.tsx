@@ -125,7 +125,7 @@ function QuizQuestionView({
             {feedback.kind === "hint" ? (
               <SpeechBubble character="rabbit" characterAlign="top">
                 괜찮아, 다시 한번 살펴볼까?
-                <span className="mt-1 block font-bold text-[var(--child-text)]">
+                <span className="mt-1 block font-extrabold text-[var(--child-text)]">
                   힌트 {feedback.hint.level}: {feedback.hint.text}
                 </span>
                 <span className="mt-1 block text-base text-[var(--child-text-muted)]">
@@ -180,7 +180,7 @@ function QuizDoneView({ total, onContinue }: { total: number; onContinue: () => 
           <Character name="rabbit" size="md" />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-3xl font-bold break-keep text-[var(--child-text)]">
+          <p className="font-child-display font-extrabold text-3xl break-keep text-[var(--child-text)]">
             표정 퀴즈 {total}개를 다 풀었어!
           </p>
           <p className="text-lg text-[var(--child-text-muted)]">친구 마음을 잘 살펴봤구나</p>

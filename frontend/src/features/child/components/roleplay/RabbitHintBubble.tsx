@@ -13,8 +13,8 @@ function RabbitHintBubble({ children }: { children: ReactNode }) {
     // 오른쪽 여백(pr)은 깡총이 자리다. 깡총이 틀 폭(68px) - 화면 쪽으로 뺀 만큼. 팔이 말풍선 끝에 살짝 닿게 둔다.
     <div className="relative flex justify-end pr-11 sm:pr-7">
       {/* 색·모서리는 Figma 깡총이 힌트 말풍선(node 286:1473) 값이다. 꼬리는 Figma대로 왼쪽 아래. */}
-      <p className="max-w-[80%] rounded-[20px] rounded-bl-md bg-[#FBEADC] px-5 py-3 text-left text-lg font-medium text-[#3A2E2A] shadow-sm">
-        <span className="font-bold">깡총이: </span>
+      <p className="max-w-[80%] rounded-[20px] rounded-bl-md bg-[#FBEADC] px-5 py-3 text-left font-child-display text-lg font-bold text-[#3A2E2A] shadow-sm">
+        <span className="font-extrabold">깡총이: </span>
         {children}
       </p>
 

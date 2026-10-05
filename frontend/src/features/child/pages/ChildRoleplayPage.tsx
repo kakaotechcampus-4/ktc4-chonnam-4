@@ -80,7 +80,7 @@ function RoleplayWrapUpView({
           <Character name="rabbit" size="md" />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-3xl font-bold text-[var(--child-text)]">정말 잘 이야기했어!</p>
+          <p className="font-child-display font-extrabold text-3xl text-[var(--child-text)]">정말 잘 이야기했어!</p>
           <p className="text-lg text-[var(--child-text-muted)]">
             친구 마음을 헤아려서 말해준 게 {withNameSuffix(childName)}는 참 멋있었어
           </p>

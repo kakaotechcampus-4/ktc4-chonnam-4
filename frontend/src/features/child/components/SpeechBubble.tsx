@@ -42,7 +42,7 @@ function SpeechBubble({
         <span className="text-sm font-semibold text-[var(--child-text-muted)]">
           {SPEAKER_NAMES[character]}
         </span>
-        <p className="text-lg font-medium">{children}</p>
+        <p className="font-child-display text-lg font-bold">{children}</p>
       </div>
     </div>
   )

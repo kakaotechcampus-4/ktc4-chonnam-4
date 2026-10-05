@@ -47,7 +47,7 @@ function ChildActivityIntroPage() {
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-8 text-center">
           <div className="flex flex-col items-center gap-4">
-            <p className="text-3xl font-bold break-keep text-[var(--child-text)]">{activity.title}</p>
+            <p className="font-child-display font-extrabold text-3xl break-keep text-[var(--child-text)]">{activity.title}</p>
             <SpeechBubble character="turtle">{activity.description}</SpeechBubble>
           </div>
 

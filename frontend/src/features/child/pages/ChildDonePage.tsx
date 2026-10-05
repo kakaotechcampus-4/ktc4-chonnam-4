@@ -43,8 +43,8 @@ function ChildDonePage() {
             <Character name="rabbit" size="md" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="text-3xl font-bold text-[var(--child-text)]">스탬프를 받았어요!</p>
-            <p className="text-lg text-[var(--child-text-muted)]">끝까지 해냈어! 친구 마음을 잘 살펴봤어</p>
+            <p className="font-child-display font-extrabold text-3xl text-[var(--child-text)]">스탬프를 받았어요!</p>
+            <p className="font-child-display text-lg font-bold text-[var(--child-text-muted)]">끝까지 해냈어! 친구 마음을 잘 살펴봤어</p>
           </div>
           <ChildButton className="h-16 w-full text-xl" onClick={goHome}>
             확인했어요
