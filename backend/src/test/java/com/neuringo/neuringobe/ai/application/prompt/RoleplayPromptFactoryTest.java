@@ -159,6 +159,26 @@ class RoleplayPromptFactoryTest {
     }
 
     @Test
+    void generationRetryRequiresFailedCandidatesCodesAndRevision() {
+        List<GenerationRetry.FailedCandidate> failed =
+                List.of(new GenerationRetry.FailedCandidate(UUID.randomUUID(), "친구는 어떤 기분일까?"));
+        List<String> codes = List.of("REPEATED_QUESTION");
+        RevisionInstruction revision =
+                new RevisionInstruction(null, List.of("다른 질문으로"), null, null);
+
+        assertThatThrownBy(() -> new GenerationRetry(List.of(), codes, revision))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new GenerationRetry(null, codes, revision))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new GenerationRetry(failed, List.of(), revision))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new GenerationRetry(failed, null, revision))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new GenerationRetry(failed, codes, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
     void evaluationIncludesAnalysisAndCandidate() {
         AnalysisResult analysis = parsedAnalysis();
         CandidateResponse candidate = parsedCandidate(analysis);

@@ -15,6 +15,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
@@ -174,7 +175,7 @@ class RoleplayOutputParsersTest {
                     new GenerationRetry(
                             List.of(new GenerationRetry.FailedCandidate(failedId, "친구는 어떤 기분일까?")),
                             List.of("REPEATED_QUESTION"),
-                            null);
+                            new RevisionInstruction(null, List.of("다른 질문으로"), null, null));
             String repeated =
                     candidateJson("친구는  어떤 기분일까?", "GUIDING_QUESTION")
                             .replace(
