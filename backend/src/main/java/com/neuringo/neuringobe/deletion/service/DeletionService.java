@@ -77,15 +77,13 @@ public class DeletionService {
         deleteChildren(List.of(child.getChildId()));
     }
 
-    /** 학급과 그 학급의 아동·기록을 모두 지운다. 학급을 먼저 잠가, 목록을 읽은 뒤 등록된 아동이 남아 FK 에 걸리지 않게 한다. */
+    /**
+     * 학급과 그 학급의 아동·기록을 모두 지운다. 학급을 먼저 잠가, 목록을 읽은 뒤 등록된 아동이 남아 FK 에 걸리지 않게 한다. 아동 등록도 같은 잠금을 잡아야 이
+     * 보장이 선다({@link ClassroomService#lockOwnedClassroom}).
+     */
     @Transactional
     public void deleteClassroom(UUID instructorId, UUID classId) {
-        classrooms
-                .findOwnedForUpdate(classId, instructorId)
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "CLASSROOM_NOT_FOUND", "학급을 찾을 수 없습니다: " + classId));
+        classroomService.lockOwnedClassroom(instructorId, classId);
         List<UUID> childIds =
                 children.findByClassId(classId).stream().map(Child::getChildId).toList();
         deleteChildren(childIds);

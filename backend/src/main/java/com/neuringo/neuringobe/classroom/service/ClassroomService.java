@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -56,6 +57,19 @@ public class ClassroomService {
         if (!classroomRepository.existsByClassIdAndInstructorId(classId, instructorId)) {
             throw notFound(classId);
         }
+    }
+
+    /**
+     * 담당 학급 행을 잠근다. 없으면 {@link #requireOwnedClassroom} 과 같은 404 다. 학급 삭제와 아동 등록이 이 잠금을 같이 써서, 삭제가
+     * 아동 목록을 읽은 뒤 새 아동이 끼어들지 못하게 한다. 기다리던 쪽은 삭제가 끝난 뒤 학급이 없어진 것을 보고 404 가 된다.
+     *
+     * <p>잠금은 부르는 쪽 트랜잭션이 끝날 때 풀리므로 트랜잭션 안에서만 부른다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockOwnedClassroom(UUID instructorId, UUID classId) {
+        classroomRepository
+                .findOwnedForUpdate(classId, instructorId)
+                .orElseThrow(() -> notFound(classId));
     }
 
     /** 요청한 강사가 담당하는 학급인지. 다른 도메인이 "없는 것처럼" 자기 오류 코드로 404 를 낼 때 쓴다. */

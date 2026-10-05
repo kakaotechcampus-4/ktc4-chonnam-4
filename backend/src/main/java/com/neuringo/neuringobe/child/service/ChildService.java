@@ -24,9 +24,10 @@ public class ChildService {
         this.classroomService = classroomService;
     }
 
+    /** 학급 삭제와 같은 학급 잠금을 잡는다. 삭제 중이면 끝날 때까지 기다렸다가 404 가 된다. */
     @Transactional
     public ChildResponse create(UUID instructorId, UUID classId, CreateChildRequest request) {
-        classroomService.requireOwnedClassroom(instructorId, classId);
+        classroomService.lockOwnedClassroom(instructorId, classId);
 
         Child child =
                 new Child(UUID.randomUUID(), classId, request.displayName(), ChildStatus.ACTIVE);

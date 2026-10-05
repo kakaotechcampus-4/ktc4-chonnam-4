@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.deletion;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.TestcontainersConfiguration;
+import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
 import com.neuringo.neuringobe.support.TestInstructors;
@@ -19,6 +21,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +39,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 아동·학급 영구 삭제(ADR 2026-10-04). 아동이 퀴즈를 끝까지 풀어 응답·힌트·결과가 쌓인 뒤에도 그 아동의 데이터가 한 행도 남지 않고, 같은 학급의 다른 아동과
@@ -52,6 +60,8 @@ class DeletionIntegrationTest {
     @Autowired private UserAccountRepository users;
     @Autowired private QuizItemRepository items;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private ClassroomRepository classrooms;
+    @Autowired private TransactionTemplate transactions;
 
     @BeforeEach
     void setUp() {
@@ -153,6 +163,45 @@ class DeletionIntegrationTest {
         mvc.perform(delete("/api/v1/classrooms/{id}", UUID.randomUUID()).with(owner()).with(csrf()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("CLASSROOM_NOT_FOUND"));
+    }
+
+    /**
+     * 학급 삭제가 학급을 잠그고 아동 목록을 읽은 순간에 같은 학급으로 아동 등록이 들어오는 경우(Codex 검토 2026-10-04 P2). 등록은 삭제가 끝날 때까지
+     * 기다려야 하고, 끝난 뒤에는 500 이 아니라 학급 없음 404 가 되어야 한다. 삭제 트랜잭션을 테스트가 직접 열어 "목록을 읽은 직후"에 멈춰 둔다.
+     */
+    @Test
+    void childRegistrationWaitsForClassroomDeletionAndThenIsNotFound() throws Exception {
+        UUID classId = createClassroom("삭제 중인 반");
+        UUID instructorId = TestInstructors.id(OWNER);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<MvcResult> registration =
+                    transactions.execute(
+                            tx -> {
+                                classrooms.findOwnedForUpdate(classId, instructorId).orElseThrow();
+                                Future<MvcResult> pending =
+                                        pool.submit(() -> registerChild(classId, "끼어든 아동"));
+                                assertThatThrownBy(() -> pending.get(1, TimeUnit.SECONDS))
+                                        .isInstanceOf(TimeoutException.class);
+                                classrooms.deleteByClassId(classId);
+                                return pending;
+                            });
+
+            MvcResult result = registration.get(30, TimeUnit.SECONDS);
+            assertThat(result.getResponse().getStatus()).isEqualTo(404);
+            assertThat(
+                            JsonPath.<String>read(
+                                    result.getResponse().getContentAsString(), "$.error.code"))
+                    .isEqualTo("CLASSROOM_NOT_FOUND");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select count(*) from child where class_id = ?",
+                                    Long.class,
+                                    classId))
+                    .isZero();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /** 아동 한 명에 걸린 행 수. 삭제 뒤에는 모든 표가 0 이어야 한다. */
@@ -308,6 +357,17 @@ class DeletionIntegrationTest {
                                 "/api/v1/classrooms/" + classId + "/children",
                                 "{\"displayName\":\"" + name + "\"}"),
                         "$.data.childId"));
+    }
+
+    /** 아동 등록 요청을 보내고 상태 코드와 상관없이 결과를 돌려준다. */
+    private MvcResult registerChild(UUID classId, String name) throws Exception {
+        return mvc.perform(
+                        post("/api/v1/classrooms/{id}/children", classId)
+                                .with(owner())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"displayName\":\"" + name + "\"}"))
+                .andReturn();
     }
 
     private String postJson(String uri, String json) throws Exception {

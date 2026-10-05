@@ -20,7 +20,10 @@ public interface ClassroomRepository extends JpaRepository<Classroom, UUID> {
 
     boolean existsByClassIdAndInstructorId(UUID classId, UUID instructorId);
 
-    /** 학급 삭제(ADR 2026-10-04 D2). 잠근 뒤 아동 목록을 읽어, 그 사이 등록된 아동이 빠지지 않게 한다. */
+    /**
+     * 학급 삭제와 아동 등록이 같이 쓰는 잠금(ADR 2026-10-04 D2). PostgreSQL 에서 {@code FOR NO KEY UPDATE} 가 되어 아동
+     * INSERT 의 FK 검사({@code KEY SHARE})는 막지 못한다. 그래서 아동 등록도 FK 에 기대지 않고 이 잠금을 직접 잡는다.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
             "select c from Classroom c where c.classId = :classId and c.instructorId = :instructorId")
