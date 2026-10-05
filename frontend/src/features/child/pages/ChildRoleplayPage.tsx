@@ -8,6 +8,7 @@ import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
+import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import {
   completeActivity,
@@ -29,10 +30,16 @@ type ThreadMessage = {
   inputMode?: RoleplayInputMode
 }
 
+// 깡총이가 화면 끝까지 닿도록 레이아웃을 wide로 쓰고, 나머지 대화·입력은 기존 본문 폭(688px)에 맞춘다.
+const COLUMN = "mx-auto w-full max-w-[43rem]"
+
 function ThreadBubble({ message }: { message: ThreadMessage }) {
+  // 깡총이(힌트·도움)는 Figma C-RP-02처럼 화면 오른쪽 끝에서 튀어나온다. 역할극에서만 이렇게 보여 준다.
+  if (message.speaker === "rabbit") return <RabbitHintBubble>{message.text}</RabbitHintBubble>
+
   if (message.speaker === "child") {
     return (
-      <div className="flex items-center justify-end gap-2">
+      <div className={`${COLUMN} flex items-center justify-end gap-2`}>
         <p className="max-w-[80%] rounded-[var(--child-radius-card)] rounded-br-md bg-[#EDE9FE] px-5 py-3 text-lg font-medium text-[var(--child-text)] shadow-sm">
           “{message.text}”
         </p>
@@ -46,13 +53,10 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
       </div>
     )
   }
-  // 깡총이(힌트·도움)는 Figma C-RP-02처럼 오른쪽에 선다.
-  return message.speaker === "rabbit" ? (
-    <SpeechBubble character="rabbit" side="right" characterAlign="top" className="justify-start">
+  return (
+    <SpeechBubble character="turtle" className={COLUMN}>
       {message.text}
     </SpeechBubble>
-  ) : (
-    <SpeechBubble character="turtle">{message.text}</SpeechBubble>
   )
 }
 
@@ -188,6 +192,7 @@ function ChildRoleplayPage() {
       activityTitle="역할극"
       stepLabel={scenarioQuery.data?.place}
       backgroundImage={themeparkBackgroundUrl}
+      wide
     >
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
@@ -209,18 +214,22 @@ function ChildRoleplayPage() {
               <ThreadBubble key={message.id} message={message} />
             ))}
             {turnMutation.isPending ? (
-              <SpeechBubble character="turtle">생각하고 있어요…</SpeechBubble>
+              <SpeechBubble character="turtle" className={COLUMN}>
+                생각하고 있어요…
+              </SpeechBubble>
             ) : null}
             <div ref={threadEndRef} />
           </div>
 
-          {isFinished ? (
-            <ChildButton className="h-16 w-full text-xl" onClick={() => setIsWrappedUp(true)}>
-              이야기 마무리하기
-            </ChildButton>
-          ) : (
-            <RoleplayComposer onSend={send} disabled={turnMutation.isPending} />
-          )}
+          <div className={COLUMN}>
+            {isFinished ? (
+              <ChildButton className="h-16 w-full text-xl" onClick={() => setIsWrappedUp(true)}>
+                이야기 마무리하기
+              </ChildButton>
+            ) : (
+              <RoleplayComposer onSend={send} disabled={turnMutation.isPending} />
+            )}
+          </div>
         </div>
       ) : null}
 
