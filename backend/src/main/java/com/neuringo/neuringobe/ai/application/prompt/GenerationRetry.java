@@ -18,9 +18,12 @@ public record GenerationRetry(
 
     public GenerationRetry {
         failedCandidates =
-                List.copyOf(Objects.requireNonNull(failedCandidates, "failedCandidates"));
-        failureCodes = List.copyOf(Objects.requireNonNull(failureCodes, "failureCodes"));
-        Objects.requireNonNull(revisionInstruction, "revisionInstruction");
+                List.copyOf(
+                        Objects.requireNonNull(
+                                failedCandidates, "failedCandidates must not be null"));
+        failureCodes =
+                List.copyOf(Objects.requireNonNull(failureCodes, "failureCodes must not be null"));
+        Objects.requireNonNull(revisionInstruction, "revisionInstruction must not be null");
         if (failedCandidates.isEmpty()) {
             throw new IllegalArgumentException("failedCandidates must not be empty");
         }

@@ -46,10 +46,14 @@ public record RoleplayTurnInput(
             requireText(learningGoal, "learningGoal");
             RoleplayCodes.requireOneOf(
                     RoleplayCodes.SCENARIO_LEVELS, scenarioLevel, "scenarioLevel");
-            scenarioFacts = List.copyOf(Objects.requireNonNull(scenarioFacts, "scenarioFacts"));
+            scenarioFacts =
+                    List.copyOf(
+                            Objects.requireNonNull(
+                                    scenarioFacts, "scenarioFacts must not be null"));
             prohibitedInferences =
                     prohibitedInferences == null ? List.of() : List.copyOf(prohibitedInferences);
-            microGoals = List.copyOf(Objects.requireNonNull(microGoals, "microGoals"));
+            microGoals =
+                    List.copyOf(Objects.requireNonNull(microGoals, "microGoals must not be null"));
             if (scenarioFacts.isEmpty()) {
                 throw new IllegalArgumentException("scenarioFacts must not be empty");
             }
@@ -65,7 +69,10 @@ public record RoleplayTurnInput(
         public MicroGoal {
             Objects.requireNonNull(id, "micro goal id must not be null");
             requireText(description, "microGoal.description");
-            requiredEvidence = List.copyOf(Objects.requireNonNull(requiredEvidence));
+            requiredEvidence =
+                    List.copyOf(
+                            Objects.requireNonNull(
+                                    requiredEvidence, "requiredEvidence must not be null"));
             RoleplayCodes.requireOneOf(
                     RoleplayCodes.MICRO_GOAL_STATUSES, status, "microGoal.status");
         }
