@@ -27,6 +27,7 @@ bash scripts/verify.sh docker     # 백엔드 이미지 빌드·기동 (마찬�
 | `infra.yml` | `infra/**`·`scripts/tf-*` 변경 PR · develop push · 매일 09:00 KST · 수동 | 검사(fmt·validate·`terraform test`·구성 검사, 자격증명 없음, PR 은 여기까지) → develop: plan(읽기만, 바뀌는 리소스·동작 표와 비용·안전 가드를 Summary 에) → Environment `infra` 승인 → 가드 다시 → apply(승인한 plan 과 같을 때만). 매일 drift. 변수가 없거나 서버가 꺼져 있으면 건너뛰고 이유를 남긴다. 사용법은 [infra/README.md](../infra/README.md) | 검사·가드·drift 막음 | `verify.sh infra` |
 | `aws-probe.yml` | 수동 실행만(develop) | CD 설계 0단계. OIDC(`ktc-github-deploy`)로 읽기 호출·IAM 정책 시뮬레이션만 해서 팀 AWS 계정에서 되는 것을 표로 남긴다. 계정 ID·ARN·주소는 찍지 않는다. 변수 `AWS_ACCOUNT_ID` 가 없으면 건너뛴다 | — | `bash scripts/aws-probe.sh`(SSO 로그인 뒤) |
 | `codeql.yml` | 모든 PR·push + 매주 월 03:30 UTC | 백엔드(Java)·프론트(JS/TS) 정적 보안 분석 → Security 탭. 두 언어 결과를 표로 모아 PR 코멘트·실행 요약에 남긴다(Report job) | GitHub 기본(새 고위험 경고) | — |
+| `codeql-comment.yml` | CodeQL 실행이 끝난 뒤(`workflow_run`), 포크에서 온 PR 만 | 포크 PR 은 토큰이 읽기 전용이라 Report job 이 코멘트를 못 단다. develop 의 파일·권한으로 돌아 SARIF 에서 표를 다시 만들고 같은 코멘트를 단다. 포크 코드는 실행하지 않고, PR 은 head 저장소·브랜치로 찾아 head 가 분석한 커밋일 때만 단다(`scripts/codeql-comment.sh`) | — | `scripts/test-codeql-comment.sh` |
 | `workflow-lint.yml` | 워크플로·`scripts/` 변경 | actionlint·shellcheck·스크립트 자체 검사(막음), zizmor(경고만) | 일부 막음 | `verify.sh workflows` |
 | `assign-mentor.yml` · `convention-check.yml` · `notify-discord.yml` | `develop → main` PR | 멘토 배정·컨벤션 안내·Discord 알림 | — | **운영진 소유 — 수정 금지(CODEOWNERS)** |
 
@@ -75,7 +76,7 @@ flowchart LR
 | 사용자 테스트 주소 | 공개 로그·Summary 에는 찍지 않는다. 콘솔 CloudFront 또는 Parameter Store `/neuringo/dev/infra/cloudfront-domain` 에서 보고 팀에만 알린다 |
 | 공개하면 안 되는 파일·값 | Security 실행 로그. 파일·줄·규칙만 나오고 값은 나오지 않는다. 커밋 전에 `bash scripts/check-public-files.sh` 로 먼저 본다 |
 | AWS 에서 되는 것·안 되는 것 | AWS probe 실행의 **Summary**(✅·⛔·⚠️ 표). 결과는 [cd-architecture.md](cd-architecture.md) 의 ⚑ 표에 옮긴다 |
-| CodeQL | PR: **CodeQL 코멘트** 하나. 언어별 검사 규칙 수·발견 건수, 발견하면 심각도·규칙·파일:줄 표. 0건이어도 적히고, push 할 때마다 같은 코멘트를 고쳐 쓴다(포크 PR 은 쓰기 권한이 없어 Summary 에만)<br>develop push·매주 실행: CodeQL 실행의 **Summary** 에 같은 표<br>고침·무시 이력과 규칙 설명: 레포 **Security → Code scanning**(로그인한 레포 멤버만). 오탐이면 여기서 이유를 적고 Dismiss 한다<br>표는 `scripts/codeql-summary.sh` 가 SARIF 에서 만든다 |
+| CodeQL | PR: **CodeQL 코멘트** 하나. 언어별 검사 규칙 수·발견 건수, 발견하면 심각도·규칙·파일:줄 표. 0건이어도 적히고, push 할 때마다 같은 코멘트를 고쳐 쓴다(포크 PR 은 CodeQL 이 끝난 뒤 `codeql-comment.yml` 이 단다)<br>develop push·매주 실행: CodeQL 실행의 **Summary** 에 같은 표<br>고침·무시 이력과 규칙 설명: 레포 **Security → Code scanning**(로그인한 레포 멤버만). 오탐이면 여기서 이유를 적고 Dismiss 한다<br>표는 `scripts/codeql-summary.sh` 가 SARIF 에서 만든다 |
 
 ## 버전 고정 — LTS 기준
 
@@ -108,7 +109,7 @@ flowchart LR
 - E2E 의 DB 계정도 `scripts/e2e.sh` 가 실행마다 무작위로 만든다.
 - 워크플로에는 어떤 자격증명도 적지 않는다.
 - `GITHUB_TOKEN` 은 GitHub 이 자동으로 넣는다.
-- 포크에서 온 PR 은 secret 을 받지 못하고 토큰이 읽기 전용이다. 그래서 결과는 실행 요약·아티팩트로 남긴다. CodeQL 코멘트만 같은 레포 브랜치에서 온 PR 에 단다.
+- 포크에서 온 PR 은 secret 을 받지 못하고 토큰이 읽기 전용이다. 그래서 결과는 실행 요약·아티팩트로 남긴다. CodeQL 코멘트는 같은 레포 브랜치 PR 이면 Report job 이, 포크 PR 이면 `codeql-comment.yml`(`workflow_run`, 포크 코드는 실행하지 않음)이 단다.
 
 ## 1차 도입 — 막는 검사와 경고
 
