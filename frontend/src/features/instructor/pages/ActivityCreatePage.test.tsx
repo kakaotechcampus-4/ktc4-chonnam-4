@@ -133,6 +133,45 @@ describe("활동 만들기 화면", () => {
     expect(keys[0]).toBe(keys[1])
     server.events.removeAllListeners()
   })
+
+  it("분류 칩을 바꾸면 가려진 목표 선택을 비운다", async () => {
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await screen.findByRole("radio", { name: "김하늘", checked: true })
+    await user.click(screen.getByRole("button", { name: "다음 · 학습 목표 설정" }))
+    await user.click(await screen.findByRole("button", { name: "공감 표현" }))
+    await user.click(screen.getByRole("radio", { name: /친구가 속상할 때 위로하는 말을 한다/ }))
+    const confirm = screen.getByRole("button", { name: "다음 · 확인" })
+    expect(confirm).toBeEnabled()
+
+    await user.click(screen.getByRole("button", { name: "감정 인식" }))
+    expect(confirm).toBeDisabled()
+    // 원래 분류로 돌아가도 선택은 남아 있지 않다.
+    await user.click(screen.getByRole("button", { name: "공감 표현" }))
+    expect(screen.queryByRole("radio", { checked: true })).not.toBeInTheDocument()
+    expect(confirm).toBeDisabled()
+  })
+
+  it("배정에 실패한 뒤 이전으로 갔다 돌아오면 예전 오류를 보이지 않는다", async () => {
+    seedActivity({
+      childId: CHILD.childId,
+      goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다",
+      situationType: "EMOTION_RECOGNITION",
+    })
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await goToConfirm(user)
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("같은 목표로 아직 시작하지 않은 활동이 있어요")
+
+    await user.click(screen.getByRole("button", { name: "이전" }))
+    await user.click(await screen.findByRole("button", { name: "공감 표현" }))
+    await user.click(screen.getByRole("radio", { name: /친구가 속상할 때 위로하는 말을 한다/ }))
+    await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
+
+    await screen.findByRole("region", { name: "배정 내용" })
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
 })
 
 async function goToConfirm(user: ReturnType<typeof renderWizard>["user"]) {

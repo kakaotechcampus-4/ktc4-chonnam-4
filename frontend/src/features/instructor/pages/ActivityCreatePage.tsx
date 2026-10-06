@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -162,6 +162,16 @@ function ActivityCreatePage() {
     )
   }
 
+  // 배정 오류는 그 확인 단계에서만 보인다. 확인 단계를 벗어나면(이전·뒤로가기) 지운다.
+  // 요청이 끝난 뒤에만 지워서, 진행 중인 요청의 onSettled(isSubmittingRef 해제)를 끊지 않는다.
+  const leftConfirm = step !== 'confirm'
+  const { isError: hasAssignError, reset: resetAssign } = assignMutation
+  useEffect(() => {
+    if (leftConfirm && hasAssignError) {
+      resetAssign()
+    }
+  }, [leftConfirm, hasAssignError, resetAssign])
+
   const assignError = assignMutation.error
   const assignErrorMessage =
     assignError instanceof ApiError && ASSIGN_ERROR_MESSAGES[assignError.code]
@@ -231,7 +241,11 @@ function ActivityCreatePage() {
                     key={category}
                     type="button"
                     aria-pressed={categoryFilter === category}
-                    onClick={() => setCategoryFilter(category)}
+                    onClick={() => {
+                      // 고른 목표가 목록에서 가려지면 선택도 비운다. 보이지 않는 목표가 배정되지 않게 한다.
+                      setCategoryFilter(category)
+                      setPresetId(null)
+                    }}
                     className={cn(
                       'rounded-full border px-4 py-1.5 text-sm',
                       categoryFilter === category
