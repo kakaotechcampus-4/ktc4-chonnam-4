@@ -285,6 +285,7 @@ function ChildQuizPage() {
         </p>
       }
       backgroundImage={themeparkBackgroundUrl}
+      dimBackground
       wide
     >
       {isLoading ? (

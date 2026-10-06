@@ -17,6 +17,7 @@ function ChildLayout({
   stepLabel,
   headerCenter,
   backgroundImage,
+  dimBackground = false,
   wide = false,
   children,
 }: {
@@ -26,6 +27,8 @@ function ChildLayout({
   headerCenter?: React.ReactNode
   /** 화면 전체 배경 이미지 URL (예: 내 활동 열기구 배경) */
   backgroundImage?: string
+  /** 배경 그림 위에 흰 막(40%)을 덮어 흐리게 한다. 놀이공원 배경 시안(Figma 460:191) 값이다. */
+  dimBackground?: boolean
   /** 본문 폭 제한(768px)을 풀어 화면 전체를 쓴다 (예: 열기구를 화면 끝까지 펼치는 내 활동) */
   wide?: boolean
   children: React.ReactNode
@@ -47,7 +50,9 @@ function ChildLayout({
         backgroundImage
           ? {
               // Vite가 작은 SVG를 data URI로 인라인하므로 따옴표로 감싸야 url()이 깨지지 않는다.
-              backgroundImage: `url("${backgroundImage}")`,
+              backgroundImage: dimBackground
+                ? `linear-gradient(rgb(255 255 255 / 0.4), rgb(255 255 255 / 0.4)), url("${backgroundImage}")`
+                : `url("${backgroundImage}")`,
               backgroundSize: "cover",
               backgroundPosition: "center bottom",
             }

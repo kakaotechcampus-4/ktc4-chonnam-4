@@ -28,7 +28,7 @@ function ChildDonePage() {
   }
 
   return (
-    <ChildLayout activityTitle="활동 완료" backgroundImage={themeparkBackgroundUrl}>
+    <ChildLayout activityTitle="활동 완료" backgroundImage={themeparkBackgroundUrl} dimBackground>
       <div className="flex flex-1 flex-col items-center justify-center">
         <div className="flex w-full max-w-lg flex-col items-center gap-5 rounded-[var(--child-radius-card)] bg-[var(--child-surface)]/95 px-8 py-10 text-center break-keep shadow-sm">
           <div className="flex items-end gap-3">

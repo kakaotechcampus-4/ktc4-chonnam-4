@@ -192,6 +192,7 @@ function ChildRoleplayPage() {
       activityTitle="역할극"
       stepLabel={scenarioQuery.data?.place}
       backgroundImage={themeparkBackgroundUrl}
+      dimBackground
       wide
     >
       {isLoading ? (
