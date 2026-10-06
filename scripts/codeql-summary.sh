@@ -10,7 +10,8 @@ set -euo pipefail
 
 [ $# -gt 0 ] || { echo "SARIF 디렉터리나 파일을 넘긴다" >&2; exit 2; }
 repo="${GITHUB_REPOSITORY:-}"
-sha="${GITHUB_SHA:-}"
+# workflow_run(codeql-comment.yml)에서는 GITHUB_SHA 가 develop 최신이라 분석한 커밋을 LINK_SHA 로 넘긴다.
+sha="${LINK_SHA:-${GITHUB_SHA:-}}"
 
 shopt -s nullglob
 files=()

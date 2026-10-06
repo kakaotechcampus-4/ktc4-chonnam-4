@@ -125,6 +125,7 @@ host_setup_selftest() { bash scripts/test-host-setup.sh; }
 infra_outputs_selftest() { bash scripts/test-infra-outputs.sh; }
 tf_selftest() { bash scripts/test-tf.sh; }
 public_files_selftest() { bash scripts/test-check-public-files.sh; }
+codeql_comment_selftest() { bash scripts/test-codeql-comment.sh; }
 plan_guard_selftest() { node --test scripts/tf-plan-guard.test.mjs; }
 
 # Terraform 은 scripts/tf-run.sh 가 고정 이미지(hashicorp/terraform:1.16.4)로 돌린다. infra.yml 도 같은 스크립트를 쓴다.
@@ -201,6 +202,7 @@ workflows() {
   run "scripts: Terraform 실행·state 버킷 자체 검사" tf_selftest
   run "scripts: plan 가드 자체 검사" plan_guard_selftest
   run "scripts: 공개 파일 검사 자체 검사" public_files_selftest
+  run "scripts: CodeQL 코멘트(포크 PR 찾기·고쳐 쓰기) 자체 검사" codeql_comment_selftest
 }
 
 infra() {
