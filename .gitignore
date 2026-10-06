@@ -94,5 +94,15 @@ backend/src/main/resources/application-*-secret.yml
 # ── 기타 ────────────────────────────────────────────
 *.sqlite3
 *.db
-.terraform/
 .claude/
+
+# ── Terraform(infra/) ─ 잠금 파일(.terraform.lock.hcl)은 커밋한다 ──
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# infra.yml 이 첫 plan(미리 보기) 때 러너에서만 만드는 파일. 로컬에서 만들어도 커밋하지 않는다.
+override.tf
+*_override.tf

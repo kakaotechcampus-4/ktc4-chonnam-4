@@ -1,0 +1,22 @@
+# 서버 .env 에 넣을 설정값 목록 — deploy.sh 가 배포할 때 Parameter Store 에서 읽는다.
+# 형식: 환경변수=Parameter Store 이름(/neuringo/<환경>/ 뒤). 이름 끝에 ? 를 붙이면 없어도 된다.
+# 값은 여기에 적지 않는다(공개 레포). 여기에 없는 값은 컨테이너에 들어가지 않는다.
+# 값에는 줄바꿈과 작은따옴표(')를 쓰지 않는다. deploy.sh 가 거절한다.
+
+DB_NAME=db/name
+DB_USERNAME=db/username
+DB_PASSWORD=db/password
+# RDS 로 옮기면 넣는다. 없으면 같은 서버의 postgres 컨테이너(compose.dev.yml)로 붙는다.
+DB_URL?=db/url
+
+# 아동 입장 코드(4자리)를 HMAC 으로 바꿔 저장할 때 쓰는 비밀키(32바이트 이상). 없으면 코드 발급·입장이 실패한다.
+CHILD_ACCESS_HMAC_SECRET=child-access/hmac-secret
+
+# AI 제공자. 없으면 application.yml 기본값(AI 끔)으로 뜬다.
+AI_CHAT_PROVIDER?=ai/chat-provider
+AI_PROVIDER_NAME?=ai/provider-name
+AI_BASE_URL?=ai/base-url
+AI_API_KEY?=ai/api-key
+AI_MODEL?=ai/model
+AI_TIMEOUT?=ai/timeout
+AI_MAX_RETRIES?=ai/max-retries

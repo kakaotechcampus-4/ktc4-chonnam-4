@@ -1,0 +1,65 @@
+name: AWS probe
+# CD 설계 0단계 — 팀 AWS 계정에서 무엇을 할 수 있는지 확인한다(docs/cd-architecture.md 의 ⚑ 표).
+# 수동 실행만(Actions → AWS probe → Run workflow). 읽기 호출과 IAM 정책 시뮬레이션만 하고 아무것도 만들지 않는다.
+# 공개 레포라 로그·요약이 공개된다. scripts/aws-probe.sh 는 계정 ID·ARN·ID·주소를 찍지 않는다.
+#
+# 준비: 저장소 변수(Variables) AWS_ACCOUNT_ID — 12자리 팀 계정 ID. 비밀값이 아니라 secret 이 아닌 변수에 둔다(운영진 OIDC 가이드 1-1).
+# 역할: 운영진이 만든 ktc-github-deploy(OIDC). 액세스 키는 쓰지 않는다.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: aws-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    # 다른 브랜치를 고르면 그 브랜치의 스크립트가 배포 역할 자격증명으로 돈다. develop 에서만 돌린다.
+    if: github.ref == 'refs/heads/develop'
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Check AWS_ACCOUNT_ID variable
+        id: account
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          if [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >>"$GITHUB_OUTPUT"
+          {
+            echo "### AWS 권한 확인을 건너뛰었다"
+            echo
+            echo "저장소 변수 \`AWS_ACCOUNT_ID\`(12자리)가 없다. Settings → Secrets and variables → Actions → **Variables** 에 등록한다."
+          } >>"$GITHUB_STEP_SUMMARY"
+          echo "::notice title=AWS probe 건너뜀::AWS_ACCOUNT_ID 변수가 없다"
+
+      - name: Checkout
+        if: steps.account.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.account.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-probe
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Probe
+        if: steps.account.outputs.ready == 'true'
+        run: bash scripts/aws-probe.sh

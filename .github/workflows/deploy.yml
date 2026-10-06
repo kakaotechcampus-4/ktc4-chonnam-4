@@ -1,0 +1,329 @@
+name: Deploy
+# develop 에 들어간 커밋을 팀 서버(dev)에 배포한다(docs/cd-architecture.md 3절).
+#   백엔드: develop push 에서 Backend CI 가 통과한 커밋 → 이미지 빌드 → ECR(커밋 SHA 태그, 불변)
+#          → SSM 으로 서버에 반영 → 상태 확인(GET /api/v1/csrf) → 안 되면 직전 이미지로 되돌림(deploy/host/deploy.sh)
+#   프론트: develop push 에서 Frontend CI 가 통과한 커밋 → 빌드 → S3 → CloudFront 캐시 비우기(scripts/web-deploy.sh)
+#   수동: Actions → Deploy → Run workflow(develop 에서만). 커밋 SHA 를 넣으면 그 커밋으로 되돌린다(develop 에 있는 커밋만).
+#        deploy/ 만 바뀐 커밋은 CI 가 돌지 않으므로 수동으로 배포한다. 서버가 꺼져 있으면 백엔드는 건너뛴다(경고).
+#   CI 가 늦게 끝났거나 옛 실행을 다시 돌려도 옛 커밋으로 내려가지 않는다(같은 부분을 바꾼 더 새 커밋이 있으면 건너뛴다).
+#   프론트 의존성 설치·빌드는 AWS 권한(OIDC 토큰)이 없는 잡에서 한다. 올리는 잡만 권한을 받는다.
+# 준비가 안 됐으면 건너뛰고 Summary 에 이유를 남긴다: 변수 AWS_ACCOUNT_ID, Terraform 이 만든 인프라(Parameter Store).
+# 공개 레포라 로그에 계정 ID·버킷·레지스트리 주소를 찍지 않는다(스크립트가 가린다). 인증은 OIDC 뿐이다(액세스 키 없음).
+
+# workflow_run 은 기본 브랜치 권한으로 도는 트리거라 zizmor 가 위험하다고 본다(포크 PR 의 산출물을 믿으면 안 된다).
+# 여기서는 같은 레포의 develop push 에서 온 실행만 받고(plan 의 if), develop 에 있는 커밋인지 확인한 뒤
+# 그 커밋을 직접 checkout 해서 빌드한다. 트리거한 실행의 산출물(artifact)은 받지 않는다.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [Backend CI, Frontend CI]
+    types: [completed]
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 배포할 커밋 SHA(40자리). 비우면 develop 최신
+        required: false
+        default: ""
+      component:
+        description: 배포할 것
+        type: choice
+        options: [both, backend, frontend]
+        default: both
+
+# 배포는 부분(백엔드·프론트)마다 한 번에 하나만 하고 도중에 취소하지 않는다(잡마다 concurrency).
+# 한 그룹으로 묶으면 기다리던 백엔드 배포가 뒤에 온 프론트 배포에 밀려 취소된다.
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    # CI 가 통과한 같은 레포의 develop push 만 받는다. 포크·PR 에서 온 실행은 받지 않는다.
+    # 수동 실행은 develop 에서만 받는다(다른 브랜치를 고르면 그 브랜치의 워크플로·스크립트가 돈다).
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.what.outputs.sha }}
+      backend: ${{ steps.what.outputs.backend }}
+      frontend: ${{ steps.what.outputs.frontend }}
+
+    steps:
+      - name: Checkout (develop 이력)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide what to deploy
+        id: what
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_COMPONENT: ${{ inputs.component }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          if ! [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            { echo "backend=false"; echo "frontend=false"; } >>"$GITHUB_OUTPUT"
+            {
+              echo "### 배포를 건너뛰었다"
+              echo
+              echo "저장소 변수 \`AWS_ACCOUNT_ID\`(12자리)가 없다. Settings → Secrets and variables → Actions → **Variables** 에 등록한다."
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=배포 건너뜀::AWS_ACCOUNT_ID 변수가 없다"
+            exit 0
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            sha=${INPUT_REF:-$(git rev-parse HEAD)}
+            component=$INPUT_COMPONENT
+          else
+            sha=$RUN_SHA
+            case $RUN_NAME in
+              "Backend CI") component=backend ;;
+              "Frontend CI") component=frontend ;;
+              *) component=none ;;
+            esac
+          fi
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::커밋 SHA(40자리)가 아니다"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" HEAD; then
+            echo "::error::develop 에 없는 커밋은 배포하지 않는다"
+            exit 1
+          fi
+          # CI 가 순서가 바뀌어 끝났거나 옛 실행을 Re-run 한 경우: 같은 부분을 바꾼 더 새 커밋이 develop 에 있으면
+          # 그 커밋의 CI 가 배포한다. 옛 커밋으로 내려가지 않게 건너뛴다(옛 커밋은 수동 실행으로만).
+          if [ "$EVENT" != workflow_dispatch ]; then
+            case $component in
+              backend) paths=(backend contracts scripts/check-migrations.sh .github/workflows/backend-ci.yml) ;;
+              frontend) paths=(frontend contracts .github/workflows/frontend-ci.yml) ;;
+              *) paths=(.) ;;
+            esac
+            newer=$(git log --first-parent --format=%h "$sha..HEAD" -- "${paths[@]}" | head -n 1)
+            if [ -n "$newer" ]; then
+              { echo "backend=false"; echo "frontend=false"; } >>"$GITHUB_OUTPUT"
+              printf '### 배포를 건너뛰었다\n\n같은 부분(%s)을 바꾼 더 새 커밋 %s 이 develop 에 있다. 그 커밋의 CI 가 배포한다.\n' "$component" "$newer" >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=배포 건너뜀::더 새 커밋($newer)이 있다"
+              exit 0
+            fi
+          fi
+          backend=false
+          frontend=false
+          case $component in
+            both) backend=true; frontend=true ;;
+            backend) backend=true ;;
+            frontend) frontend=true ;;
+          esac
+          { echo "sha=$sha"; echo "backend=$backend"; echo "frontend=$frontend"; } >>"$GITHUB_OUTPUT"
+          echo "배포할 커밋 ${sha:0:7} · 백엔드 $backend · 프론트 $frontend"
+
+  backend:
+    needs: plan
+    if: needs.plan.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: dev
+    concurrency:
+      group: deploy-dev-backend
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-deploy-backend
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      - name: Build and push image (ECR)
+        id: image
+        if: steps.infra.outputs.ready == 'true'
+        env:
+          REPO: ${{ steps.infra.outputs.ecr_repository_url }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          registry=${REPO%%/*}
+          name=${REPO#*/}
+          aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry" >/dev/null 2>&1
+          # ECR 태그는 불변이다. 같은 커밋을 다시 배포(되돌리기)할 때는 이미 올린 이미지를 쓴다.
+          if aws ecr describe-images --repository-name "$name" --image-ids imageTag="$SHA" --region ap-northeast-2 >/dev/null 2>&1; then
+            echo "이미 올린 이미지(${SHA:0:7})를 쓴다"
+          else
+            docker build --quiet -t "$REPO:$SHA" backend >/dev/null
+            docker push --quiet "$REPO:$SHA" >/dev/null
+            echo "이미지를 올렸다(${SHA:0:7})"
+          fi
+          docker logout "$registry" >/dev/null 2>&1 || true
+          echo "image=$REPO:$SHA" >>"$GITHUB_OUTPUT"
+
+      - name: Deploy to server (SSM)
+        if: steps.infra.outputs.ready == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          RELEASE: ${{ needs.plan.outputs.sha }}
+          BACKUP_BUCKET: ${{ steps.infra.outputs.backup_bucket }}
+          NEURINGO_ENV: dev
+        run: |
+          remote="$RUNNER_TEMP/remote.sh"
+          bash scripts/release-bundle.sh >"$remote"
+          code=0
+          bash scripts/ssm-run.sh "$remote" "deploy backend ${RELEASE:0:7}" || code=$?
+          rm -f "$remote"
+          case $code in
+            0) result="배포 완료" ;;
+            2) result="새 버전이 상태 확인을 통과하지 못해 직전 버전으로 되돌렸다" ;;
+            3) result="되돌리기도 실패했다 — SSM 세션으로 서버를 확인한다" ;;
+            69) result="서버가 꺼져 있어 배포하지 않았다. 이미지는 ECR 에 올려 두었다 — 서버를 켠 뒤 Actions → Deploy 를 이 커밋으로 수동 실행한다" ;;
+            124) result="시간 초과" ;;
+            *) result="배포 실패(종료 코드 $code)" ;;
+          esac
+          {
+            echo "### 백엔드 배포 (dev)"
+            echo
+            echo "- 커밋: \`${RELEASE:0:7}\`"
+            echo "- 결과: $result"
+          } >>"$GITHUB_STEP_SUMMARY"
+          # 팀 서버는 쓰지 않을 때 꺼 둔다. 꺼져 있는 건 실패가 아니라 건너뜀이다(경고로 남긴다).
+          if [ "$code" = 69 ]; then
+            echo "::warning title=백엔드 배포 건너뜀::서버가 꺼져 있다. 켠 뒤 Deploy 를 수동 실행한다"
+            exit 0
+          fi
+          exit "$code"
+
+  # 의존성 설치·빌드는 AWS 권한이 없는 잡에서 한다. npm 패키지의 설치 스크립트가 OIDC 토큰을 받아 가지 못하게.
+  frontend-build:
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.api.outputs.ready }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      # 배포한 화면은 같은 주소의 /api/v1 을 불러야 한다. API 주소가 아직 코드에 고정이면 배포해도 동작하지 않는다.
+      - name: Check API address is configurable
+        id: api
+        run: |
+          if grep -rqF 'import.meta.env.VITE_API_BASE_URL' frontend/src; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >>"$GITHUB_OUTPUT"
+          {
+            echo "### 프론트 배포를 건너뛰었다"
+            echo
+            echo "API 주소가 아직 코드에 고정이다(frontend/src/features/instructor/api.ts). \`import.meta.env.VITE_API_BASE_URL\` 로 바꾼 뒤 배포한다."
+          } >>"$GITHUB_STEP_SUMMARY"
+          echo "::notice title=프론트 배포 건너뜀::API 주소가 코드에 고정이다"
+
+      - name: Setup Node
+        if: steps.api.outputs.ready == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        if: steps.api.outputs.ready == 'true'
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: /api/v1
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      # 화면 파일은 어차피 공개로 내보내는 것이다. 같은 실행 안에서만 넘기고 하루 뒤 지운다.
+      - name: Hand over dist
+        if: steps.api.outputs.ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-dist
+          path: frontend/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  frontend:
+    needs: [plan, frontend-build]
+    if: needs.frontend-build.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: dev
+    concurrency:
+      group: deploy-dev-frontend
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다 — 이 잡은 npm 을 돌리지 않는다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Take over dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: frontend/dist
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-deploy-frontend
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      # 사용자 테스트 주소는 공개 로그·Summary 에 찍지 않는다(외부인 가입·남용을 부르지 않게). 팀에는 따로 알린다.
+      - name: Upload to S3 and invalidate CloudFront
+        if: steps.infra.outputs.ready == 'true'
+        env:
+          WEB_BUCKET: ${{ steps.infra.outputs.web_bucket }}
+          CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          bash scripts/web-deploy.sh frontend/dist
+          {
+            echo "### 프론트 배포 (dev)"
+            echo
+            echo "- 커밋: \`${SHA:0:7}\`"
+            echo "- 주소: 콘솔 CloudFront 또는 Parameter Store \`/neuringo/dev/infra/cloudfront-domain\` (공개 로그에는 적지 않는다)"
+          } >>"$GITHUB_STEP_SUMMARY"
