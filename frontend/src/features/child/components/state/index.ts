@@ -1,6 +1,7 @@
 export { LoadingState } from "./LoadingState"
 export { ErrorState } from "./ErrorState"
 export { PermissionDeniedState } from "./PermissionDeniedState"
+export { CameraPermissionGuide } from "./CameraPermissionGuide"
 export { ExpiredState } from "./ExpiredState"
 export { NetworkState } from "./NetworkState"
 export { StateDialog } from "./StateDialog"
