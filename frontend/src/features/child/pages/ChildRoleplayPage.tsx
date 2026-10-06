@@ -179,6 +179,14 @@ function ChildRoleplayPage() {
     turnMutation.mutate({ activityId, turnIndex, text, requestId: crypto.randomUUID() })
   }
 
+  // 녹음·STT(S6) 전이라 "듣고 있어요" 화면이 끝나도 보낼 음성이 없다. 깡총이가 글자로 답하도록 안내한다.
+  const handleVoiceFinish = () => {
+    setReplies((prev) => [
+      ...prev,
+      { id: `voice-${prev.length}`, speaker: "rabbit", text: "말로 답하기는 아직 준비 중이야. 글자로 알려줄래?" },
+    ])
+  }
+
   const retryLoad = () => {
     if (activitiesQuery.isError) activitiesQuery.refetch()
     if (scenarioQuery.isError) scenarioQuery.refetch()
@@ -228,7 +236,11 @@ function ChildRoleplayPage() {
                 이야기 마무리하기
               </ChildButton>
             ) : (
-              <RoleplayComposer onSend={send} disabled={turnMutation.isPending} />
+              <RoleplayComposer
+                onSend={send}
+                onVoiceFinish={handleVoiceFinish}
+                disabled={turnMutation.isPending}
+              />
             )}
           </div>
         </div>
