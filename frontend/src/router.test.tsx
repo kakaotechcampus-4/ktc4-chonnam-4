@@ -44,7 +44,7 @@ describe("라우팅 표", () => {
     ["/child/hello", "오늘도 만나서 반가워"],
     ["/child/activities", "친구 마음 알아보기"],
     [`/child/activities/${ACTIVITY}`, "이어서 하기"],
-    [`/child/quiz/${ACTIVITY}`, "친구가 실수로 네 장난감을 밟아서 부서졌어. 지금 네 기분은 어때?"],
+    [`/child/quiz/${ACTIVITY}`, "지금 네 기분은 어때?"],
     [`/child/roleplay/${ACTIVITY}`, "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?"],
   ])("입장하면 %s 는 약속한 화면을 연다", async (path, text) => {
     enterAsChild()
