@@ -97,6 +97,26 @@ locals {
   ]
 }
 
+# ── 옮기는 중: 옛 화면 버킷용 OAC·SPA 함수 ──────────────────────
+# 배포가 아직 이 둘을 쓰고 있는 동안에는 지울 수 없다(CloudFront 409 InUse). Terraform 은 배포에서 연결을 빼는 것과
+# 이 둘을 지우는 것을 한 번에 하면 지우기를 먼저 시도해 실패한다. 그래서 두 번에 나눈다:
+#   1) 배포에서 연결만 뺀다(이 둘은 남겨 둔다) → apply   2) 다음 커밋에서 이 블록을 지운다 → apply
+resource "aws_cloudfront_origin_access_control" "web" {
+  name                              = "neuringo-${var.env}-web"
+  description                       = "neuringo ${var.env} 화면 버킷"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "spa" {
+  name    = "neuringo-${var.env}-spa-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "화면 주소를 index.html 로"
+  publish = true
+  code    = file("${path.module}/spa-rewrite.js")
+}
+
 # ── 배포 ─────────────────────────────────────────────────
 resource "aws_cloudfront_distribution" "this" {
   # 처음 만들 때만 켠다. 그 뒤로는 scripts/edge-toggle.sh 가 서버를 켜고 끌 때 바꾼다(위 설명).
