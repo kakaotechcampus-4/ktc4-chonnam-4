@@ -77,7 +77,7 @@ concurrency.
 
 ## PostgreSQL checkpoint adapter
 
-V6 adds roleplay_session and approved-only roleplay_turn. Sessions bind activity/child with a
+V7 adds roleplay_session and approved-only roleplay_turn. Sessions bind activity/child with a
 composite FK; the final checkpoint references a turn from the same session using a deferred FK.
 A unique session/idempotency-key result reference is part of the approved turn itself, not a
 separate cache containing duplicate utterances. Correlation requestId and caller-supplied
