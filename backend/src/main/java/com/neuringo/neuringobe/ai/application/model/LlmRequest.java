@@ -17,6 +17,9 @@ public record LlmRequest(
         Objects.requireNonNull(traceContext, "traceContext must not be null");
         Objects.requireNonNull(attemptContext, "attemptContext must not be null");
         Objects.requireNonNull(operation, "operation must not be null");
+        if (operation.isSpeech()) {
+            throw new IllegalArgumentException("speech operations do not use LlmRequest");
+        }
         requireText(systemPrompt, "systemPrompt");
         requireText(userPrompt, "userPrompt");
         requireText(promptVersion, "promptVersion");
