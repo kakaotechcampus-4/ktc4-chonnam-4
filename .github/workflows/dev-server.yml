@@ -145,13 +145,14 @@ jobs:
                 quiet=true
                 steps=("서버가 켜져 있을 때만(꺼져 있으면 건너뜀)")
               fi
-              steps+=("PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 의 워크플로·스크립트로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
-                "자리 확인(다른 PR 이 쓰는 중이면 멈춤) → 미리보기 DB 새로 만들기 → 바꿔 띄우기 → 상태 확인" "테스트 주소로 화면·API·커밋 확인") ;;
+              steps+=("자리 확인(다른 PR 이 쓰는 중이면 빌드 전에 멈춤)" \
+                "PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 의 워크플로·스크립트로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
+                "서버에서 자리 다시 확인(잠금 안) → 미리보기 DB 새로 만들기 → 바꿔 띄우기 → 상태 확인" "테스트 주소로 화면·API·커밋 확인") ;;
             "미리보기 끝내기")
               release=true end_preview=true sha=$(develop_sha)
               if [ "$EVENT" = pull_request ]; then
                 end_only_pr=$PR quiet=true
-                steps=("PR #$PR 의 미리보기가 떠 있을 때만(아니면 건너뜀)")
+                steps=("PR #$PR 의 미리보기가 떠 있을 때만(아니면 빌드 전에 건너뜀)")
               fi
               steps+=("develop 최신 \`${sha:0:7}\` 으로 되돌리기(배포 전 백업)" "미리보기 DB·계정·자리 지우기") ;;
             "끄기")
