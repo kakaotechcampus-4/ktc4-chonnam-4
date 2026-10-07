@@ -15,6 +15,7 @@
   - `method`, `path`: 경로와 본문의 `{classId}`·`{otherClassId}`·`{instructorEmail}` 같은 자리표시자는 테스트가 채운다(`placeholders` 참고). 강사 이메일·비밀번호는 테스트가 실행마다 만든다.
   - `body`: JSON 으로 보낸다. `rawBody`: 문자열 그대로 보낸다(깨진 JSON 확인용).
   - `csrf`: 변경 요청은 기본으로 CSRF 토큰을 싣는다. `false` 면 싣지 않는다.
+  - `headers`: 더 실을 헤더(예: `{ "Idempotency-Key": "{requestKey}" }`). 값의 자리표시자도 채운다.
   - `auth`: 없거나 `true` 면 로그인한 강사의 토큰(`Authorization: Bearer`)을 싣는다. `false` 면 싣지 않는다(가입·로그인 같은 공개 경로, 토큰 없는 요청). `"invalid"` 면 틀린 토큰을 싣는다.
 - `response`
   - `status`: HTTP 상태.

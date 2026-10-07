@@ -165,10 +165,10 @@ function ClassroomDetailPage() {
             {classroom && <ClassroomStatusBadge status={classroom.status} />}
           </div>
           <div className="flex flex-col gap-2.5">
-            {/* 활동 만들기는 S1-BAE-02, 접근 코드 출력은 후속 범위라 자리만 둔다. */}
-            <button type="button" disabled title="준비 중인 기능입니다" className={primaryButtonClass}>
+            {/* 학급 일괄 배정은 아직 없어, 이 학급을 골라 둔 채 아동 한 명을 고르는 활동 만들기로 보낸다. 접근 코드 출력은 후속 범위라 자리만 둔다. */}
+            <Link to={`/activities/new?classId=${classId}`} className={primaryButtonClass}>
               이 학급에 활동 만들기
-            </button>
+            </Link>
             <button type="button" onClick={() => selectTab('children')} className={outlineButtonClass}>
               아동 등록
             </button>
@@ -225,7 +225,11 @@ function ClassroomDetailPage() {
                 <tbody>
                   {children?.map((child) => (
                     <tr key={child.childId} className="border-t border-[var(--instructor-border)]">
-                      <td className="px-4 py-3.5 font-semibold">{child.displayName}</td>
+                      <td className="px-4 py-3.5 font-semibold">
+                        <Link to={`/classrooms/${classId}/children/${child.childId}`} className="hover:underline">
+                          {child.displayName}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3.5 text-[var(--instructor-text-muted)]">
                         {CHILD_STATUS_LABELS[child.status]}
                       </td>

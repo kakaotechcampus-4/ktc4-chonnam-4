@@ -8,12 +8,17 @@ import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.domain.ActivityQuiz;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
+import com.neuringo.neuringobe.quiz.domain.QuizType;
 import com.neuringo.neuringobe.quiz.dto.AssignQuizItemRequest;
 import com.neuringo.neuringobe.quiz.dto.AssignedQuizItemResponse;
 import com.neuringo.neuringobe.quiz.repository.ActivityQuizRepository;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -91,6 +96,57 @@ public class QuizAssignmentService {
             throw conflict("DUPLICATE_QUESTION_ORDER", "이미 배정된 문항 또는 순서입니다.");
         }
         return AssignedQuizItemResponse.from(assignment, item);
+    }
+
+    /**
+     * 최초 퀴즈 문항을 고른다(ADR 2026-10-03 D4, 요구사항 v3 "시스템이 검증된 문항 풀에서 구성"). 유형마다 승인 문항 1개씩, 유형 순서대로 최대
+     * 3개다. 승인 문항이 없는 유형은 건너뛴다(S1-BAE-02 Q2). 같은 유형의 승인 문항은 서로 바꿔 쓸 수 있다고 보고 그중 무작위로 하나를 고른다. 아동마다
+     * 노출 문항이 퍼진다(QUIZ-11). 어떤 문항이 붙었는지는 activity_quiz 에 남는다.
+     */
+    public List<QuizItem> pickInitialItems() {
+        return Arrays.stream(QuizType.values())
+                .map(this::randomAssignable)
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    /** 고른 문항을 순서대로 활동에 붙인다. 활동 생성과 같은 트랜잭션에서 불러야 반쯤 구성된 활동이 남지 않는다. */
+    @Transactional
+    public List<AssignedQuizItemResponse> attach(UUID activityId, List<QuizItem> picks) {
+        List<AssignedQuizItemResponse> attached = new ArrayList<>();
+        for (int index = 0; index < picks.size(); index++) {
+            QuizItem item = picks.get(index);
+            ActivityQuiz assignment =
+                    new ActivityQuiz(
+                            UUID.randomUUID(),
+                            activityId,
+                            item.getItemId(),
+                            item.getItemVersion(),
+                            index + 1);
+            assignments.save(assignment);
+            attached.add(AssignedQuizItemResponse.from(assignment, item));
+        }
+        return attached;
+    }
+
+    private Optional<QuizItem> randomAssignable(QuizType type) {
+        List<QuizItem> candidates =
+                items.findByQuizTypeAndStatus(type, "APPROVED").stream()
+                        .filter(QuizAssignmentService::isAssignable)
+                        .toList();
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(candidates.get(ThreadLocalRandom.current().nextInt(candidates.size())));
+    }
+
+    private static boolean isAssignable(QuizItem item) {
+        try {
+            item.validateForAssignment();
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     public List<AssignedQuizItemResponse> list(UUID activityId, Authentication authentication) {

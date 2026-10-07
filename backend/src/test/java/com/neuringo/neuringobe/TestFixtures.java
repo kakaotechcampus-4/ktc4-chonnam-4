@@ -168,6 +168,13 @@ public class TestFixtures {
         return bearer(jsonPost(uri, json), as.accessToken()).exchange();
     }
 
+    /** {@link #postJson} 에 Idempotency-Key 를 더한다. 재전송 방지 키를 받는 생성 API(활동 배정 등)에 쓴다. */
+    public MvcTestResult postJsonWithKey(Instructor as, String uri, Object body, UUID key) {
+        return bearer(jsonPost(uri, JSON.writeValueAsString(body)), as.accessToken())
+                .header("Idempotency-Key", key.toString())
+                .exchange();
+    }
+
     /** 로그인 없이 부르는 공개 경로(가입·로그인)에 CSRF 만 실어 POST 한다. */
     public MvcTestResult postPublicJson(String uri, Object body) {
         return postPublicJsonText(uri, JSON.writeValueAsString(body));

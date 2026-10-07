@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.activity.repository;
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,11 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
 
     Page<Activity> findByChildIdAndStatusOrderByAssignedAtDesc(
             UUID childId, ActivityStatus status, Pageable pageable);
+
+    Optional<Activity> findByIdempotencyKey(UUID idempotencyKey);
+
+    boolean existsByChildIdAndGoalIdInAndStatus(
+            UUID childId, Collection<UUID> goalIds, ActivityStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Activity a where a.activityId = :id")

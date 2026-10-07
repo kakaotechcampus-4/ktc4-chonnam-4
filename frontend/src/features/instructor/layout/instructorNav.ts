@@ -10,7 +10,7 @@ type InstructorNavItem = {
 const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
   { label: '대시보드' },
   { label: '학급', to: '/classrooms' },
-  { label: '활동 만들기' },
+  { label: '활동 만들기', to: '/activities/new' },
   { label: '콘텐츠·승인' },
   { label: '활동 관리' },
   { label: '리포트' },
