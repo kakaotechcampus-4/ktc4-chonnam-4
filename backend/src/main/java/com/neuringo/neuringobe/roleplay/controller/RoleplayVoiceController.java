@@ -59,7 +59,8 @@ public class RoleplayVoiceController {
                                     "ROLEPLAY_BUSY",
                                     "역할극 입력을 처리할 수 없습니다. 같은 요청으로 다시 시도해 주세요.");
                     case PROCESSING -> HttpStatus.ACCEPTED;
-                    default -> HttpStatus.OK;
+                    case DELIVERED, REINPUT_REQUIRED, RETRY_REQUIRED, STOPPED, NOTICE_UNAVAILABLE ->
+                            HttpStatus.OK;
                 };
         return ResponseEntity.status(status)
                 .cacheControl(CacheControl.noStore())

@@ -3,7 +3,6 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayNoticeCatalog.Kind;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnOutcome.Action;
-import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
 import java.util.Objects;
 
 /**
@@ -18,55 +17,73 @@ public final class RoleplayTurnOutcomeResolver {
 
     public RoleplayTurnOutcome resolve(RoleplayTurnResult result) {
         Objects.requireNonNull(result);
-        if (result instanceof RoleplayTurnResult.SpokenReady spoken) {
-            var response = (RoleplayTurnOutcome.ApprovedResponse) resolve(spoken.ready());
-            return new RoleplayTurnOutcome.SpokenResponse(
-                    response, spoken.canonicalUtterance(), spoken.speech());
-        }
-        if (result instanceof RoleplayTurnResult.InputRejected rejected) {
-            Kind kind =
-                    rejected.reason() == RoleplayTurnResult.InputFailure.TRANSCRIPTION_FAILED
-                            ? Kind.SAFE_FALLBACK
-                            : Kind.INPUT_QUALITY;
-            return notices.find(kind)
-                    .<RoleplayTurnOutcome>map(RoleplayTurnOutcome.InputRetry::new)
-                    .orElseGet(RoleplayTurnOutcome.InputNoticeUnavailable::new);
-        }
-        if (result instanceof RoleplayTurnResult.Ready ready) {
-            return new RoleplayTurnOutcome.ApprovedResponse(
-                    ready.candidate().candidateId(), ready.candidate().text());
-        }
-        if (result instanceof RoleplayTurnResult.TimedOut) {
-            return guidance(Kind.TIMEOUT, Action.REQUEST_NEW_INPUT);
-        }
-        if (!(result instanceof RoleplayTurnResult.RecoveryRequired recovery)) {
-            throw new IllegalArgumentException("Resolve only terminal, retry-coordinated results");
-        }
-        if (recovery.target() == RetryTarget.SAFETY_ESCALATION) return safetyStop();
-        if (recovery.target() == RetryTarget.INPUT_CONFIRMATION) {
-            return guidance(Kind.INPUT_CONFIRMATION, Action.REQUEST_NEW_INPUT);
-        }
-        if (recovery.target() != RetryTarget.SAFE_FALLBACK) {
-            throw new IllegalArgumentException("Unfinished retry target is not deliverable");
-        }
-        // DEC-027: evaluator failure is an error notice and turn retry, not a learning answer.
-        if (recovery.operation() == AiOperation.RESPONSE_EVALUATION) {
-            return guidance(Kind.SAFETY_CHECK_ERROR, Action.RETRY_TURN);
-        }
-        if (recovery.operation() != AiOperation.RESPONSE_GENERATION) {
-            throw new IllegalArgumentException("Unexpected fallback operation");
-        }
-        return guidance(Kind.SAFE_FALLBACK, Action.REQUEST_NEW_INPUT);
+        return switch (result) {
+            case RoleplayTurnResult.SpokenReady spoken ->
+                    new RoleplayTurnOutcome.SpokenResponse(
+                            approved(spoken.ready()), spoken.canonicalUtterance(), spoken.speech());
+            case RoleplayTurnResult.Ready ready -> approved(ready);
+            case RoleplayTurnResult.InputRejected rejected -> inputRetry(rejected);
+            case RoleplayTurnResult.TimedOut ignored ->
+                    guidance(Kind.TIMEOUT, Action.REQUEST_NEW_INPUT);
+            case RoleplayTurnResult.RecoveryRequired recovery -> recover(recovery);
+            case RoleplayTurnResult.CallFailed ignored ->
+                    throw new IllegalArgumentException(
+                            "Resolve only terminal, retry-coordinated results");
+            case RoleplayTurnResult.Rejected ignored ->
+                    throw new IllegalArgumentException(
+                            "Resolve only terminal, retry-coordinated results");
+        };
     }
 
-    private RoleplayTurnOutcome guidance(Kind kind, Action action) {
+    private RoleplayTurnOutcome.ApprovedResponse approved(RoleplayTurnResult.Ready ready) {
+        return new RoleplayTurnOutcome.ApprovedResponse(
+                ready.candidate().candidateId(), ready.candidate().text());
+    }
+
+    private RoleplayTurnOutcome.Recovery inputRetry(RoleplayTurnResult.InputRejected rejected) {
+        Kind kind =
+                rejected.reason() == RoleplayTurnResult.InputFailure.TRANSCRIPTION_FAILED
+                        ? Kind.SAFE_FALLBACK
+                        : Kind.INPUT_QUALITY;
         return notices.find(kind)
-                .<RoleplayTurnOutcome>map(
+                .<RoleplayTurnOutcome.Recovery>map(RoleplayTurnOutcome.InputRetry::new)
+                .orElseGet(RoleplayTurnOutcome.InputNoticeUnavailable::new);
+    }
+
+    private RoleplayTurnOutcome.Recovery recover(RoleplayTurnResult.RecoveryRequired recovery) {
+        return switch (recovery.target()) {
+            case SAFETY_ESCALATION -> safetyStop();
+            case INPUT_CONFIRMATION -> guidance(Kind.INPUT_CONFIRMATION, Action.REQUEST_NEW_INPUT);
+            case SAFE_FALLBACK -> fallback(recovery.operation());
+            case RESPONSE_GENERATION, CAUSE_ANALYSIS, RESPONSE_EVALUATION ->
+                    throw new IllegalArgumentException(
+                            "Unfinished retry target is not deliverable");
+        };
+    }
+
+    private RoleplayTurnOutcome.Recovery fallback(AiOperation operation) {
+        // DEC-027: evaluator failure is an error notice and turn retry, not a learning answer.
+        return switch (operation) {
+            case RESPONSE_EVALUATION -> guidance(Kind.SAFETY_CHECK_ERROR, Action.RETRY_TURN);
+            case RESPONSE_GENERATION -> guidance(Kind.SAFE_FALLBACK, Action.REQUEST_NEW_INPUT);
+            case INITIAL_DIFFICULTY_DECISION,
+                            SCENARIO_GENERATION,
+                            CAUSE_ANALYSIS,
+                            NEXT_DIFFICULTY_DECISION,
+                            SPEECH_TRANSCRIPTION,
+                            SPEECH_SYNTHESIS ->
+                    throw new IllegalArgumentException("Unexpected fallback operation");
+        };
+    }
+
+    private RoleplayTurnOutcome.Recovery guidance(Kind kind, Action action) {
+        return notices.find(kind)
+                .<RoleplayTurnOutcome.Recovery>map(
                         notice -> new RoleplayTurnOutcome.Guidance(notice, action))
                 .orElseGet(() -> new RoleplayTurnOutcome.NoticeUnavailable(action));
     }
 
-    private RoleplayTurnOutcome safetyStop() {
+    private RoleplayTurnOutcome.Recovery safetyStop() {
         var child = notices.find(Kind.SAFETY_ESCALATION_CHILD);
         var teacher = notices.find(Kind.SAFETY_ESCALATION_TEACHER);
         if (child.isEmpty() || teacher.isEmpty()) {

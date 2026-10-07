@@ -124,13 +124,15 @@ public final class RoleplayCheckpointedTurnExecutor {
         if (ownership.isEmpty()) return new Processing();
         try (var lease = ownership.get()) {
             shared.requireActive();
-            var previous = checkpoints.findConfirmed(identity, shared);
-            if (previous instanceof RoleplayCheckpointStore.Found found)
-                return replay(found.result());
-            if (previous instanceof RoleplayCheckpointStore.Conflict) return new Conflict();
-            if (previous instanceof RoleplayCheckpointStore.Expired) return timeout();
-            var result = shared.withinBudget(() -> pipeline.apply(shared));
-            return commit(identity, shared, result);
+            return switch (checkpoints.findConfirmed(identity, shared)) {
+                case RoleplayCheckpointStore.Found found -> replay(found.result());
+                case RoleplayCheckpointStore.Conflict ignored -> new Conflict();
+                case RoleplayCheckpointStore.Expired ignored -> timeout();
+                case RoleplayCheckpointStore.Absent ignored -> {
+                    var result = shared.withinBudget(() -> pipeline.apply(shared));
+                    yield commit(identity, shared, result);
+                }
+            };
         }
     }
 
@@ -148,10 +150,17 @@ public final class RoleplayCheckpointedTurnExecutor {
                         identity.idempotencyKey(),
                         identity.fingerprint(),
                         spoken);
-        var committed = checkpoints.commit(command, deadline);
-        if (committed instanceof RoleplayCheckpointStore.Conflict) return new Conflict();
-        if (committed instanceof RoleplayCheckpointStore.Expired) return timeout();
-        var saved = (RoleplayCheckpointStore.Committed) committed;
+        return switch (checkpoints.commit(command, deadline)) {
+            case RoleplayCheckpointStore.Conflict ignored -> new Conflict();
+            case RoleplayCheckpointStore.Expired ignored -> timeout();
+            case RoleplayCheckpointStore.Committed saved -> confirmed(command, saved, spoken);
+        };
+    }
+
+    private Result confirmed(
+            RoleplayCheckpointCommand command,
+            RoleplayCheckpointStore.Committed saved,
+            RoleplayTurnResult.SpokenReady spoken) {
         // A duplicate can have a newly generated candidate; discard it and its audio.
         if (saved.replayed()) {
             return replay(saved);

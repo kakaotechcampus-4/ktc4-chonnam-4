@@ -54,28 +54,41 @@ public final class RoleplaySpeechTurnPipeline {
             throw new IllegalArgumentException(
                     "A new voice pipeline must start at attempt 1 on the same turn");
         }
-        AiCallResult<SpeechTranscription> transcribed = transcribe(audio, deadline);
-        if (transcribed instanceof AiCallResult.Failure<?>)
-            return rejected(InputFailure.TRANSCRIPTION_FAILED);
-        SpeechTranscription transcription =
-                ((AiCallResult.Success<SpeechTranscription>) transcribed).data();
+        return switch (transcribe(audio, deadline)) {
+            case AiCallResult.Success<SpeechTranscription> success ->
+                    processTranscription(success.data(), audio, context, deadline);
+            case AiCallResult.Failure<SpeechTranscription> ignored ->
+                    rejected(InputFailure.TRANSCRIPTION_FAILED);
+        };
+    }
+
+    private RoleplayTurnResult processTranscription(
+            SpeechTranscription transcription,
+            SpeechTranscriptionRequest audio,
+            RoleplayTurnInput context,
+            RoleplayTurnDeadline deadline) {
         if (!transcription.hasSpeech()) return rejected(InputFailure.NO_SPEECH);
         Double confidence = transcription.confidence();
         if (confidence == null || !Double.isFinite(confidence))
             return rejected(InputFailure.UNKNOWN_CONFIDENCE);
         if (confidence <= 0.40) return rejected(InputFailure.LOW_CONFIDENCE);
-        var processed = deadline.withinBudget(() -> inputProcessor.process(transcription.text()));
-        if (processed instanceof RoleplayInputProcessor.Unsafe) {
-            return new RoleplayTurnResult.RecoveryRequired(
-                    RetryTarget.SAFETY_ESCALATION,
-                    AiOperation.SPEECH_TRANSCRIPTION,
-                    RecoveryReason.INPUT_SAFETY_REJECTED);
-        }
-        if (processed instanceof RoleplayInputProcessor.Invalid)
-            return rejected(InputFailure.INVALID_INPUT);
-        var canonical =
-                ((RoleplayInputProcessor.Accepted) Objects.requireNonNull(processed))
-                        .canonicalUtterance();
+        return switch (deadline.withinBudget(() -> inputProcessor.process(transcription.text()))) {
+            case RoleplayInputProcessor.Unsafe ignored ->
+                    new RoleplayTurnResult.RecoveryRequired(
+                            RetryTarget.SAFETY_ESCALATION,
+                            AiOperation.SPEECH_TRANSCRIPTION,
+                            RecoveryReason.INPUT_SAFETY_REJECTED);
+            case RoleplayInputProcessor.Invalid ignored -> rejected(InputFailure.INVALID_INPUT);
+            case RoleplayInputProcessor.Accepted accepted ->
+                    generateResponse(accepted.canonicalUtterance(), audio, context, deadline);
+        };
+    }
+
+    private RoleplayTurnResult generateResponse(
+            String canonical,
+            SpeechTranscriptionRequest audio,
+            RoleplayTurnInput context,
+            RoleplayTurnDeadline deadline) {
         var input =
                 new RoleplayTurnInput(
                         context.scenario(),
@@ -114,9 +127,14 @@ public final class RoleplaySpeechTurnPipeline {
                             : new SpeechTranscriptionRequest(
                                     audio.traceContext(), attempt, audio.audio(), audio.format());
             var result = deadline.withinBudget(() -> stt.transcribe(request));
-            if (result instanceof AiCallResult.Success<SpeechTranscription>) return result;
-            var failed = (AiCallResult.Failure<SpeechTranscription>) result;
-            if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) return failed;
+            switch (result) {
+                case AiCallResult.Success<SpeechTranscription> success -> {
+                    return success;
+                }
+                case AiCallResult.Failure<SpeechTranscription> failed -> {
+                    if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) return failed;
+                }
+            }
         }
     }
 
@@ -125,10 +143,14 @@ public final class RoleplaySpeechTurnPipeline {
         for (int attempt = 1; ; attempt++) {
             var request = new SpeechSynthesisRequest(trace, attempt, text, null, null);
             var result = deadline.withinBudget(() -> tts.synthesize(request));
-            if (result instanceof AiCallResult.Success<SynthesizedSpeech> success)
-                return success.data();
-            var failed = (AiCallResult.Failure<SynthesizedSpeech>) result;
-            if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) return null;
+            switch (result) {
+                case AiCallResult.Success<SynthesizedSpeech> success -> {
+                    return success.data();
+                }
+                case AiCallResult.Failure<SynthesizedSpeech> failed -> {
+                    if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) return null;
+                }
+            }
         }
     }
 
