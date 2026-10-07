@@ -84,7 +84,7 @@ jobs:
       contents: read
       id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
     outputs:
-      ready: ${{ steps.infra.outputs.ready }}
+      ready: ${{ steps.gate.outputs.ready }}
       build_backend: ${{ steps.ecr.outputs.build_backend }}
       build_web: ${{ steps.ecr.outputs.build_web }}
 
@@ -122,10 +122,28 @@ jobs:
         id: infra
         run: bash scripts/infra-outputs.sh dev
 
+      # PR 에 push·라벨 떼기로 저절로 돈 실행(quiet)은 서버가 꺼져 있으면 빌드도 하지 않고 바로 건너뛴다(꺼진 서버를 위해 빌드하지 않게).
+      - name: Go on?
+        id: gate
+        env:
+          INFRA_READY: ${{ steps.infra.outputs.ready }}
+          QUIET: ${{ inputs.quiet }}
+        run: |
+          ready=$INFRA_READY
+          if [ "$ready" = true ] && [ "$QUIET" = true ]; then
+            state=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
+            if [ "$state" != running ]; then
+              ready=false
+              printf '## ⏭️ 건너뜀 — 서버가 꺼져 있다\n\nPR 에서 저절로 돈 실행이라 서버를 켜지 않는다. 필요하면 PR 에 preview 라벨을 다시 붙이거나 Run workflow → 켜기.\n' >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=건너뜀::서버가 꺼져 있다"
+            fi
+          fi
+          echo "ready=$ready" >>"$GITHUB_OUTPUT"
+
       # ECR 태그는 불변이다. 같은 커밋을 다시 띄울 때(되돌리기·끝내기·같은 PR 다시 올리기)는 이미 올린 이미지를 쓴다.
       - name: Images already in ECR?
         id: ecr
-        if: steps.infra.outputs.ready == 'true'
+        if: steps.gate.outputs.ready == 'true'
         env:
           REPO: ${{ steps.infra.outputs.ecr_repository_url }}
           SHA: ${{ inputs.sha }}
