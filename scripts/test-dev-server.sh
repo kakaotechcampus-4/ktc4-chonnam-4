@@ -87,15 +87,18 @@ new_case() {
   rm -rf "${tmp:?}/fake"
   mkdir -p "$tmp/fake"
 }
+# GitHub Actions 밖처럼 돌린다. Actions 안에서는 ::add-mask::<값> 줄이 찍히는데, 그건 가리라는 지시라 노출이 아니다.
+# 가리라는 지시가 나오는지는 아래에서 GITHUB_ACTIONS=true 로 따로 본다.
 edge() { # on|off|status [주소]
   code=0
-  out=$(PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" CF_DISTRIBUTION_ID=$DIST EDGE_POLL=0 bash scripts/edge-toggle.sh "$@" 2>&1) || code=$?
+  out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" CF_DISTRIBUTION_ID=$DIST EDGE_POLL=0 \
+    bash scripts/edge-toggle.sh "$@" 2>&1) || code=$?
 }
 power() { # state|start|stop
   : >"$tmp/out"
   code=0
-  out=$(PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" FAKE_NEW_DNS=$NEW_DNS SSM_RUN="$tmp/bin/ssm-run" SERVER_POLL=0 \
-    GITHUB_OUTPUT="$tmp/out" bash scripts/server-power.sh "$@" 2>&1) || code=$?
+  out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" FAKE_NEW_DNS=$NEW_DNS SSM_RUN="$tmp/bin/ssm-run" \
+    SERVER_POLL=0 GITHUB_OUTPUT="$tmp/out" bash scripts/server-power.sh "$@" 2>&1) || code=$?
 }
 no_leak() {
   lacks "$out" "$DIST" && lacks "$out" "$OLD_DNS" && lacks "$out" "$NEW_DNS" && lacks "$out" "$INSTANCE" &&
@@ -170,6 +173,10 @@ check "켜기가 성공한다(서버)" same "$code" 0
 check "켜져 있다" has "$out" "SERVER_STATE=running"
 check "새 공인 주소를 워크플로 출력으로 넘긴다" file_has "$tmp/out" "SERVER_DNS=$NEW_DNS"
 check "공인 주소·인스턴스 ID 는 출력에 찍지 않는다" no_leak
+gha=$(GITHUB_ACTIONS=true PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" SSM_RUN="$tmp/bin/ssm-run" GITHUB_OUTPUT=/dev/null \
+  bash scripts/server-power.sh state 2>&1) || true
+check "GitHub Actions 에서는 인스턴스 ID 를 가리라고 지시한다(::add-mask::)" has "$gha" "::add-mask::$INSTANCE"
+check "GitHub Actions 에서는 공인 주소도 가리라고 지시한다(::add-mask::)" has "$gha" "::add-mask::$NEW_DNS"
 
 rm -f "$tmp/fake/calls"
 power start
