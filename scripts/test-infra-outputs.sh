@@ -66,12 +66,13 @@ check "CloudFront 주소를 넘긴다" has "$out" "cloudfront_domain=d111.cloudf
 check "계정 ID 가 든 ECR 주소를 가린다" has "$log" "::add-mask::$REPO"
 check "버킷 이름을 가린다" has "$log" "::add-mask::neuringo-dev-backups-ab12"
 check "사용자 테스트 주소도 가린다(외부인 가입·남용을 부르지 않게)" has "$log" "::add-mask::d111.cloudfront.net"
+check "옛 화면 버킷 값은 읽지 않는다(서버 하나가 화면도 낸다)" lacks "$out" "web_bucket"
 
-all | grep -v web-bucket >"$tmp/params"
+all | grep -v backup-bucket >"$tmp/params"
 run
 check "하나라도 없으면 ready=false" has "$out" "ready=false"
 check "없으면 0 으로 끝난다(건너뜀이지 실패가 아니다)" same "$code" 0
-check "없는 값의 이름을 Summary 에 적는다" has "$summary" "/neuringo/dev/infra/web-bucket"
+check "없는 값의 이름을 Summary 에 적는다" has "$summary" "/neuringo/dev/infra/backup-bucket"
 check "그때 다른 값은 넘기지 않는다" lacks "$out" "ecr_repository_url"
 
 FAKE_DENY=1 run

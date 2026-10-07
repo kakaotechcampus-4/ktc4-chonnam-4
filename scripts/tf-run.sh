@@ -29,6 +29,7 @@ redact() {
   sed -E \
     -e 's/arn:aws[a-zA-Z-]*:[^[:space:]"]*/<arn>/g' \
     -e 's/ec2-[0-9-]+\.[a-z0-9.-]*amazonaws\.com/<서버 주소>/g' \
+    -e 's/[a-z0-9]+\.cloudfront\.net/<테스트 주소>/g' \
     -e 's/[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/<레지스트리>/g' \
     -e 's/(^|[^0-9])[0-9]{12}([^0-9]|$)/\1<계정>\2/g' \
     -e 's/(^|[^0-9.])([0-9]{1,3}\.){3}[0-9]{1,3}([^0-9.]|$)/\1<IP>\3/g' \
@@ -44,7 +45,7 @@ host_root() { if pwd -W >/dev/null 2>&1; then pwd -W; else pwd; fi; }
 args=(--rm -v "$(host_root):/repo" -v "$PLUGIN_VOLUME:/plugins" -w "/repo/$dir"
   -e TF_PLUGIN_CACHE_DIR=/plugins -e TF_IN_AUTOMATION=1 -e TF_INPUT=0 -e CHECKPOINT_DISABLE=1)
 for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_REGION AWS_DEFAULT_REGION \
-  TF_VAR_alert_emails TF_VAR_edge_enabled; do
+  TF_VAR_alert_emails; do
   if [ -n "${!name:-}" ]; then args+=(-e "$name"); fi
 done
 if [ -n "${TF_LOG:-}" ]; then
