@@ -1,48 +1,61 @@
 name: Dev server
-# 팀원용 버튼 하나. Actions → Dev server → Run workflow 에서 할 일을 고른다(PR 미리보기는 PR 번호도).
-#   상태 보기          서버 켜짐/꺼짐, 지금 올라간 것(develop·PR 미리보기), 미리보기 자리, 대문(CloudFront), 권한
-#   켜기               서버 켜기 → 대문에 새 서버 주소를 넣고 열기 → develop 최신이 아니면 맞추기 → 테스트 주소로 확인
-#   PR 미리보기 올리기  (꺼져 있으면 켜기부터) PR 을 develop 에 합친 코드로 화면·API 를 띄운다. 미리보기 전용 DB 는 매번 새로
-#   미리보기 끝내기     develop 최신으로 되돌리고 미리보기 DB·자리를 지운다
-#   끄기               대문 닫기 → 다 닫힌 것 확인 → 서버 끄기(누르고 떠나도 된다)
-# 한 번에 PR 하나만 띄운다(자리 1시간, 같은 PR 을 다시 올리면 연장). 다른 PR 이 쓰는 중이면 누가·언제까지인지 알려 주고 멈춘다.
-# PR 미리보기는 같은 레포의 열린 PR(→ develop)만 된다. 포크 PR·충돌이 있는 PR 은 안 된다.
+# 팀 테스트 서버(AWS dev)를 쓰는 길. 두 가지로 누른다(사용 설명서: 팀 노션 "Dev server 사용 설명서").
+#
+#   PR 에서 — 라벨
+#     preview 라벨 붙이기   PR 미리보기 올리기: (꺼져 있으면 켜기부터) 이 PR 을 develop 에 합친 코드로 화면·API 를 띄운다.
+#                           미리보기 전용 DB 는 매번 새로. 자리 1시간(한 번에 PR 하나)
+#     preview 라벨이 있는 PR 에 push   다시 올리기(서버가 켜져 있고 자리가 이 PR 것이거나 비었을 때만. 아니면 조용히 건너뜀)
+#     preview 라벨 떼기·PR 닫기·머지   미리보기 끝내기(이 PR 의 미리보기가 떠 있을 때만): develop 최신으로 되돌린다
+#     dev-off 라벨 붙이기   끄기(아래와 같다). 라벨은 바로 떼어 둔다
+#   Actions → Dev server → Run workflow — 할 일
+#     상태 보기 · 켜기 · 미리보기 끝내기 · 끄기
+#
+# PR 에서 돌 때는 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 돈다. 그래서 파이프라인을 바꾼 PR 도 머지 전에
+# 자기 버전으로 시험된다(2026-10-07 결정 — PR 실행에도 배포 역할을 준다. 포크 PR 은 GitHub 이 권한을 주지 않는다,
+# docs/cd-architecture.md §8). 파이프라인을 바꾸는 브랜치는 Run workflow 에서 그 브랜치를 골라 상태·켜기·끄기도 시험한다.
 # 결과 보고서는 실행 화면의 Summary 다. 공개 레포라 테스트 주소·계정 ID·서버 주소는 찍지 않는다(주소는 디스코드 고정 메시지).
-# 고정 IP 가 없어 서버를 껐다 켜면 주소가 바뀐다. 그래서 끌 때는 대문을 먼저 닫고(다 닫힌 것을 본 뒤) 서버를 끈다
-# (docs/cd-architecture.md §8). 대문 여닫기는 Terraform 밖이다(scripts/edge-toggle.sh, 승인 없이 몇 초).
+# 고정 IP 가 없어 서버를 껐다 켜면 주소가 바뀐다. 그래서 끌 때는 대문(CloudFront)을 먼저 닫고(다 닫힌 것을 본 뒤) 서버를 끈다.
+# 대문 여닫기는 Terraform 밖이다(scripts/edge-toggle.sh, 승인 없이 몇 초).
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 할 일
+        description: 할 일(PR 미리보기는 PR 에 preview 라벨을 붙인다)
         type: choice
         options:
           - 상태 보기
           - 켜기
-          - PR 미리보기 올리기
           - 미리보기 끝내기
           - 끄기
         default: 상태 보기
-      pr:
-        description: PR 번호(PR 미리보기 올리기 때만, 예 41)
-        required: false
-        default: ""
+  pull_request:
+    types: [labeled, unlabeled, synchronize, closed]
+
+# 같은 PR 의 라벨·push 는 한 번에 하나씩(마지막 것이 이긴다). 버튼(수동 실행)은 서로 막지 않는다 — 서버 쪽 잠금이 줄 세운다.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('dev-server-pr-{0}', github.event.pull_request.number) || format('dev-server-{0}', github.run_id) }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   plan:
-    # 다른 브랜치를 고르면 그 브랜치의 워크플로·스크립트가 배포 역할로 돈다. develop 에서만 받는다.
-    if: github.ref == 'refs/heads/develop'
+    # PR 이벤트는 preview·dev-off 라벨과 관계있을 때만 돈다(다른 라벨·preview 없는 PR 의 push 는 건너뛴다).
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'preview' || github.event.label.name == 'dev-off' ||
+      ((github.event.action == 'synchronize' || github.event.action == 'closed') &&
+       contains(github.event.pull_request.labels.*.name, 'preview'))
     # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write # dev-off 라벨을 떼어 둔다
     outputs:
+      task: ${{ steps.what.outputs.task }}
       power_on: ${{ steps.what.outputs.power_on }}
       release: ${{ steps.what.outputs.release }}
       power_off: ${{ steps.what.outputs.power_off }}
@@ -53,87 +66,120 @@ jobs:
       author: ${{ steps.what.outputs.author }}
       head: ${{ steps.what.outputs.head }}
       base: ${{ steps.what.outputs.base }}
-      deploy_changed: ${{ steps.what.outputs.deploy_changed }}
       end_preview: ${{ steps.what.outputs.end_preview }}
+      end_only_pr: ${{ steps.what.outputs.end_only_pr }}
+      quiet: ${{ steps.what.outputs.quiet }}
 
     steps:
       - name: Decide what to do
         id: what
         env:
+          EVENT: ${{ github.event_name }}
           ACTION: ${{ inputs.action }}
-          PR: ${{ inputs.pr }}
+          PR_ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HAS_PREVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'preview') }}
+          MERGE_SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
-          DEVELOP_SHA: ${{ github.sha }}
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           out() { echo "$1=$2" >>"$GITHUB_OUTPUT"; }
-          fail() { echo "::error title=Dev server::$1"; printf '## Dev server — %s ❌\n\n%s\n' "$ACTION" "$1" >>"$GITHUB_STEP_SUMMARY"; exit 1; }
+          fail() { echo "::error title=Dev server::$1"; printf '## Dev server — %s ❌\n\n%s\n' "${task:-?}" "$1" >>"$GITHUB_STEP_SUMMARY"; exit 1; }
+          skip() { printf '## Dev server — 할 일 없음\n\n%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; out task none; exit 0; }
           [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "저장소 변수 AWS_ACCOUNT_ID(12자리)가 없다(관리자가 한 번 등록한다)."
-          [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}$ ]] || fail "누른 사람 아이디 모양이 틀렸다."
-          power_on=false release=false power_off=false mode=develop end_preview=false sha=$DEVELOP_SHA
+          [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}(\[bot\])?$ ]] || fail "누른 사람 아이디 모양이 틀렸다."
+          develop_sha() { gh api "repos/$REPO/commits/develop" --jq .sha; }
+          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha=""
           steps=()
-          case $ACTION in
+
+          if [ "$EVENT" = pull_request ]; then
+            [ "$HEAD_REPO" = "$REPO" ] ||
+              skip "포크에서 온 PR 이라 미리보기를 하지 않는다(자격증명이 있는 서버에서 돌기 때문). 브랜치를 이 레포에 올려 PR 을 다시 연다."
+            [[ "$PR" =~ ^[0-9]{1,6}$ ]] || fail "PR 번호를 읽지 못했다."
+            case "$PR_ACTION:$LABEL" in
+              labeled:preview) task="PR 미리보기 올리기" ;;
+              synchronize:*) task="PR 미리보기 다시 올리기" ;;
+              unlabeled:preview | closed:*) task="미리보기 끝내기" ;;
+              labeled:dev-off) task="끄기" ;;
+              *) skip "preview·dev-off 라벨과 관계없는 이벤트다." ;;
+            esac
+            if [ "$PR_ACTION" = closed ] && [ "$HAS_PREVIEW" != true ]; then skip "preview 라벨이 없는 PR 이다."; fi
+          else
+            task=$ACTION
+          fi
+
+          case $task in
             "상태 보기")
               steps=("서버·대문·올라간 것·자리·권한을 읽기만 한다(아무것도 바꾸지 않는다)") ;;
             "켜기")
-              power_on=true release=true
-              steps=("서버 켜기(꺼져 있으면)" "대문(CloudFront)에 새 서버 주소를 넣고 열기" "develop 최신 \`${sha:0:7}\` 으로 맞추기(이미 떠 있으면 그대로)" "테스트 주소로 화면·API 확인") ;;
-            "PR 미리보기 올리기")
-              [[ "$PR" =~ ^[0-9]{1,6}$ ]] || fail "PR 번호를 숫자로 넣는다(예 41)."
-              pr=$(gh api "repos/$REPO/pulls/$PR") || fail "PR #$PR 을 찾지 못했다."
+              power_on=true release=true sha=$(develop_sha)
+              steps=("서버 켜기(꺼져 있으면) · 서버 기본 설정 확인" "대문(CloudFront)에 새 서버 주소를 넣고 열기" "develop 최신 \`${sha:0:7}\` 으로 맞추기(이미 떠 있으면 그대로)" "테스트 주소로 화면·API 확인") ;;
+            "PR 미리보기 올리기" | "PR 미리보기 다시 올리기")
+              pr=$(gh api "repos/$REPO/pulls/$PR") || fail "PR #$PR 을 읽지 못했다."
               field() { jq -r "$1" <<<"$pr"; }
-              [ "$(field .state)" = open ] || fail "PR #$PR 이 열려 있지 않다."
               [ "$(field .base.ref)" = develop ] || fail "PR #$PR 은 develop 으로 가는 PR 이 아니다."
-              [ "$(field .head.repo.full_name)" = "$REPO" ] ||
-                fail "PR #$PR 은 포크에서 온 PR 이다. 미리보기는 같은 레포 브랜치만 된다(자격증명이 있는 서버에서 돌기 때문). 브랜치를 이 레포에 올려 PR 을 다시 연다."
-              # GitHub 이 PR 을 develop 에 합친 결과(머지 커밋)를 계산할 때까지 기다린다.
-              for _ in $(seq 1 20); do
-                mergeable=$(field .mergeable)
-                [ "$mergeable" != null ] && break
-                sleep 3
-                pr=$(gh api "repos/$REPO/pulls/$PR")
-              done
-              [ "$mergeable" = true ] || fail "PR #$PR 은 develop 과 충돌이 있다(또는 아직 계산 중). develop 을 받아(merge·rebase) 충돌을 푼 뒤 다시 누른다."
-              sha=$(field .merge_commit_sha)
+              # pull_request 실행의 커밋(github.sha)은 GitHub 이 이 PR 을 develop 에 합친 커밋이다. 충돌이 있으면 실행 자체가 생기지 않는다.
+              sha=$MERGE_SHA
               head=$(field .head.sha)
-              [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "합친 커밋을 받지 못했다. 잠시 뒤 다시 누른다."
+              [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "합친 커밋을 받지 못했다."
               parents=$(gh api "repos/$REPO/commits/$sha" --jq '[.parents[].sha] | join(" ")')
               read -r base second <<<"$parents"
-              [ "$second" = "$head" ] || fail "합친 커밋이 PR 의 최신 커밋을 담고 있지 않다(방금 push 했으면 잠시 뒤 다시 누른다)."
+              [ "$second" = "$head" ] || fail "합친 커밋이 PR 의 최신 커밋을 담고 있지 않다(방금 push 했으면 그 실행이 이어서 돈다)."
               gh api "repos/$REPO/contents/frontend/Dockerfile?ref=$sha" >/dev/null 2>&1 ||
-                fail "이 PR 을 합친 코드에 화면 이미지(frontend/Dockerfile)가 없다. develop 을 받은 뒤 다시 누른다."
-              deploy_changed=false
-              files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
-              if grep -q '^deploy/' <<<"$files"; then deploy_changed=true; fi
+                fail "이 PR 을 합친 코드에 화면 이미지(frontend/Dockerfile)가 없다. develop 을 받은 뒤 다시 올린다."
               out pr "$PR"
               out title "$(field .title | tr -d '\r\n' | cut -c1-100)"
               out author "$(field .user.login)"
               out head "$head"
               out base "$base"
-              out deploy_changed "$deploy_changed"
-              power_on=true release=true mode=preview
-              steps=("서버가 꺼져 있으면 켜고 대문 열기" "PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
-                "자리 확인(다른 PR 이 쓰는 중이면 멈춤) → 미리보기 전용 DB 새로 만들기 → 바꿔 띄우기 → 상태 확인" "테스트 주소로 화면·API·커밋 확인") ;;
+              release=true mode=preview
+              if [ "$task" = "PR 미리보기 올리기" ]; then
+                power_on=true
+                steps=("서버가 꺼져 있으면 켜고 대문 열기 · 서버 기본 설정 확인")
+              else
+                # push 할 때마다 서버를 켜지는 않는다. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다.
+                quiet=true
+                steps=("서버가 켜져 있을 때만(꺼져 있으면 건너뜀)")
+              fi
+              steps+=("PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 의 워크플로·스크립트로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
+                "자리 확인(다른 PR 이 쓰는 중이면 멈춤) → 미리보기 DB 새로 만들기 → 바꿔 띄우기 → 상태 확인" "테스트 주소로 화면·API·커밋 확인") ;;
             "미리보기 끝내기")
-              release=true end_preview=true
-              steps=("develop 최신 \`${sha:0:7}\` 으로 되돌리기(배포 전 백업)" "미리보기 DB·계정·자리 지우기") ;;
+              release=true end_preview=true sha=$(develop_sha)
+              if [ "$EVENT" = pull_request ]; then
+                end_only_pr=$PR quiet=true
+                steps=("PR #$PR 의 미리보기가 떠 있을 때만(아니면 건너뜀)")
+              fi
+              steps+=("develop 최신 \`${sha:0:7}\` 으로 되돌리기(배포 전 백업)" "미리보기 DB·계정·자리 지우기") ;;
             "끄기")
               power_off=true
+              if [ "$EVENT" = pull_request ]; then
+                gh api -X DELETE "repos/$REPO/issues/$PR/labels/dev-off" >/dev/null 2>&1 || true
+              fi
               steps=("다른 사람 미리보기가 자리를 쓰는 중이면 멈춤" "대문(CloudFront) 닫기 → 다 닫힌 것을 다시 읽어 확인" "배포·백업이 끝나길 기다린 뒤 서버 끄기") ;;
-            *) fail "모르는 작업: $ACTION" ;;
+            *) fail "모르는 작업: $task" ;;
           esac
+          [ -z "$sha" ] || [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "배포할 커밋을 정하지 못했다."
+          out task "$task"
           out power_on "$power_on"
           out release "$release"
           out power_off "$power_off"
           out mode "$mode"
           out sha "$sha"
           out end_preview "$end_preview"
+          out end_only_pr "$end_only_pr"
+          out quiet "$quiet"
           {
-            echo "## Dev server — $ACTION"
+            echo "## Dev server — $task"
             echo
-            echo "누른 사람 **$ACTOR** · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST)"
+            if [ "$EVENT" = pull_request ]; then
+              echo "PR #$PR · **$ACTOR** · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST) · 이 PR 을 develop 에 합친 커밋의 워크플로로 돈다"
+            else
+              echo "누른 사람 **$ACTOR** · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST)"
+            fi
             echo
             echo "이 실행이 하는 일:"
             n=1
@@ -144,7 +190,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.power_on == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment: dev
     # 켜기·끄기가 겹치지 않게 한 번에 하나(기다린다. 취소하지 않는다).
     concurrency:
@@ -196,6 +242,39 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$code"
 
+      # 서버 기본 설정(deploy/host/setup.sh)은 여러 번 돌려도 결과가 같다. 켤 때마다 확인한다(이미 되어 있으면 몇 초).
+      # PR 미리보기는 컨테이너의 인스턴스 메타데이터 차단(7번)이 있어야 뜬다.
+      - name: Server basic setup (idempotent)
+        run: |
+          remote="$RUNNER_TEMP/host-setup.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo 'mkdir -p /opt/neuringo/state'
+            echo 'exec 9>/opt/neuringo/state/deploy.lock'
+            echo 'flock -w 600 9 || { echo "[setup] 배포·백업이 10분 안에 끝나지 않아 멈췄다"; exit 1; }'
+            cat deploy/host/setup.sh
+          } >"$remote"
+          code=0
+          out=$(bash scripts/ssm-run.sh "$remote" "host setup") || code=$?
+          rm -f "$remote"
+          echo "$out"
+          changed=$(grep -E '^\[setup\] ' <<<"$out" | grep -vE '이미 있음|배포 폴더|끝' | sed 's/^\[setup\] //' | paste -sd ',' - || true)
+          {
+            echo
+            echo "### 서버 기본 설정"
+            echo
+            if [ "$code" != 0 ]; then
+              echo "❌ 서버 기본 설정이 실패했다(종료 코드 $code). 로그의 [setup] 줄을 본다."
+            elif [ -n "$changed" ]; then
+              echo "- 고쳤다: $changed"
+            else
+              echo "- 이미 되어 있다(Docker·swap·로그 상한·보안 업데이트·컨테이너 IMDS 차단)"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
       - name: Open CloudFront with the new server address
         env:
           CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
@@ -231,8 +310,9 @@ jobs:
       author: ${{ needs.plan.outputs.author }}
       head: ${{ needs.plan.outputs.head }}
       base: ${{ needs.plan.outputs.base }}
-      deploy_changed: ${{ needs.plan.outputs.deploy_changed == 'true' }}
       end_preview: ${{ needs.plan.outputs.end_preview == 'true' }}
+      end_only_pr: ${{ needs.plan.outputs.end_only_pr }}
+      quiet: ${{ needs.plan.outputs.quiet == 'true' }}
       # 대문을 막 열었으면 퍼질 때까지(최대 5분) 기다리며 확인한다.
       edge_wait: ${{ needs.power_on.outputs.was_off == 'true' && 300 || 60 }}
 
@@ -285,7 +365,7 @@ jobs:
               echo "### 끄지 않았다 ⛔"
               echo
               echo "PR #$(value LEASE_PR) 미리보기를 **$(value LEASE_BY)** 님이 $until_kst (KST) 까지 쓰는 중이다."
-              echo "그 사람이 **미리보기 끝내기**를 누르거나 시간이 지난 뒤 끈다. 급하면 먼저 알리고 미리보기 끝내기 → 끄기."
+              echo "그 사람이 미리보기를 끝내거나(PR 에서 preview 라벨 떼기) 시간이 지난 뒤 끈다. 급하면 먼저 알리고 미리보기 끝내기 → 끄기."
             } >>"$GITHUB_STEP_SUMMARY"
             echo "::error title=끄지 않음::다른 사람 미리보기가 자리를 쓰는 중"
             exit 1
@@ -326,7 +406,7 @@ jobs:
 
   status:
     needs: [plan, power_on, release, power_off]
-    if: always() && needs.plan.result == 'success'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.task != 'none'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: dev
@@ -356,7 +436,8 @@ jobs:
         env:
           CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
           DOMAIN: ${{ steps.infra.outputs.cloudfront_domain }}
-          ACTION: ${{ inputs.action }}
+          TASK: ${{ needs.plan.outputs.task }}
+          EVENT: ${{ github.event_name }}
         run: |
           power=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state) || power=""
           edge=$(bash scripts/edge-toggle.sh status) || edge=""
@@ -369,7 +450,7 @@ jobs:
             server=$(bash scripts/ssm-run.sh "$remote" "status") || true
           fi
           perms=""
-          if [ "$ACTION" = "상태 보기" ]; then perms=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh perms) || true; fi
+          if [ "$TASK" = "상태 보기" ]; then perms=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh perms) || true; fi
           value() { sed -n "s/^$2=//p" <<<"$1" | tail -n 1; }
           kst() { [ -n "$1" ] && TZ=Asia/Seoul date -d "$1" '+%m/%d %H:%M' 2>/dev/null || echo "${1:-?}"; }
           yesno() { [ "$1" = yes ] && echo "✅ 있음" || echo "❌ 없음(콘솔에서)"; }
@@ -420,12 +501,12 @@ jobs:
               echo "| 배포 역할 권한 | 서버 켜기 $(yesno "$(value "$perms" PERM_START)") · 끄기 $(yesno "$(value "$perms" PERM_STOP)") |"
             fi
             echo
-            echo "테스트 주소는 디스코드 고정 메시지에 있다. 다음에 누를 것:"
+            echo "테스트 주소는 디스코드 고정 메시지에 있다. 다음에 할 것:"
             if [ "$state" != running ]; then
-              echo "- 테스트하려면 **켜기** 또는 바로 **PR 미리보기 올리기**"
+              echo "- 테스트하려면 PR 에 **preview** 라벨을 붙이거나 Run workflow → **켜기**"
             elif [ "$mode" = preview ]; then
-              echo "- 다 봤으면 **미리보기 끝내기**, 오늘 끝이면 **끄기**"
+              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기), 오늘 끝이면 Run workflow → **끄기**(또는 PR 에 **dev-off** 라벨)"
             else
-              echo "- PR 을 머지 전에 보려면 **PR 미리보기 올리기**, 오늘 끝이면 **끄기**"
+              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨, 오늘 끝이면 Run workflow → **끄기**(또는 PR 에 **dev-off** 라벨)"
             fi
           } >>"$GITHUB_STEP_SUMMARY"

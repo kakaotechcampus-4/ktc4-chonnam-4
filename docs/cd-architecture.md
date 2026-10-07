@@ -7,7 +7,7 @@ S1·S2·S8-JEONG-02(EC2·RDS, VS-017)의 배포 설계다. 운영진이 준 AWS 
 - 상태: 설계안(2026-10-01). ⚑ 표시는 0단계 권한 확인(`aws-probe.yml`) 결과로 정한다.
 - 진행(2026-10-05): 1단계 중 서버 스크립트(`deploy/host/`), 배포 워크플로(`deploy.yml`·`host-setup.yml`·`ops-backup.yml`), Terraform(`infra/`)과 `infra.yml` 을 만들었다. `ops-cost.yml` 이 남았다. 실제 적용은 0단계 권한 확인 뒤다.
 - 진행(2026-10-06): 1단계가 develop 에 들어갔고 0단계 권한 확인을 한 번 돌렸다(⚑ 표). 팀의 모델 길이 외부 API(OpenAI 호환 LLM·OpenAI STT·타입캐스트 TTS)로 정해져 §6 을 그 기준으로 고쳤다.
-- 진행(2026-10-07): 팀원이 **머지 전에** PR 을 AWS 에서 띄워 보는 길(Dev server, §3)을 더했다. 화면도 서버의 web(nginx) 컨테이너가 내도록 바꿔 CloudFront 원본을 서버 하나로 줄였다(S3 화면 버킷 삭제). 고정 IP 는 요청하지 않고, 서버를 끌 때 Dev server 가 CloudFront 를 먼저 닫는다(§8).
+- 진행(2026-10-07): 팀원이 **머지 전에** PR 을 AWS 에서 띄워 보는 길(Dev server, §3)을 더했다. PR 에서 도는 실행에도 배포 역할을 줘서, 파이프라인·인프라를 바꾼 PR 도 머지 전에 자기 버전으로 시험한다(§8). 화면도 서버의 web(nginx) 컨테이너가 내도록 바꿔 CloudFront 원본을 서버 하나로 줄였다(S3 화면 버킷 삭제). 고정 IP 는 요청하지 않고, 서버를 끌 때 Dev server 가 CloudFront 를 먼저 닫는다(§8).
 
 ## 한눈에
 
@@ -171,7 +171,7 @@ flowchart TB
 | 파일 | 언제 | 하는 일 | AWS 역할 |
 |---|---|---|---|
 | `aws-probe.yml` | 수동(0단계) | 읽기 호출·IAM 시뮬레이션으로 ⚑ 확인. 아무것도 만들지 않는다 | `ktc-github-deploy` |
-| `infra.yml` | `infra/**`·`scripts/tf-*` 변경 PR · develop push · 매일 · 수동 | PR: 자격증명 없는 검사만(fmt·validate·mock 테스트·구성 검사). PR 에는 AWS 자격증명을 주지 않는다. develop: plan(표·가드, 승인 전엔 읽기만) → Environment `infra` 승인 → 가드 다시 → apply(승인한 plan 과 리소스·동작이 같을 때만). 매일: drift(plan 에 변경이 있으면 실패, 서버가 꺼져 있으면 건너뜀) | plan 은 읽기, apply 는 쓰기 |
+| `infra.yml` | `infra/**`·`scripts/tf-*` 변경 PR · develop push · 매일 · 수동 | PR: 자격증명 없는 검사(fmt·validate·mock 테스트·구성 검사) → 같은 레포 PR 이면 plan(표·가드) → Environment `infra` 승인 → **머지 전에 apply**(Atlantis 방식). 성공한 뒤 머지한다. 지우는 plan 은 PR 에 `allow-destroy` 라벨. develop: plan → 승인 → 가드 다시 → apply(승인한 plan 과 리소스·동작이 같을 때만). 매일: drift(PR 에서 apply 하고 머지 안 한 것도 잡는다, 서버가 꺼져 있으면 건너뜀) | plan 은 읽기, apply 는 쓰기 |
 | `deploy.yml` (`deploy-dev.yml` 대체) | develop 에서 Backend CI·Frontend CI 가 끝난 커밋(`workflow_run`) · 수동(SHA 를 넣어 되돌리기) | 같은 커밋의 두 CI 가 모두 통과했을 때만 `release.yml` 을 부른다(한 push 에 둘 다 돌면 나중에 끝난 쪽). 서버가 꺼져 있거나 미리보기 중이면 이미지만 올리고 건너뛴다 | deploy |
 | `release.yml` (재사용) | `deploy.yml`·`dev-server.yml` 이 부른다 | resolve(ECR 에 있나) → build(백엔드·화면 동시, **AWS 권한 없음**) → deploy(ECR push → SSM `deploy.sh` → 서버에서 CloudFront 주소로 화면·API·커밋 헤더 확인) → 결과 보고서(Summary) | deploy |
 | `dev-server.yml` | 수동(팀원 누구나, develop 에서) | 상태 보기 · 켜기 · PR 미리보기 올리기 · 미리보기 끝내기 · 끄기(아래 절) | deploy |
@@ -181,8 +181,8 @@ flowchart TB
 
 - apply 는 한 번에 하나만 하고 도중에 취소하지 않는다(concurrency). 서버 배포는 서버 쪽 잠금(flock)이 한 번에 하나로 줄 세운다(GitHub concurrency 는 기다리던 실행을 조용히 취소해서 쓰지 않는다). 서버 켜기·끄기만 `dev-server-power` 로 묶는다.
 - 비밀값은 워크플로 입력·SSM 명령 인자에 싣지 않는다. 명령 내용은 SSM 기록·CloudTrail 에 남는다. 서버가 Parameter Store 에서 직접 읽는다.
-- PR(같은 레포 포함)에는 AWS 자격증명을 주지 않는다. 배포 역할에 쓰기 권한이 있어서다. 자격증명이 필요 없는 검사는 모든 PR 에서 돌고, plan 표는 develop 에 들어간 뒤 승인 전에 본다.
-- 수동 실행 워크플로(Host setup·Ops backup·AWS probe·Deploy·Dev server)는 develop 에서만 돈다. 다른 브랜치를 고르면 그 브랜치의 스크립트가 서버·자격증명으로 돌기 때문이다.
+- **같은 레포 PR 에도 AWS 자격증명을 준다**(2026-10-07 결정, 전에는 주지 않았다). 머지 전에 시험하는 것이 목적이라, PR 미리보기(Dev server)·인프라 plan·apply 가 그 PR 의 워크플로·스크립트 버전으로 돈다. 포크 PR 은 GitHub 이 자격증명을 주지 않아 검사만 돈다. 경계는 §8.
+- 수동 실행 워크플로 중 Host setup·Ops backup·AWS probe·Deploy 는 develop 에서만 돈다. Dev server 는 아무 브랜치에서 돌릴 수 있다(파이프라인을 바꾸는 브랜치를 골라 상태·켜기·끄기를 머지 전에 시험한다).
 - `workflow_run` 은 같은 레포 develop push 에서 온 실행만 받는다(`head_repository` 확인).
 - 공개 레포라 로그·Summary 가 공개된다. 계정 ID·ARN·리소스 ID·주소는 찍지 않는다(`mask-aws-account-id`).
 
@@ -201,20 +201,27 @@ flowchart TB
 
 ### Dev server — 머지 전 PR 미리보기·서버 켜고 끄기 (`dev-server.yml`)
 
-팀원이 Actions → **Dev server** → Run workflow 에서 고른다. 사용 설명서(스크린샷)는 팀 노션에 둔다.
+PR 미리보기는 **PR 에 `preview` 라벨**로, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow 로 한다. 사용 설명서(스크린샷)는 팀 노션에 둔다.
+
+| PR 에서 | 일어나는 일 |
+|---|---|
+| `preview` 라벨 붙이기 | PR 미리보기 올리기(아래 표) — 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 |
+| `preview` 라벨이 있는 PR 에 push | 다시 올리기. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다(PR 검사가 빨개지지 않게) |
+| `preview` 라벨 떼기 · PR 닫기·머지 | 그 PR 의 미리보기가 떠 있을 때만 끝낸다(develop 최신으로) |
+| `dev-off` 라벨 붙이기 | 끄기(라벨은 바로 떼어진다) |
 
 | 작업 | 안에서 일어나는 일 | 걸리는 시간(목표) |
 |---|---|---|
 | 상태 보기 | 서버·CloudFront 상태, 서버의 `status.sh`(올라간 것·자리·컨테이너·여유), 켜기·끄기 권한(DryRun) | 30초 |
-| 켜기 | `server-power.sh start`(공인 주소·SSM 연결까지 기다림) → `edge-toggle.sh on <새 주소>` → develop 최신으로 맞춤(이미 떠 있으면 그대로) → 서버에서 CloudFront 로 확인(퍼질 때까지 최대 5분) | 3~5분 |
-| PR 미리보기 올리기 | PR 확인(열림·같은 레포·→ develop·충돌 없음) → GitHub 이 PR 을 develop 에 합친 커밋 → (꺼져 있으면 켜기) → 이미지 2개 빌드(권한 없음) → 서버: 자리 확인 → 미리보기 DB·계정 새로 → 바꿔 띄움 → 확인 | 5~7분 |
+| 켜기 | `server-power.sh start`(공인 주소·SSM 연결까지 기다림) → 서버 기본 설정(`setup.sh`, 이미 됐으면 몇 초) → `edge-toggle.sh on <새 주소>` → develop 최신으로 맞춤(이미 떠 있으면 그대로) → 서버에서 CloudFront 로 확인(퍼질 때까지 최대 5분) | 3~5분 |
+| PR 미리보기 올리기 | PR 확인(같은 레포·→ develop) → GitHub 이 PR 을 develop 에 합친 커밋(충돌이 있으면 실행이 생기지 않는다) → (꺼져 있으면 켜기) → 이미지 2개 빌드(권한 없음) → 서버: 자리 확인 → 미리보기 DB·계정 새로 → 바꿔 띄움 → 확인 | 5~7분 |
 | 미리보기 끝내기 | develop 최신으로 배포(배포 전 백업) → 미리보기 DB·계정·자리·기준점 지움. 실패하면 미리보기 전 develop 으로 | 1~3분 |
 | 끄기 | 다른 사람 미리보기가 자리를 쓰는 중이면 멈춤 → `edge-toggle.sh off`(다 퍼져 꺼진 것을 다시 읽어 확인) → 배포·백업 잠금을 기다린 뒤 `server-power.sh stop` | 3~5분(누르고 떠나도 된다) |
 
 - **자리**: 서버에 PR 미리보기는 하나만 뜬다(4 GiB, backend 1.5 GiB). 서버 파일 `state/preview.lease`(PR·누가·끝나는 시각)를 배포 잠금 안에서 쓴다. 1시간이고 같은 PR 을 다시 올리면 연장된다. 시간이 지난 자리는 빈 것으로 본다(자동으로 되돌리지는 않는다 — 다음 develop 배포·켜기·끝내기가 develop 으로 돌린다).
 - **미리보기 DB**: 같은 postgres 안의 `neuringo_preview` DB 와 그 주인 계정(무작위 비밀번호)을 매번 새로 만든다. 기본 DB·`postgres`·`template1` 은 PUBLIC 접속을 막아 미리보기 계정이 다른 DB 에 붙지 못한다. 미리보기 컨테이너에는 기본 DB 비밀번호가 들어가지 않고(`APP_DB_*` 가 덮어쓴다), 아동 입장 코드 HMAC 키도 따로 쓴다. 빈 DB 라 가입부터 한다.
-- **PR 코드가 도는 곳**: 이미지 빌드는 AWS 권한이 없는 잡에서만, 캐시 없이. 서버에서는 컨테이너가 인스턴스 메타데이터(서버 역할 자격증명)에 닿지 못하게 막혀 있어야 미리보기를 띄운다(`setup.sh` 7번, 없으면 Host setup 을 먼저 돌리라고 멈춘다). 서버 스크립트(`deploy/`)는 develop 것이라 PR 이 바꾼 `deploy/` 는 미리보기에 반영되지 않는다(보고서에 적는다).
-- **안 되는 PR**: 포크에서 온 PR(자격증명이 있는 서버에서 돌기 때문 — 같은 레포 브랜치로 다시 연다), develop 과 충돌이 있는 PR, 화면 이미지(`frontend/Dockerfile`)가 생기기 전 develop 에서 딴 채로 받지 않은 PR.
+- **PR 코드가 도는 곳**: 미리보기는 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 돈다(파이프라인을 바꾼 PR 도 자기 버전으로 시험된다). 이미지 빌드만은 AWS 권한이 없는 잡에서 캐시 없이 한다. 서버에서는 컨테이너가 인스턴스 메타데이터(서버 역할 자격증명)에 닿지 못하게 막혀 있어야 미리보기를 띄운다(`setup.sh` 7번 — 켜기가 매번 확인한다).
+- **안 되는 PR**: 포크에서 온 PR(GitHub 이 자격증명을 주지 않는다 — 같은 레포 브랜치로 다시 연다), develop 과 충돌이 있는 PR(실행이 생기지 않는다).
 - **바꿀 때 다시 로그인**: develop ↔ 미리보기를 바꾸면 DB 가 바뀌어 저장된 로그인이 맞지 않는다.
 - **Terraform 에 남는 것과 아닌 것**: 구조(CloudFront 동작·보안 헤더·ECR·버킷·설정값·경보·예산)는 Terraform(plan 표·승인·S3 state 버전). 켜기·끄기·미리보기는 운영 동작이라 Terraform 밖이다 — Actions 실행 기록·결과 보고서(Summary)·서버 기록(`state/`)에 남는다. CloudFront 원본 주소는 서버가 켜져 있을 때 Terraform 이 읽는 값과 같아 drift 가 나지 않는다.
 
@@ -389,8 +396,9 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 
 - 장기 자격증명이 없다. OIDC(1시간)와 인스턴스 역할만 쓴다. GitHub 에 AWS 비밀값을 두지 않는다.
   - `AWS_ACCOUNT_ID` 는 운영진 가이드대로 변수(Variables)다. 계정 ID 는 자격증명이 아니지만, 변수는 가려지지 않아 각 단계 머리(`with:`·`env:`)에 그대로 찍힌다. 숨기려면 같은 이름의 secret 으로 옮긴다(§11).
-- **레포 쓰기 권한 = 배포 권한에 가깝다.** 모든 워크플로가 운영진 역할 `ktc-github-deploy` 하나를 쓰고, 그 신뢰 정책 범위는 아직 모른다(probe 가 모양을 확인한다). 쓰기 권한이 있는 사람은 브랜치에 워크플로를 만들어 이 역할을 받을 수 있다. 그래서:
-  - PR 에는 자격증명을 주지 않고, 수동 실행은 develop 에서만 돈다(실수 방지).
+- **레포 쓰기 권한 = 배포 권한이다.** 모든 워크플로가 운영진 역할 `ktc-github-deploy` 하나를 쓰고, 그 신뢰 정책 범위는 아직 모른다(probe 가 모양을 확인한다). 쓰기 권한이 있는 사람은 브랜치에 워크플로를 만들어 이 역할을 받을 수 있다.
+  - 2026-10-07 부터는 **같은 레포 PR 실행에도 이 역할을 준다**(머지 전 시험 — PR 미리보기, 인프라 plan·apply). 경계는 "레포 쓰기 권한"이다. 막는 것: 포크 PR(GitHub 이 OIDC 토큰을 주지 않는다), 이미지 빌드(권한 없는 잡), 컨테이너의 인스턴스 메타데이터(차단), 미리보기 DB(develop DB 에 못 붙음), 인프라 apply(Environment `infra` 승인).
+  - Environment `dev`·`infra` 는 모든 브랜치에서 쓸 수 있다(PR 실행 때문). `infra` 는 승인자가 있다.
   - Environment `infra`(승인자, develop 만)·`dev`(develop 만)는 GitHub 이 서버 쪽에서 막는다.
   - develop 보호 규칙(PR 필수·리뷰·force push 금지)을 건다(§11).
   - probe 뒤 팀 역할을 나눈다(§4 표). 신뢰 `sub` 를 `environment:infra`·`environment:dev` 로 좁히면 위 Environment 가 실제 경계가 된다.
@@ -409,7 +417,7 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 - 이미지: CI 에서 trivy 로 스캔(처음엔 높음 이상 경고), ECR 은 푸시할 때 스캔.
 - 역할을 plan·apply·deploy 로 나누고 Environment 로 묶는다(probe 뒤).
 - Terraform: provider 는 잠금 파일에 있는 것만 받는다(`init -lockfile=readonly`). plan 전에 자격증명 없는 검사로 provisioner·external/http 데이터 소스·레포 밖 모듈·aws/random 밖 provider·`data "aws_ssm_parameter"` 를 막는다. CI 에서는 `TF_LOG` 를 넘기지 않는다(디버그 로그에 비밀값이 나온다). Terraform 이미지는 digest 로 고정한다.
-- 이미지 빌드(백엔드 Gradle·화면 npm, PR 미리보기의 PR 코드 포함)는 AWS 권한이 없는 잡에서 캐시 없이 하고, 올리는 잡은 develop 만 체크아웃해 이미지 파일을 불러와(실행하지 않는다) 올린다.
+- 이미지 빌드(백엔드 Gradle·화면 npm)는 AWS 권한이 없는 잡에서 캐시 없이 하고, 올리는 잡은 이미지 파일을 불러와(실행하지 않는다) 올린다.
 - 컨테이너는 인스턴스 메타데이터(169.254.169.254)에 닿지 못한다(`setup.sh` 7번 — systemd 유닛이 Docker 가 뜰 때마다 DOCKER-USER 규칙을 넣는다). 앱은 AWS 를 부르지 않고, 서버(호스트)의 aws CLI·SSM Agent 는 컨테이너 밖이라 그대로 된다. PR 미리보기는 이 차단이 있을 때만 띄운다.
 
 ### 올라가면 안 되는 것 (GitHub·AWS)

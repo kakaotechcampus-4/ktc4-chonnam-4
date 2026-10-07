@@ -107,6 +107,16 @@ bash scripts/verify.sh infra
 Terraform 은 CloudFront 의 켜짐(enabled)을 보지 않는다(`ignore_changes`). 원본 주소는 서버가 켜져 있을 때 Terraform 이 읽는 주소와 Dev server 가 넣은 주소가 같아 drift 가 나지 않는다.
 **구조**(동작·캐시·보안 헤더·나라 제한)를 바꿀 때만 이 폴더 → PR → Infra(승인)다.
 
+## PR 에서 머지 전에 적용하기
+
+같은 레포 PR 이면 Infra 가 PR 에서도 plan 을 만들고, 승인하면 **머지 전에** apply 한다(Atlantis 방식).
+
+1. `infra/**` 를 고친 PR 을 연다 → Infra 실행의 Summary 에서 plan 표를 본다(서버가 꺼져 있으면 Dev server 로 켠 뒤 Re-run).
+2. 지우는 리소스(버킷·ECR·배포·비밀값)가 있으면 가드가 막는다. 정말 지울 때만 PR 에 `allow-destroy` 라벨을 붙인다(다시 돈다).
+3. apply 잡의 **Review deployments → infra → Approve** → 적용.
+4. 적용이 성공하면 PR 을 머지한다. 머지하지 않고 닫으면 develop 에서 Infra 를 다시 돌려 되돌린다(매일 drift 도 알린다).
+5. 인프라를 바꾸는 PR 은 한 번에 하나만 적용한다. apply 중에는 그 PR 에 push 하지 않는다(새 push 가 실행을 취소한다).
+
 ## 그 밖의 안전장치
 
 - 운영진 보안 그룹에 인터넷 전체에서 80번(또는 모든 포트)으로 들어오는 규칙이 있으면 plan 이 멈춘다. 서버(web)가 CloudFront 없이 평문으로 열리기 때문이다. 팀원이 연 규칙인지 확인해 지운다.

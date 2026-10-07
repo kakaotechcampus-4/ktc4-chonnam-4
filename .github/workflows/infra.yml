@@ -1,11 +1,14 @@
 name: Infra
 # 팀 AWS 인프라(infra/)를 Terraform 으로 바꾸는 유일한 길이다(docs/cd-architecture.md 4절, infra/README.md).
-#   PR          검사만(자격증명 없음): fmt·validate·terraform test(mock)·구성 검사 — bash scripts/verify.sh infra 와 같다
-#               PR 에는 AWS 자격증명을 주지 않는다. 배포 역할은 쓰기 권한이 있어, 리뷰 전 코드에 쥐여 주지 않는다
-#               (읽기 전용 plan 역할이 생기면 PR plan 을 켠다 — docs/cd-architecture.md 4절)
+#   PR          검사(자격증명 없음: fmt·validate·terraform test(mock)·구성 검사 — bash scripts/verify.sh infra 와 같다)
+#               → 같은 레포 PR 이면 plan(표·가드) → Environment infra 승인 → **머지 전에** apply(Atlantis 방식).
+#               apply 가 성공한 뒤 머지한다. 머지하면 develop 의 plan 은 "바뀔 것 없음"이 된다.
+#               인프라를 바꾸는 PR 은 한 번에 하나만 apply 한다(다른 PR 의 plan 은 그 PR 이 머지된 뒤 develop 을 받아 다시 본다).
+#               버킷·ECR·배포·비밀값을 지우는 plan 은 PR 에 allow-destroy 라벨을 붙여야 가드를 통과한다.
+#               포크 PR 은 자격증명이 없어 검사만 돈다. (2026-10-07 결정: 머지 전에 시험한다 — docs/cd-architecture.md §8)
 #   develop     plan(첫 실행은 빈 state 로 미리 보기) → 가드 → Environment infra 승인 → 가드 다시 → apply
 #               state 버킷은 승인 뒤 apply 잡이 만든다. 승인한 plan 과 리소스·동작이 같을 때만 적용한다
-#   매일        drift: 코드와 실제가 다르면 실패(콘솔에서 바꿨거나, apply 가 안 된 변경)
+#   매일        drift: 코드와 실제가 다르면 실패(콘솔에서 바꿨거나, apply 가 안 된 변경, PR 에서 apply 했는데 아직 머지 안 됨)
 #               서버가 꺼져 있으면 건너뛴다
 #   수동        develop 에서 실행하면 develop push 와 같다
 #               allow_destroy 는 버킷·ECR·배포·비밀값을 지우거나 다시 만들 때만 켠다
@@ -18,6 +21,7 @@ name: Infra
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'infra/**'
       - 'scripts/tf-*'
@@ -53,6 +57,8 @@ env:
 
 jobs:
   check:
+    # 라벨은 allow-destroy 를 붙였을 때만 다시 돈다(다른 라벨은 무시).
+    if: github.event.action != 'labeled' || github.event.label.name == 'allow-destroy'
     # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -70,6 +76,8 @@ jobs:
     needs: check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # 배포 역할을 Environment dev 로 받는다(develop·PR·매일 모두 같은 OIDC sub — 운영진 역할의 신뢰 정책이 받는 형식).
+    environment: dev
     permissions:
       contents: read
       id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
@@ -83,21 +91,26 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
         run: |
-          # pr: PR 미리 보기, apply: develop 에 반영할 plan(승인 뒤 apply 잡), drift: 차이가 있으면 실패
+          # pr: PR 의 plan(승인 뒤 머지 전에 apply), apply: develop 에 반영할 plan(승인 뒤 apply 잡), drift: 차이가 있으면 실패
           if [ "$EVENT" = schedule ]; then
             mode="drift"
-          elif [ "$REF" = refs/heads/develop ] && [ "$EVENT" != pull_request ]; then
+          elif [ "$EVENT" = pull_request ]; then
+            mode="pr" # 따옴표: pr 은 명령 이름이기도 하다(SC2209)
+          elif [ "$REF" = refs/heads/develop ]; then
             mode="apply"
           else
-            mode="pr" # 따옴표: pr 은 명령 이름이기도 하다(SC2209)
+            mode="other"
           fi
           echo "mode=$mode" >>"$GITHUB_OUTPUT"
           reason=""
-          if [ "$mode" = pr ]; then
-            # 배포 역할(ktc-github-deploy)은 쓰기 권한이 있다. 리뷰 전 코드(PR·다른 브랜치)에 자격증명을 주지 않는다.
-            reason="PR·develop 밖 실행에는 AWS 자격증명을 주지 않는다(배포 역할에 쓰기 권한이 있다). 검사(check)만 돈다. plan 표는 develop 에 들어간 뒤 승인 전에 본다."
+          if [ "$mode" = pr ] && [ "$HEAD_REPO" != "$REPO" ]; then
+            reason="포크에서 온 PR 에는 AWS 자격증명이 없다(GitHub 이 주지 않는다). 검사(check)만 돈다."
+          elif [ "$mode" = other ]; then
+            reason="develop·PR 밖의 수동 실행은 plan 하지 않는다. PR 을 열거나 develop 에서 돌린다."
           elif ! [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
             reason="저장소 변수 \`AWS_ACCOUNT_ID\`(12자리)가 없다. Settings → Secrets and variables → Actions → **Variables** 에 등록한다."
           fi
@@ -138,7 +151,7 @@ jobs:
           fi
           if [ "$n" = 0 ]; then
             echo "ready=false" >>"$GITHUB_OUTPUT"
-            printf '### Terraform plan 을 건너뛰었다\n\n서버(EC2)가 꺼져 있다. CloudFront 가 서버의 공인 주소를 원본으로 써서 서버가 켜져 있을 때만 plan 을 만든다.\nActions → Dev server → 켜기 로 서버를 켠 뒤 Actions → Infra → Run workflow(develop).\n' >>"$GITHUB_STEP_SUMMARY"
+            printf '### Terraform plan 을 건너뛰었다\n\n서버(EC2)가 꺼져 있다. CloudFront 가 서버의 공인 주소를 원본으로 써서 서버가 켜져 있을 때만 plan 을 만든다.\nDev server 로 서버를 켠 뒤(PR 에 preview 라벨 또는 Run workflow → 켜기) 이 실행을 다시 돌린다(Re-run).\n' >>"$GITHUB_STEP_SUMMARY"
             echo "::notice title=plan 건너뜀::서버가 꺼져 있다"
             exit 0
           fi
@@ -181,10 +194,10 @@ jobs:
         if: steps.init.outputs.ready == 'true'
         env:
           MODE: ${{ steps.mode.outputs.mode }}
-          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
+          ALLOW_DESTROY: ${{ inputs.allow_destroy || contains(github.event.pull_request.labels.*.name, 'allow-destroy') }}
           TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
         run: |
-          [ "$MODE" = apply ] && [ "$ALLOW_DESTROY" = true ] && export TF_ALLOW_DESTROY=1
+          { [ "$MODE" = apply ] || [ "$MODE" = pr ]; } && [ "$ALLOW_DESTROY" = true ] && export TF_ALLOW_DESTROY=1
           [ -n "$TF_VAR_alert_emails" ] || echo "::notice title=경보 메일 없음::secret ALERT_EMAILS 가 없어 경보·예산 메일 구독을 만들지 않는다"
 
           # 0 = 차이 없음, 2 = 차이 있음, 그 밖 = 오류(가린 오류는 위 로그에). 원문은 공개 로그라 버린다.
@@ -205,8 +218,11 @@ jobs:
             echo "digest=$digest"
           } >>"$GITHUB_OUTPUT"
 
+          if [ "$MODE" = pr ] && [ "$code" -eq 2 ]; then
+            printf '\n#### 머지 전에 적용하려면\n\n위 표를 보고 아래 apply 잡을 승인한다(Environment infra). 적용이 성공한 뒤 PR 을 머지한다. 적용하지 않고 닫으면 develop 에서 Infra 를 다시 돌려 되돌린다.\n' >>"$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$MODE" = drift ] && [ "$code" -eq 2 ]; then
-            printf '\n#### ⚠ drift: 코드와 실제 인프라가 다르다\n\n콘솔에서 바꿨거나 apply 가 안 된 변경이다. PR 로 코드를 맞추거나 Infra 를 develop 에서 다시 돌린다.\n' >>"$GITHUB_STEP_SUMMARY"
+            printf '\n#### ⚠ drift: 코드와 실제 인프라가 다르다\n\n콘솔에서 바꿨거나, apply 가 안 된 변경이거나, PR 에서 apply 했는데 아직 머지하지 않았다. PR 을 머지하거나 Infra 를 develop 에서 다시 돌린다.\n' >>"$GITHUB_STEP_SUMMARY"
             echo "::error title=drift::코드와 실제 인프라가 다르다"
             exit 1
           fi
@@ -216,8 +232,8 @@ jobs:
     needs: plan
     if: >-
       needs.plan.outputs.changes == 'true' &&
-      github.ref == 'refs/heads/develop' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      ((github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) ||
+       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: infra # 승인한 사람만 apply 한다. 승인 전에 plan 잡 Summary 의 표를 본다
@@ -257,7 +273,7 @@ jobs:
       - name: Terraform apply (승인한 plan 과 같을 때만)
         env:
           APPROVED_DIGEST: ${{ needs.plan.outputs.digest }}
-          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
+          ALLOW_DESTROY: ${{ inputs.allow_destroy || contains(github.event.pull_request.labels.*.name, 'allow-destroy') }}
           TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
         run: |
           [ "$ALLOW_DESTROY" = true ] && export TF_ALLOW_DESTROY=1
@@ -270,12 +286,12 @@ jobs:
           node scripts/tf-plan-guard.mjs "$plan_json" >/dev/null || guard=$?
           rm -f "$plan_json"
           if [ "$guard" != 0 ]; then
-            printf '### apply 를 멈췄다\n\n다시 만든 plan 이 가드에 걸렸다. Infra 를 develop 에서 다시 돌려 plan 표를 본다.\n' >>"$GITHUB_STEP_SUMMARY"
+            printf '### apply 를 멈췄다\n\n다시 만든 plan 이 가드에 걸렸다. 다시 돌려(PR 은 Re-run, develop 은 Infra 실행) plan 표를 본다.\n' >>"$GITHUB_STEP_SUMMARY"
             echo "::error title=apply 멈춤::다시 만든 plan 이 가드에 걸렸다"
             exit 1
           fi
           if [ "$digest" != "$APPROVED_DIGEST" ]; then
-            printf '### apply 를 멈췄다\n\n승인한 뒤 plan 이 바뀌었다(그사이 다른 apply·콘솔 변경). Infra 를 develop 에서 다시 돌려 새 plan 을 승인한다.\n' >>"$GITHUB_STEP_SUMMARY"
+            printf '### apply 를 멈췄다\n\n승인한 뒤 plan 이 바뀌었다(그사이 다른 apply·콘솔 변경). 다시 돌려 새 plan 을 승인한다.\n' >>"$GITHUB_STEP_SUMMARY"
             echo "::error title=apply 멈춤::승인한 plan 과 지금 plan 이 다르다"
             exit 1
           fi
@@ -286,4 +302,7 @@ jobs:
           result=$(grep -E '^Apply complete!' "$log" || echo "apply 실패(종료 코드 $code, 가린 오류는 위 로그에)")
           rm -f "$log"
           printf '### Terraform apply (dev)\n\n- 결과: %s\n' "$result" >>"$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 0 ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            printf -- '- PR 에서 머지 전에 적용했다. 이 PR 을 머지하면 develop 의 코드와 실제가 다시 같아진다(머지하지 않으면 매일 drift 가 알린다).\n' >>"$GITHUB_STEP_SUMMARY"
+          fi
           exit "$code"

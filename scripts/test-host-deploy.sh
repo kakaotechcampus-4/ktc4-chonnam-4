@@ -467,7 +467,23 @@ check "끝내기가 실패하면 2 로 끝난다" same "$code" 2
 check "끝내기가 실패해도 PR 이 아니라 미리보기 전 develop 으로 돌아간다" file_has "$tmp/fake/running" "$REPO:fffffff"
 check "그때도 자리를 비운다" test ! -f "$tmp/home/state/preview.lease"
 
+# PR 라벨을 떼거나 PR 을 닫을 때(END_ONLY_PR): 그 PR 의 미리보기일 때만 끝낸다.
 export FAKE_GOOD_TAGS="aaaaaaa 4141414 4545454 fffffff"
+preview 4141414 41 alice-kim
+end_only() { # PR번호
+  code=0
+  out=$(PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" NEURINGO_HOME="$tmp/home" IMAGE="$REPO:fffffff" WEB_IMAGE="$REPO:web-fffffff"     RELEASE=fffffff END_PREVIEW=1 END_ONLY_PR="$1" HEALTH_TIMEOUT=0 HEALTH_INTERVAL=0 bash deploy/host/deploy.sh 2>&1) || code=$?
+}
+end_only 45
+check "다른 PR(#45)의 라벨을 떼도 #41 미리보기는 내리지 않는다(75)" same "$code" 75
+check "끝낼 것이 없다고 알려 준다" has "$out" "DEPLOY_RESULT=not_this_pr"
+check "그때 #41 미리보기는 그대로다" file_has "$tmp/fake/running" "$REPO:4141414"
+end_only 41
+check "#41 의 라벨을 떼면 #41 미리보기를 끝낸다" same "$code" 0
+check "그때 develop 으로 돌아간다" file_has "$tmp/home/state/dev.release" "MODE=develop"
+end_only 41
+check "이미 develop 이면 끝낼 것이 없다(75)" same "$code" 75
+
 preview 4141414 41 alice-kim
 sed -i 's/^UNTIL=.*/UNTIL=1000/' "$tmp/home/state/preview.lease"
 deploy aaaaaaa
@@ -619,6 +635,7 @@ bundle_rejects "RELEASE 가 커밋 SHA 가 아니면 만들지 않는다" RELEAS
 bundle_rejects "MODE 가 develop·preview 가 아니면 만들지 않는다" MODE=prod
 bundle_rejects "PR 번호가 숫자가 아니면 만들지 않는다" PREVIEW_PR="41'"
 bundle_rejects "아이디 모양이 틀리면 만들지 않는다" PREVIEW_BY="a b"
+bundle_rejects "END_ONLY_PR 이 숫자가 아니면 만들지 않는다" END_ONLY_PR="41'"
 
 if [ "$failures" -gt 0 ]; then
   echo "서버 배포 자체 검사 실패: $failures 건" >&2

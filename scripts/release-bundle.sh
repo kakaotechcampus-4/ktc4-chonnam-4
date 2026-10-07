@@ -2,11 +2,12 @@
 # 배포 묶음(deploy/compose.dev.yml + deploy/host)을 서버에서 돌릴 스크립트 하나로 만든다. release.yml 이 ssm-run.sh 로 보낸다.
 #   IMAGE=<…/neuringo/backend:SHA> WEB_IMAGE=<…/neuringo/backend:web-SHA> RELEASE=<커밋 SHA> [NEURINGO_ENV=dev] \
 #     [BACKUP_BUCKET=<버킷>] [MODE=develop|preview] [PREVIEW_PR=<번호> PREVIEW_BY=<아이디> PREVIEW_TTL=<초>] \
-#     [END_PREVIEW=1] [FORCE=1] bash scripts/release-bundle.sh >remote.sh
+#     [END_PREVIEW=1 [END_ONLY_PR=<번호>]] [FORCE=1] bash scripts/release-bundle.sh >remote.sh
 #
 # 서버에서 하는 일: 묶음을 $NEURINGO_HOME/releases/<SHA> 에 풀고(SHA256 확인) deploy.sh 를 돌린다.
 # 성공하면 $NEURINGO_HOME/current 를 그 묶음으로 돌리고(매일 백업·상태 보기가 쓴다) 옛 묶음은 최근 5개만 남긴다.
-# 묶음은 이 스크립트를 부른 체크아웃(develop)의 deploy/ 다. PR 미리보기여도 서버 스크립트는 develop 것이다.
+# 묶음은 이 스크립트를 부른 체크아웃의 deploy/ 다. develop 배포면 develop 것, PR 미리보기면 그 PR(develop 에 합친 커밋)의 것
+# (파이프라인을 바꾼 PR 도 머지 전에 그 버전으로 시험한다).
 # 만든 스크립트에는 이미지 주소(계정 ID 포함)가 들어 있다. 로그에 찍지 말고 파일로만 넘긴다(SSM 기록에는 남는다).
 set -euo pipefail
 
@@ -21,6 +22,7 @@ BY=${PREVIEW_BY:-}
 TTL=${PREVIEW_TTL:-3600}
 END=${END_PREVIEW:-0}
 FORCE=${FORCE:-0}
+ONLY=${END_ONLY_PR:-}
 
 # 만든 스크립트 안에서 작은따옴표로 감싸므로 값의 모양을 먼저 확인한다.
 image_re='^[a-z0-9.-]+(:[0-9]+)?/[a-z0-9._/-]+:[A-Za-z0-9._-]+$'
@@ -34,6 +36,7 @@ image_re='^[a-z0-9.-]+(:[0-9]+)?/[a-z0-9._/-]+:[A-Za-z0-9._-]+$'
 [[ -z "$BY" || "$BY" =~ ^[A-Za-z0-9-]{1,39}$ ]] || { echo "PREVIEW_BY 모양이 틀렸다" >&2; exit 1; }
 [[ "$TTL" =~ ^[0-9]{2,6}$ ]] || { echo "PREVIEW_TTL 은 초" >&2; exit 1; }
 [[ "$END" =~ ^[01]$ && "$FORCE" =~ ^[01]$ ]] || { echo "END_PREVIEW·FORCE 는 0 또는 1" >&2; exit 1; }
+[[ -z "$ONLY" || "$ONLY" =~ ^[0-9]{1,6}$ ]] || { echo "END_ONLY_PR 은 숫자" >&2; exit 1; }
 
 cd "$(git rev-parse --show-toplevel)"
 archive=$(mktemp)
@@ -58,7 +61,7 @@ fi
 tar -xzf "\$dir/bundle.tgz" -C "\$dir" --no-same-owner
 rc=0
 IMAGE='$IMAGE' WEB_IMAGE='$WEB_IMAGE' RELEASE='$RELEASE' NEURINGO_ENV='$ENV_NAME' BACKUP_BUCKET='$BUCKET' \\
-  MODE='$MODE' PREVIEW_PR='$PR' PREVIEW_BY='$BY' PREVIEW_TTL='$TTL' END_PREVIEW='$END' FORCE='$FORCE' \\
+  MODE='$MODE' PREVIEW_PR='$PR' PREVIEW_BY='$BY' PREVIEW_TTL='$TTL' END_PREVIEW='$END' END_ONLY_PR='$ONLY' FORCE='$FORCE' \\
   NEURINGO_HOME="\$home" bash "\$dir/deploy/host/deploy.sh" || rc=\$?
 if [ "\$rc" = 0 ]; then
   # 같은 SHA 를 다시 배포하면 폴더 시각이 옛날 그대로라 아래 정리에서 지워질 수 있다. 지금 시각으로 바꾼다.

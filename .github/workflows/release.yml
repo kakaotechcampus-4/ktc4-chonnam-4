@@ -3,10 +3,11 @@ name: Release
 # deploy.yml(develop 자동 배포)과 dev-server.yml(켜기·PR 미리보기·끝내기)이 부른다.
 #
 #   resolve  이 커밋의 이미지가 ECR 에 벌써 있나(있으면 빌드를 건너뛴다)                 AWS 읽기
-#   build    백엔드·화면 이미지를 따로(동시에) 빌드해 파일로 넘긴다                         AWS 권한 없음 — PR 코드는 여기서만 돈다
+#   build    백엔드·화면 이미지를 따로(동시에) 빌드해 파일로 넘긴다                         AWS 권한 없음
 #   deploy   이미지 올리기(ECR) → 서버에서 바꿔 띄우기(SSM → deploy/host/deploy.sh)
 #            → 서버에서 CloudFront 주소로 화면·API 를 불러 이 커밋이 보이는지 확인(status.sh)
-# 서버 스크립트(deploy/)는 이 워크플로를 부른 develop 의 것이다. PR 이 바꾼 deploy/ 는 미리보기에 쓰지 않는다.
+# 스크립트(scripts/·deploy/)는 이 워크플로를 부른 커밋의 것이다. develop 배포면 develop, PR 미리보기면 그 PR 을 develop 에
+# 합친 커밋 — 파이프라인을 바꾼 PR 도 머지 전에 자기 버전으로 시험한다(2026-10-07 결정, docs/cd-architecture.md §8).
 # 서버에서 배포는 한 번에 하나다(서버 잠금 flock). 그래서 여기서는 concurrency 로 묶지 않는다(기다리던 실행이 조용히 취소되지 않게).
 # 결과 보고서는 실행 화면의 Summary 다. 테스트 주소·계정 ID·서버 주소는 찍지 않는다(공개 레포).
 
@@ -45,12 +46,16 @@ on:
         description: 합친 develop 커밋(보고서용)
         type: string
         default: ""
-      deploy_changed:
-        description: PR 이 deploy/ 를 바꿨나(보고서 주의 문구)
-        type: boolean
-        default: false
       end_preview:
         description: 미리보기를 끝내고 develop 으로(자리를 무시한다)
+        type: boolean
+        default: false
+      end_only_pr:
+        description: 끝내기를 이 PR 의 미리보기가 떠 있을 때만 한다(PR 라벨을 떼거나 PR 을 닫을 때)
+        type: string
+        default: ""
+      quiet:
+        description: 서버 꺼짐·자리 있음을 실패가 아니라 건너뜀으로 본다(PR 에 push 해서 저절로 돈 실행)
         type: boolean
         default: false
       force:
@@ -100,7 +105,7 @@ jobs:
           fi
           [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo "::error::저장소 변수 AWS_ACCOUNT_ID(12자리)가 없다"; exit 1; }
 
-      - name: Checkout (develop 의 스크립트)
+      - name: Checkout (이 워크플로를 부른 커밋의 스크립트)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -130,8 +135,8 @@ jobs:
           if has "$SHA"; then echo "build_backend=false" >>"$GITHUB_OUTPUT"; else echo "build_backend=true" >>"$GITHUB_OUTPUT"; fi
           if has "web-$SHA"; then echo "build_web=false" >>"$GITHUB_OUTPUT"; else echo "build_web=true" >>"$GITHUB_OUTPUT"; fi
 
-  # 이미지 빌드는 AWS 권한이 없는 잡에서 한다. PR 코드(Dockerfile·npm 설치 스크립트·Gradle 빌드)가 자격증명에 닿지 못하게.
-  # 캐시도 쓰지 않는다(이 워크플로는 develop 에서 돌아서, PR 코드가 develop 의 캐시를 바꿀 수 있다).
+  # 이미지 빌드는 AWS 권한이 없는 잡에서 한다(Dockerfile·npm 설치 스크립트·Gradle 빌드가 자격증명에 닿지 않게).
+  # 캐시도 쓰지 않는다(PR 코드가 develop 이 쓰는 캐시를 바꾸지 않게).
   build:
     needs: resolve
     if: needs.resolve.outputs.ready == 'true' && (needs.resolve.outputs.build_backend == 'true' || needs.resolve.outputs.build_web == 'true')
@@ -198,7 +203,7 @@ jobs:
       result: ${{ steps.deploy.outputs.result }}
 
     steps:
-      - name: Checkout (develop 의 서버 스크립트)
+      - name: Checkout (이 워크플로를 부른 커밋의 서버 스크립트)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -260,14 +265,15 @@ jobs:
           AUTHOR: ${{ inputs.author }}
           HEAD_SHA: ${{ inputs.head }}
           BASE_SHA: ${{ inputs.base }}
-          DEPLOY_CHANGED: ${{ inputs.deploy_changed }}
           END_PREVIEW: ${{ inputs.end_preview && '1' || '0' }}
+          END_ONLY_PR: ${{ inputs.end_only_pr }}
+          QUIET: ${{ inputs.quiet }}
           FORCE: ${{ inputs.force && '1' || '0' }}
           BACKUP_BUCKET: ${{ steps.infra.outputs.backup_bucket }}
         run: |
           remote="$RUNNER_TEMP/remote.sh"
           IMAGE="$REPO:$SHA" WEB_IMAGE="$REPO:web-$SHA" RELEASE="$SHA" NEURINGO_ENV=dev MODE="$MODE" \
-            PREVIEW_PR="$PR" PREVIEW_BY="$BY" END_PREVIEW="$END_PREVIEW" FORCE="$FORCE" \
+            PREVIEW_PR="$PR" PREVIEW_BY="$BY" END_PREVIEW="$END_PREVIEW" END_ONLY_PR="$END_ONLY_PR" FORCE="$FORCE" \
             bash scripts/release-bundle.sh >"$remote"
           code=0
           out=$(bash scripts/ssm-run.sh "$remote" "release ${SHA:0:7} $MODE") || code=$?
@@ -286,6 +292,7 @@ jobs:
           case $code:$result in
             0:ok) head="✅ 올라감" ;;
             0:unchanged) head="✅ 이미 이 커밋이 떠 있다(바꾸지 않음)" ;;
+            75:not_this_pr) head="⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다" ;;
             75:*) head="⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중" ;;
             76:*) head="⛔ 자리 있음 — 다른 PR 이 미리보기 중" ;;
             69:*) head="⏭️ 건너뜀 — 서버가 꺼져 있다" ;;
@@ -320,6 +327,7 @@ jobs:
             [ "$(value PREVIEW_ENDED)" = 1 ] && echo "| 미리보기 | 끝냄(미리보기 DB·자리 정리) |"
             echo
             case $code:$result in
+              75:not_this_pr) echo "서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다." ;;
               75:*) echo "미리보기가 끝나면(끝내기 또는 자리 시간이 지난 뒤 develop 배포·켜기) develop 최신으로 돌아간다. 이미지는 ECR 에 올려 두었다." ;;
               76:*) echo "자리 주인이 **미리보기 끝내기**를 누르거나 시간이 지난 뒤 다시 누른다." ;;
               2:*) echo "새 버전이 상태 확인(API 200·화면 200·화면 헤더의 커밋)을 통과하지 못해 직전 상태로 되돌렸다. 앱 로그는 서버의 \`/opt/neuringo/logs/failed-*.log\`(SSM 세션)." ;;
@@ -327,17 +335,18 @@ jobs:
               69:*) echo "이미지는 ECR 에 올려 두었다. **Dev server → 켜기**를 누르면 develop 최신으로 맞춰 띄운다." ;;
             esac
             if [ "$result" = needs_host_setup ]; then
-              echo "서버에 컨테이너의 인스턴스 메타데이터 차단이 없다. **Actions → Host setup** 을 한 번 돌린 뒤 다시 누른다."
-            fi
-            if [ "$MODE" = preview ] && [ "$DEPLOY_CHANGED" = true ]; then
-              echo
-              echo "> ⚠️ 이 PR 은 \`deploy/\` 를 바꿨다. 미리보기 서버 스크립트는 develop 것이라 그 변경은 반영되지 않았다."
+              echo "서버에 컨테이너의 인스턴스 메타데이터 차단이 없다. **Dev server → 켜기**(서버 기본 설정을 같이 한다) 또는 **Actions → Host setup** 뒤 다시 누른다."
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
+          # PR 에 push 해서 저절로 돈 실행(quiet)은 서버 꺼짐·자리 있음을 실패로 치지 않는다(PR 검사가 빨갛게 되지 않게).
+          if [ "$QUIET" = true ] && { [ "$code" = 69 ] || [ "$code" = 76 ]; }; then
+            echo "::notice title=건너뜀::$head"
+            exit 0
+          fi
           case $code in
             0) exit 0 ;;
-            75) echo "::notice title=배포 건너뜀::PR 미리보기 중"; exit 0 ;;
+            75) echo "::notice title=건너뜀::$head"; exit 0 ;;
             69)
               if [ "$MODE" = develop ] && [ "$END_PREVIEW" = 0 ]; then
                 echo "::warning title=배포 건너뜀::서버가 꺼져 있다. Dev server → 켜기 를 누르면 develop 최신으로 띄운다"

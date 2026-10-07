@@ -7,6 +7,8 @@
 # MODE
 #   develop(기본) develop 의 커밋. 배포 전에 백업한다. PR 미리보기가 자리를 잡고 있으면(끝나는 시각 전) 75 로 건너뛴다.
 #                 END_PREVIEW=1 이면 자리를 무시하고 develop 으로 돌아간다(미리보기 끝내기).
+#                 END_ONLY_PR=<번호> 를 같이 주면 그 PR 의 미리보기가 떠 있을 때만 끝낸다(PR 라벨을 떼거나 PR 을 닫을 때.
+#                 다른 PR 의 미리보기를 내리지 않게). 아니면 75 로 건너뛴다.
 #                 미리보기에서 돌아오면 미리보기 DB·계정, 자리 기록, 되돌림 기준점을 지운다.
 #   preview      PR 미리보기(PREVIEW_PR·PREVIEW_BY·PREVIEW_TTL). 미리보기 전용 DB 와 그 DB 의 주인 계정을 새로 만들어 붙인다.
 #                 기본 DB 는 건드리지 않으므로 백업하지 않는다. 다른 PR 이 자리를 잡고 있으면 76 으로 멈춘다.
@@ -97,6 +99,7 @@ case $MODE in
   *) say "MODE 는 develop 또는 preview"; exit 1 ;;
 esac
 [[ "$PREVIEW_DB" =~ ^[a-z_][a-z0-9_]{0,40}$ ]] || { say "PREVIEW_DB 이름 모양이 틀렸다"; exit 1; }
+[[ -z "${END_ONLY_PR:-}" || "$END_ONLY_PR" =~ ^[0-9]{1,6}$ ]] || { say "END_ONLY_PR 은 PR 번호"; exit 1; }
 
 umask 077
 mkdir -p "$state_dir" "$log_dir"
@@ -130,6 +133,13 @@ holder() {
 }
 
 # 1. 자리 확인
+# PR 라벨을 떼거나 PR 을 닫아 끝낼 때는 그 PR 의 미리보기가 떠 있을 때만 끝낸다(다른 사람 미리보기를 내리지 않게).
+if [ "$MODE" = develop ] && [ "${END_PREVIEW:-0}" = 1 ] && [ -n "${END_ONLY_PR:-}" ] &&
+  { [ "$current_mode" != preview ] || [ "$(kv_value PR "$release_file")" != "$END_ONLY_PR" ]; }; then
+  say "PR #$END_ONLY_PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다${current_mode:+(지금 $current_mode${lease_pr:+ · PR #$lease_pr})}"
+  echo "DEPLOY_RESULT=not_this_pr"
+  exit 75
+fi
 if [ "$MODE" = develop ] && [ "$lease_active" = 1 ] && [ "${END_PREVIEW:-0}" != 1 ]; then
   say "PR #$lease_pr 미리보기가 $(iso "$lease_until") 까지 자리를 잡고 있어 develop 배포를 건너뛴다(끝내기·시간이 지나면 develop 최신으로 돌아간다)"
   holder
