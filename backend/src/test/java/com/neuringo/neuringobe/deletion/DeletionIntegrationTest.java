@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.TestcontainersConfiguration;
+import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
@@ -61,6 +62,7 @@ class DeletionIntegrationTest {
     @Autowired private QuizItemRepository items;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ClassroomRepository classrooms;
+    @Autowired private ChildRepository children;
     @Autowired private TransactionTemplate transactions;
 
     @BeforeEach
@@ -199,6 +201,38 @@ class DeletionIntegrationTest {
                                     Long.class,
                                     classId))
                     .isZero();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * 아동 삭제가 아동을 잠그고 목표까지 지운 순간에 같은 아동의 목표 생성이 들어오는 경우(Codex 검토 2026-10-07 P2). 아동 행 잠금은 FK 검사를 막지
+     * 않으므로, 목표 생성이 같은 잠금을 직접 잡아 기다려야 한다. 삭제가 끝난 뒤에는 500 이 아니라 아동 없음 404 다.
+     */
+    @Test
+    void goalCreationWaitsForChildDeletionAndThenIsNotFound() throws Exception {
+        UUID childId = createChild(createClassroom("목표 경합 반"), "삭제 중인 아동");
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<MvcResult> creation =
+                    transactions.execute(
+                            tx -> {
+                                children.findByChildIdInForUpdate(List.of(childId));
+                                Future<MvcResult> pending = pool.submit(() -> createGoal(childId));
+                                assertThatThrownBy(() -> pending.get(1, TimeUnit.SECONDS))
+                                        .isInstanceOf(TimeoutException.class);
+                                children.deleteByChildIds(List.of(childId));
+                                return pending;
+                            });
+
+            MvcResult result = creation.get(30, TimeUnit.SECONDS);
+            assertThat(result.getResponse().getStatus()).isEqualTo(404);
+            assertThat(
+                            JsonPath.<String>read(
+                                    result.getResponse().getContentAsString(), "$.error.code"))
+                    .isEqualTo("CHILD_NOT_FOUND");
+            assertThat(rowsOf(childId)).allSatisfy((table, count) -> assertThat(count).isZero());
         } finally {
             pool.shutdownNow();
         }
@@ -367,6 +401,17 @@ class DeletionIntegrationTest {
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"displayName\":\"" + name + "\"}"))
+                .andReturn();
+    }
+
+    /** 목표 저장 요청을 보내고 상태 코드와 상관없이 결과를 돌려준다. */
+    private MvcResult createGoal(UUID childId) throws Exception {
+        return mvc.perform(
+                        post("/api/v1/children/{id}/learning-goals", childId)
+                                .with(owner())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\":\"끼어든 목표\"}"))
                 .andReturn();
     }
 
