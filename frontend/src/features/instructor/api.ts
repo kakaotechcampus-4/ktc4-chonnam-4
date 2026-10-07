@@ -326,12 +326,22 @@ export function getClassroom(classId: string): Promise<Classroom> {
   return readRequest<Classroom>(`/classrooms/${classId}`)
 }
 
+/** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
+export function deleteClassroom(classId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/classrooms/${classId}`)
+}
+
 export function listChildren(classId: string): Promise<Child[]> {
   return readRequest<Child[]>(`/classrooms/${classId}/children`)
 }
 
 export function getChild(childId: string): Promise<Child> {
   return readRequest<Child>(`/children/${childId}`)
+}
+
+/** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
+export function deleteChild(childId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/children/${childId}`)
 }
 
 export function createChild(classId: string, displayName: string): Promise<Child> {
@@ -407,9 +417,21 @@ export type ActivityDetail = {
   quizItems: AssignedQuizItem[]
 }
 
-// 아동 한 명의 활동은 S1 에서 많지 않다. 서버 최대 페이지 크기(100)로 한 번에 받는다.
-export function listChildActivities(childId: string): Promise<Activity[]> {
-  return readRequest<Activity[]>(`/children/${childId}/activities?size=100`)
+const ACTIVITY_PAGE_SIZE = 100 // 서버 최대 페이지 크기
+
+/**
+ * 아동의 활동을 전부 받는다. 응답에 전체 개수가 없으므로, 받은 개수가 페이지 크기보다 적을 때까지 다음 페이지를 이어 받는다.
+ * 삭제 확인 창이 이 목록으로 함께 지워지는 활동 수를 알리므로 첫 페이지에서 끊으면 안 된다.
+ */
+export async function listChildActivities(childId: string): Promise<Activity[]> {
+  const all: Activity[] = []
+  for (let page = 0; ; page++) {
+    const batch = await readRequest<Activity[]>(
+      `/children/${childId}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
+    )
+    all.push(...batch)
+    if (batch.length < ACTIVITY_PAGE_SIZE) return all
+  }
 }
 
 export function getActivity(activityId: string): Promise<ActivityDetail> {

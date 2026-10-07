@@ -95,6 +95,11 @@ class ApiContractTest {
                 .as("%s — HTTP 상태", name)
                 .isEqualTo(expected.get("status").intValue());
         JsonNode expectedBody = expected.get("body");
+        if (expectedBody == null) {
+            // 204 처럼 본문이 없는 응답(contracts/README.md).
+            assertThat(TestFixtures.body(result)).as("%s — 본문이 없어야 한다", name).isEmpty();
+            return;
+        }
         if (expectedBody.isString() && "<any>".equals(expectedBody.asString())) {
             return;
         }
@@ -107,15 +112,24 @@ class ApiContractTest {
             JsonNode request, Map<String, String> values, TestFixtures.Instructor instructor) {
         String path = fill(request.get("path").asString(), values);
         MockMvcTester.MockMvcRequestBuilder builder;
-        if ("GET".equals(request.get("method").asString())) {
+        String method = request.get("method").asString();
+        if ("GET".equals(method)) {
             builder = mvc.get().uri(path);
         } else {
-            // 본문 안의 {자리표시자} 도 채운다(가입 이메일 등). JSON 의 괄호 뒤에는 따옴표가 와서 자리표시자로 읽히지 않는다.
-            String content =
-                    request.has("rawBody")
-                            ? request.get("rawBody").asString()
-                            : fill(JSON.writeValueAsString(request.get("body")), values);
-            builder = mvc.post().uri(path).contentType(MediaType.APPLICATION_JSON).content(content);
+            if ("DELETE".equals(method)) {
+                builder = mvc.delete().uri(path);
+            } else {
+                // 본문 안의 {자리표시자} 도 채운다(가입 이메일 등). JSON 의 괄호 뒤에는 따옴표가 와서 자리표시자로 읽히지 않는다.
+                String content =
+                        request.has("rawBody")
+                                ? request.get("rawBody").asString()
+                                : fill(JSON.writeValueAsString(request.get("body")), values);
+                builder =
+                        mvc.post()
+                                .uri(path)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(content);
+            }
             boolean withCsrf = !request.has("csrf") || request.get("csrf").asBoolean();
             if (withCsrf) {
                 TestFixtures.CsrfCredentials csrf = fixtures.fetchCsrf();

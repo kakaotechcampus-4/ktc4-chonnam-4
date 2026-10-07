@@ -594,6 +594,50 @@
           }
         }
       }
+    },
+    {
+      "name": "아동 삭제는 기록과 함께 지우고 204",
+      "request": { "method": "DELETE", "path": "/api/v1/children/{childId}" },
+      "response": { "status": 204 }
+    },
+    {
+      "name": "다른 강사의 아동 삭제는 404 CHILD_NOT_FOUND",
+      "request": { "method": "DELETE", "path": "/api/v1/children/{otherChildId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/children/{otherChildId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "학급 삭제는 아동·기록과 함께 지우고 204",
+      "request": { "method": "DELETE", "path": "/api/v1/classrooms/{classId}" },
+      "response": { "status": 204 }
+    },
+    {
+      "name": "다른 강사의 학급 삭제는 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "DELETE", "path": "/api/v1/classrooms/{otherClassId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
     }
   ]
 }

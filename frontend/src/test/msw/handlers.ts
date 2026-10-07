@@ -347,6 +347,16 @@ function ownedChild(childId: string, session: Session) {
   return child && ownedClassroom(child.classId, session) ? child : undefined
 }
 
+// 아동 영구 삭제(ADR 2026-10-04). 서버처럼 목표·활동·배정 문항·결과까지 함께 지운다.
+function removeChildren(childIds: string[]) {
+  const removedActivities = new Set(activities.filter((a) => childIds.includes(a.childId)).map((a) => a.activityId))
+  children = children.filter((c) => !childIds.includes(c.childId))
+  goals = goals.filter((g) => !childIds.includes(g.childId))
+  activities = activities.filter((a) => !removedActivities.has(a.activityId))
+  activityQuizzes = activityQuizzes.filter((q) => !removedActivities.has(q.activityId))
+  for (const activityId of removedActivities) quizResults.delete(activityId)
+}
+
 async function readJson(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const body: unknown = await request.json()
@@ -436,6 +446,19 @@ export const handlers = [
     return HttpResponse.json(envelope(classroom))
   }),
 
+  http.delete("*/api/v1/classrooms/:classId", ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const classId = String(params.classId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(classId)) return invalidRequest(path)
+    if (!ownedClassroom(classId, session)) return classroomNotFound(classId, path)
+    removeChildren(children.filter((c) => c.classId === classId).map((c) => c.childId))
+    classrooms = classrooms.filter((c) => c.classId !== classId)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.get("*/api/v1/classrooms/:classId/children", ({ params, request }) => {
     const session = authenticate(request)
     if (session instanceof Response) return session
@@ -500,6 +523,18 @@ export const handlers = [
     return HttpResponse.json(envelope(child))
   }),
 
+  http.delete("*/api/v1/children/:childId", ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const childId = String(params.childId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+    if (!ownedChild(childId, session)) return childNotFound(path)
+    removeChildren([childId])
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.get("*/api/v1/children/:childId/learning-goals", ({ params, request }) => {
     const session = authenticate(request)
     if (session instanceof Response) return session
@@ -553,9 +588,15 @@ export const handlers = [
     const path = new URL(request.url).pathname
     if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
     if (!ownedChild(childId, session)) return childNotFound(path)
-    // 서버는 배정 시각 최신순이다.
+    // 서버는 배정 시각 최신순이고, page·size(기본 0·20, 최대 100)로 나눠 준다.
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? 0)
+    const size = Number(url.searchParams.get("size") ?? 20)
+    if (!Number.isInteger(page) || !Number.isInteger(size) || page < 0 || size < 1 || size > 100) {
+      return invalidRequest(path)
+    }
     const list = activities.filter((a) => a.childId === childId).reverse()
-    return HttpResponse.json(envelope(list.map(toActivity)))
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toActivity)))
   }),
 
   // 활동 배정(ADR 2026-10-03 D4). 서버처럼 문항을 자동으로 붙이고, 같은 요청 키는 처음 활동을 200 으로, 같은 목표의 시작 전 활동은 409 다.

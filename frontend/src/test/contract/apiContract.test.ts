@@ -10,7 +10,7 @@ import { fixtures, instructors } from "@/test/msw/handlers"
 type Scenario = {
   name: string
   request: {
-    method: "GET" | "POST"
+    method: "GET" | "POST" | "DELETE"
     path: string
     body?: unknown
     rawBody?: string
@@ -20,7 +20,8 @@ type Scenario = {
     // 더 실을 헤더(Idempotency-Key 등). 값의 {자리표시자} 도 채운다.
     headers?: Record<string, string>
   }
-  response: { status: number; body: unknown }
+  // body 가 없으면(204 등) 본문이 비어 있어야 한다.
+  response: { status: number; body?: unknown }
 }
 
 const scenarios = (JSON.parse(contractJson) as { scenarios: Scenario[] }).scenarios
@@ -79,6 +80,7 @@ async function send({ request }: Scenario) {
     }
     headers[csrf.data.headerName] = csrf.data.token
   }
+  if (request.method === "DELETE") return fetch(url, { method: "DELETE", credentials: "include", headers })
   return fetch(url, {
     method: "POST",
     credentials: "include",
@@ -133,6 +135,10 @@ describe("MSW 가짜 서버 ↔ API 명세(contracts/api-v1.json)", () => {
     const response = await send(scenario)
 
     expect(response.status).toBe(scenario.response.status)
+    if (!("body" in scenario.response)) {
+      expect(await response.text()).toBe("")
+      return
+    }
     if (scenario.response.body === "<any>") return
     expect(mismatches(scenario.response.body, await response.json(), "$")).toEqual([])
   })

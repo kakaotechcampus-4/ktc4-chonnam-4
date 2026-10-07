@@ -14,6 +14,13 @@ const primaryButtonClass =
 const outlineButtonClass =
   "inline-flex h-11 items-center justify-center rounded-[var(--instructor-radius-control)] border border-[var(--instructor-input-border)] bg-[var(--instructor-surface)] px-5 text-sm hover:bg-[var(--instructor-surface-muted)] disabled:cursor-not-allowed disabled:text-[var(--instructor-text-disabled)] disabled:hover:bg-[var(--instructor-surface)]"
 
+// 되돌릴 수 없는 동작(삭제)의 버튼. 실행 버튼은 채운 빨강, 여는 버튼은 빨간 글씨 테두리로 구분한다.
+const dangerButtonClass =
+  "inline-flex h-11 items-center justify-center rounded-[var(--instructor-radius-control)] bg-[var(--instructor-danger-fg)] px-5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+
+const dangerOutlineButtonClass =
+  "inline-flex h-11 items-center justify-center rounded-[var(--instructor-radius-control)] border border-[var(--instructor-input-border)] bg-[var(--instructor-surface)] px-5 text-sm text-[var(--instructor-danger-fg)] hover:bg-[var(--instructor-surface-muted)]"
+
 const cardClass =
   "rounded-[var(--instructor-radius-card)] border border-[var(--instructor-border)] bg-[var(--instructor-surface)]"
 
@@ -21,6 +28,8 @@ const errorTextClass = "text-sm text-[var(--instructor-danger-fg)]"
 
 export {
   cardClass,
+  dangerButtonClass,
+  dangerOutlineButtonClass,
   errorTextClass,
   fieldLabelClass,
   inputClass,

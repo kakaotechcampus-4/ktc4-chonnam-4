@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { apiError, fixtures } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
+import { listClassrooms } from "../api"
 import { ClassroomDetailPage } from "./ClassroomDetailPage"
 
 // VS-002 인수 조건 검사(강사 화면). "담당 학급에 아동을 등록한다", "같은 학급에 실명이 같은 아동을 등록할 수 있고 내부 childId 로
@@ -175,5 +176,42 @@ describe("학급 상세 화면", () => {
 
     expect(await screen.findByText("학급 목록 화면")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/classrooms")
+  })
+
+  // 학급 삭제(ADR 2026-10-04 D4). 아동 여러 명의 기록이 함께 사라져 학급 이름을 입력해야 실행된다.
+  it("학급 이름을 똑같이 입력해야 삭제할 수 있고, 삭제하면 학급 목록으로 간다", async () => {
+    const { user, router } = renderDetailPage()
+
+    await user.click(await screen.findByRole("button", { name: "학급 삭제" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "햇살반 학급을 삭제할까요?" })
+    expect(within(dialog).getByText(/아동 2명과/)).toBeInTheDocument()
+    const confirm = within(dialog).getByRole("button", { name: "영구 삭제" })
+    expect(confirm).toBeDisabled()
+
+    await user.type(within(dialog).getByRole("textbox"), "햇살")
+    expect(confirm).toBeDisabled()
+    await user.type(within(dialog).getByRole("textbox"), "반")
+    await user.click(confirm)
+
+    await screen.findByText("학급 목록 화면")
+    expect(router.state.location.pathname).toBe("/classrooms")
+    expect((await listClassrooms()).map((classroom) => classroom.classId)).not.toContain(A1)
+  })
+
+  it("삭제가 실패하면 확인 창에 오류를 보이고 화면에 머문다", async () => {
+    server.use(
+      http.delete("*/api/v1/classrooms/:classId", ({ request }) =>
+        apiError(500, "INTERNAL_ERROR", "잠시 후 다시 시도해 주세요.", new URL(request.url).pathname),
+      ),
+    )
+    const { user, router } = renderDetailPage()
+
+    await user.click(await screen.findByRole("button", { name: "학급 삭제" }))
+    const dialog = await screen.findByRole("alertdialog")
+    await user.type(within(dialog).getByRole("textbox"), "햇살반")
+    await user.click(within(dialog).getByRole("button", { name: "영구 삭제" }))
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("잠시 후 다시 시도해 주세요.")
+    expect(router.state.location.pathname).toBe(`/classrooms/${A1}`)
   })
 })

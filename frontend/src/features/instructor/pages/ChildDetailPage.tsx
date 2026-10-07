@@ -1,10 +1,13 @@
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { getChild, getClassroom, listChildActivities, listLearningGoals } from '../api'
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { deleteChild, getChild, getClassroom, listChildActivities, listLearningGoals } from '../api'
+import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
+import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import { PageTabs } from '../components/PageTabs'
-import { cardClass, errorTextClass, primaryButtonClass } from '../components/styles'
+import { cardClass, dangerOutlineButtonClass, errorTextClass, primaryButtonClass } from '../components/styles'
 import { formatDateTime } from '../lib/dateTime'
 import { cn } from '@/lib/utils'
 
@@ -13,9 +16,13 @@ const HISTORY_TAB = '활동 이력'
 /**
  * 아동 상세 (시안 T-LRN-03~05). S1 은 활동 이력 탭만 연다(ADR 2026-10-03 D5).
  * 활동을 누르면 활동 리포트로 간다. 개요·학습 상태와 접근 코드·QR 은 후속 범위라 탭만 보인다.
+ * 아동 삭제는 기록과 함께 영구 삭제라, 확인 창에서 함께 지워지는 활동 수를 알린다(ADR 2026-10-04 D3·D4).
  */
 function ChildDetailPage() {
   const { classId, childId } = useParams<{ classId: string; childId: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
 
   const childQuery = useQuery({
     queryKey: ['children', childId],
@@ -42,6 +49,16 @@ function ChildDetailPage() {
     enabled: !!childId,
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteChild(childId!),
+    onSuccess: () => {
+      // 지운 아동의 화면을 먼저 떠난 뒤 목록을 새로 받는다. 남은 캐시가 404 를 다시 부르지 않게 지운다.
+      navigate(`/classrooms/${classId}?tab=children`, { replace: true })
+      queryClient.removeQueries({ queryKey: ['children', childId] })
+      queryClient.invalidateQueries({ queryKey: ['classrooms', classId, 'children'] })
+    },
+  })
+
   const child = childQuery.data
   const classroom = classroomQuery.data
   const activities = activitiesQuery.data
@@ -59,12 +76,21 @@ function ChildDetailPage() {
       actions={
         child &&
         !isWrongClassroom && (
-          <Link
-            to={`/activities/new?classId=${child.classId}&childId=${child.childId}`}
-            className={cn(primaryButtonClass, 'h-9 px-4')}
-          >
-            활동 만들기
-          </Link>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsDeleteOpen(true)}
+              className={cn(dangerOutlineButtonClass, 'h-9 px-4')}
+            >
+              아동 삭제
+            </button>
+            <Link
+              to={`/activities/new?classId=${child.classId}&childId=${child.childId}`}
+              className={cn(primaryButtonClass, 'h-9 px-4')}
+            >
+              활동 만들기
+            </Link>
+          </div>
         )
       }
       subheader={
@@ -151,8 +177,38 @@ function ChildDetailPage() {
           )}
         </section>
       )}
+
+      {child && (
+        <DeleteConfirmDialog
+          open={isDeleteOpen}
+          onOpenChange={(open) => {
+            setIsDeleteOpen(open)
+            if (!open) deleteMutation.reset()
+          }}
+          title={`${child.displayName} 아동을 삭제할까요?`}
+          description={
+            <>
+              <p>{describeRecords(activities)}</p>
+              <p>삭제하면 되돌릴 수 없어요.</p>
+            </>
+          }
+          isPending={deleteMutation.isPending}
+          error={deleteMutation.isError ? describeError(deleteMutation.error, '아동을 삭제하지 못했습니다.') : null}
+          onConfirm={() => deleteMutation.mutate()}
+        />
+      )}
     </InstructorLayout>
   )
+}
+
+/** 확인 창에 보일 "함께 지워지는 기록" 문구. 목록을 아직 못 받았으면 개수 없이 알린다. */
+function describeRecords(activities: { status: string }[] | undefined): string {
+  const others = '학습 목표, 퀴즈 응답·결과, 입장 코드가 함께 영구 삭제돼요.'
+  if (activities === undefined) return `이 아동의 활동과 ${others}`
+  if (activities.length === 0) return `배정된 활동은 없어요. ${others}`
+  const completed = activities.filter((activity) => activity.status === 'COMPLETED').length
+  const inProgress = activities.filter((activity) => activity.status === 'IN_PROGRESS').length
+  return `활동 ${activities.length}개(완료 ${completed}, 진행 중 ${inProgress})와 ${others}`
 }
 
 export { ChildDetailPage }

@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createChild, getClassroom, listChildren, type ChildStatus } from '../api'
+import { createChild, deleteClassroom, getClassroom, listChildren, type ChildStatus } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
+import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import {
   cardClass,
+  dangerOutlineButtonClass,
   errorTextClass,
   inputClass,
   outlineButtonClass,
@@ -29,12 +31,15 @@ const PENDING_TABS = ['배정 활동', '리포트']
  * 학급 상세 (시안 T-CLS-03 개요 탭 + 아동 목록 탭).
  * 탭은 주소의 ?tab= 으로 관리해, 개요의 "아동 등록" 버튼이 아동 목록 탭으로 바로 넘어가게 한다.
  * 개요의 통계·최근 학습·활동 현황은 활동 데이터가 생긴 뒤(S1-BAE-02 이후) 채운다.
+ * 학급 삭제는 아동 여러 명의 기록이 함께 사라져, 학급 이름을 입력해야 실행된다(ADR 2026-10-04 D4).
  */
 function ClassroomDetailPage() {
   const { classId } = useParams<{ classId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab: DetailTab = searchParams.get('tab') === 'children' ? 'children' : 'overview'
   const [displayName, setDisplayName] = useState('')
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const {
@@ -67,6 +72,17 @@ function ClassroomDetailPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteClassroom(classId!),
+    onSuccess: () => {
+      // 지운 학급의 화면을 먼저 떠난 뒤 목록을 새로 받는다. 학급·아동 캐시는 모두 지운다.
+      navigate('/classrooms', { replace: true })
+      queryClient.removeQueries({ queryKey: ['classrooms', classId] })
+      queryClient.removeQueries({ queryKey: ['children'] })
+      queryClient.invalidateQueries({ queryKey: ['classrooms'] })
+    },
+  })
+
   const trimmedDisplayName = displayName.trim()
   // 요청 중 재클릭·Enter 로 같은 아동이 여러 번 등록되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
   const isSubmitDisabled = createChildMutation.isPending || trimmedDisplayName === ''
@@ -96,10 +112,21 @@ function ClassroomDetailPage() {
     <InstructorLayout
       title={classroom ? `학급 상세 · ${classroom.name}` : '학급 상세'}
       actions={
-        // 학급 수정은 S4-BAE-01 범위라 자리만 둔다.
-        <button type="button" disabled title="준비 중인 기능입니다" className={cn(outlineButtonClass, 'h-9 px-4')}>
-          학급 수정
-        </button>
+        <div className="flex gap-2">
+          {classroom && (
+            <button
+              type="button"
+              onClick={() => setIsDeleteOpen(true)}
+              className={cn(dangerOutlineButtonClass, 'h-9 px-4')}
+            >
+              학급 삭제
+            </button>
+          )}
+          {/* 학급 수정은 S4-BAE-01 범위라 자리만 둔다. */}
+          <button type="button" disabled title="준비 중인 기능입니다" className={cn(outlineButtonClass, 'h-9 px-4')}>
+            학급 수정
+          </button>
+        </div>
       }
       subheader={
         <div role="tablist" aria-label="학급 상세" className="flex">
@@ -240,6 +267,33 @@ function ClassroomDetailPage() {
             </div>
           )}
         </section>
+      )}
+
+      {classroom && (
+        <DeleteConfirmDialog
+          open={isDeleteOpen}
+          onOpenChange={(open) => {
+            setIsDeleteOpen(open)
+            if (!open) deleteMutation.reset()
+          }}
+          title={`${classroom.name} 학급을 삭제할까요?`}
+          description={
+            <>
+              <p>
+                {children === undefined
+                  ? '이 학급의 아동과 그 기록이 모두 영구 삭제돼요.'
+                  : children.length === 0
+                    ? '등록된 아동은 없어요. 학급만 삭제돼요.'
+                    : `아동 ${children.length}명과 그 아동들의 활동·퀴즈 결과·학습 목표·입장 코드가 모두 영구 삭제돼요.`}
+              </p>
+              <p>삭제하면 되돌릴 수 없어요.</p>
+            </>
+          }
+          confirmText={classroom.name}
+          isPending={deleteMutation.isPending}
+          error={deleteMutation.isError ? describeError(deleteMutation.error, '학급을 삭제하지 못했습니다.') : null}
+          onConfirm={() => deleteMutation.mutate()}
+        />
       )}
     </InstructorLayout>
   )

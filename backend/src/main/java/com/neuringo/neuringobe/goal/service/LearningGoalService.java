@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
+import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
@@ -27,19 +28,27 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class LearningGoalService {
     private final LearningGoalRepository goals;
+    private final ChildRepository children;
     private final ChildAccessScope access;
     private final ObjectMapper mapper =
             new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
-    public LearningGoalService(LearningGoalRepository goals, ChildAccessScope access) {
+    public LearningGoalService(
+            LearningGoalRepository goals, ChildRepository children, ChildAccessScope access) {
         this.goals = goals;
+        this.children = children;
         this.access = access;
     }
 
+    /**
+     * 아동 행을 잠근 뒤 저장한다. 아동 삭제가 같은 잠금을 잡으므로, 삭제 도중에 새 목표가 들어와 아동 행 삭제가 FK 에 걸리는 일이 없다. 잠금을 기다리는 사이
+     * 아동이 지워졌으면 404 다.
+     */
     @Transactional
     public LearningGoalResponse create(
             UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         access.requireInstructor(authentication, childId);
+        children.findByIdForUpdate(childId).orElseThrow(() -> childNotFound());
         if (request.parentGoalId() != null) {
             LearningGoal parent =
                     goals.findById(request.parentGoalId()).orElseThrow(() -> notFound());
@@ -120,6 +129,10 @@ public class LearningGoalService {
 
     private ResourceNotFoundException notFound() {
         return new ResourceNotFoundException("GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.");
+    }
+
+    private ResourceNotFoundException childNotFound() {
+        return new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다.");
     }
 
     private record HashInput(
