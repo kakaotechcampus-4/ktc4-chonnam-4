@@ -84,7 +84,7 @@ function ChildAccessPage() {
         <section className="flex flex-col items-center gap-4 text-center">
           <Character name="turtle" size="lg" />
           <div className="flex flex-col gap-1">
-            <p className="text-2xl font-bold text-[var(--child-text)]">
+            <p className="font-child-display font-extrabold text-2xl text-[var(--child-text)]">
               입장 코드를 입력해줘!
             </p>
             <p className="text-lg text-[var(--child-text-muted)]">
