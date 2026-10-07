@@ -105,6 +105,18 @@ describe("아동 상세 화면", () => {
     expect((await listChildren(A1)).map((child) => child.childId)).not.toContain(CHILD.childId)
   })
 
+  // 활동 목록은 한 페이지에 최대 100개다. 확인 창이 첫 페이지만 세면 실제로 지워지는 수보다 적게 알린다.
+  it("활동이 100개를 넘어도 확인 창이 전체 활동 수와 완료·진행 중 수를 알린다", async () => {
+    for (let i = 0; i < 3; i++) seedActivity({ childId: CHILD.childId, goalTitle: `완료 목표 ${i}`, status: "COMPLETED" })
+    for (let i = 0; i < 2; i++) seedActivity({ childId: CHILD.childId, goalTitle: `진행 목표 ${i}`, status: "IN_PROGRESS" })
+    for (let i = 0; i < 100; i++) seedActivity({ childId: CHILD.childId, goalTitle: `시작 전 목표 ${i}` })
+    const { user } = renderChildDetail()
+
+    await user.click(await screen.findByRole("button", { name: "아동 삭제" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "김하늘 아동을 삭제할까요?" })
+    expect(within(dialog).getByText(/활동 105개\(완료 3, 진행 중 2\)/)).toBeInTheDocument()
+  })
+
   it("취소하면 아동이 그대로 남는다", async () => {
     const { user } = renderChildDetail()
 

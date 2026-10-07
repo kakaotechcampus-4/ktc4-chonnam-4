@@ -588,9 +588,15 @@ export const handlers = [
     const path = new URL(request.url).pathname
     if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
     if (!ownedChild(childId, session)) return childNotFound(path)
-    // 서버는 배정 시각 최신순이다.
+    // 서버는 배정 시각 최신순이고, page·size(기본 0·20, 최대 100)로 나눠 준다.
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? 0)
+    const size = Number(url.searchParams.get("size") ?? 20)
+    if (!Number.isInteger(page) || !Number.isInteger(size) || page < 0 || size < 1 || size > 100) {
+      return invalidRequest(path)
+    }
     const list = activities.filter((a) => a.childId === childId).reverse()
-    return HttpResponse.json(envelope(list.map(toActivity)))
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toActivity)))
   }),
 
   // 활동 배정(ADR 2026-10-03 D4). 서버처럼 문항을 자동으로 붙이고, 같은 요청 키는 처음 활동을 200 으로, 같은 목표의 시작 전 활동은 409 다.
