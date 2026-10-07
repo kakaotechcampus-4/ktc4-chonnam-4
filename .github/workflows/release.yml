@@ -2,7 +2,7 @@ name: Release
 # 커밋 하나를 화면(web)·백엔드 이미지 2개로 만들어 ECR 에 올리고 서버에서 바꿔 띄운다. 직접 돌리지 않는다(workflow_call).
 # deploy.yml(develop 자동 배포)과 dev-server.yml(켜기·PR 미리보기·끝내기)이 부른다.
 #
-#   resolve  이 커밋의 이미지가 ECR 에 벌써 있나(있으면 빌드를 건너뛴다)                 AWS 읽기
+#   resolve  서버·자리를 먼저 본다(PR 실행) · 이 커밋의 이미지가 ECR 에 벌써 있나(있으면 빌드를 건너뛴다)   AWS 읽기
 #   build    백엔드·화면 이미지를 따로(동시에) 빌드해 파일로 넘긴다                         AWS 권한 없음
 #   deploy   이미지 올리기(ECR) → 서버에서 바꿔 띄우기(SSM → deploy/host/deploy.sh)
 #            → 서버에서 CloudFront 주소로 화면·API 를 불러 이 커밋이 보이는지 확인(status.sh)
@@ -122,20 +122,55 @@ jobs:
         id: infra
         run: bash scripts/infra-outputs.sh dev
 
-      # PR 에 push·라벨 떼기로 저절로 돈 실행(quiet)은 서버가 꺼져 있으면 빌드도 하지 않고 바로 건너뛴다(꺼진 서버를 위해 빌드하지 않게).
+      # 빌드 전에 서버를 한 번 본다(빌드·이미지 올리기 약 3분을 기다리지 않고 바로 답하게).
+      # - PR 에 push·라벨 떼기로 저절로 돈 실행(quiet)은 서버가 꺼져 있으면 건너뛴다(꺼진 서버를 위해 빌드하지 않게).
+      # - PR 미리보기는 다른 PR 이 자리를 쓰는 중이면 멈춘다(quiet 면 건너뜀). PR 끝내기는 그 PR 의 미리보기가 떠 있지 않으면 건너뛴다.
+      # 여기서는 빠른 답만 한다. 진짜 판정은 서버가 잠금 안에서 다시 한다(deploy.sh). 서버 상태를 읽지 못하면 그대로 간다.
       - name: Go on?
         id: gate
         env:
           INFRA_READY: ${{ steps.infra.outputs.ready }}
           QUIET: ${{ inputs.quiet }}
+          MODE: ${{ inputs.mode }}
+          PR: ${{ inputs.pr }}
+          END_ONLY_PR: ${{ inputs.end_only_pr }}
         run: |
           ready=$INFRA_READY
-          if [ "$ready" = true ] && [ "$QUIET" = true ]; then
+          state=""
+          if [ "$ready" = true ] && { [ "$QUIET" = true ] || [ "$MODE" = preview ] || [ -n "$END_ONLY_PR" ]; }; then
             state=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
-            if [ "$state" != running ]; then
+          fi
+          if [ "$ready" = true ] && [ "$QUIET" = true ] && [ "$state" != running ]; then
+            ready=false
+            printf '## ⏭️ 건너뜀 — 서버가 꺼져 있다\n\nPR 에서 저절로 돈 실행이라 서버를 켜지 않는다. 필요하면 PR 에 preview 라벨을 다시 붙이거나 Run workflow → 켜기.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=건너뜀::서버가 꺼져 있다"
+          fi
+          if [ "$ready" = true ] && [ "$state" = running ] && { [ "$MODE" = preview ] || [ -n "$END_ONLY_PR" ]; }; then
+            remote="$RUNNER_TEMP/status.sh"
+            # shellcheck disable=SC2016 # $f 는 서버에서 풀린다
+            printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\n[ -f "$f" ] && bash "$f" || echo LEASE_ACTIVE=0\n' >"$remote"
+            out=$(bash scripts/ssm-run.sh "$remote" "status") || out=""
+            value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+            kst() { TZ=Asia/Seoul date -d "$1" '+%m/%d %H:%M' 2>/dev/null || echo "$1"; }
+            if [ -z "$(value LEASE_ACTIVE)" ]; then
+              echo "::warning::서버 상태를 읽지 못해 그대로 간다(서버가 잠금 안에서 다시 본다)"
+            elif [ -n "$END_ONLY_PR" ]; then
+              if [ "$(value STATUS_MODE)" != preview ] || [ "$(value STATUS_PR)" != "$END_ONLY_PR" ]; then
+                ready=false
+                printf '## ⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다\n\n서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다.\n' >>"$GITHUB_STEP_SUMMARY"
+                echo "::notice title=건너뜀::PR #$END_ONLY_PR 의 미리보기가 떠 있지 않다"
+              fi
+            elif [ "$(value LEASE_ACTIVE)" = 1 ] && [ "$(value LEASE_PR)" != "$PR" ]; then
               ready=false
-              printf '## ⏭️ 건너뜀 — 서버가 꺼져 있다\n\nPR 에서 저절로 돈 실행이라 서버를 켜지 않는다. 필요하면 PR 에 preview 라벨을 다시 붙이거나 Run workflow → 켜기.\n' >>"$GITHUB_STEP_SUMMARY"
-              echo "::notice title=건너뜀::서버가 꺼져 있다"
+              holder="PR #$(value LEASE_PR) · $(value LEASE_BY) · $(kst "$(value LEASE_UNTIL)") (KST) 까지"
+              if [ "$QUIET" = true ]; then
+                printf '## ⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중\n\n| 지금 자리 | %s |\n|---|---|\n\n이 PR 은 자리가 비면 preview 라벨을 다시 붙여 올린다.\n' "$holder" >>"$GITHUB_STEP_SUMMARY"
+                echo "::notice title=건너뜀::다른 PR 이 미리보기 자리를 쓰는 중"
+              else
+                printf '## PR #%s 미리보기 — ⛔ 자리 있음 — 다른 PR 이 미리보기 중\n\n| 지금 자리 | %s |\n|---|---|\n\n자리 주인이 **미리보기 끝내기**(그 PR 에서 preview 라벨 떼기)를 하거나 시간이 지난 뒤 이 PR 의 preview 라벨을 떼었다 다시 붙인다. 빌드 전에 멈춰 이미지는 만들지 않았다.\n' "$PR" "$holder" >>"$GITHUB_STEP_SUMMARY"
+                echo "::error title=자리 있음::다른 PR 이 미리보기 중($holder)"
+                exit 1
+              fi
             fi
           fi
           echo "ready=$ready" >>"$GITHUB_OUTPUT"
