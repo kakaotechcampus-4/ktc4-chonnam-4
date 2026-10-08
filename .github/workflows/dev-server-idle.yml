@@ -9,6 +9,9 @@ on:
   schedule:
     - cron: "4,24,44 * * * *"
   workflow_dispatch:
+  # 시험용(머지하지 않는 PR) — idle-test 라벨로 안 쓰면 끄기를 부른다. schedule 은 develop 에서만 돌아서.
+  pull_request:
+    types: [labeled]
 
 # 앞 실행이 끝나기 전에 다음 차례가 오면 기다린다(끄는 중에 또 끄지 않게).
 concurrency:
@@ -20,6 +23,7 @@ permissions:
 
 jobs:
   idle:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'idle-test'
     permissions:
       contents: read
       actions: read # 도는 중인 Dev server·Deploy 실행이 있으면 끄지 않는다
