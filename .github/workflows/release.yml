@@ -55,7 +55,7 @@ on:
         type: string
         default: ""
       quiet:
-        description: 서버 꺼짐·자리 있음을 실패가 아니라 건너뜀으로 본다(PR 에 push 해서 저절로 돈 실행)
+        description: 서버 꺼짐·자리 있음을 실패가 아니라 건너뜀으로 본다(PR 을 열거나 push 해서 저절로 돈 실행)
         type: boolean
         default: false
       force:
@@ -164,7 +164,7 @@ jobs:
               ready=false
               holder="PR #$(value LEASE_PR) · $(value LEASE_BY) · $(kst "$(value LEASE_UNTIL)") (KST) 까지"
               if [ "$QUIET" = true ]; then
-                printf '## ⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중\n\n| 지금 자리 | %s |\n|---|---|\n\n이 PR 은 자리가 비면 preview 라벨을 다시 붙여 올린다.\n' "$holder" >>"$GITHUB_STEP_SUMMARY"
+                printf '## ⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중\n\n| 지금 자리 | %s |\n|---|---|\n\n자리가 비면 이 PR 에 push 하거나 preview 라벨을 떼었다 다시 붙이면 올라간다.\n' "$holder" >>"$GITHUB_STEP_SUMMARY"
                 echo "::notice title=건너뜀::다른 PR 이 미리보기 자리를 쓰는 중"
               else
                 printf '## PR #%s 미리보기 — ⛔ 자리 있음 — 다른 PR 이 미리보기 중\n\n| 지금 자리 | %s |\n|---|---|\n\n자리 주인이 **미리보기 끝내기**(그 PR 에서 preview 라벨 떼기)를 하거나 시간이 지난 뒤 이 PR 의 preview 라벨을 떼었다 다시 붙인다. 빌드 전에 멈춰 이미지는 만들지 않았다.\n' "$PR" "$holder" >>"$GITHUB_STEP_SUMMARY"
@@ -392,7 +392,7 @@ jobs:
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
-          # PR 에 push 해서 저절로 돈 실행(quiet)은 서버 꺼짐·자리 있음을 실패로 치지 않는다(PR 검사가 빨갛게 되지 않게).
+          # PR 을 열거나 push 해서 저절로 돈 실행(quiet)은 서버 꺼짐·자리 있음을 실패로 치지 않는다(PR 검사가 빨갛게 되지 않게).
           if [ "$QUIET" = true ] && { [ "$code" = 69 ] || [ "$code" = 76 ]; }; then
             echo "::notice title=건너뜀::$head"
             exit 0

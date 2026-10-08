@@ -123,6 +123,8 @@ case "$1 $2" in
     [ -f "$FAKE/running_web" ] && echo "web:running"
     [ -f "$FAKE/pg_running" ] && echo "postgres:running"
     exit 0 ;;
+  "ps -q") [[ "$*" == *service=web* ]] && [ -f "$FAKE/running_web" ] && echo web-container-id; exit 0 ;;
+  "logs --tail") echo "2026-10-08T05:06:07.123456789Z 10.0.0.9 - - [08/Oct/2026] \"GET /children?name=김하늘 HTTP/1.1\" 200" ;;
   "run -d") echo restore-container-id ;;
   "ps -aq") [ "${FAKE_STALE:-0}" = 1 ] && echo stale-restore-id; exit 0 ;;
   "rm -f") echo "${*: -1}" >>"$FAKE/restore_removed" ;;
@@ -427,6 +429,8 @@ status "$DOMAIN"
 check "상태: 미리보기 중이라고 알려 준다" has "$out" "STATUS_MODE=preview"
 check "상태: 자리 주인" has "$out" "LEASE_PR=41"
 check "상태: 컨테이너" has "$out" "web:running"
+check "상태: 화면에 마지막 요청이 온 시각(안 쓰면 끄기가 본다)" has "$out" "STATUS_LAST_REQUEST=2026-10-08T05:06:07Z"
+check "상태: 서버를 켠 시각" has "$out" "STATUS_BOOTED_AT=20"
 check "상태: 서버에서 CloudFront 로 API 를 불러 본다" has "$out" "EDGE_API=200"
 check "상태: 화면 헤더의 커밋이 지금 것과 같다" has "$out" "EDGE_RELEASE_MATCH=yes"
 check "상태: 출력에 테스트 주소가 없다" no_leak

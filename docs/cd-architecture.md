@@ -201,14 +201,20 @@ flowchart TB
 
 ### Dev server — 머지 전 PR 미리보기·서버 켜고 끄기 (`dev-server.yml`)
 
-PR 미리보기는 **PR 에 `preview` 라벨**로, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow 로 한다. 사용 설명서(스크린샷)는 팀 노션에 둔다.
+**기본값: PR 을 열면 미리보기가 저절로 뜬다.** 라벨은 기본값을 바꿀 때만 쓴다. 켜기·끄기·상태는 Actions → **Dev server** → Run workflow 로도 한다. 서버는 60분 동안 안 쓰면 저절로 꺼진다(`dev-server-idle.yml`). 사용 설명서(스크린샷)는 팀 노션에 둔다.
 
 | PR 에서 | 일어나는 일 |
 |---|---|
-| `preview` 라벨 붙이기 | PR 미리보기 올리기(아래 표) — 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 |
+| PR 열기 · draft 를 Ready for review 로 · 다시 열기 | **기본값** — PR 미리보기 올리기(아래 표). `preview` 라벨도 붙여 둔다. 다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀 |
+| ↳ 기본값에서 빠지는 PR | draft · `no-preview` 라벨 · 문서(`docs/`·`*.md`)만 바꾼 PR · 봇이 연 PR · develop 으로 가지 않는 PR · 포크 PR |
+| `preview` 라벨 붙이기 | 지금 올리기(이미 연 PR·빠진 PR). 다른 PR 이 자리를 쓰는 중이면 ⛔ 빨간색 |
 | `preview` 라벨이 있는 PR 에 push | 다시 올리기. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다(PR 검사가 빨개지지 않게) |
 | `preview` 라벨 떼기 · PR 닫기·머지 | 그 PR 의 미리보기가 떠 있을 때만 끝낸다(develop 최신으로) |
-| `dev-off` 라벨 붙이기 | 끄기(라벨은 바로 떼어진다) |
+| `no-preview` 라벨 | PR 을 열 때 붙여 두면 저절로 띄우지 않는다. 나중에 붙이면 미리보기를 끝내고 `preview` 라벨을 뗀다 |
+| `dev-off` 라벨 붙이기 | 지금 끄기(라벨은 바로 떼어진다) |
+
+- 워크플로가 붙이는 `preview` 라벨은 `GITHUB_TOKEN` 으로 붙여 실행을 새로 만들지 않는다(같은 PR 을 두 번 올리지 않는다). 사람이 떼면 끝내기가 돈다.
+- **안 쓰면 끄기**(`dev-server-idle.yml`, 20분마다 `dev-server.yml` 을 부른다): 서버가 켜져 있고, 도는 중인 Dev server·Deploy 실행이 없고, 미리보기 자리가 비었고, 서버를 켠 시각(`STATUS_BOOTED_AT`)·마지막 배포(`state/dev.release`)·화면 컨테이너의 마지막 요청(`STATUS_LAST_REQUEST`) 중 가장 늦은 것에서 60분이 지났으면 끄기와 같은 순서(CloudFront 닫기 → 확인 → 서버 중지)로 끈다. 끄기 잡은 배포 기록을 만들지 않는다(`deployment: false`).
 
 | 작업 | 안에서 일어나는 일 | 걸리는 시간(목표) |
 |---|---|---|
@@ -217,6 +223,7 @@ PR 미리보기는 **PR 에 `preview` 라벨**로, 켜기·끄기·상태는 Act
 | PR 미리보기 올리기 | PR 확인(같은 레포·→ develop) → GitHub 이 PR 을 develop 에 합친 커밋(충돌이 있으면 실행이 생기지 않는다) → (꺼져 있으면 켜기) → 이미지 2개 빌드(권한 없음) → 서버: 자리 확인 → 미리보기 DB·계정 새로 → 바꿔 띄움 → 확인 | 5~7분 |
 | 미리보기 끝내기 | develop 최신으로 배포(배포 전 백업) → 미리보기 DB·계정·자리·기준점 지움. 실패하면 미리보기 전 develop 으로 | 1~3분 |
 | 끄기 | 다른 사람 미리보기가 자리를 쓰는 중이면 멈춤 → `edge-toggle.sh off`(다 퍼져 꺼진 것을 다시 읽어 확인) → 배포·백업 잠금을 기다린 뒤 `server-power.sh stop` | 3~5분(누르고 떠나도 된다) |
+| 안 쓰면 끄기(20분마다) | 서버 꺼짐이면 끝 → 도는 중인 Dev server·Deploy 실행이 있으면 그대로 → `status.sh`(자리·켠 시각·마지막 배포·마지막 요청) → 자리가 비었고 60분 동안 안 썼으면 끄기와 같다. 아니면 그대로(초록) | 꺼져 있으면 30초 · 끄면 3~5분 |
 
 - **자리**: 서버에 PR 미리보기는 하나만 뜬다(4 GiB, backend 1.5 GiB). 서버 파일 `state/preview.lease`(PR·누가·끝나는 시각)를 배포 잠금 안에서 쓴다. 1시간이고 같은 PR 을 다시 올리면 연장된다. 시간이 지난 자리는 빈 것으로 본다(자동으로 되돌리지는 않는다 — 다음 develop 배포·켜기·끝내기가 develop 으로 돌린다).
 - **미리보기 DB**: 같은 postgres 안의 `neuringo_preview` DB 와 그 주인 계정(무작위 비밀번호)을 매번 새로 만든다. 기본 DB·`postgres`·`template1` 은 PUBLIC 접속을 막아 미리보기 계정이 다른 DB 에 붙지 못한다. 미리보기 컨테이너에는 기본 DB 비밀번호가 들어가지 않고(`APP_DB_*` 가 덮어쓴다), 아동 입장 코드 HMAC 키도 따로 쓴다. 빈 DB 라 가입부터 한다.

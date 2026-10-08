@@ -2,7 +2,7 @@
 # 서버 상태를 KEY=값 줄로 알린다. dev-server.yml 이 상태 보기·켜기·미리보기 뒤에 SSM 으로 부른다.
 #   NEURINGO_ENV=dev [EDGE_DOMAIN=<CloudFront 주소>] [EDGE_WAIT=초] bash deploy/host/status.sh
 #
-# - 지금 올라간 것: 커밋·develop/preview·PR·누가·언제(state/<환경>.release), 컨테이너 상태
+# - 지금 올라간 것: 커밋·develop/preview·PR·누가·언제(state/<환경>.release), 컨테이너 상태, 화면에 마지막 요청이 온 시각, 서버를 켠 시각
 # - 미리보기 자리: PR·누가·끝나는 시각·아직 유효한지(state/preview.lease)
 # - EDGE_DOMAIN 이 있으면 서버에서 CloudFront 주소로 API·화면을 불러 상태 코드와 화면 헤더의 커밋이 지금 것과 같은지 본다.
 #   CloudFront 는 한국에서만 열려 GitHub 러너(미국)는 403 을 받는다. 서버는 서울이라 통과한다.
@@ -43,6 +43,19 @@ fi
 services=$(docker ps --filter "label=com.docker.compose.project=neuringo-$ENV_NAME" \
   --format '{{.Label "com.docker.compose.service"}}:{{.State}}' 2>/dev/null | sort | tr '\n' ' ')
 echo "STATUS_CONTAINERS=${services:-없음}"
+# 화면(nginx) 컨테이너 로그의 마지막 줄 시각 = 테스트 주소로 들어온 마지막 요청(안 쓰면 끄기가 본다). 요청 내용은 찍지 않는다.
+web=$(docker ps -q --filter "label=com.docker.compose.project=neuringo-$ENV_NAME" \
+  --filter "label=com.docker.compose.service=web" 2>/dev/null | head -n 1)
+last_request=""
+if [ -n "$web" ]; then
+  stamp=$(docker logs --tail 1 --timestamps "$web" 2>&1 | awk 'NR == 1 {print $1}')
+  [ -z "$stamp" ] || last_request=$(date -u -d "$stamp" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || last_request=""
+fi
+echo "STATUS_LAST_REQUEST=$last_request"
+# 서버를 켠 시각(켜자마자 미리보기를 빌드하는 몇 분 동안 안 쓰면 끄기가 끄지 않게).
+if read -r up _ </proc/uptime 2>/dev/null; then
+  echo "STATUS_BOOTED_AT=$(iso "$(($(date +%s) - ${up%.*}))")"
+fi
 echo "STATUS_MEM_AVAILABLE_MB=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo ?)"
 echo "STATUS_DISK_FREE_GB=$(df -BG --output=avail "$HOME_DIR" 2>/dev/null | tail -n 1 | tr -dc 0-9 || echo ?)"
 
