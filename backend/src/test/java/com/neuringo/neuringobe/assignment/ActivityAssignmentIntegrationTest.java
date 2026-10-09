@@ -91,8 +91,7 @@ class ActivityAssignmentIntegrationTest {
 
     @Test
     void sameKeySentConcurrentlyForDifferentChildrenCreatesOnlyOneAndAnswers409() throws Exception {
-        // 잠금은 아동별이라 서로 다른 아동의 요청은 동시에 "키 없음"을 볼 수 있다. 그래도 500 이 아니라 순차 요청과 같은 409 여야 한다(Codex 검토
-        // P2).
+        // 잠금은 아동별이라 서로 다른 아동의 요청은 동시에 "키 없음"을 볼 수 있다. 그래도 500 이 아니라 순차 요청과 같은 409 여야 한다.
         UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_B1);
         List<UUID[]> targets = new ArrayList<>();
         for (int i = 0; i < CONCURRENT_REQUESTS; i++) {

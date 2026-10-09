@@ -327,7 +327,7 @@ class QuizFlowIntegrationTest {
                         .getContentAsString();
         UUID goalId = UUID.fromString(JsonPath.read(goalBody, "$.data.goalId"));
         // 배정 API 는 서버가 문항을 자동으로 붙인다. 이 테스트는 풀이·결과 흐름을 보려고 문항을 직접 고르므로, 빈 활동을 저장한 뒤
-        // 문항 배정 API 로 붙인다.
+        // assign() 으로 문항을 저장소에 직접 붙인다.
         Activity activity =
                 activities.save(
                         new Activity(

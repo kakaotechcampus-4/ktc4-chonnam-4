@@ -136,7 +136,7 @@ public class ActivityAssignmentService {
 
         List<QuizItem> picks = quizAssignment.pickInitialItems();
         if (picks.isEmpty()) {
-            // 운영자가 문항 풀을 채워야 하는 상황이다. 아동 정보는 남기지 않는다.
+            // 팀이 문항 풀을 채워야 하는 상황이다. 아동 정보는 남기지 않는다.
             log.warn("배정할 승인 퀴즈 문항이 없어 활동을 만들지 않았습니다.");
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
