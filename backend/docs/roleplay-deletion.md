@@ -41,8 +41,28 @@ canonical_utterance만 NULL로 바꾸며 응답/재전송 체크포인트를 남
 V8과 명시적 삭제 코드를 같은 릴리스로 적용한다. V8 적용 후 예전 삭제 코드만 재배포하면
 역할극 종속 행이 있는 아동/학급의 삭제가 FK 오류로 실패할 수 있다.
 SQL 제약 이름은 기존 V7에서 PostgreSQL이 부여하는 이름을 기준으로 한다.
-이번 변경은 컴파일·서식과 마이그레이션 버전 중복만 확인하며,
-사용자 요청에 따라 실제 DB 마이그레이션·삭제·동시 실행 테스트는 실행하지 않는다.
+실제 PostgreSQL 18.6-alpine Testcontainers에서 아래 테스트 40개가 통과했다.
 
-후속 확인 항목: V7 적용 DB에 V8 적용, 턴이 있는 아동/학급 삭제, 다른 아동 보존,
-중간 삭제 실패 시 롤백, 부모 단독 삭제 거부, 저장/정리와 동시 삭제.
+- RoleplayDeletionIntegrationTest: 새 7개. 아동 삭제/다른 아동 보존, 학급 삭제/다른 학급 보존,
+  부모 단독 삭제 거부, 상위 트랜잭션 실패 시 롤백, 턴만 삭제했을 때 커밋 시 지연 FK 거부,
+  신규 DB V8 적용, 별도 스키마의 기존 V7 데이터에 V8 적용과 데이터 보존.
+- DeletionIntegrationTest: 기존 7개.
+- RoleplayCheckpointIntegrationTest: 기존 17개.
+- RoleplayCanonicalRetentionIntegrationTest: 기존 9개.
+
+전환 테스트는 애플리케이션 풀과 별도의 연결로 격리 스키마를 사용한다.
+테스트 메서드 전체에 롤백 트랜잭션을 걸지 않아 실제 커밋의 지연 FK 검사까지 확인한다.
+운영 DB·외부 AI는 사용하지 않는다. 삭제와 역할극 저장/정리를 동시에 실행하는 전용 시나리오는
+이번 실행에 추가하지 않았다.
+
+재실행(backend 디렉터리, Docker 실행 필요):
+
+```bash
+./gradlew test \
+  --tests 'com.neuringo.neuringobe.RoleplayDeletionIntegrationTest' \
+  --tests 'com.neuringo.neuringobe.deletion.DeletionIntegrationTest' \
+  --tests 'com.neuringo.neuringobe.RoleplayCheckpointIntegrationTest' \
+  --tests 'com.neuringo.neuringobe.RoleplayCanonicalRetentionIntegrationTest'
+```
+
+보고서: `build/reports/tests/test/index.html`.
