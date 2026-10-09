@@ -128,18 +128,6 @@ class GoalQuizSupplyIntegrationTest {
                                 .with(TestInstructors.instructor("other-teacher")))
                 .andExpect(status().isNotFound());
 
-        // 문항 풀을 채우는 등록 API. 등록 즉시 승인된다(PR #32).
-        mvc.perform(
-                        post("/api/v1/quiz-items")
-                                .with(TestInstructors.instructor("teacher-supply"))
-                                .with(csrf())
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"quizType\":\"OTHER_EMOTION_SITUATION\",\"emotion\":\"JOY\","
-                                                + "\"questionText\":\"어떤 감정일까요?\","
-                                                + "\"choices\":[\"기쁨\",\"슬픔\"],\"correctAnswer\":\"기쁨\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.status").value("APPROVED"));
         String activityBody =
                 mvc.perform(
                                 post("/api/v1/activities")
@@ -158,7 +146,7 @@ class GoalQuizSupplyIntegrationTest {
                         .getResponse()
                         .getContentAsString();
         UUID activityId = UUID.fromString(JsonPath.read(activityBody, "$.data.activityId"));
-        // 강사는 문항을 고르지 않는다. 서버가 승인 문항 풀에서 유형 순서대로 1개씩 붙인다(ADR 2026-10-03 D4).
+        // 강사는 문항을 고르지 않는다. 서버가 마이그레이션으로 넣은 승인 문항 풀에서 유형 순서대로 1개씩 붙인다(ADR 2026-10-03 D4).
         mvc.perform(
                         get("/api/v1/activities/{activityId}/quiz-items", activityId)
                                 .with(TestInstructors.instructor("teacher-supply")))
@@ -170,7 +158,7 @@ class GoalQuizSupplyIntegrationTest {
     }
 
     @Test
-    void rejectsMissingChildAndInvalidQuizItem() throws Exception {
+    void rejectsMissingChild() throws Exception {
         UUID classId = UUID.randomUUID();
         // The API must not accept an arbitrary goal UUID just because the instructor owns the
         // child.
@@ -188,6 +176,12 @@ class GoalQuizSupplyIntegrationTest {
                                                 + UUID.randomUUID()
                                                 + "\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void instructorCannotCreateOrPickQuizItems() throws Exception {
+        // 기획상 문항은 팀이 미리 넣고(시드 마이그레이션) 시스템이 고른다. 강사는 문항을 등록하거나 고르지 않으므로
+        // 문항 등록 API 와 문항을 골라 붙이는 API 를 두지 않는다.
         mvc.perform(
                         post("/api/v1/quiz-items")
                                 .with(TestInstructors.instructor("teacher-supply"))
@@ -195,20 +189,18 @@ class GoalQuizSupplyIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"quizType\":\"OTHER_EMOTION_SITUATION\",\"emotion\":\"JOY\","
-                                                + "\"questionText\":\"질문\",\"choices\":[\"슬픔\"],"
-                                                + "\"correctAnswer\":\"기쁨\"}"))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.error.code").value("INVALID_QUIZ_ITEM"));
+                                                + "\"questionText\":\"어떤 감정일까요?\","
+                                                + "\"choices\":[\"기쁨\",\"슬픔\"],\"correctAnswer\":\"기쁨\"}"))
+                .andExpect(status().isNotFound());
         mvc.perform(
-                        post("/api/v1/quiz-items")
+                        post("/api/v1/activities/{activityId}/quiz-items", UUID.randomUUID())
                                 .with(TestInstructors.instructor("teacher-supply"))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"quizType\":\"OTHER_EMOTION_IMAGE\",\"emotion\":\"JOY\","
-                                                + "\"questionText\":\"표정을 보세요\",\"choices\":[\"기쁨\"],"
-                                                + "\"correctAnswer\":\"기쁨\"}"))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.error.code").value("INVALID_QUIZ_ITEM"));
+                                        "{\"itemId\":\""
+                                                + UUID.randomUUID()
+                                                + "\",\"itemVersion\":1,\"questionOrder\":1}"))
+                .andExpect(status().isMethodNotAllowed());
     }
 }

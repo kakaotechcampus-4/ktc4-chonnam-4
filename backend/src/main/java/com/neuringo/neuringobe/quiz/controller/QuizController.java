@@ -1,7 +1,6 @@
 package com.neuringo.neuringobe.quiz.controller;
 
 import com.neuringo.neuringobe.common.ApiResponse;
-import com.neuringo.neuringobe.quiz.dto.AssignQuizItemRequest;
 import com.neuringo.neuringobe.quiz.dto.AssignedQuizItemResponse;
 import com.neuringo.neuringobe.quiz.dto.FinalizeQuizAttemptRequest;
 import com.neuringo.neuringobe.quiz.dto.PutQuizAttemptRequest;
@@ -33,21 +32,6 @@ public class QuizController {
     public QuizController(QuizAssignmentService assignments, QuizAttemptService attempts) {
         this.assignments = assignments;
         this.attempts = attempts;
-    }
-
-    @PostMapping("/api/v1/activities/{activityId}/quiz-items")
-    public ResponseEntity<ApiResponse<AssignedQuizItemResponse>> assign(
-            @PathVariable UUID activityId,
-            @RequestBody @Valid AssignQuizItemRequest request,
-            Authentication authentication) {
-        AssignedQuizItemResponse assigned = assignments.assign(activityId, request, authentication);
-        return ResponseEntity.created(
-                        URI.create(
-                                "/api/v1/activities/"
-                                        + activityId
-                                        + "/quiz-items/"
-                                        + assigned.activityQuizId()))
-                .body(ApiResponse.of(assigned));
     }
 
     @GetMapping("/api/v1/activities/{activityId}/quiz-items")
