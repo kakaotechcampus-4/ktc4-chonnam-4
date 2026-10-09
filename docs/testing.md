@@ -28,6 +28,7 @@
 | 동시성 | 동시에 들어온 등록의 유실·학급 혼입, 같은 이메일 동시 가입 | `ConcurrentRegistrationIntegrationTest` | — |
 | 결정 표 | AI 평가 결과 전달 게이트(안전·PASS·치명 실패 0건), 형식이 틀린 평가 결과는 게이트 전에 형식 오류 | `ai/application/EvaluationResultDeliveryGateTest` | — |
 | AI 제공자 연동 규칙 | `ai-provider-contract.md` 의 실패 분류·재시도 가능 여부·자동 재시도 0회·추적 ID 미포함 | `ai/infrastructure/AiProviderContractTest`(MockServer) | — |
+| AI 품질 회귀 | 프롬프트·모델을 바꿨을 때 형식 실패·판정·지연이 나빠짐(고정 입력 14턴) | `ai/eval/RoleplayEvalRunnerTest`(가짜 모델). 실제 모델은 `./gradlew roleplayEval` — [ai-quality-measurement.md](ai-quality-measurement.md) | — |
 | 아키텍처 | 계층 방향, 엔티티 노출, 트랜잭션 위치, 도메인 순환, 로그 경로 | `ArchitectureTest` | — |
 | 속성 기반 | 응답 해석이 어떤 본문·상태 코드에서도 깨지지 않음(무작위 입력 수백 개) | — | `api.property.test.ts`(fast-check) |
 | 접근성 | WCAG 2.x A·AA(레이블·이름·역할·키보드·색 대비·누를 수 있는 크기) | — | `src/accessibility.test.tsx`(jsdom) · `e2e/accessibility.spec.ts`(실제 브라우저) · `e2e/child-flow.spec.ts` |
