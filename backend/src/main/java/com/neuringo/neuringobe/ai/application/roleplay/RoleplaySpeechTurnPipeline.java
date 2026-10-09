@@ -27,6 +27,7 @@ public final class RoleplaySpeechTurnPipeline {
     private final RoleplayInputProcessor inputProcessor;
     private final RoleplayPromptFactory prompts;
     private final StructuredLlmExecutor llm;
+    private final RetryingRoleplayTurnExecutor turns;
 
     public RoleplaySpeechTurnPipeline(
             SpeechToTextProvider stt,
@@ -34,11 +35,22 @@ public final class RoleplaySpeechTurnPipeline {
             RoleplayInputProcessor inputProcessor,
             RoleplayPromptFactory prompts,
             StructuredLlmExecutor llm) {
+        this(stt, tts, inputProcessor, prompts, llm, RoleplayRetryMetrics.NONE);
+    }
+
+    public RoleplaySpeechTurnPipeline(
+            SpeechToTextProvider stt,
+            TextToSpeechProvider tts,
+            RoleplayInputProcessor inputProcessor,
+            RoleplayPromptFactory prompts,
+            StructuredLlmExecutor llm,
+            RoleplayRetryMetrics metrics) {
         this.stt = Objects.requireNonNull(stt);
         this.tts = Objects.requireNonNull(tts);
         this.inputProcessor = Objects.requireNonNull(inputProcessor);
         this.prompts = Objects.requireNonNull(prompts);
         this.llm = Objects.requireNonNull(llm);
+        this.turns = new RetryingRoleplayTurnExecutor(java.util.UUID::randomUUID, metrics);
     }
 
     /** Context's learner text is replaced; all scenario/state/dialogue values remain the same. */
@@ -97,9 +109,7 @@ public final class RoleplaySpeechTurnPipeline {
                                 context.learnerTurn().turnId(), canonical),
                         context.recentDialogue());
         var steps = new StructuredRoleplayTurnSteps(prompts, llm, audio.traceContext(), input);
-        var result =
-                new RetryingRoleplayTurnExecutor()
-                        .execute(input.learnerTurn().turnId(), steps, deadline);
+        var result = turns.execute(input.learnerTurn().turnId(), steps, deadline);
         if (!(result instanceof RoleplayTurnResult.Ready ready)) return result;
         var trace = audio.traceContext();
         var synthesisTrace =

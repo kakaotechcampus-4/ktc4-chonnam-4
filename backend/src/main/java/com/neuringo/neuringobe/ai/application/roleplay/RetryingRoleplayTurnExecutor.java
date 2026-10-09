@@ -20,15 +20,23 @@ import java.util.function.Supplier;
  * Bounded retries and cooperative deadline checks. Use RoleplayTurnRunner to bound blocking waits.
  */
 public final class RetryingRoleplayTurnExecutor {
-    private static final int MAX_ATTEMPTS = 3;
+    private static final int MAX_ANALYSIS_CALLS_PER_TURN = 3;
+    private static final int MAX_TECHNICAL_ATTEMPTS_PER_CANDIDATE = 3;
+    private static final int MAX_CANDIDATES_PER_TURN = 3;
     private final Supplier<UUID> candidateIds;
+    private final RoleplayRetryMetrics metrics;
 
     public RetryingRoleplayTurnExecutor() {
         this(UUID::randomUUID);
     }
 
     public RetryingRoleplayTurnExecutor(Supplier<UUID> candidateIds) {
+        this(candidateIds, RoleplayRetryMetrics.NONE);
+    }
+
+    public RetryingRoleplayTurnExecutor(Supplier<UUID> candidateIds, RoleplayRetryMetrics metrics) {
         this.candidateIds = Objects.requireNonNull(candidateIds);
+        this.metrics = Objects.requireNonNull(metrics);
     }
 
     public RoleplayTurnResult execute(UUID turnId, RetryableRoleplayTurnSteps steps) {
@@ -40,17 +48,45 @@ public final class RetryingRoleplayTurnExecutor {
         Objects.requireNonNull(turnId);
         Objects.requireNonNull(steps);
         Objects.requireNonNull(deadline);
+        State state = new State(steps, deadline);
+        long started = System.nanoTime();
+        RoleplayRetryMetrics.Completion completion = RoleplayRetryMetrics.Completion.ERROR;
         try {
-            return executeActive(turnId, steps, deadline);
+            RoleplayTurnResult result = executeActive(turnId, state, deadline);
+            completion =
+                    result instanceof RoleplayTurnResult.Ready
+                            ? RoleplayRetryMetrics.Completion.APPROVED
+                            : RoleplayRetryMetrics.Completion.valueOf(
+                                    ((RoleplayTurnResult.RecoveryRequired) result).reason().name());
+            return result;
         } catch (RoleplayTurnDeadline.Expired expired) {
             deadline.cancel();
+            completion = RoleplayRetryMetrics.Completion.TIMED_OUT;
             return new RoleplayTurnResult.TimedOut();
+        } finally {
+            var ended = completion;
+            observe(
+                    () ->
+                            metrics.finished(
+                                    ended,
+                                    state.analysisCalls,
+                                    state.generationCalls,
+                                    state.evaluationCalls,
+                                    state.candidateCount,
+                                    System.nanoTime() - started));
+        }
+    }
+
+    private void observe(Runnable observation) {
+        try {
+            observation.run();
+        } catch (RuntimeException ignored) {
+            // Observability must not change retries or discard an approved response.
         }
     }
 
     private RoleplayTurnResult executeActive(
-            UUID turnId, RetryableRoleplayTurnSteps steps, RoleplayTurnDeadline deadline) {
-        State state = new State(steps, deadline);
+            UUID turnId, State state, RoleplayTurnDeadline deadline) {
         RoleplayTurnExecutor single = new RoleplayTurnExecutor(state::candidateId);
         while (true) {
             deadline.requireActive();
@@ -58,6 +94,12 @@ public final class RetryingRoleplayTurnExecutor {
             deadline.requireActive();
             if (result instanceof RoleplayTurnResult.Ready) return result;
             if (result instanceof RoleplayTurnResult.CallFailed failed) {
+                boolean retryAllowed =
+                        failed.failure().retryable() && state.canRetry(failed.operation());
+                observe(
+                        () ->
+                                metrics.failed(
+                                        failed.operation(), failed.failure().type(), retryAllowed));
                 if (!failed.failure().retryable()) {
                     return recovery(failed.operation(), RecoveryReason.NON_RETRYABLE_FAILURE);
                 }
@@ -69,6 +111,7 @@ public final class RetryingRoleplayTurnExecutor {
             }
 
             EvaluationResult evaluation = ((RoleplayTurnResult.Rejected) result).evaluation();
+            observe(() -> metrics.rejected(evaluation.decision()));
             RetryTarget target = modelTarget(evaluation.decision());
             if (target == null
                     || evaluation.retryTarget() != target
@@ -82,10 +125,11 @@ public final class RetryingRoleplayTurnExecutor {
                 return new RoleplayTurnResult.RecoveryRequired(
                         target, AiOperation.RESPONSE_EVALUATION, RecoveryReason.MODEL_REQUESTED);
             }
-            if (target == RetryTarget.CAUSE_ANALYSIS && state.analysisCalls >= MAX_ATTEMPTS) {
+            if (target == RetryTarget.CAUSE_ANALYSIS
+                    && state.analysisCalls >= MAX_ANALYSIS_CALLS_PER_TURN) {
                 return recovery(AiOperation.CAUSE_ANALYSIS, RecoveryReason.LIMIT_REACHED);
             }
-            if (state.candidateCount >= MAX_ATTEMPTS) {
+            if (state.candidateCount >= MAX_CANDIDATES_PER_TURN) {
                 return recovery(AiOperation.RESPONSE_GENERATION, RecoveryReason.LIMIT_REACHED);
             }
             state.rejections.add(new RejectedCandidate(state.candidate.data(), evaluation));
@@ -151,7 +195,9 @@ public final class RetryingRoleplayTurnExecutor {
             if (analysis != null) return analysis;
             analysisCalls++;
             AiCallResult<AnalysisResult> result =
-                    deadline.withinBudget(() -> steps.analyze(turnId, context(analysisCalls)));
+                    call(
+                            AiOperation.CAUSE_ANALYSIS,
+                            () -> steps.analyze(turnId, context(analysisCalls)));
             if (result instanceof AiCallResult.Success<AnalysisResult> success) analysis = success;
             return result;
         }
@@ -163,7 +209,8 @@ public final class RetryingRoleplayTurnExecutor {
             generationCalls++;
             generationCallsForCandidate++;
             AiCallResult<CandidateResponse> result =
-                    deadline.withinBudget(
+                    call(
+                            AiOperation.RESPONSE_GENERATION,
                             () ->
                                     steps.generate(
                                             turnId,
@@ -180,13 +227,34 @@ public final class RetryingRoleplayTurnExecutor {
                 UUID turnId, AnalysisResult analyzed, CandidateResponse generated) {
             evaluationCalls++;
             evaluationCallsForCandidate++;
-            return deadline.withinBudget(
+            return call(
+                    AiOperation.RESPONSE_EVALUATION,
                     () ->
                             steps.evaluate(
                                     turnId,
                                     analyzed,
                                     generated,
                                     context(evaluationCallsForCandidate)));
+        }
+
+        private <T> AiCallResult<T> call(
+                AiOperation operation, Supplier<AiCallResult<T>> invocation) {
+            long started = System.nanoTime();
+            String outcome = "ERROR";
+            try {
+                AiCallResult<T> result = deadline.withinBudget(invocation);
+                outcome =
+                        result instanceof AiCallResult.Failure<T> failed
+                                ? failed.failure().type().name()
+                                : "SUCCESS";
+                return result;
+            } catch (RoleplayTurnDeadline.Expired expired) {
+                outcome = "DEADLINE_EXPIRED";
+                throw expired;
+            } finally {
+                String ended = outcome;
+                observe(() -> metrics.call(operation, ended, System.nanoTime() - started));
+            }
         }
 
         private RoleplayRetryContext context(int stageAttempt) {
@@ -199,9 +267,11 @@ public final class RetryingRoleplayTurnExecutor {
 
         private boolean canRetry(AiOperation operation) {
             return switch (operation) {
-                case CAUSE_ANALYSIS -> analysisCalls < MAX_ATTEMPTS;
-                case RESPONSE_GENERATION -> generationCallsForCandidate < MAX_ATTEMPTS;
-                case RESPONSE_EVALUATION -> evaluationCallsForCandidate < MAX_ATTEMPTS;
+                case CAUSE_ANALYSIS -> analysisCalls < MAX_ANALYSIS_CALLS_PER_TURN;
+                case RESPONSE_GENERATION ->
+                        generationCallsForCandidate < MAX_TECHNICAL_ATTEMPTS_PER_CANDIDATE;
+                case RESPONSE_EVALUATION ->
+                        evaluationCallsForCandidate < MAX_TECHNICAL_ATTEMPTS_PER_CANDIDATE;
                 default -> false;
             };
         }
