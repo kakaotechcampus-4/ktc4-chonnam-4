@@ -49,6 +49,15 @@ public class LearningGoalService {
             UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         access.requireInstructor(authentication, childId);
         children.findByIdForUpdate(childId).orElseThrow(() -> childNotFound());
+        return LearningGoalResponse.from(goals.save(newGoal(childId, request, authentication)));
+    }
+
+    /**
+     * 저장하지 않은 새 목표. 조건을 확인하고 정규화해 content_hash 까지 채운다. 활동 배정은 이 해시로 중복을 먼저 확인한 뒤 활동과 같은 트랜잭션에서
+     * 저장한다. 아동 권한 확인과 아동 행 잠금은 부르는 쪽이 먼저 한다.
+     */
+    public LearningGoal newGoal(
+            UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         if (request.parentGoalId() != null) {
             LearningGoal parent =
                     goals.findById(request.parentGoalId()).orElseThrow(() -> notFound());
@@ -60,7 +69,8 @@ public class LearningGoalService {
         List<Map<String, Object>> characters = emptyIfNull(request.characters());
         List<String> required = emptyIfNull(request.requiredElements());
         List<String> forbidden = emptyIfNull(request.forbiddenExpressions());
-        String situation = request.situationType() == null ? null : request.situationType().trim();
+        String situation = trimOrNull(request.situationType());
+        String category = trimOrNull(request.category());
         if (required.stream().anyMatch(value -> value == null || value.isBlank())
                 || forbidden.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new ApiException(
@@ -68,20 +78,19 @@ public class LearningGoalService {
                     "INVALID_GOAL_CONDITIONS",
                     "목표 조건이 올바르지 않습니다.");
         }
-        LearningGoal goal =
-                new LearningGoal(
-                        UUID.randomUUID(),
-                        childId,
-                        ((AuthenticatedUser) authentication.getPrincipal()).userId(),
-                        request.parentGoalId(),
-                        title,
-                        situation,
-                        characters,
-                        required,
-                        forbidden,
-                        contentHash(title, situation, characters, required, forbidden),
-                        Instant.now());
-        return LearningGoalResponse.from(goals.save(goal));
+        return new LearningGoal(
+                UUID.randomUUID(),
+                childId,
+                ((AuthenticatedUser) authentication.getPrincipal()).userId(),
+                request.parentGoalId(),
+                title,
+                situation,
+                category,
+                characters,
+                required,
+                forbidden,
+                contentHash(title, situation, category, characters, required, forbidden),
+                Instant.now());
     }
 
     public List<LearningGoalResponse> list(UUID childId, Authentication authentication) {
@@ -93,7 +102,7 @@ public class LearningGoalService {
 
     public LearningGoalResponse get(UUID goalId, Authentication authentication) {
         LearningGoal goal = goals.findById(goalId).orElseThrow(this::notFound);
-        access.requireInstructor(authentication, goal.getChildId());
+        access.requireInstructor(authentication, goal.getChildId(), this::notFound);
         return LearningGoalResponse.from(goal);
     }
 
@@ -110,16 +119,22 @@ public class LearningGoalService {
         return List.copyOf(values);
     }
 
+    private static String trimOrNull(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private String contentHash(
             String title,
             String situation,
+            String category,
             List<Map<String, Object>> characters,
             List<String> required,
             List<String> forbidden) {
         try {
             byte[] canonical =
                     mapper.writeValueAsBytes(
-                            new HashInput(title, situation, characters, required, forbidden));
+                            new HashInput(
+                                    title, situation, category, characters, required, forbidden));
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(canonical);
             return HexFormat.of().formatHex(digest);
         } catch (JsonProcessingException | NoSuchAlgorithmException ex) {
@@ -138,6 +153,7 @@ public class LearningGoalService {
     private record HashInput(
             String title,
             String situationType,
+            String category,
             List<Map<String, Object>> characters,
             List<String> requiredElements,
             List<String> forbiddenExpressions) {}

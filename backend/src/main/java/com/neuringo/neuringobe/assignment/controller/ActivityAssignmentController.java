@@ -1,8 +1,8 @@
 package com.neuringo.neuringobe.assignment.controller;
 
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
-import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
+import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.assignment.service.ActivityAssignmentService;
 import com.neuringo.neuringobe.common.ApiResponse;
 import jakarta.validation.Valid;

@@ -21,9 +21,11 @@ import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.domain.Classroom;
 import com.neuringo.neuringobe.classroom.domain.ClassroomStatus;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
+import com.neuringo.neuringobe.quiz.domain.ActivityQuiz;
 import com.neuringo.neuringobe.quiz.domain.Emotion;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.domain.QuizType;
+import com.neuringo.neuringobe.quiz.repository.ActivityQuizRepository;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
@@ -54,6 +56,7 @@ class QuizFlowIntegrationTest {
     @Autowired private UserAccountRepository users;
     @Autowired private ChildRepository children;
     @Autowired private QuizItemRepository items;
+    @Autowired private ActivityQuizRepository assignments;
     @Autowired private ActivityRepository activities;
 
     private UUID childId;
@@ -324,7 +327,7 @@ class QuizFlowIntegrationTest {
                         .getContentAsString();
         UUID goalId = UUID.fromString(JsonPath.read(goalBody, "$.data.goalId"));
         // 배정 API 는 서버가 문항을 자동으로 붙인다. 이 테스트는 풀이·결과 흐름을 보려고 문항을 직접 고르므로, 빈 활동을 저장한 뒤
-        // 문항 배정 API 로 붙인다.
+        // assign() 으로 문항을 저장소에 직접 붙인다.
         Activity activity =
                 activities.save(
                         new Activity(
@@ -355,24 +358,10 @@ class QuizFlowIntegrationTest {
         return id;
     }
 
-    private UUID assign(UUID activityId, UUID itemId, int order) throws Exception {
-        String body =
-                mvc.perform(
-                                post("/api/v1/activities/{id}/quiz-items", activityId)
-                                        .with(TestInstructors.instructor("teacher-quiz"))
-                                        .with(csrf())
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(
-                                                "{\"itemId\":\""
-                                                        + itemId
-                                                        + "\","
-                                                        + "\"itemVersion\":1,\"questionOrder\":"
-                                                        + order
-                                                        + "}"))
-                        .andExpect(status().isCreated())
-                        .andReturn()
-                        .getResponse()
-                        .getContentAsString();
-        return UUID.fromString(JsonPath.read(body, "$.data.activityQuizId"));
+    // 강사가 문항을 고르는 API 는 없다. 풀이 흐름만 보려고 문항을 저장소로 직접 붙인다.
+    private UUID assign(UUID activityId, UUID itemId, int order) {
+        UUID id = UUID.randomUUID();
+        assignments.save(new ActivityQuiz(id, activityId, itemId, 1, order));
+        return id;
     }
 }

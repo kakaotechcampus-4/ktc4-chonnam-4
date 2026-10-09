@@ -3,7 +3,7 @@
  * 백엔드에 목표 목록 API 가 없어 S1 은 프론트 상수로 둔다. 문구·분류·권장 난이도는 시안 T-ACT-03 의 예시이며,
  * 느린 학습자에게 맞는지는 팀 검토 전이다. 목록 관리 기능이 생기면 이 파일만 API 로 바꾼다.
  *
- * situationType 은 서버가 자유 문자열(30자 이내)로 받는다. 값 목록이 정본에 없어 S1 은 아래 키를 쓴다.
+ * 분류는 목표의 category 로 저장한다. 서버는 자유 문자열(30자 이내)로 받고, 값 목록이 아직 정해지지 않아 아래 키를 쓴다.
  */
 
 export type GoalCategory = 'EMOTION_RECOGNITION' | 'EMPATHY_EXPRESSION' | 'SITUATION_COPING'

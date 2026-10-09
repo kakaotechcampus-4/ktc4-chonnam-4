@@ -8,10 +8,7 @@ import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
-import com.neuringo.neuringobe.quiz.repository.ActivityQuizRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizAttemptRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizHintRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
+import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
 import java.util.List;
@@ -36,10 +33,7 @@ public class DeletionService {
     private final ChildAccessCodeRepository accessCodes;
     private final LearningGoalRepository goals;
     private final ActivityRepository activities;
-    private final ActivityQuizRepository activityQuizzes;
-    private final QuizAttemptRepository attempts;
-    private final QuizHintRepository hints;
-    private final QuizResultRepository results;
+    private final QuizDeletionService quizzes;
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
 
@@ -50,10 +44,7 @@ public class DeletionService {
             ChildAccessCodeRepository accessCodes,
             LearningGoalRepository goals,
             ActivityRepository activities,
-            ActivityQuizRepository activityQuizzes,
-            QuizAttemptRepository attempts,
-            QuizHintRepository hints,
-            QuizResultRepository results,
+            QuizDeletionService quizzes,
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns) {
         this.classroomService = classroomService;
@@ -62,10 +53,7 @@ public class DeletionService {
         this.accessCodes = accessCodes;
         this.goals = goals;
         this.activities = activities;
-        this.activityQuizzes = activityQuizzes;
-        this.attempts = attempts;
-        this.hints = hints;
-        this.results = results;
+        this.quizzes = quizzes;
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
     }
@@ -111,10 +99,7 @@ public class DeletionService {
         children.findByChildIdInForUpdate(childIds);
         roleplaySessions.findByChildIdInForUpdate(childIds);
 
-        hints.deleteByChildIds(childIds);
-        attempts.deleteByChildIds(childIds);
-        results.deleteByChildIds(childIds);
-        activityQuizzes.deleteByChildIds(childIds);
+        quizzes.deleteAllByChildIds(childIds);
         // The deferred last-turn FK is resolved when both turns and sessions are deleted in this
         // TX.
         roleplayTurns.deleteByChildIds(childIds);

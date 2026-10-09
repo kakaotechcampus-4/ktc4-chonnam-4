@@ -7,6 +7,7 @@ import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,17 @@ public class ChildAccessScope {
     }
 
     public void requireOwnerOrInstructor(Authentication authentication, UUID childId) {
+        requireOwnerOrInstructor(authentication, childId, this::hidden);
+    }
+
+    /**
+     * 아동 ID가 아닌 다른 자원의 ID(활동, 목표 등)로 들어온 요청용이다. 권한이 없을 때 그 자원이 없는 것과 같은 오류를 던져야 남의 자원이 있다는 게 드러나지
+     * 않는다.
+     */
+    public void requireOwnerOrInstructor(
+            Authentication authentication,
+            UUID childId,
+            Supplier<ResourceNotFoundException> hidden) {
         if (authentication != null
                 && authentication.getPrincipal() instanceof ChildPrincipal principal) {
             if (principal.childId().equals(childId)
@@ -29,21 +41,31 @@ public class ChildAccessScope {
                             .orElse(false)) {
                 return;
             }
-            throw hidden();
+            throw hidden.get();
         }
-        requireInstructor(authentication, childId);
+        requireInstructor(authentication, childId, hidden);
     }
 
     public void requireInstructor(Authentication authentication, UUID childId) {
+        requireInstructor(authentication, childId, this::hidden);
+    }
+
+    /**
+     * 다른 자원의 ID로 들어온 요청용이다. {@link #requireOwnerOrInstructor(Authentication, UUID, Supplier)} 참고.
+     */
+    public void requireInstructor(
+            Authentication authentication,
+            UUID childId,
+            Supplier<ResourceNotFoundException> hidden) {
         if (authentication == null
                 || !(authentication.getPrincipal() instanceof AuthenticatedUser user)
                 || authentication.getAuthorities().stream()
                         .noneMatch(a -> "ROLE_INSTRUCTOR".equals(a.getAuthority()))) {
-            throw hidden();
+            throw hidden.get();
         }
-        Child child = children.findById(childId).orElseThrow(this::hidden);
+        Child child = children.findById(childId).orElseThrow(hidden);
         if (!classrooms.existsByClassIdAndInstructorId(child.getClassId(), user.userId())) {
-            throw hidden();
+            throw hidden.get();
         }
     }
 

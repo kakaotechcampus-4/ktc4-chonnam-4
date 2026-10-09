@@ -168,8 +168,8 @@ class DeletionIntegrationTest {
     }
 
     /**
-     * 학급 삭제가 학급을 잠그고 아동 목록을 읽은 순간에 같은 학급으로 아동 등록이 들어오는 경우(Codex 검토 2026-10-04 P2). 등록은 삭제가 끝날 때까지
-     * 기다려야 하고, 끝난 뒤에는 500 이 아니라 학급 없음 404 가 되어야 한다. 삭제 트랜잭션을 테스트가 직접 열어 "목록을 읽은 직후"에 멈춰 둔다.
+     * 학급 삭제가 학급을 잠그고 아동 목록을 읽은 순간에 같은 학급으로 아동 등록이 들어오는 경우. 등록은 삭제가 끝날 때까지 기다려야 하고, 끝난 뒤에는 500 이 아니라
+     * 학급 없음 404 가 되어야 한다. 삭제 트랜잭션을 테스트가 직접 열어 "목록을 읽은 직후"에 멈춰 둔다.
      */
     @Test
     void childRegistrationWaitsForClassroomDeletionAndThenIsNotFound() throws Exception {
@@ -207,8 +207,8 @@ class DeletionIntegrationTest {
     }
 
     /**
-     * 아동 삭제가 아동을 잠그고 목표까지 지운 순간에 같은 아동의 목표 생성이 들어오는 경우(Codex 검토 2026-10-07 P2). 아동 행 잠금은 FK 검사를 막지
-     * 않으므로, 목표 생성이 같은 잠금을 직접 잡아 기다려야 한다. 삭제가 끝난 뒤에는 500 이 아니라 아동 없음 404 다.
+     * 아동 삭제가 아동을 잠그고 목표까지 지운 순간에 같은 아동의 목표 생성이 들어오는 경우. 아동 행 잠금은 FK 검사를 막지 않으므로, 목표 생성이 같은 잠금을 직접
+     * 잡아 기다려야 한다. 삭제가 끝난 뒤에는 500 이 아니라 아동 없음 404 다.
      */
     @Test
     void goalCreationWaitsForChildDeletionAndThenIsNotFound() throws Exception {
@@ -351,12 +351,8 @@ class DeletionIntegrationTest {
         return (MockHttpSession) entry.getRequest().getSession(false);
     }
 
-    /** 목표를 저장하고 활동을 배정한다. 서버가 문항 3개를 붙인다. */
+    /** 목표와 함께 활동을 배정한다. 서버가 문항 3개를 붙인다. */
     private UUID assign(UUID childId) throws Exception {
-        String goal =
-                postJson(
-                        "/api/v1/children/" + childId + "/learning-goals",
-                        "{\"title\":\"친구 감정 알아보기 " + UUID.randomUUID() + "\"}");
         String activity =
                 mvc.perform(
                                 post("/api/v1/activities")
@@ -367,9 +363,9 @@ class DeletionIntegrationTest {
                                         .content(
                                                 "{\"childId\":\""
                                                         + childId
-                                                        + "\",\"goalId\":\""
-                                                        + JsonPath.read(goal, "$.data.goalId")
-                                                        + "\"}"))
+                                                        + "\",\"goal\":{\"title\":\"친구 감정 알아보기 "
+                                                        + UUID.randomUUID()
+                                                        + "\"}}"))
                         .andExpect(status().isCreated())
                         .andReturn()
                         .getResponse()

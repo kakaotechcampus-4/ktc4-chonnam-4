@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiError,
   createActivity,
-  createLearningGoal,
   listChildren,
   listClassrooms,
   type Child,
@@ -120,26 +119,22 @@ function ActivityCreatePage() {
     moveTo('target', { classId, childId: nextChildId })
   }
 
-  // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 활동을 하나만 남긴다(ADR D4).
-  // 대상이나 목표가 바뀌면 다른 배정이므로 새 키를 쓴다. 이미 저장한 목표도 같은 조건이면 다시 만들지 않는다.
+  // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 목표와 활동을 하나만 남긴다(ADR D4).
+  // 대상이나 목표가 바뀌면 다른 배정이므로 새 키를 쓴다.
   const submission = `${childId}|${goal?.title}|${goal?.category}`
-  const attemptRef = useRef<{ submission: string; requestKey: string; goalId: string | null } | null>(null)
+  const attemptRef = useRef<{ submission: string; requestKey: string } | null>(null)
   const isSubmittingRef = useRef(false)
 
   const assignMutation = useMutation({
-    mutationFn: async ({ target, choice }: { target: Child; choice: GoalChoice }) => {
+    mutationFn: ({ target, choice }: { target: Child; choice: GoalChoice }) => {
       if (attemptRef.current?.submission !== submission) {
-        attemptRef.current = { submission, requestKey: crypto.randomUUID(), goalId: null }
+        attemptRef.current = { submission, requestKey: crypto.randomUUID() }
       }
-      const attempt = attemptRef.current
-      if (!attempt.goalId) {
-        const saved = await createLearningGoal(target.childId, {
-          title: choice.title,
-          ...(choice.category ? { situationType: choice.category } : {}),
-        })
-        attempt.goalId = saved.goalId
-      }
-      return createActivity(target.childId, attempt.goalId, attempt.requestKey)
+      return createActivity(
+        target.childId,
+        { title: choice.title, ...(choice.category ? { category: choice.category } : {}) },
+        attemptRef.current.requestKey,
+      )
     },
     onSuccess: (_activity, { target }) => {
       queryClient.invalidateQueries({ queryKey: ['children', target.childId] })
