@@ -64,8 +64,7 @@ public class RoleplayHttpConfiguration {
             SpeechToTextProvider stt,
             TextToSpeechProvider tts,
             RoleplaySpeechDelivery speechDelivery,
-            JsonMapper mapper,
-            RoleplayRetryMetrics retryMetrics) {
+            JsonMapper mapper) {
         var outcomes = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(p.notices()));
         var checkpoints =
                 new RoleplayCheckpointedTurnExecutor(
@@ -76,8 +75,7 @@ public class RoleplayHttpConfiguration {
                         tts,
                         inputProcessor,
                         new RoleplayPromptFactory(mapper, null),
-                        new StructuredLlmExecutor(llm),
-                        retryMetrics);
+                        new StructuredLlmExecutor(llm));
         var turns =
                 new RoleplayScopedVoiceTurnExecutor(
                         checkpoints, new RoleplayContextAssembler(source), speech);

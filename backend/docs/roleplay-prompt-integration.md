@@ -453,10 +453,3 @@ this final unit are byte-identical to the verified files in the implementation c
 This finishes the requested BE HTTP/configuration/verification batch. It does not claim live
 approved-content or safety/vendor/audio publication integration, FE wiring, source-retention
 lifecycle, failure-count reset rules or other undecided task-wide release policy is complete.
-
-## LLM retry observations (R5)
-
-The stage/candidate limits remain unchanged. The active HTTP speech pipeline injects content-free
-Micrometer retry observations. See [roleplay-retry-metrics.md](roleplay-retry-metrics.md) for
-measurement boundaries, collection prerequisites and policy selection. LLM APPROVED is not DB
-confirmation or client delivery. No new overall call-count or monetary limit is imposed yet.

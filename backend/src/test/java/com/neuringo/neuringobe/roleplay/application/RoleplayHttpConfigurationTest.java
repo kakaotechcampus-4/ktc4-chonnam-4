@@ -41,7 +41,6 @@ class RoleplayHttpConfigurationTest {
                         () -> mock(RoleplayRequestScopeService.class))
                 .withBean(RoleplayCheckpointStore.class, () -> mock(RoleplayCheckpointStore.class))
                 .withBean(RoleplayRequestGuard.class, () -> mock(RoleplayRequestGuard.class))
-                .withBean(RoleplayRetryMetrics.class, () -> RoleplayRetryMetrics.NONE)
                 .withBean(RoleplayContextSource.class, () -> mock(RoleplayContextSource.class))
                 .withBean(RoleplayInputProcessor.class, () -> mock(RoleplayInputProcessor.class))
                 .withBean(LlmProvider.class, () -> mock(LlmProvider.class))
