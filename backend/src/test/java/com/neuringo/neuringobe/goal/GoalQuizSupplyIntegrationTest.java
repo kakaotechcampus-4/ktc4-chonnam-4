@@ -118,9 +118,9 @@ class GoalQuizSupplyIntegrationTest {
                                 .content(
                                         "{\"childId\":\""
                                                 + otherChildId
-                                                + "\",\"goalId\":\""
+                                                + "\",\"goal\":{\"title\":\"다음 목표\",\"parentGoalId\":\""
                                                 + goalId
-                                                + "\"}"))
+                                                + "\"}}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("GOAL_NOT_FOUND"));
         mvc.perform(
@@ -139,9 +139,7 @@ class GoalQuizSupplyIntegrationTest {
                                         .content(
                                                 "{\"childId\":\""
                                                         + childId
-                                                        + "\",\"goalId\":\""
-                                                        + goalId
-                                                        + "\"}"))
+                                                        + "\",\"goal\":{\"title\":\"친구 감정 이해하기\"}}"))
                         .andExpect(status().isCreated())
                         .andReturn()
                         .getResponse()
@@ -161,9 +159,7 @@ class GoalQuizSupplyIntegrationTest {
     @Test
     void rejectsMissingChild() throws Exception {
         UUID classId = UUID.randomUUID();
-        // The API must not accept an arbitrary goal UUID just because the instructor owns the
-        // child.
-        // A missing child is hidden before the goal lookup.
+        // 없는 아동은 목표를 보기 전에 404 로 숨긴다.
         mvc.perform(
                         post("/api/v1/activities")
                                 .with(TestInstructors.instructor("teacher-supply"))
@@ -173,9 +169,7 @@ class GoalQuizSupplyIntegrationTest {
                                 .content(
                                         "{\"childId\":\""
                                                 + classId
-                                                + "\",\"goalId\":\""
-                                                + UUID.randomUUID()
-                                                + "\"}"))
+                                                + "\",\"goal\":{\"title\":\"친구 감정 이해하기\"}}"))
                 .andExpect(status().isNotFound());
     }
 

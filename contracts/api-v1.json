@@ -536,7 +536,11 @@
     },
     {
       "name": "Idempotency-Key 없는 활동 배정은 400 INVALID_REQUEST",
-      "request": { "method": "POST", "path": "/api/v1/activities", "body": { "childId": "{childId}", "goalId": "{requestKey}" } },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "body": { "childId": "{childId}", "goal": { "title": "친구 감정 알아보기" } }
+      },
       "response": {
         "status": 400,
         "body": {
@@ -552,12 +556,34 @@
       }
     },
     {
-      "name": "없는 목표로 활동 배정은 404 GOAL_NOT_FOUND",
+      "name": "목표 없는 활동 배정은 422 VALIDATION_FAILED(goal)",
       "request": {
         "method": "POST",
         "path": "/api/v1/activities",
         "headers": { "Idempotency-Key": "{requestKey}" },
-        "body": { "childId": "{childId}", "goalId": "{unknownClassId}" }
+        "body": { "childId": "{childId}" }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "goal", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 이전 목표로 활동 배정은 404 GOAL_NOT_FOUND",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}", "goal": { "title": "다음 목표", "parentGoalId": "{unknownClassId}" } }
       },
       "response": {
         "status": 404,
@@ -579,7 +605,7 @@
         "method": "POST",
         "path": "/api/v1/activities",
         "headers": { "Idempotency-Key": "{requestKey}" },
-        "body": { "childId": "{otherChildId}", "goalId": "{unknownClassId}" }
+        "body": { "childId": "{otherChildId}", "goal": { "title": "친구 감정 알아보기" } }
       },
       "response": {
         "status": 404,

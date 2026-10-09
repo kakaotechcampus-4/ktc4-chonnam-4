@@ -376,9 +376,6 @@ export function getLearningGoal(goalId: string): Promise<LearningGoal> {
   return readRequest<LearningGoal>(`/learning-goals/${goalId}`)
 }
 
-export function createLearningGoal(childId: string, input: LearningGoalInput): Promise<LearningGoal> {
-  return writeRequest<LearningGoal>('POST', `/children/${childId}/learning-goals`, input)
-}
 
 export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
 
@@ -439,14 +436,15 @@ export function getActivity(activityId: string): Promise<ActivityDetail> {
 }
 
 /**
- * 활동 배정. 서버가 승인 문항을 골라 활동과 함께 한 번에 저장한다(ADR 2026-10-03 D4).
+ * 활동 배정. 서버가 목표를 저장하고 승인 문항을 골라 활동과 함께 한 번에 저장한다(ADR 2026-10-03 D4).
+ * 배정이 실패하면 목표도 저장되지 않는다.
  * requestKey 는 "배정하기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 써야 활동이 하나만 남는다.
  */
-export function createActivity(childId: string, goalId: string, requestKey: string): Promise<Activity> {
+export function createActivity(childId: string, goal: LearningGoalInput, requestKey: string): Promise<Activity> {
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, goalId },
+    { childId, goal },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }

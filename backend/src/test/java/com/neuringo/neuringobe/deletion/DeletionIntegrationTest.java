@@ -351,12 +351,8 @@ class DeletionIntegrationTest {
         return (MockHttpSession) entry.getRequest().getSession(false);
     }
 
-    /** 목표를 저장하고 활동을 배정한다. 서버가 문항 3개를 붙인다. */
+    /** 목표와 함께 활동을 배정한다. 서버가 문항 3개를 붙인다. */
     private UUID assign(UUID childId) throws Exception {
-        String goal =
-                postJson(
-                        "/api/v1/children/" + childId + "/learning-goals",
-                        "{\"title\":\"친구 감정 알아보기 " + UUID.randomUUID() + "\"}");
         String activity =
                 mvc.perform(
                                 post("/api/v1/activities")
@@ -367,9 +363,9 @@ class DeletionIntegrationTest {
                                         .content(
                                                 "{\"childId\":\""
                                                         + childId
-                                                        + "\",\"goalId\":\""
-                                                        + JsonPath.read(goal, "$.data.goalId")
-                                                        + "\"}"))
+                                                        + "\",\"goal\":{\"title\":\"친구 감정 알아보기 "
+                                                        + UUID.randomUUID()
+                                                        + "\"}}"))
                         .andExpect(status().isCreated())
                         .andReturn()
                         .getResponse()

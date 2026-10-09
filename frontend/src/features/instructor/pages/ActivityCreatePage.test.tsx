@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
-import { emptyQuizPool, fixtures, seedActivity } from "@/test/msw/handlers"
+import { emptyQuizPool, fixtures, seedActivity, storedGoals } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import { ActivityCreatePage } from "./ActivityCreatePage"
@@ -94,6 +94,8 @@ describe("활동 만들기 화면", () => {
     await user.click(screen.getByRole("button", { name: "배정하기" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("같은 목표로 아직 시작하지 않은 활동이 있어요")
+    // 배정이 막히면 목표도 새로 저장되지 않는다.
+    expect(storedGoals(CHILD.childId)).toHaveLength(1)
   })
 
   it("승인 문항이 없으면 배정하지 않고 이유를 알려 준다", async () => {
@@ -115,10 +117,6 @@ describe("활동 만들기 화면", () => {
     })
     // 첫 배정 요청은 서버에 닿지 못한 것처럼 실패시킨다.
     server.use(http.post("*/api/v1/activities", () => HttpResponse.error(), { once: true }))
-    let goalPosts = 0
-    server.events.on("request:start", ({ request }) => {
-      if (request.method === "POST" && new URL(request.url).pathname.endsWith("/learning-goals")) goalPosts++
-    })
     const { user, router } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
 
     await goToConfirm(user)
@@ -128,7 +126,7 @@ describe("활동 만들기 화면", () => {
 
     await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
     expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`)
-    expect(goalPosts).toBe(1)
+    expect(storedGoals(CHILD.childId)).toHaveLength(1)
     expect(keys).toHaveLength(2)
     expect(keys[0]).toBe(keys[1])
     server.events.removeAllListeners()

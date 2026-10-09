@@ -7,15 +7,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
-import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
+import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.goal.domain.LearningGoal;
+import com.neuringo.neuringobe.goal.dto.CreateLearningGoalRequest;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
+import com.neuringo.neuringobe.goal.service.LearningGoalService;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
 import java.time.Instant;
 import java.util.List;
@@ -36,12 +38,16 @@ class ActivityAssignmentServiceTest {
     @Mock private ActivityRepository activities;
     @Mock private ChildRepository children;
     @Mock private LearningGoalRepository goals;
+    @Mock private LearningGoalService goalService;
     @Mock private ChildAccessScope access;
     @Mock private QuizAssignmentService quizAssignment;
     @Mock private Authentication authentication;
     @Mock private PlatformTransactionManager transactionManager;
 
     @InjectMocks private ActivityAssignmentService service;
+
+    private static final CreateLearningGoalRequest GOAL_REQUEST =
+            new CreateLearningGoalRequest("친구 감정 알아보기", null, null, null, null, null);
 
     @Test
     void doesNotCreateActivityWhenNoApprovedQuizItemExists() {
@@ -52,24 +58,25 @@ class ActivityAssignmentServiceTest {
                 .willReturn(
                         Optional.of(
                                 new Child(childId, UUID.randomUUID(), "김하늘", ChildStatus.ACTIVE)));
+        given(goalService.newGoal(childId, GOAL_REQUEST, authentication))
+                .willReturn(goal(goalId, childId));
         given(activities.findByIdempotencyKey(key)).willReturn(Optional.empty());
-        LearningGoal goal = goal(goalId, childId);
-        given(goals.findById(goalId)).willReturn(Optional.of(goal));
-        given(goals.findByChildIdAndContentHash(childId, "hash")).willReturn(List.of(goal));
+        given(goals.findByChildIdAndContentHash(childId, "hash")).willReturn(List.of());
         given(
                         activities.existsByChildIdAndGoalIdInAndStatus(
-                                childId, List.of(goalId), ActivityStatus.NOT_STARTED))
+                                childId, List.of(), ActivityStatus.NOT_STARTED))
                 .willReturn(false);
         given(quizAssignment.pickInitialItems()).willReturn(List.of());
 
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, goalId),
+                                        new CreateActivityRequest(childId, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "QUIZ_ITEMS_UNAVAILABLE");
+        verify(goals, never()).save(any());
         verify(activities, never()).saveAndFlush(any());
     }
 
@@ -81,16 +88,19 @@ class ActivityAssignmentServiceTest {
                 .willReturn(
                         Optional.of(
                                 new Child(childId, UUID.randomUUID(), "김하늘", ChildStatus.PAUSED)));
+        given(goalService.newGoal(childId, GOAL_REQUEST, authentication))
+                .willReturn(goal(UUID.randomUUID(), childId));
         given(activities.findByIdempotencyKey(key)).willReturn(Optional.empty());
 
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, UUID.randomUUID()),
+                                        new CreateActivityRequest(childId, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)
                 .hasFieldOrPropertyWithValue("code", "CHILD_NOT_ACTIVE");
+        verify(goals, never()).save(any());
         verify(activities, never()).saveAndFlush(any());
     }
 

@@ -49,6 +49,15 @@ public class LearningGoalService {
             UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         access.requireInstructor(authentication, childId);
         children.findByIdForUpdate(childId).orElseThrow(() -> childNotFound());
+        return LearningGoalResponse.from(goals.save(newGoal(childId, request, authentication)));
+    }
+
+    /**
+     * 저장하지 않은 새 목표. 조건을 확인하고 정규화해 content_hash 까지 채운다. 활동 배정은 이 해시로 중복을 먼저 확인한 뒤 활동과 같은 트랜잭션에서
+     * 저장한다. 아동 권한 확인과 아동 행 잠금은 부르는 쪽이 먼저 한다.
+     */
+    public LearningGoal newGoal(
+            UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         if (request.parentGoalId() != null) {
             LearningGoal parent =
                     goals.findById(request.parentGoalId()).orElseThrow(() -> notFound());
@@ -68,20 +77,18 @@ public class LearningGoalService {
                     "INVALID_GOAL_CONDITIONS",
                     "목표 조건이 올바르지 않습니다.");
         }
-        LearningGoal goal =
-                new LearningGoal(
-                        UUID.randomUUID(),
-                        childId,
-                        ((AuthenticatedUser) authentication.getPrincipal()).userId(),
-                        request.parentGoalId(),
-                        title,
-                        situation,
-                        characters,
-                        required,
-                        forbidden,
-                        contentHash(title, situation, characters, required, forbidden),
-                        Instant.now());
-        return LearningGoalResponse.from(goals.save(goal));
+        return new LearningGoal(
+                UUID.randomUUID(),
+                childId,
+                ((AuthenticatedUser) authentication.getPrincipal()).userId(),
+                request.parentGoalId(),
+                title,
+                situation,
+                characters,
+                required,
+                forbidden,
+                contentHash(title, situation, characters, required, forbidden),
+                Instant.now());
     }
 
     public List<LearningGoalResponse> list(UUID childId, Authentication authentication) {

@@ -3,9 +3,9 @@ package com.neuringo.neuringobe.assignment.service;
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
-import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
+import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
@@ -14,6 +14,7 @@ import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.domain.LearningGoal;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
+import com.neuringo.neuringobe.goal.service.LearningGoalService;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
 import java.time.Instant;
@@ -31,7 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 활동 배정(ADR 2026-10-03 D4). 활동과 최초 퀴즈 문항을 한 트랜잭션에서 만든다. 문항은 서버가 고르고 강사는 고르지 않는다.
+ * 활동 배정(ADR 2026-10-03 D4). 학습 목표와 활동, 최초 퀴즈 문항을 한 트랜잭션에서 만든다. 문항은 서버가 고르고 강사는 고르지 않는다. 배정이 어느 단계에서
+ * 실패해도 목표만 남지 않는다(PR #49 리뷰).
  *
  * <p>활동·목표·퀴즈 도메인을 함께 쓰므로 어느 한 도메인에 두면 도메인 사이 순환이 생긴다(ArchitectureTest). 그래서 이 조립만 따로 둔다.
  */
@@ -47,6 +49,7 @@ public class ActivityAssignmentService {
     private final ActivityRepository activities;
     private final ChildRepository children;
     private final LearningGoalRepository goals;
+    private final LearningGoalService goalService;
     private final ChildAccessScope access;
     private final QuizAssignmentService quizAssignment;
     private final TransactionTemplate transaction;
@@ -55,12 +58,14 @@ public class ActivityAssignmentService {
             ActivityRepository activities,
             ChildRepository children,
             LearningGoalRepository goals,
+            LearningGoalService goalService,
             ChildAccessScope access,
             QuizAssignmentService quizAssignment,
             PlatformTransactionManager transactionManager) {
         this.activities = activities;
         this.children = children;
         this.goals = goals;
+        this.goalService = goalService;
         this.access = access;
         this.quizAssignment = quizAssignment;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -91,6 +96,8 @@ public class ActivityAssignmentService {
      * 같은 아동의 배정은 아동 행을 잠가 하나씩 처리한다. 그래서 같은 요청 키의 재전송과 같은 내용 목표의 중복 배정을 앞에서 확인해도 경합이 없다. 내용 기준 중복은 두
      * 테이블에 걸쳐 DB 제약으로 걸 수 없어 이 잠금이 유일한 방어선이다. DB 의 UNIQUE(요청 키)·부분 UNIQUE(시작 전 아동·목표 ID)는 같은 목표 행이
      * 두 번 배정되는 경우만 막는 마지막 장치다.
+     *
+     * <p>목표는 확인을 모두 통과한 뒤에 저장한다. 그 뒤에 실패해도 같은 트랜잭션이라 함께 롤백된다.
      */
     private Assignment assignOnce(
             CreateActivityRequest request, UUID requestKey, Authentication authentication) {
@@ -101,11 +108,11 @@ public class ActivityAssignmentService {
                                 () ->
                                         new ResourceNotFoundException(
                                                 "CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
+        LearningGoal goal = goalService.newGoal(request.childId(), request.goal(), authentication);
 
         Activity prior = activities.findByIdempotencyKey(requestKey).orElse(null);
         if (prior != null) {
-            if (!prior.getChildId().equals(request.childId())
-                    || !prior.getGoalId().equals(request.goalId())) {
+            if (!prior.getChildId().equals(request.childId()) || !sameContent(prior, goal)) {
                 throw new ApiException(
                         HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.");
             }
@@ -116,14 +123,7 @@ public class ActivityAssignmentService {
             throw new ApiException(
                     HttpStatus.CONFLICT, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.");
         }
-        LearningGoal goal =
-                goals.findById(request.goalId())
-                        .filter(found -> found.getChildId().equals(request.childId()))
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다."));
-        // 같은 목표는 목표 ID 가 아니라 내용으로 판단한다. 마법사는 배정할 때마다 목표를 새로 저장하므로, 강사가 같은 목표를 다시 고르면
+        // 같은 목표는 목표 ID 가 아니라 내용으로 판단한다. 배정할 때마다 목표를 새로 저장하므로, 강사가 같은 목표를 다시 고르면
         // ID 는 달라도 content_hash 는 같다(ADR 2026-10-03 D6).
         List<UUID> sameGoals =
                 goals.findByChildIdAndContentHash(request.childId(), goal.getContentHash()).stream()
@@ -144,16 +144,25 @@ public class ActivityAssignmentService {
                     "배정할 수 있는 승인된 퀴즈 문항이 없습니다.");
         }
 
+        LearningGoal saved = goals.save(goal);
         Activity created =
                 activities.saveAndFlush(
                         new Activity(
                                 UUID.randomUUID(),
                                 request.childId(),
-                                request.goalId(),
+                                saved.getGoalId(),
                                 requestKey,
                                 Instant.now()));
         quizAssignment.attach(created.getActivityId(), picks);
         return new Assignment(ActivityResponse.from(created), true);
+    }
+
+    /** 같은 요청 키의 재전송인지. 처음 배정한 목표와 이번 요청의 목표 내용이 같아야 한다. */
+    private boolean sameContent(Activity prior, LearningGoal requested) {
+        return goals.findById(prior.getGoalId())
+                .map(LearningGoal::getContentHash)
+                .filter(requested.getContentHash()::equals)
+                .isPresent();
     }
 
     @Transactional(readOnly = true)

@@ -186,12 +186,19 @@ export function seedActivity({
   return activity
 }
 
-function newGoal(childId: string, instructorId: string, input: { title: string; situationType?: string }): LearningGoal {
+/** 화면 테스트에서 그 아동에게 저장된 목표를 본다. */
+export function storedGoals(childId: string): LearningGoal[] {
+  return goals.filter((g) => g.childId === childId)
+}
+
+type GoalInput = { title: string; situationType?: string; parentGoalId?: string | null }
+
+function newGoal(childId: string, instructorId: string, input: GoalInput): LearningGoal {
   return {
     goalId: crypto.randomUUID(),
     childId,
     instructorId,
-    parentGoalId: null,
+    parentGoalId: input.parentGoalId ?? null,
     title: input.title.trim(),
     situationType: input.situationType?.trim() || null,
     characters: [],
@@ -200,6 +207,22 @@ function newGoal(childId: string, instructorId: string, input: { title: string; 
     // 서버는 정규화한 조건의 SHA-256 이다. 가짜 서버는 같은 내용이면 같은 값이면 충분하다.
     contentHash: `${input.title.trim()}|${input.situationType?.trim() ?? ""}`,
     createdAt: new Date().toISOString(),
+  }
+}
+
+/** CreateLearningGoalRequest 검사: @NotBlank @Size(max = 200) title. prefix 는 배정 요청 안의 goal 처럼 감싼 경우의 필드 앞부분이다. */
+function goalFieldErrors(body: Record<string, unknown>, prefix = ""): FieldError[] {
+  const title = body.title
+  if (typeof title !== "string" || !title.trim()) return [{ field: `${prefix}title`, message: "공백일 수 없습니다" }]
+  if (title.length > 200) return [{ field: `${prefix}title`, message: "크기가 0에서 200 사이여야 합니다" }]
+  return []
+}
+
+function goalInput(body: Record<string, unknown>): GoalInput {
+  return {
+    title: String(body.title),
+    situationType: typeof body.situationType === "string" ? body.situationType : undefined,
+    parentGoalId: typeof body.parentGoalId === "string" ? body.parentGoalId : null,
   }
 }
 
@@ -554,19 +577,10 @@ export const handlers = [
     if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
     const body = await readJson(request)
     if (!body) return invalidRequest(path)
-    // CreateLearningGoalRequest: @NotBlank @Size(max = 200) title, @Size(max = 30) situationType
-    const title = body.title
-    if (typeof title !== "string" || !title.trim()) {
-      return validationFailed(path, [{ field: "title", message: "공백일 수 없습니다" }])
-    }
-    if (title.length > 200) {
-      return validationFailed(path, [{ field: "title", message: "크기가 0에서 200 사이여야 합니다" }])
-    }
+    const errors = goalFieldErrors(body)
+    if (errors.length > 0) return validationFailed(path, errors)
     if (!ownedChild(childId, session)) return childNotFound(path)
-    const goal = newGoal(childId, session.userId, {
-      title,
-      situationType: typeof body.situationType === "string" ? body.situationType : undefined,
-    })
+    const goal = newGoal(childId, session.userId, goalInput(body))
     goals = [...goals, goal]
     return HttpResponse.json(envelope(goal), { status: 201 })
   }),
@@ -599,7 +613,8 @@ export const handlers = [
     return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toActivity)))
   }),
 
-  // 활동 배정(ADR 2026-10-03 D4). 서버처럼 문항을 자동으로 붙이고, 같은 요청 키는 처음 활동을 200 으로, 같은 목표의 시작 전 활동은 409 다.
+  // 활동 배정(ADR 2026-10-03 D4). 서버처럼 목표를 함께 저장하고 문항을 자동으로 붙인다. 같은 요청 키는 처음 활동을 200 으로,
+  // 같은 목표의 시작 전 활동은 409 다. 실패하면 목표도 저장하지 않는다.
   http.post("*/api/v1/activities", async ({ request }) => {
     if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
     const session = authenticate(request)
@@ -610,18 +625,24 @@ export const handlers = [
     const body = await readJson(request)
     if (!body) return invalidRequest(path)
     const childId = String(body.childId ?? "")
-    const goalId = String(body.goalId ?? "")
-    if (!UUID_FORMAT.test(childId) || !UUID_FORMAT.test(goalId)) {
-      return validationFailed(path, [
-        ...(UUID_FORMAT.test(childId) ? [] : [{ field: "childId", message: "널이어서는 안됩니다" }]),
-        ...(UUID_FORMAT.test(goalId) ? [] : [{ field: "goalId", message: "널이어서는 안됩니다" }]),
-      ])
-    }
+    const goalBody = typeof body.goal === "object" && body.goal !== null ? (body.goal as Record<string, unknown>) : null
+    const errors: FieldError[] = [
+      ...(UUID_FORMAT.test(childId) ? [] : [{ field: "childId", message: "널이어서는 안됩니다" }]),
+      ...(goalBody ? goalFieldErrors(goalBody, "goal.") : [{ field: "goal", message: "널이어서는 안됩니다" }]),
+    ]
+    if (errors.length > 0) return validationFailed(path, errors)
     const child = ownedChild(childId, session)
     if (!child) return childNotFound(path)
+    const input = goalInput(goalBody!)
+    if (input.parentGoalId && !goals.some((g) => g.goalId === input.parentGoalId && g.childId === childId)) {
+      return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
+    }
+    // 아직 저장하지 않는다. 확인을 모두 통과한 뒤에 저장해야 실패한 배정이 목표를 남기지 않는다.
+    const goal = newGoal(childId, session.userId, input)
     const prior = activities.find((a) => a.idempotencyKey === key)
     if (prior) {
-      if (prior.childId !== childId || prior.goalId !== goalId) {
+      const priorGoal = goals.find((g) => g.goalId === prior.goalId)
+      if (prior.childId !== childId || priorGoal?.contentHash !== goal.contentHash) {
         return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.", path)
       }
       return HttpResponse.json(envelope(toActivity(prior)))
@@ -629,11 +650,7 @@ export const handlers = [
     if (child.status !== "ACTIVE") {
       return apiError(409, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.", path)
     }
-    if (!goals.some((g) => g.goalId === goalId && g.childId === childId)) {
-      return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
-    }
     // 같은 목표는 ID 가 아니라 내용(contentHash)으로 판단한다(ADR 2026-10-03 D6).
-    const goal = goals.find((g) => g.goalId === goalId)!
     const sameGoals = new Set(
       goals.filter((g) => g.childId === childId && g.contentHash === goal.contentHash).map((g) => g.goalId),
     )
@@ -643,7 +660,8 @@ export const handlers = [
     if (quizPool.length === 0) {
       return apiError(422, "QUIZ_ITEMS_UNAVAILABLE", "배정할 수 있는 승인된 퀴즈 문항이 없습니다.", path)
     }
-    const activity = newActivity(childId, goalId, key)
+    goals = [...goals, goal]
+    const activity = newActivity(childId, goal.goalId, key)
     activities = [...activities, activity]
     attachQuizzes(activity.activityId)
     return HttpResponse.json(envelope(toActivity(activity)), {
