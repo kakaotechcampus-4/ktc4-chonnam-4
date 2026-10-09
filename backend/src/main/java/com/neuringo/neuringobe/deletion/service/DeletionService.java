@@ -8,10 +8,7 @@ import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
-import com.neuringo.neuringobe.quiz.repository.ActivityQuizRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizAttemptRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizHintRepository;
-import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
+import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -21,8 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 아동·학급 영구 삭제(ADR 2026-10-04 D1~D3). 학습 기록이 있어도 함께 지운다. 아동 아래 데이터를 쓰는 도메인(goal·activity·quiz)이 모두
  * child 에 기대고 있어, 지우는 순서를 child 안에 두면 순환이 생긴다. 그래서 assignment 처럼 바깥 패키지에서 조립한다.
  *
- * <p>FK 에 ON DELETE CASCADE 가 없으므로 자식 테이블부터 지운다. 학급 삭제는 그 학급의 아동 삭제와 같은 경로를 탄 뒤 학급 행을 지운다. 지우는 순서는
- * {@link #deleteChildren} 한 곳에만 있다.
+ * <p>FK 에 ON DELETE CASCADE 가 없으므로 자식 테이블부터 지운다. 퀴즈처럼 도메인 안에 지킬 순서가 있으면 그 도메인에 맡기고, 테이블이 하나인
+ * 활동·목표·입장 코드는 Repository 를 바로 부른다. 학급 삭제는 그 학급의 아동 삭제와 같은 경로를 탄 뒤 학급 행을 지운다. 지우는 순서는 {@link
+ * #deleteChildren} 한 곳에만 있다.
  */
 @Service
 public class DeletionService {
@@ -33,10 +31,7 @@ public class DeletionService {
     private final ChildAccessCodeRepository accessCodes;
     private final LearningGoalRepository goals;
     private final ActivityRepository activities;
-    private final ActivityQuizRepository activityQuizzes;
-    private final QuizAttemptRepository attempts;
-    private final QuizHintRepository hints;
-    private final QuizResultRepository results;
+    private final QuizDeletionService quizzes;
 
     public DeletionService(
             ClassroomService classroomService,
@@ -45,20 +40,14 @@ public class DeletionService {
             ChildAccessCodeRepository accessCodes,
             LearningGoalRepository goals,
             ActivityRepository activities,
-            ActivityQuizRepository activityQuizzes,
-            QuizAttemptRepository attempts,
-            QuizHintRepository hints,
-            QuizResultRepository results) {
+            QuizDeletionService quizzes) {
         this.classroomService = classroomService;
         this.classrooms = classrooms;
         this.children = children;
         this.accessCodes = accessCodes;
         this.goals = goals;
         this.activities = activities;
-        this.activityQuizzes = activityQuizzes;
-        this.attempts = attempts;
-        this.hints = hints;
-        this.results = results;
+        this.quizzes = quizzes;
     }
 
     /** 담당 학급의 아동만 지운다. 다른 강사의 아동도 없는 아동과 똑같이 404 다. */
@@ -101,10 +90,7 @@ public class DeletionService {
         activities.findByChildIdInForUpdate(childIds);
         children.findByChildIdInForUpdate(childIds);
 
-        hints.deleteByChildIds(childIds);
-        attempts.deleteByChildIds(childIds);
-        results.deleteByChildIds(childIds);
-        activityQuizzes.deleteByChildIds(childIds);
+        quizzes.deleteAllByChildIds(childIds);
         activities.deleteByChildIds(childIds);
         goals.deleteByChildIds(childIds);
         accessCodes.deleteByChildIds(childIds);
