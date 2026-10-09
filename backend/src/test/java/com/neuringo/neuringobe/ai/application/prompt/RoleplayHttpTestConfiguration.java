@@ -5,26 +5,59 @@ import com.neuringo.neuringobe.ai.application.port.*;
 import com.neuringo.neuringobe.ai.application.roleplay.*;
 import com.neuringo.neuringobe.roleplay.application.*;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 /** Test-only providers: no production default or network access. */
 @TestConfiguration(proxyBeanMethods = false)
 public class RoleplayHttpTestConfiguration {
     public static class State {
         public final List<String> calls = new CopyOnWriteArrayList<>();
+        public final List<LlmRequest> llmRequests = new CopyOnWriteArrayList<>();
+        private final Map<AiOperation, Queue<AiFailureType>> llmFailures =
+                new ConcurrentHashMap<>();
+        private final Queue<String> candidateTexts = new ConcurrentLinkedQueue<>();
+        private final Queue<String> evaluations = new ConcurrentLinkedQueue<>();
         public boolean unavailable, unsafe, lowConfidence, blockStt;
         public CountDownLatch entered = new CountDownLatch(1),
                 release = new CountDownLatch(1),
                 finished = new CountDownLatch(1);
 
+        public void failNextCall(AiOperation operation, AiFailureType failure) {
+            llmFailures
+                    .computeIfAbsent(operation, ignored -> new ConcurrentLinkedQueue<>())
+                    .add(failure);
+        }
+
+        public void rejectNextCandidate(String text) {
+            candidateTexts.add(text);
+            evaluations.add(
+                    RoleplayFixtures.evaluationJson(
+                            "REGENERATE",
+                            "RESPONSE_GENERATION",
+                            false,
+                            0,
+                            "[\"ANSWER_TOO_DIRECT\"]",
+                            "{\"keep\":[\"감정 탐색\"],\"change\":[\"정답을 알려주지 않기\"],"
+                                    + "\"avoid\":[],\"required\":[]}"));
+        }
+
         public void reset() {
             calls.clear();
+            llmRequests.clear();
+            llmFailures.clear();
+            candidateTexts.clear();
+            evaluations.clear();
             unavailable = false;
             unsafe = false;
             lowConfidence = false;
@@ -124,19 +157,39 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
-    LlmProvider httpLlm(State state) {
+    LlmProvider httpLlm(State state, ObjectMapper mapper) {
         return request -> {
             state.calls.add(request.operation().name());
+            state.llmRequests.add(request);
+            Queue<AiFailureType> failures = state.llmFailures.get(request.operation());
+            AiFailureType failure = failures == null ? null : failures.poll();
+            if (failure != null)
+                return new AiCallResult.Failure<>(
+                        new AiFailure(failure, null), llmMetadata(request));
             String json =
                     switch (request.operation()) {
                         case CAUSE_ANALYSIS ->
                                 RoleplayFixtures.analysisJson(
                                         "PROBE_EMOTION", RoleplayFixtures.MG_EMOTION, "S1");
-                        case RESPONSE_GENERATION ->
-                                RoleplayFixtures.candidateJson("친구는 어떤 기분일까?", "GUIDING_QUESTION");
-                        case RESPONSE_EVALUATION ->
-                                RoleplayFixtures.evaluationJson(
-                                        "PASS", null, true, 0, "[]", "null");
+                        case RESPONSE_GENERATION -> {
+                            String text = state.candidateTexts.poll();
+                            String candidate =
+                                    RoleplayFixtures.candidateJson(
+                                            text == null ? "친구는 어떤 기분일까?" : text,
+                                            "GUIDING_QUESTION");
+                            yield candidate.replace(
+                                    "\"previous_failed_candidate_ids\":[]",
+                                    "\"previous_failed_candidate_ids\":"
+                                            + mapper.readTree(request.userPrompt())
+                                                    .get("previous_failed_candidate_ids"));
+                        }
+                        case RESPONSE_EVALUATION -> {
+                            String evaluation = state.evaluations.poll();
+                            yield evaluation == null
+                                    ? RoleplayFixtures.evaluationJson(
+                                            "PASS", null, true, 0, "[]", "null")
+                                    : evaluation;
+                        }
                         default -> throw new AssertionError("Unexpected operation");
                     };
             json =
@@ -148,11 +201,26 @@ public class RoleplayHttpTestConfiguration {
                         json.replace(
                                 RoleplayFixtures.CANDIDATE_ID.toString(),
                                 request.traceContext().candidateId().toString());
-            return success(
+            return new AiCallResult.Success<>(
                     new LlmCompletion(json, "test-vendor", "test-model", "stop", null, null),
-                    request.traceContext(),
-                    request.operation());
+                    llmMetadata(request));
         };
+    }
+
+    private static AiCallMetadata llmMetadata(LlmRequest request) {
+        return new AiCallMetadata(
+                request.traceContext().requestId(),
+                request.operation(),
+                "test-vendor",
+                "test-model",
+                request.promptVersion(),
+                request.responseSchemaVersion(),
+                request.policyVersion(),
+                0,
+                request.currentAttempt(),
+                null,
+                null,
+                "stop");
     }
 
     @Bean
