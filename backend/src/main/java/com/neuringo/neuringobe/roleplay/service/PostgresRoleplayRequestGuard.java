@@ -14,10 +14,8 @@ import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
-import org.springframework.stereotype.Service;
 
-/** Session advisory lock on an autocommit connection. Reserve pool capacity for short commits. */
-@Service
+/** Explicit-use PostgreSQL guard; not the single-backend runtime bean. Holds a DB connection. */
 public class PostgresRoleplayRequestGuard implements RoleplayRequestGuard {
     private final DataSource dataSource;
     private final Semaphore slots;
