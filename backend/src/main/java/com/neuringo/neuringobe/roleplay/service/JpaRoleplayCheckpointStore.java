@@ -94,11 +94,10 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                 "select set_config('statement_timeout', ?, true)",
                                 String.class,
                                 millis + "ms");
-                        // Fixed parent-to-session order; all locks are acquired only for short
-                        // commit.
-                        var child = children.findByIdForUpdate(command.childId());
-                        deadline.requireActive();
+                        // Match deletion/quiz: activity -> child -> session, only during commit.
                         var activity = activities.findByIdForUpdate(command.activityId());
+                        deadline.requireActive();
+                        var child = children.findByIdForUpdate(command.childId());
                         deadline.requireActive();
                         var session =
                                 sessions.findOwnedForUpdate(

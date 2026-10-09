@@ -435,11 +435,15 @@ explicit rejection. Servlet MultipartConfigElement enforces transport/file/reque
 controller binding; the spool factory independently checks actual file bytes. Only localhost
 HTTP tests disable Secure session cookies; production cookie settings are unchanged.
 
-Checkpoint commit now locks child, activity, then session and rechecks active child, running
+Checkpoint commit locks activity, child, then session and rechecks active child, running
 owned activity and scenario identity before a new insert. State changes during AI execution
 cannot produce a committed/returned new candidate. Existing exact replay is checked before
 new-turn state restrictions. Parent locks are short and never held around providers; other
 completion/lifecycle transactions locking both parent and session must keep the same order.
+The shared rule and existing deletion/quiz paths are documented in
+[database-locking.md](database-locking.md). PR #49 review found that the previous child-first
+order could deadlock with activity-first deletion/quiz transactions; the acquisition order was
+corrected without changing authorization, replay checks or atomic checkpoint writes.
 
 Seventeen MockMvc cases, two real localhost Tomcat multipart cases and six configuration startup
 cases validate this wiring. The complete backend regression includes the original common API
