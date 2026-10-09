@@ -3,7 +3,8 @@
 ALTER TABLE learning_goal ADD COLUMN category VARCHAR(30);
 
 -- 이미 저장된 목표의 분류를 옮긴다. content_hash 는 다시 계산하지 않는다(SQL 로 서버와 같은 값을 만들 수 없다).
--- 그래서 옮긴 목표와 새로 저장한 목표는 내용이 같아도 해시가 달라, 둘 사이의 중복 배정 확인만 놓친다.
+-- 서버의 해시 입력에 category 가 더해져, 이 마이그레이션 전에 저장된 목표는 분류를 옮긴 행이든 아니든 모두
+-- 새로 저장한 목표와 내용이 같아도 해시가 다르다. 그래서 기존 목표와 새 목표 사이의 중복 배정 확인을 놓친다.
 UPDATE learning_goal
 SET category = situation_type,
     situation_type = NULL
