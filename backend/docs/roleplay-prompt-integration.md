@@ -453,3 +453,10 @@ this final unit are byte-identical to the verified files in the implementation c
 This finishes the requested BE HTTP/configuration/verification batch. It does not claim live
 approved-content or safety/vendor/audio publication integration, FE wiring, source-retention
 lifecycle, failure-count reset rules or other undecided task-wide release policy is complete.
+
+## Explicit permanent deletion (R6)
+
+V8 replaces the two roleplay CASCADE foreign keys with NO ACTION. DeletionService now locks
+activity → child → session and explicitly deletes roleplay turns → sessions → activities in its
+existing transaction. Applied V7 is unchanged. The deferred last-turn FK remains. See
+[roleplay-deletion.md](roleplay-deletion.md) for retention differences and rollout/verification limits.

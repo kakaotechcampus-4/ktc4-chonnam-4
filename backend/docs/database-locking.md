@@ -18,12 +18,12 @@
 |---|---|---|
 | 역할극 체크포인트 저장 | 활동 → 아동 → 세션 | `JpaRoleplayCheckpointStore.commit` |
 | 퀴즈 응답·결과 확정 | 활동 → 결과 확정 시 아동 | `QuizAttemptService.requireLockedActivity`, `snapshotIfComplete` |
-| 아동 삭제 | 활동 목록 → 아동 목록 | `DeletionService.deleteChildren` |
-| 학급 삭제 | 학급 → 활동 목록 → 아동 목록 | `DeletionService.deleteClassroom`, `deleteChildren` |
+| 아동 삭제 | 활동 목록 → 아동 목록 → 세션 목록 | `DeletionService.deleteChildren` |
+| 학급 삭제 | 학급 → 활동 목록 → 아동 목록 → 세션 목록 | `DeletionService.deleteClassroom`, `deleteChildren` |
 | 활동 배정 | 아동 | `ActivityAssignmentService` |
 | 역할극 표준 발화 정리·종료 | 세션 | `RoleplayCanonicalRetentionService` |
 
-삭제 경로의 활동·아동 목록은 각 Repository의 ID 정렬 조회로 잠근다.
+삭제 경로의 활동·아동·세션 목록은 각 Repository의 ID 정렬 조회로 잠근다.
 정상 역할극 종료를 활동 완료 등과 묶을 때는 호출하는 트랜잭션도 이 순서를 지켜야 한다.
 기존 행 잠금 순서는 신규 INSERT나 FK·CASCADE의 암묵적 잠금까지 보장하지 않으므로, 새 쓰기 경로를 추가할 때는
 그 경로가 이미 가진 잠금과 이후 획득할 잠금을 함께 검토한다.
@@ -42,3 +42,7 @@
 저장 직전 상태·소유권·시나리오·버전 재검사와 턴·세션의 원자적 확정은 유지한다.
 
 원문: [PR #49 잠금 순서 리뷰](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/49#discussion_r4215098602).
+
+역할극 영구 삭제는 세션을 잠근 뒤 턴 → 세션 순서로 삭제한다. 세션을 먼저 잠그는 정리 작업과
+반대 순서로 턴부터 잠그지 않는다. 순환 마지막 턴 FK의 지연 검사는 동일 트랜잭션에서 세션도
+삭제해 해소한다. 자세한 범위는 [roleplay-deletion.md](roleplay-deletion.md)를 따른다.
