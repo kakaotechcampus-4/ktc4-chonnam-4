@@ -11,7 +11,46 @@ public record LlmRequest(
         String userPrompt,
         String promptVersion,
         String responseSchemaVersion,
-        String policyVersion) {
+        String policyVersion,
+        AiCallBudget callBudget) {
+
+    public LlmRequest(
+            AiTraceContext traceContext,
+            AiAttemptContext attemptContext,
+            AiOperation operation,
+            int currentAttempt,
+            String systemPrompt,
+            String userPrompt,
+            String promptVersion,
+            String responseSchemaVersion,
+            String policyVersion) {
+        this(
+                traceContext,
+                attemptContext,
+                operation,
+                currentAttempt,
+                systemPrompt,
+                userPrompt,
+                promptVersion,
+                responseSchemaVersion,
+                policyVersion,
+                null);
+    }
+
+    public LlmRequest withCallBudget(AiCallBudget budget) {
+        if (budget == null) return this;
+        return new LlmRequest(
+                traceContext,
+                attemptContext,
+                operation,
+                currentAttempt,
+                systemPrompt,
+                userPrompt,
+                promptVersion,
+                responseSchemaVersion,
+                policyVersion,
+                budget);
+    }
 
     public LlmRequest {
         Objects.requireNonNull(traceContext, "traceContext must not be null");

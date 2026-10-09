@@ -122,10 +122,12 @@ public final class RoleplaySpeechTurnPipeline {
             SpeechTranscriptionRequest audio, RoleplayTurnDeadline deadline) {
         for (int attempt = 1; ; attempt++) {
             var request =
-                    attempt == 1
-                            ? audio
-                            : new SpeechTranscriptionRequest(
-                                    audio.traceContext(), attempt, audio.audio(), audio.format());
+                    new SpeechTranscriptionRequest(
+                            audio.traceContext(),
+                            attempt,
+                            audio.audio(),
+                            audio.format(),
+                            deadline.callBudget());
             var result = deadline.withinBudget(() -> stt.transcribe(request));
             switch (result) {
                 case AiCallResult.Success<SpeechTranscription> success -> {
@@ -141,7 +143,9 @@ public final class RoleplaySpeechTurnPipeline {
     private SynthesizedSpeech synthesize(
             AiTraceContext trace, String text, RoleplayTurnDeadline deadline) {
         for (int attempt = 1; ; attempt++) {
-            var request = new SpeechSynthesisRequest(trace, attempt, text, null, null);
+            var request =
+                    new SpeechSynthesisRequest(
+                            trace, attempt, text, null, null, deadline.callBudget());
             var result = deadline.withinBudget(() -> tts.synthesize(request));
             switch (result) {
                 case AiCallResult.Success<SynthesizedSpeech> success -> {

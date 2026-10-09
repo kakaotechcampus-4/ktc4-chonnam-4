@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.ai.infrastructure.speech;
 
+import com.neuringo.neuringobe.ai.application.model.AiCallBudget;
 import com.neuringo.neuringobe.ai.application.model.AiCallMetadata;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import java.net.http.HttpClient;
@@ -14,15 +15,31 @@ final class SpeechHttp {
 
     private SpeechHttp() {}
 
-    static RestClient restClient(String baseUrl, Duration requestTimeout) {
-        HttpClient httpClient =
-                HttpClient.newBuilder()
-                        .connectTimeout(requestTimeout)
-                        .followRedirects(HttpClient.Redirect.NEVER)
-                        .build();
+    static HttpClient httpClient(Duration requestTimeout) {
+        return HttpClient.newBuilder()
+                .connectTimeout(requestTimeout)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+    }
+
+    static RestClient restClient(String baseUrl, Duration requestTimeout, HttpClient httpClient) {
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(requestTimeout);
         return RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
+    }
+
+    static RestClient forCall(
+            RestClient configured, HttpClient httpClient, Duration maximum, AiCallBudget budget) {
+        if (budget == null) return configured;
+        return configured
+                .mutate()
+                .requestFactory(
+                        (uri, method) -> {
+                            var factory = new JdkClientHttpRequestFactory(httpClient);
+                            factory.setReadTimeout(budget.limit(maximum));
+                            return factory.createRequest(uri, method);
+                        })
+                .build();
     }
 
     static AiCallMetadata metadata(

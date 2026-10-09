@@ -193,7 +193,8 @@ public final class RetryingRoleplayTurnExecutor {
             return new RoleplayRetryContext(
                     new AiAttemptContext(analysisCalls, generationCalls, evaluationCalls),
                     stageAttempt,
-                    rejections);
+                    rejections,
+                    deadline.callBudget());
         }
 
         private boolean canRetry(AiOperation operation) {

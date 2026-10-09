@@ -8,7 +8,16 @@ import java.util.Objects;
  * <p>toString 은 음성 내용을 포함하지 않는다.
  */
 public record SpeechTranscriptionRequest(
-        AiTraceContext traceContext, int currentAttempt, byte[] audio, AudioFormat format) {
+        AiTraceContext traceContext,
+        int currentAttempt,
+        byte[] audio,
+        AudioFormat format,
+        AiCallBudget callBudget) {
+
+    public SpeechTranscriptionRequest(
+            AiTraceContext traceContext, int currentAttempt, byte[] audio, AudioFormat format) {
+        this(traceContext, currentAttempt, audio, format, null);
+    }
 
     /**
      * 역할극 한 턴 발화의 업로드 상한(2MB). webm/opus(약 128kbps) 약 2분, wav(16kHz 모노) 약 1분이다. OpenAI 한도(25MB)까지
