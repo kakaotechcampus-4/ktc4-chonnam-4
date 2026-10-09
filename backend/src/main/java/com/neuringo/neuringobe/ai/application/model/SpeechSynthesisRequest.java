@@ -12,7 +12,17 @@ public record SpeechSynthesisRequest(
         int currentAttempt,
         String text,
         String voiceId,
-        SpeechEmotion emotion) {
+        SpeechEmotion emotion,
+        AiCallBudget callBudget) {
+
+    public SpeechSynthesisRequest(
+            AiTraceContext traceContext,
+            int currentAttempt,
+            String text,
+            String voiceId,
+            SpeechEmotion emotion) {
+        this(traceContext, currentAttempt, text, voiceId, emotion, null);
+    }
 
     /** 타입캐스트 한 번 요청의 문장 길이 한도. */
     public static final int MAX_TEXT_LENGTH = 2000;

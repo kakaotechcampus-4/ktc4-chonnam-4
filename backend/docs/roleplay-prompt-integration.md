@@ -113,30 +113,29 @@ starting a duplicate pipeline; a confirmed key/fingerprint returns the stored re
 Conflicting input or foreign session scope is rejected before the pipeline. The existing commit
 constraints remain the final persistence fence for concurrent different request keys.
 
-PostgresRoleplayRequestGuard uses a session advisory lock on an autocommit connection, keyed by
-a domain-separated 64-bit SHA-256 digest of session/key. No PROCESSING/event row or input fingerprint
-is stored before input safety decisions. A digest collision can serialize unrelated requests but
-cannot replay another user's data because confirmed-result lookup still checks scope and key.
-Ownership is released explicitly on worker exit or by PostgreSQL on connection end; there is no
-TTL, automatic takeover or invented processing-lease duration. See PostgreSQL 18 advisory locks:
-https://www.postgresql.org/docs/18/explicit-locking.html#ADVISORY-LOCKS
+InMemoryRoleplayRequestGuard is the runtime singleton for the current single-backend deployment.
+It atomically owns (sessionId, Idempotency-Key) in a ConcurrentHashMap, storing only an opaque lease,
+not input, fingerprints or confirmed responses. Conditional removal by lease identity prevents an
+old owner from removing a newer owner. Entries are removed on actual worker exit, with no TTL or
+automatic takeover. No database connection is held for processing ownership during AI calls.
 
-The injected Hikari pool must already be configured with at least two connections. Per-process
-processing slots are derived as floor(maximumPoolSize/2), reserving connections for lookup/commit;
-slot exhaustion returns CapacityUnavailable separately from duplicate Processing. Each active
-worker holds an advisory connection but no long DB transaction. Deployment must size aggregate
-connection capacity across application instances. Invalid release aborts the physical connection
-to prevent a pooled session from retaining a lock.
+The existing bounded worker pool and queue limit HTTP execution; ownership capacity is no longer
+coupled to half the Hikari pool size. DB lookup and short commit still need ordinary pool capacity.
+On caller timeout/interruption, an uncooperative provider retains ownership until the worker exits;
+late results cannot commit. A worker that never returns requires operational termination.
 
-The whole guarded unit runs inside the bounded runner. On caller timeout/interruption, an
-uncooperative provider's worker still owns its lease until it actually exits; late results cannot
-commit. A provider that never returns can retain its slot/connection, requiring operational
-termination rather than an unagreed takeover policy. If the database connection itself fails,
-PostgreSQL releases the lease; persistence version/key constraints still prevent duplicate writes,
-but exactly-once external provider execution across that failure requires provider idempotency
-contracts and is not guaranteed by advisory locking.
+This guard does not coordinate separate application instances, including overlapping deployments.
+Before running multiple backends, replace it with shared ownership and review failure/takeover
+semantics. Confirmed responses and version/key constraints remain in PostgreSQL; a process crash
+before commit can cause an external call to repeat after restart. Exactly-once provider execution
+is not guaranteed. PostgresRoleplayRequestGuard remains available for explicit construction and
+its existing database integration tests, but is not a Spring runtime bean.
 
-PostgreSQL tests cover one pipeline invocation for simultaneous duplicates, zero additional
+Existing integration tests use the runtime guard for pipeline behavior and explicit PostgreSQL
+guards for database-specific ownership/capacity assertions. Cross-instance database assertions do
+not validate distributed ownership of the active in-memory guard. These tests were not rerun.
+
+The existing tests cover one pipeline invocation for simultaneous duplicates, zero additional
 invocations on confirmed replay, timeout ownership retention, shared locks across guard instances,
 release after pipeline failure, key/scope rejection before execution and reserved pool capacity.
 
@@ -248,11 +247,11 @@ activity and wrong upload trace propagate an internal failure, release processin
 cannot commit a turn. This does not replace activity lifecycle validation at final commit; an
 activity status change during an AI call remains a future entry/commit integration concern.
 
-Eight PostgreSQL integration tests connect real ownership lookup, advisory guard and transactional
+Historically, eight PostgreSQL integration tests connected real ownership lookup, advisory guard and transactional
 checkpoint writes to fake approved-context, input-safety and speech/LLM sources. They cover the
 complete successful order, completion/deletion replay, fingerprint conflict, unavailable-context
 retry, stale snapshots, closed activity, upload trace mismatch and simultaneous duplicates while
-context lookup is blocked. The related 93-test run passed. This is not a live vendor or roleplay HTTP E2E. The response DTO and server fingerprint were
+context lookup is blocked. The related historical 93-test run passed; it predates the in-memory guard change. This is not a live vendor or roleplay HTTP E2E. The response DTO and server fingerprint were
 subsequently implemented below; endpoint, approved source and FE wiring remain unconnected.
 
 
@@ -435,11 +434,15 @@ explicit rejection. Servlet MultipartConfigElement enforces transport/file/reque
 controller binding; the spool factory independently checks actual file bytes. Only localhost
 HTTP tests disable Secure session cookies; production cookie settings are unchanged.
 
-Checkpoint commit now locks child, activity, then session and rechecks active child, running
+Checkpoint commit locks activity, child, then session and rechecks active child, running
 owned activity and scenario identity before a new insert. State changes during AI execution
 cannot produce a committed/returned new candidate. Existing exact replay is checked before
 new-turn state restrictions. Parent locks are short and never held around providers; other
 completion/lifecycle transactions locking both parent and session must keep the same order.
+The shared rule and existing deletion/quiz paths are documented in
+[database-locking.md](database-locking.md). PR #49 review found that the previous child-first
+order could deadlock with activity-first deletion/quiz transactions; the acquisition order was
+corrected without changing authorization, replay checks or atomic checkpoint writes.
 
 Seventeen MockMvc cases, two real localhost Tomcat multipart cases and six configuration startup
 cases validate this wiring. The complete backend regression includes the original common API
@@ -450,3 +453,10 @@ this final unit are byte-identical to the verified files in the implementation c
 This finishes the requested BE HTTP/configuration/verification batch. It does not claim live
 approved-content or safety/vendor/audio publication integration, FE wiring, source-retention
 lifecycle, failure-count reset rules or other undecided task-wide release policy is complete.
+
+## Explicit permanent deletion (R6)
+
+V8 replaces the two roleplay CASCADE foreign keys with NO ACTION. DeletionService now locks
+activity → child → session and explicitly deletes roleplay turns → sessions → activities in its
+existing transaction. Applied V7 is unchanged. The deferred last-turn FK remains. See
+[roleplay-deletion.md](roleplay-deletion.md) for retention differences and rollout/verification limits.

@@ -60,7 +60,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         retry.stageAttempt(),
                         input,
                         analysisRetry(retry));
-        return llm.execute(prepared.request(), prepared.parser());
+        return llm.execute(
+                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
     }
 
     @Override
@@ -76,7 +77,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         analysis,
                         candidateId,
                         generationRetry(retry));
-        return llm.execute(prepared.request(), prepared.parser());
+        return llm.execute(
+                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
     }
 
     @Override
@@ -94,7 +96,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         input,
                         analysis,
                         candidate);
-        return llm.execute(prepared.request(), prepared.parser());
+        return llm.execute(
+                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
     }
 
     private AnalysisRetry analysisRetry(RoleplayRetryContext retry) {

@@ -494,10 +494,14 @@ class RoleplayCheckpointIntegrationTest {
         var identity =
                 new com.neuringo.neuringobe.ai.application.roleplay.RoleplayRequestIdentity(
                         trace(f), UUID.randomUUID(), "a".repeat(64), 0, 1);
+        var databaseGuard =
+                new com.neuringo.neuringobe.roleplay.service.PostgresRoleplayRequestGuard(
+                        dataSource);
         var otherGuard =
                 new com.neuringo.neuringobe.roleplay.service.PostgresRoleplayRequestGuard(
                         dataSource);
-        try (var lease = guard.tryAcquire(identity, RoleplayTurnDeadline.start()).orElseThrow()) {
+        try (var lease =
+                databaseGuard.tryAcquire(identity, RoleplayTurnDeadline.start()).orElseThrow()) {
             assertThat(otherGuard.tryAcquire(identity, RoleplayTurnDeadline.start())).isEmpty();
         }
         try (var lease =
@@ -508,7 +512,7 @@ class RoleplayCheckpointIntegrationTest {
                             new RoleplayTurnRunner(workers),
                             store,
                             new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of())),
-                            guard);
+                            databaseGuard);
             assertThatThrownBy(
                             () ->
                                     executor.execute(
