@@ -207,6 +207,8 @@ async function withCancellation<T>(run: (signal: AbortSignal) => Promise<T>): Pr
 type RequestOptions = {
   // false 면 Authorization 을 싣지 않고 401 이어도 로그인 화면으로 보내지 않는다(가입·로그인 전용).
   authenticated?: boolean
+  // 요청마다 덧붙일 헤더(예: 재전송 방지용 Idempotency-Key).
+  headers?: Record<string, string>
 }
 
 type CsrfToken = {
@@ -239,7 +241,7 @@ function writeRequest<T>(
   method: 'POST' | 'DELETE',
   path: string,
   body?: unknown,
-  { authenticated = true }: RequestOptions = {},
+  { authenticated = true, headers = {} }: RequestOptions = {},
 ): Promise<T> {
   // 첫 대기(CSRF 조회) 전에 세션을 고정한다.
   const session = startSession(authenticated)
@@ -256,6 +258,7 @@ function writeRequest<T>(
       credentials: 'include',
       headers: {
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
         [csrf.headerName]: csrf.token,
         ...authHeaders(session),
       },
@@ -323,10 +326,145 @@ export function getClassroom(classId: string): Promise<Classroom> {
   return readRequest<Classroom>(`/classrooms/${classId}`)
 }
 
+/** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
+export function deleteClassroom(classId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/classrooms/${classId}`)
+}
+
 export function listChildren(classId: string): Promise<Child[]> {
   return readRequest<Child[]>(`/classrooms/${classId}/children`)
 }
 
+export function getChild(childId: string): Promise<Child> {
+  return readRequest<Child>(`/children/${childId}`)
+}
+
+/** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
+export function deleteChild(childId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/children/${childId}`)
+}
+
 export function createChild(classId: string, displayName: string): Promise<Child> {
   return writeRequest<Child>('POST', `/classrooms/${classId}/children`, { displayName })
+}
+
+
+export type LearningGoal = {
+  goalId: string
+  childId: string
+  instructorId: string
+  parentGoalId: string | null
+  title: string
+  situationType: string | null
+  category: string | null
+  characters: Record<string, unknown>[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+  contentHash: string
+  createdAt: string
+}
+
+export type LearningGoalInput = {
+  title: string
+  category?: string
+}
+
+export function listLearningGoals(childId: string): Promise<LearningGoal[]> {
+  return readRequest<LearningGoal[]>(`/children/${childId}/learning-goals`)
+}
+
+export function getLearningGoal(goalId: string): Promise<LearningGoal> {
+  return readRequest<LearningGoal>(`/learning-goals/${goalId}`)
+}
+
+
+export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
+
+export type Activity = {
+  activityId: string
+  childId: string
+  goalId: string
+  scenarioId: string | null
+  scenarioSource: string | null
+  initialSupportLevel: string | null
+  difficultyFallbackApplied: boolean
+  status: ActivityStatus
+  assignedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  rewardIssuedAt: string | null
+}
+
+export type QuizType = 'SELF_EMOTION_SITUATION' | 'OTHER_EMOTION_SITUATION' | 'OTHER_EMOTION_IMAGE'
+
+/** 활동에 붙은 문항. 정답·힌트 내용은 서버가 빼고 보낸다. */
+export type AssignedQuizItem = {
+  activityQuizId: string
+  activityId: string
+  itemId: string
+  itemVersion: number
+  questionOrder: number
+  quizType: QuizType
+  questionText: string
+  imageUrl: string | null
+  choices: string[]
+}
+
+export type ActivityDetail = {
+  activity: Activity
+  quizItems: AssignedQuizItem[]
+}
+
+const ACTIVITY_PAGE_SIZE = 100 // 서버 최대 페이지 크기
+
+/**
+ * 아동의 활동을 전부 받는다. 응답에 전체 개수가 없으므로, 받은 개수가 페이지 크기보다 적을 때까지 다음 페이지를 이어 받는다.
+ * 삭제 확인 창이 이 목록으로 함께 지워지는 활동 수를 알리므로 첫 페이지에서 끊으면 안 된다.
+ */
+export async function listChildActivities(childId: string): Promise<Activity[]> {
+  const all: Activity[] = []
+  for (let page = 0; ; page++) {
+    const batch = await readRequest<Activity[]>(
+      `/children/${childId}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
+    )
+    all.push(...batch)
+    if (batch.length < ACTIVITY_PAGE_SIZE) return all
+  }
+}
+
+export function getActivity(activityId: string): Promise<ActivityDetail> {
+  return readRequest<ActivityDetail>(`/activities/${activityId}`)
+}
+
+/**
+ * 활동 배정. 서버가 목표를 저장하고 승인 문항을 골라 활동과 함께 한 번에 저장한다(ADR 2026-10-03 D4).
+ * 배정이 실패하면 목표도 저장되지 않는다.
+ * requestKey 는 "배정하기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 써야 활동이 하나만 남는다.
+ */
+export function createActivity(childId: string, goal: LearningGoalInput, requestKey: string): Promise<Activity> {
+  return writeRequest<Activity>(
+    'POST',
+    '/activities',
+    { childId, goal },
+    { headers: { 'Idempotency-Key': requestKey } },
+  )
+}
+
+export type QuizResult = {
+  activityId: string
+  validQuestionCount: number
+  correctQuestionCount: number
+  overallAccuracy: number | null
+  totalHintCount: number
+  resolvedAfterHintCount: number
+  scenarioLevel: string | null
+  initialSupportLevel: string | null
+  difficultyFallbackApplied: boolean
+  initialDifficultyUsed: boolean
+  policyVersion: string
+}
+
+/** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
+export function getQuizResult(activityId: string): Promise<QuizResult> {
+  return readRequest<QuizResult>(`/activities/${activityId}/quiz-result`)
 }

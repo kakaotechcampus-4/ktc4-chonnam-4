@@ -34,7 +34,7 @@ function StateScreen({
   const inDialog = React.useContext(StateDialogContext)
 
   const titleNode = (
-    <p className="font-[var(--child-font-display)] text-xl font-semibold text-[var(--child-text)]">
+    <p className="font-child-display font-extrabold text-xl text-[var(--child-text)]">
       {title}
     </p>
   )

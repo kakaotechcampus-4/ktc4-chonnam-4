@@ -1,0 +1,15 @@
+# 로드되지 않는 설정 예시. 실제 합의된 정책값과 구현 빈을 제공한 뒤 명시적으로 적용한다.
+# 운영 값/제공자 키를 이 파일에 저장하지 않는다.
+roleplay:
+  http:
+    enabled: true
+    spool-directory: ${ROLEPLAY_SPOOL_DIRECTORY}
+    maximum-upload-bytes: ${ROLEPLAY_UPLOAD_MAX_BYTES}
+    maximum-request-bytes: ${ROLEPLAY_REQUEST_MAX_BYTES}
+    allowed-formats: ${ROLEPLAY_ALLOWED_FORMATS}
+    worker-count: ${ROLEPLAY_WORKER_COUNT}
+    queue-capacity: ${ROLEPLAY_QUEUE_CAPACITY}
+    # 생략하면 60초. 최대 60초이며 이 값으로 제품의 시작/완료 경계를 새로 확정하지 않는다.
+    turn-budget: 60s
+    # TIMEOUT 이외에 사용할 문구는 승인 메타데이터와 함께 주입한다.
+    notices: []

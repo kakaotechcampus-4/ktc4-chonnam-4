@@ -5,6 +5,7 @@ import {
   LoadingState,
   ErrorState,
   PermissionDeniedState,
+  CameraPermissionGuide,
   ExpiredState,
   NetworkState,
   StateDialog,
@@ -45,8 +46,8 @@ function ChildStatePreviewPage() {
       <StateDialog open={openDialog === "error"}>
         <ErrorState onRetry={close} />
       </StateDialog>
-      <StateDialog open={openDialog === "camera"}>
-        <PermissionDeniedState device="camera" onRetry={close} />
+      <StateDialog open={openDialog === "camera"} size="lg">
+        <CameraPermissionGuide onRetry={close} />
       </StateDialog>
       <StateDialog open={openDialog === "microphone"}>
         <PermissionDeniedState device="microphone" onRetry={close} />

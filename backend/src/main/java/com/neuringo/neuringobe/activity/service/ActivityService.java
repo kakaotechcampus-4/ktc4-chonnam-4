@@ -3,13 +3,10 @@ package com.neuringo.neuringobe.activity.service;
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
-import com.neuringo.neuringobe.activity.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
-import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
@@ -23,30 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class ActivityService {
     private final ActivityRepository activities;
     private final ChildAccessScope access;
-    private final LearningGoalRepository goals;
 
-    public ActivityService(
-            ActivityRepository activities, ChildAccessScope access, LearningGoalRepository goals) {
+    public ActivityService(ActivityRepository activities, ChildAccessScope access) {
         this.activities = activities;
         this.access = access;
-        this.goals = goals;
-    }
-
-    @Transactional
-    public ActivityResponse create(CreateActivityRequest request, Authentication authentication) {
-        access.requireInstructor(authentication, request.childId());
-        var goal =
-                goals.findById(request.goalId())
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다."));
-        if (!goal.getChildId().equals(request.childId())) {
-            throw new ResourceNotFoundException("GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.");
-        }
-        Activity created =
-                new Activity(UUID.randomUUID(), request.childId(), request.goalId(), Instant.now());
-        return ActivityResponse.from(activities.save(created));
     }
 
     public List<ActivityResponse> list(

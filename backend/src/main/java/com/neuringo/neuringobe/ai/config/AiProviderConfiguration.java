@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AiProviderProperties.class)
@@ -15,13 +16,18 @@ import org.springframework.context.annotation.Configuration;
 public class AiProviderConfiguration {
 
     @Bean
-    LlmProvider llmProvider(ChatModel chatModel, AiProviderProperties properties) {
-        return new SpringAiLlmProvider(
-                chatModel,
-                new OpenAiFailureClassifier(),
-                properties.providerName(),
-                properties.requestTimeout(),
-                properties.maxRetries(),
-                properties.model());
+    LlmProvider llmProvider(
+            ChatModel chatModel, AiProviderProperties properties, Environment environment) {
+        var provider =
+                new SpringAiLlmProvider(
+                        chatModel,
+                        new OpenAiFailureClassifier(),
+                        properties.providerName(),
+                        properties.requestTimeout(),
+                        properties.maxRetries(),
+                        properties.model());
+        if (environment.getProperty("roleplay.http.enabled", Boolean.class, false))
+            provider.requireSingleAttempt();
+        return provider;
     }
 }

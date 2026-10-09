@@ -16,6 +16,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 public final class SpringAiLlmProvider implements LlmProvider {
@@ -44,6 +45,7 @@ public final class SpringAiLlmProvider implements LlmProvider {
 
     @Override
     public AiCallResult<LlmCompletion> complete(LlmRequest request) {
+        if (request.callBudget() != null) requireSingleAttempt();
         long startedAt = System.nanoTime();
 
         Prompt prompt = createPrompt(request);
@@ -60,21 +62,35 @@ public final class SpringAiLlmProvider implements LlmProvider {
         return convertResponse(request, startedAt, response);
     }
 
+    /** Spring AI 2 sets SDK retries when constructing the client, not from per-call options. */
+    public void requireSingleAttempt() {
+        if (maxRetries != 0
+                || (chatModel instanceof OpenAiChatModel openAi
+                        && openAi.getOptions().getMaxRetries() != 0))
+            throw new IllegalStateException(
+                    "Budgeted LLM calls require SDK max retries to be zero");
+    }
+
     private Prompt createPrompt(LlmRequest request) {
         return new Prompt(
                 List.of(
                         new SystemMessage(request.systemPrompt()),
                         new UserMessage(request.userPrompt())),
-                chatOptions());
+                chatOptions(request));
     }
 
     /**
      * 호출마다 넘기는 옵션은 ChatModel 의 기본 옵션을 대체한다. 따라서 모델 이름을 여기서 함께 넣지 않으면 설정값이 아니라 Spring AI 내장 기본값이
      * 제공자로 나간다.
      */
-    private OpenAiChatOptions chatOptions() {
+    private OpenAiChatOptions chatOptions(LlmRequest request) {
+        Duration timeout =
+                request.callBudget() == null
+                        ? requestTimeout
+                        : request.callBudget().limit(requestTimeout);
+        int retries = request.callBudget() == null ? maxRetries : 0;
         OpenAiChatOptions.Builder options =
-                OpenAiChatOptions.builder().timeout(requestTimeout).maxRetries(maxRetries);
+                OpenAiChatOptions.builder().timeout(timeout).maxRetries(retries);
         if (model != null && !model.isBlank()) {
             options.model(model);
         }

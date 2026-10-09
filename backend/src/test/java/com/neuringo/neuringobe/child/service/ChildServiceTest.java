@@ -40,7 +40,7 @@ class ChildServiceTest {
         UUID classId = UUID.randomUUID();
         willThrow(new ResourceNotFoundException("CLASSROOM_NOT_FOUND", "학급을 찾을 수 없습니다"))
                 .given(classroomService)
-                .requireOwnedClassroom(INSTRUCTOR_ID, classId);
+                .lockOwnedClassroom(INSTRUCTOR_ID, classId);
 
         assertThatThrownBy(
                         () ->

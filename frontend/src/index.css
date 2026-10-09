@@ -238,6 +238,30 @@ code {
     @apply font-sans;}}
 
 /*
+ * 아동 제목·캐릭터 대사·보상 메시지 글꼴 (디자인 시스템 02 Typography: 제목 ExtraBold, 대사·보상 Bold).
+ * 원본 TTF에서 KS X 1001 한글 2,350자 + 영문·숫자·문장부호만 남겨 woff2로 줄였다.
+ * 목록에 없는 드문 글자(예: 일부 아동 이름)는 Pretendard로 대신 보인다.
+ */
+@font-face {
+  font-family: 'NanumSquareRound';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/NanumSquareRound-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'NanumSquareRound';
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  src: url('./assets/fonts/NanumSquareRound-ExtraBold.woff2') format('woff2');
+}
+/* 아동 제목·대사에 붙이는 글꼴 클래스. 굵기는 font-bold(대사)·font-extrabold(제목)와 함께 쓴다. */
+@utility font-child-display {
+  font-family: var(--child-font-display);
+}
+
+/*
  * 아동 화면 전용 디자인 토큰.
  * Figma "07 아동 서비스 컴포넌트" 중 실제로 시안이 나온 4개 컴포넌트
  * (Character Guide, Voice Input, Emotion Choice, Completion Summary)에서 추출.
@@ -245,7 +269,7 @@ code {
  */
 .child-scope {
   --child-font-body: 'Pretendard Variable', var(--font-sans);
-  --child-font-display: 'Pretendard Variable', var(--font-sans);
+  --child-font-display: 'NanumSquareRound', 'Pretendard Variable', var(--font-sans);
 
   --child-bg: #fffbef;
   --child-surface: #ffffff;
@@ -308,6 +332,11 @@ code {
   --instructor-neutral-bg: #ebe9e4;
   --instructor-neutral-fg: #5b5852;
   --instructor-danger-fg: #b3261e;
+  /* 진행 중·권장 배지(시안 T-LRN-03 "진행중", T-ACT-02 "권장")와 주의 안내 띠(T-LRN-04 재발급 경고) */
+  --instructor-info-bg: #e6eef8;
+  --instructor-info-fg: #2f5f96;
+  --instructor-warning-bg: #fbeee2;
+  --instructor-warning-fg: #9a5a1f;
 
   --instructor-radius-card: 12px;
   --instructor-radius-control: 8px;

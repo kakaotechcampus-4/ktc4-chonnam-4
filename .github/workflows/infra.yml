@@ -1,0 +1,290 @@
+name: Infra
+# 팀 AWS 인프라(infra/)를 Terraform 으로 바꾸는 유일한 길이다(docs/cd-architecture.md 4절, infra/README.md).
+#   PR          검사만(자격증명 없음): fmt·validate·terraform test(mock)·구성 검사 — bash scripts/verify.sh infra 와 같다
+#               PR 에는 AWS 자격증명을 주지 않는다. 배포 역할은 쓰기 권한이 있어, 리뷰 전 코드에 쥐여 주지 않는다
+#               (읽기 전용 plan 역할이 생기면 PR plan 을 켠다 — docs/cd-architecture.md 4절)
+#   develop     plan(첫 실행은 빈 state 로 미리 보기) → 가드 → Environment infra 승인 → 가드 다시 → apply
+#               state 버킷은 승인 뒤 apply 잡이 만든다. 승인한 plan 과 리소스·동작이 같을 때만 적용한다
+#   매일        drift: 코드와 실제가 다르면 실패(콘솔에서 바꿨거나, 서버를 껐다 켜 주소가 바뀌었거나, apply 가 안 된 변경)
+#               서버가 꺼져 있으면 건너뛴다
+#   수동        develop 에서 실행하면 develop push 와 같다. 서버를 켠 뒤에도 돌린다(켤 때마다 공인 주소가 바뀐다)
+#               allow_destroy 는 버킷·ECR·배포·비밀값을 지우거나 다시 만들 때만 켠다
+#               서버를 끄기 전에는 저장소 변수 EDGE_ENABLED=false 로 두고 돌려 CloudFront 를 끈다(infra/README.md)
+# 승인 전(plan 잡)에는 AWS 에 아무것도 만들거나 바꾸지 않는다(읽기만, state 잠금도 잡지 않는다).
+# provider 는 잠금 파일(.terraform.lock.hcl)에 있는 것만 받는다(init -lockfile=readonly).
+# 공개 레포라 plan·apply 원문은 찍지 않는다. 주소·동작 표(scripts/tf-plan-guard.mjs)와 가린 오류만 남긴다(scripts/tf-run.sh).
+# 인증은 OIDC(ktc-github-deploy) 뿐이다. 경보 메일은 secret ALERT_EMAILS(JSON 배열, 예: ["a@example.com"])로 받는다.
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - 'scripts/tf-*'
+      - '.github/workflows/infra.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'infra/**'
+      - 'scripts/tf-*'
+      - '.github/workflows/infra.yml'
+  schedule:
+    - cron: "0 0 * * *" # 매일 09:00 KST
+  workflow_dispatch:
+    inputs:
+      allow_destroy:
+        description: 버킷·ECR·배포·비밀값을 지우거나 다시 만드는 plan 도 허용한다
+        type: boolean
+        default: false
+
+# PR 은 새 커밋이 오면 취소한다. apply·drift 는 도중에 취소하지 않는다. 같은 state 는 S3 잠금(use_lockfile)이 한 번에 하나만 쓰게 한다.
+# develop 밖에서 한 수동 실행은 자기 브랜치 그룹에 넣는다(기다리던 develop 실행을 밀어내지 않게).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'schedule' && 'drift' || github.ref == 'refs/heads/develop' && 'apply' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  TF_DIR: infra/live/dev
+  # plan JSON 에서 바뀌는 리소스의 주소·동작만 뽑는다(tf-plan-guard.mjs 의 표와 같은 범위). 승인한 plan 과 apply 할 plan 을 비교한다.
+  CHANGES: '[.resource_changes[]? | select(.mode == "managed") | select(.change.actions != ["no-op"] and .change.actions != ["read"]) | [.address, .change.actions]]'
+
+jobs:
+  check:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: fmt · validate · test (mock) · 구성 검사 — AWS 호출 없음
+        run: bash scripts/verify.sh infra
+
+  plan:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+    outputs:
+      changes: ${{ steps.plan.outputs.changes }}
+      digest: ${{ steps.plan.outputs.digest }}
+
+    steps:
+      - name: Decide mode
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          # pr: PR 미리 보기, apply: develop 에 반영할 plan(승인 뒤 apply 잡), drift: 차이가 있으면 실패
+          if [ "$EVENT" = schedule ]; then
+            mode="drift"
+          elif [ "$REF" = refs/heads/develop ] && [ "$EVENT" != pull_request ]; then
+            mode="apply"
+          else
+            mode="pr" # 따옴표: pr 은 명령 이름이기도 하다(SC2209)
+          fi
+          echo "mode=$mode" >>"$GITHUB_OUTPUT"
+          reason=""
+          if [ "$mode" = pr ]; then
+            # 배포 역할(ktc-github-deploy)은 쓰기 권한이 있다. 리뷰 전 코드(PR·다른 브랜치)에 자격증명을 주지 않는다.
+            reason="PR·develop 밖 실행에는 AWS 자격증명을 주지 않는다(배포 역할에 쓰기 권한이 있다). 검사(check)만 돈다. plan 표는 develop 에 들어간 뒤 승인 전에 본다."
+          elif ! [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            reason="저장소 변수 \`AWS_ACCOUNT_ID\`(12자리)가 없다. Settings → Secrets and variables → Actions → **Variables** 에 등록한다."
+          fi
+          if [ -n "$reason" ]; then
+            echo "ready=false" >>"$GITHUB_OUTPUT"
+            printf '### Terraform plan 을 건너뛰었다\n\n%s\n' "$reason" >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=plan 건너뜀::$reason"
+            exit 0
+          fi
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.mode.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        id: aws
+        if: steps.mode.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-infra-plan
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      # CloudFront 가 서버의 공인 주소를 원본으로 쓴다. 서버가 꺼져 있으면 주소가 없어 plan 을 만들 수 없다.
+      - name: Server running?
+        id: server
+        if: steps.aws.outcome == 'success'
+        run: |
+          err="$RUNNER_TEMP/ec2.err"
+          if ! n=$(aws ec2 describe-instances --region ap-northeast-2 --filters Name=instance-state-name,Values=running \
+            --query 'length(Reservations[].Instances[])' --output text 2>"$err"); then
+            echo "::error::서버 목록을 읽지 못했다 $(grep -oE '\([A-Za-z]+\)' "$err" | head -n1 || true)"
+            exit 1
+          fi
+          if [ "$n" = 0 ]; then
+            echo "ready=false" >>"$GITHUB_OUTPUT"
+            printf '### Terraform plan 을 건너뛰었다\n\n서버(EC2)가 꺼져 있다. CloudFront 가 서버의 공인 주소를 원본으로 써서 서버가 켜져 있을 때만 plan 을 만든다.\n콘솔에서 서버를 켠 뒤 Actions → Infra → Run workflow(develop). 켤 때마다 공인 주소가 바뀌므로 그때마다 다시 돌린다.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=plan 건너뜀::서버가 꺼져 있다"
+            exit 0
+          fi
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      # 이 잡은 AWS 에 아무것도 만들지 않는다(state 버킷도). 만드는 건 승인 뒤 apply 잡뿐이다.
+      - name: State bucket (확인만)
+        id: state
+        if: steps.server.outputs.ready == 'true'
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: bash scripts/tf-state.sh check
+
+      - name: Note no state yet
+        if: steps.state.outputs.missing == 'true' && steps.mode.outputs.mode != 'apply'
+        run: printf '### Terraform plan 을 건너뛰었다\n\n아직 apply 된 적이 없다(state 버킷 없음). develop 의 첫 apply 뒤부터 drift 가 돈다.\n' >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Terraform init
+        id: init
+        if: steps.state.outputs.ready == 'true' || (steps.state.outputs.missing == 'true' && steps.mode.outputs.mode == 'apply')
+        env:
+          READY: ${{ steps.state.outputs.ready }}
+          BUCKET: ${{ steps.state.outputs.bucket }}
+        run: |
+          if [ "$READY" = true ]; then
+            bash scripts/tf-run.sh "$TF_DIR" init -input=false -no-color -lockfile=readonly \
+              -backend-config="bucket=$BUCKET" -backend-config="key=dev/terraform.tfstate" \
+              -backend-config="region=ap-northeast-2" -backend-config="use_lockfile=true" -backend-config="encrypt=true" >/dev/null
+          else
+            # 첫 실행: state 버킷이 아직 없다. 승인 전에는 아무것도 만들지 않으려고 빈 state(러너의 로컬 파일)로 미리 본다.
+            # 이 파일은 러너에만 생기고 커밋되지 않는다(.gitignore 의 *_override.tf).
+            printf 'terraform {\n  backend "local" {}\n}\n' >"$TF_DIR/backend_override.tf"
+            bash scripts/tf-run.sh "$TF_DIR" init -input=false -no-color -lockfile=readonly >/dev/null
+            printf '### 첫 plan(미리 보기)\n\nstate 버킷이 아직 없어 빈 state 로 미리 봤다. 승인하면 apply 잡이 state 버킷을 만들고, 같은 plan 인지 확인한 뒤 적용한다.\n\n' >>"$GITHUB_STEP_SUMMARY"
+          fi
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      - name: Terraform plan + guard
+        id: plan
+        if: steps.init.outputs.ready == 'true'
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
+          TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
+          TF_VAR_edge_enabled: ${{ vars.EDGE_ENABLED || 'true' }}
+        run: |
+          [ "$MODE" = apply ] && [ "$ALLOW_DESTROY" = true ] && export TF_ALLOW_DESTROY=1
+          [ -n "$TF_VAR_alert_emails" ] || echo "::notice title=경보 메일 없음::secret ALERT_EMAILS 가 없어 경보·예산 메일 구독을 만들지 않는다"
+
+          # 0 = 차이 없음, 2 = 차이 있음, 그 밖 = 오류(가린 오류는 위 로그에). 원문은 공개 로그라 버린다.
+          # 읽기만 한다(-lock=false). 잠금은 apply 잡이 잡고, 그사이 state 가 바뀌었으면 지문 비교에서 멈춘다.
+          code=0
+          bash scripts/tf-run.sh "$TF_DIR" plan -input=false -no-color -detailed-exitcode -lock=false -out=dev.tfplan >/dev/null || code=$?
+          [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || exit "$code"
+          plan_json="$RUNNER_TEMP/plan.json"
+          bash scripts/tf-run.sh "$TF_DIR" show -json dev.tfplan >"$plan_json"
+
+          guard=0
+          node scripts/tf-plan-guard.mjs "$plan_json" >>"$GITHUB_STEP_SUMMARY" || guard=$?
+          # apply 잡이 승인 뒤 다시 만든 plan 과 비교할 지문 = 표에 적은 "리소스·동작" 목록의 해시
+          digest=$(jq -c "$CHANGES" "$plan_json" | sha256sum | cut -d' ' -f1)
+          rm -f "$plan_json"
+          {
+            echo "changes=$([ "$code" -eq 2 ] && echo true || echo false)"
+            echo "digest=$digest"
+          } >>"$GITHUB_OUTPUT"
+
+          if [ "$MODE" = drift ] && [ "$code" -eq 2 ]; then
+            printf '\n#### ⚠ drift: 코드와 실제 인프라가 다르다\n\n콘솔에서 바꿨거나 apply 가 안 된 변경이다. PR 로 코드를 맞추거나 Infra 를 develop 에서 다시 돌린다.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=drift::코드와 실제 인프라가 다르다"
+            exit 1
+          fi
+          exit "$guard"
+
+  apply:
+    needs: plan
+    if: >-
+      needs.plan.outputs.changes == 'true' &&
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: infra # 승인한 사람만 apply 한다. 승인 전에 plan 잡 Summary 의 표를 본다
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-infra-apply
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      # 승인 뒤에만 state 버킷을 만든다(첫 실행). 이미 있으면 설정(암호화·버전 관리·공개 차단·HTTPS 만)을 다시 건다.
+      - name: State bucket
+        id: state
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: bash scripts/tf-state.sh ensure
+
+      - name: Terraform init
+        env:
+          BUCKET: ${{ steps.state.outputs.bucket }}
+        run: |
+          bash scripts/tf-run.sh "$TF_DIR" init -input=false -no-color -lockfile=readonly \
+            -backend-config="bucket=$BUCKET" -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=ap-northeast-2" -backend-config="use_lockfile=true" -backend-config="encrypt=true" >/dev/null
+
+      - name: Terraform apply (승인한 plan 과 같을 때만)
+        env:
+          APPROVED_DIGEST: ${{ needs.plan.outputs.digest }}
+          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
+          TF_VAR_alert_emails: ${{ secrets.ALERT_EMAILS }}
+          TF_VAR_edge_enabled: ${{ vars.EDGE_ENABLED || 'true' }}
+        run: |
+          [ "$ALLOW_DESTROY" = true ] && export TF_ALLOW_DESTROY=1
+          bash scripts/tf-run.sh "$TF_DIR" plan -input=false -no-color -lock-timeout=10m -out=dev.tfplan >/dev/null
+          plan_json="$RUNNER_TEMP/plan.json"
+          bash scripts/tf-run.sh "$TF_DIR" show -json dev.tfplan >"$plan_json"
+          digest=$(jq -c "$CHANGES" "$plan_json" | sha256sum | cut -d' ' -f1)
+          # 승인한 것과 같아도 가드를 다시 돌린다(지문은 주소·동작만 보므로 값까지 다시 확인한다).
+          guard=0
+          node scripts/tf-plan-guard.mjs "$plan_json" >/dev/null || guard=$?
+          rm -f "$plan_json"
+          if [ "$guard" != 0 ]; then
+            printf '### apply 를 멈췄다\n\n다시 만든 plan 이 가드에 걸렸다. Infra 를 develop 에서 다시 돌려 plan 표를 본다.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=apply 멈춤::다시 만든 plan 이 가드에 걸렸다"
+            exit 1
+          fi
+          if [ "$digest" != "$APPROVED_DIGEST" ]; then
+            printf '### apply 를 멈췄다\n\n승인한 뒤 plan 이 바뀌었다(그사이 다른 apply·콘솔 변경). Infra 를 develop 에서 다시 돌려 새 plan 을 승인한다.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=apply 멈춤::승인한 plan 과 지금 plan 이 다르다"
+            exit 1
+          fi
+          # apply 출력에는 리소스 ID 가 있어 마지막 요약 줄만 남긴다.
+          log="$RUNNER_TEMP/apply.log"
+          code=0
+          bash scripts/tf-run.sh "$TF_DIR" apply -input=false -no-color -lock-timeout=10m dev.tfplan >"$log" || code=$?
+          result=$(grep -E '^Apply complete!' "$log" || echo "apply 실패(종료 코드 $code, 가린 오류는 위 로그에)")
+          rm -f "$log"
+          printf '### Terraform apply (dev)\n\n- 결과: %s\n' "$result" >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"

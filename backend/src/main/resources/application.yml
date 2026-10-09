@@ -63,3 +63,22 @@ neuringo:
     model: ${AI_MODEL:}
     request-timeout: ${AI_TIMEOUT:10s}
     max-retries: ${AI_MAX_RETRIES:0}
+    stt:
+      provider: ${STT_PROVIDER:none}
+      provider-name: ${STT_PROVIDER_NAME:openai}
+      base-url: ${STT_BASE_URL:https://api.openai.com}
+      api-key: ${STT_API_KEY:}
+      model: ${STT_MODEL:gpt-4o-mini-transcribe}
+      language: ${STT_LANGUAGE:ko}
+      request-timeout: ${STT_TIMEOUT:15s}
+      include-logprobs: ${STT_INCLUDE_LOGPROBS:true}
+    tts:
+      provider: ${TTS_PROVIDER:none}
+      provider-name: ${TTS_PROVIDER_NAME:typecast}
+      base-url: ${TTS_BASE_URL:https://api.typecast.ai}
+      api-key: ${TTS_API_KEY:}
+      model: ${TTS_MODEL:ssfm-v30}
+      voice-id: ${TTS_VOICE_ID:}
+      language: ${TTS_LANGUAGE:kor}
+      audio-format: ${TTS_AUDIO_FORMAT:mp3}
+      request-timeout: ${TTS_TIMEOUT:15s}

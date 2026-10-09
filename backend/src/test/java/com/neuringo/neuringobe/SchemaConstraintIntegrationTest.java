@@ -134,6 +134,33 @@ class SchemaConstraintIntegrationTest {
         assertThat(sqlStateOf(() -> insertSession(userId, tokenHash))).isEqualTo(UNIQUE_VIOLATION);
     }
 
+    @Test
+    void onlyOneNotStartedActivityPerChildAndGoal() {
+        UUID instructorId = insertInstructor();
+        UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
+        UUID goalId = insertGoal(childId, instructorId);
+        insertActivity(childId, goalId, "COMPLETED", null);
+        insertActivity(childId, goalId, "NOT_STARTED", null);
+
+        assertThat(sqlStateOf(() -> insertActivity(childId, goalId, "NOT_STARTED", null)))
+                .isEqualTo(UNIQUE_VIOLATION);
+        UUID otherGoal = insertGoal(childId, instructorId);
+        assertThatCode(() -> insertActivity(childId, otherGoal, "NOT_STARTED", null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void activityRequestKeyIsUnique() {
+        UUID instructorId = insertInstructor();
+        UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
+        UUID key = UUID.randomUUID();
+        insertActivity(childId, insertGoal(childId, instructorId), "NOT_STARTED", key);
+        UUID otherGoal = insertGoal(childId, instructorId);
+
+        assertThat(sqlStateOf(() -> insertActivity(childId, otherGoal, "NOT_STARTED", key)))
+                .isEqualTo(UNIQUE_VIOLATION);
+    }
+
     private UUID insertInstructor() {
         return insertUser(newEmail(), UserRole.INSTRUCTOR.name(), AccountStatus.ACTIVE.name());
     }
@@ -164,13 +191,41 @@ class SchemaConstraintIntegrationTest {
         return classId;
     }
 
-    private void insertChild(UUID classId, String status) {
+    private UUID insertChild(UUID classId, String status) {
+        UUID childId = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO child (child_id, class_id, display_name, status) VALUES (?, ?, ?, ?)",
-                UUID.randomUUID(),
+                childId,
                 classId,
                 "스키마 검사 아동",
                 status);
+        return childId;
+    }
+
+    private UUID insertGoal(UUID childId, UUID instructorId) {
+        UUID goalId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO learning_goal (goal_id, child_id, instructor_id, title, content_hash, created_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                goalId,
+                childId,
+                instructorId,
+                "스키마 검사 목표",
+                "schema-test-hash",
+                Timestamp.from(Instant.now()));
+        return goalId;
+    }
+
+    private void insertActivity(UUID childId, UUID goalId, String status, UUID idempotencyKey) {
+        jdbcTemplate.update(
+                "INSERT INTO activity (activity_id, child_id, goal_id, status, assigned_at, idempotency_key)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(),
+                childId,
+                goalId,
+                status,
+                Timestamp.from(Instant.now()),
+                idempotencyKey);
     }
 
     private void insertSession(UUID userId, String tokenHash) {
