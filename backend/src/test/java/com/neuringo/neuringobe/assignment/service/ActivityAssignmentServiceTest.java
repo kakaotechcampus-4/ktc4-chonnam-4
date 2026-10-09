@@ -47,7 +47,7 @@ class ActivityAssignmentServiceTest {
     @InjectMocks private ActivityAssignmentService service;
 
     private static final CreateLearningGoalRequest GOAL_REQUEST =
-            new CreateLearningGoalRequest("친구 감정 알아보기", null, null, null, null, null);
+            new CreateLearningGoalRequest("친구 감정 알아보기", null, null, null, null, null, null);
 
     @Test
     void doesNotCreateActivityWhenNoApprovedQuizItemExists() {
@@ -111,6 +111,7 @@ class ActivityAssignmentServiceTest {
                 UUID.randomUUID(),
                 null,
                 "친구 감정 알아보기",
+                null,
                 null,
                 List.of(),
                 List.of(),

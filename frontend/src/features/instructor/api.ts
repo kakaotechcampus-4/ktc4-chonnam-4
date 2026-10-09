@@ -356,6 +356,7 @@ export type LearningGoal = {
   parentGoalId: string | null
   title: string
   situationType: string | null
+  category: string | null
   characters: Record<string, unknown>[]
   requiredElements: string[]
   forbiddenExpressions: string[]
@@ -365,7 +366,7 @@ export type LearningGoal = {
 
 export type LearningGoalInput = {
   title: string
-  situationType?: string
+  category?: string
 }
 
 export function listLearningGoals(childId: string): Promise<LearningGoal[]> {

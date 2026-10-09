@@ -165,17 +165,17 @@ export function emptyQuizPool() {
 export function seedActivity({
   childId,
   goalTitle,
-  situationType,
+  category,
   status = "NOT_STARTED",
   result,
 }: {
   childId: string
   goalTitle: string
-  situationType?: string
+  category?: string
   status?: ActivityStatus
   result?: Omit<QuizResult, "activityId">
 }): StoredActivity {
-  const goal = newGoal(childId, instructors.a.userId, { title: goalTitle, situationType })
+  const goal = newGoal(childId, instructors.a.userId, { title: goalTitle, category })
   goals = [...goals, goal]
   const activity = newActivity(childId, goal.goalId, null)
   activity.status = status
@@ -191,7 +191,7 @@ export function storedGoals(childId: string): LearningGoal[] {
   return goals.filter((g) => g.childId === childId)
 }
 
-type GoalInput = { title: string; situationType?: string; parentGoalId?: string | null }
+type GoalInput = { title: string; category?: string; parentGoalId?: string | null }
 
 function newGoal(childId: string, instructorId: string, input: GoalInput): LearningGoal {
   return {
@@ -200,12 +200,13 @@ function newGoal(childId: string, instructorId: string, input: GoalInput): Learn
     instructorId,
     parentGoalId: input.parentGoalId ?? null,
     title: input.title.trim(),
-    situationType: input.situationType?.trim() || null,
+    situationType: null,
+    category: input.category?.trim() || null,
     characters: [],
     requiredElements: [],
     forbiddenExpressions: [],
     // 서버는 정규화한 조건의 SHA-256 이다. 가짜 서버는 같은 내용이면 같은 값이면 충분하다.
-    contentHash: `${input.title.trim()}|${input.situationType?.trim() ?? ""}`,
+    contentHash: `${input.title.trim()}|${input.category?.trim() ?? ""}`,
     createdAt: new Date().toISOString(),
   }
 }
@@ -221,7 +222,7 @@ function goalFieldErrors(body: Record<string, unknown>, prefix = ""): FieldError
 function goalInput(body: Record<string, unknown>): GoalInput {
   return {
     title: String(body.title),
-    situationType: typeof body.situationType === "string" ? body.situationType : undefined,
+    category: typeof body.category === "string" ? body.category : undefined,
     parentGoalId: typeof body.parentGoalId === "string" ? body.parentGoalId : null,
   }
 }

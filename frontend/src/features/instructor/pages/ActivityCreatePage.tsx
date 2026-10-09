@@ -132,7 +132,7 @@ function ActivityCreatePage() {
       }
       return createActivity(
         target.childId,
-        { title: choice.title, ...(choice.category ? { situationType: choice.category } : {}) },
+        { title: choice.title, ...(choice.category ? { category: choice.category } : {}) },
         attemptRef.current.requestKey,
       )
     },

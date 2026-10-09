@@ -495,7 +495,7 @@
       "request": {
         "method": "POST",
         "path": "/api/v1/children/{childId}/learning-goals",
-        "body": { "title": "친구 감정 알아보기", "situationType": "EMPATHY_EXPRESSION" }
+        "body": { "title": "친구 감정 알아보기", "category": "EMPATHY_EXPRESSION" }
       },
       "response": {
         "status": 201,
@@ -506,7 +506,8 @@
             "instructorId": "{instructorId}",
             "parentGoalId": null,
             "title": "친구 감정 알아보기",
-            "situationType": "EMPATHY_EXPRESSION",
+            "situationType": null,
+            "category": "EMPATHY_EXPRESSION",
             "characters": [],
             "requiredElements": [],
             "forbiddenExpressions": [],

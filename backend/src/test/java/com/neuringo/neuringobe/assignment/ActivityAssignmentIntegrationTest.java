@@ -67,13 +67,24 @@ class ActivityAssignmentIntegrationTest {
     }
 
     @Test
-    void savesTheGoalInTheSameRequest() {
-        MvcTestResult result = assign(childId, GOAL, UUID.randomUUID());
+    void savesTheGoalWithItsCategoryInTheSameRequest() {
+        MvcTestResult result =
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "goal",
+                                Map.of("title", GOAL, "category", "EMOTION_RECOGNITION")),
+                        UUID.randomUUID());
 
         assertThat(result).hasStatus(HttpStatus.CREATED);
         String goalId = JsonPath.read(TestFixtures.body(result), "$.data.goalId");
         String goal = TestFixtures.body(fixtures.get("/api/v1/learning-goals/{id}", goalId));
         assertThat(JsonPath.<String>read(goal, "$.data.title")).isEqualTo(GOAL);
+        assertThat(JsonPath.<String>read(goal, "$.data.category")).isEqualTo("EMOTION_RECOGNITION");
+        assertThat(JsonPath.<Object>read(goal, "$.data.situationType")).isNull();
     }
 
     @Test

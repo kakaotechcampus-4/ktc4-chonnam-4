@@ -69,7 +69,8 @@ public class LearningGoalService {
         List<Map<String, Object>> characters = emptyIfNull(request.characters());
         List<String> required = emptyIfNull(request.requiredElements());
         List<String> forbidden = emptyIfNull(request.forbiddenExpressions());
-        String situation = request.situationType() == null ? null : request.situationType().trim();
+        String situation = trimOrNull(request.situationType());
+        String category = trimOrNull(request.category());
         if (required.stream().anyMatch(value -> value == null || value.isBlank())
                 || forbidden.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new ApiException(
@@ -84,10 +85,11 @@ public class LearningGoalService {
                 request.parentGoalId(),
                 title,
                 situation,
+                category,
                 characters,
                 required,
                 forbidden,
-                contentHash(title, situation, characters, required, forbidden),
+                contentHash(title, situation, category, characters, required, forbidden),
                 Instant.now());
     }
 
@@ -117,16 +119,22 @@ public class LearningGoalService {
         return List.copyOf(values);
     }
 
+    private static String trimOrNull(String value) {
+        return value == null ? null : value.trim();
+    }
+
     private String contentHash(
             String title,
             String situation,
+            String category,
             List<Map<String, Object>> characters,
             List<String> required,
             List<String> forbidden) {
         try {
             byte[] canonical =
                     mapper.writeValueAsBytes(
-                            new HashInput(title, situation, characters, required, forbidden));
+                            new HashInput(
+                                    title, situation, category, characters, required, forbidden));
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(canonical);
             return HexFormat.of().formatHex(digest);
         } catch (JsonProcessingException | NoSuchAlgorithmException ex) {
@@ -145,6 +153,7 @@ public class LearningGoalService {
     private record HashInput(
             String title,
             String situationType,
+            String category,
             List<Map<String, Object>> characters,
             List<String> requiredElements,
             List<String> forbiddenExpressions) {}

@@ -86,7 +86,7 @@ describe("활동 만들기 화면", () => {
     seedActivity({
       childId: CHILD.childId,
       goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다",
-      situationType: "EMOTION_RECOGNITION",
+      category: "EMOTION_RECOGNITION",
     })
     const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
 
@@ -154,7 +154,7 @@ describe("활동 만들기 화면", () => {
     seedActivity({
       childId: CHILD.childId,
       goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다",
-      situationType: "EMOTION_RECOGNITION",
+      category: "EMOTION_RECOGNITION",
     })
     const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
 
