@@ -58,6 +58,17 @@ tasks.named('jacocoTestReport') {
     }
 }
 
+// AI 품질 회귀 측정(docs/ai-quality-measurement.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
+// 예: ./gradlew roleplayEval --args="--provider openai --repeats 3"
+tasks.register('roleplayEval', JavaExec) {
+    group = 'verification'
+    description = '역할극 품질 회귀 세트로 지연·토큰·비용·형식 실패율·PASS율을 잰다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.RoleplayEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+}
+
 spotless {
     java {
         target 'src/*/java/**/*.java'
