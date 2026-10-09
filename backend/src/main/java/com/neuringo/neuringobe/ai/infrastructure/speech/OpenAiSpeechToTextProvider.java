@@ -10,6 +10,7 @@ import com.neuringo.neuringobe.ai.application.model.SpeechTranscriptionRequest;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.FailureMapping;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.core.io.ByteArrayResource;
@@ -33,6 +34,8 @@ public final class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
     static final String TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 
     private final RestClient restClient;
+    private final HttpClient httpClient;
+    private final Duration requestTimeout;
     private final OpenAiFailureClassifier failureClassifier;
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
     private final String providerName;
@@ -50,8 +53,10 @@ public final class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
             String language,
             boolean includeLogprobs) {
         Objects.requireNonNull(apiKey, "apiKey must not be null");
+        this.requestTimeout = Objects.requireNonNull(requestTimeout);
+        this.httpClient = SpeechHttp.httpClient(requestTimeout);
         this.restClient =
-                SpeechHttp.restClient(baseUrl, requestTimeout)
+                SpeechHttp.restClient(baseUrl, requestTimeout, httpClient)
                         .mutate()
                         .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                         .build();
@@ -69,7 +74,7 @@ public final class OpenAiSpeechToTextProvider implements SpeechToTextProvider {
         String body;
         try {
             body =
-                    restClient
+                    SpeechHttp.forCall(restClient, httpClient, requestTimeout, request.callBudget())
                             .post()
                             .uri(TRANSCRIPTION_PATH)
                             .contentType(MediaType.MULTIPART_FORM_DATA)

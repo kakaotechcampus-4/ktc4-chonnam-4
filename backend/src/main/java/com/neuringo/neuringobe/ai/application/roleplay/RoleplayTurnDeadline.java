@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
+import com.neuringo.neuringobe.ai.application.model.AiCallBudget;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,6 +42,15 @@ public final class RoleplayTurnDeadline {
 
     public void requireActive() {
         if (remainingNanos() == 0) throw new Expired();
+    }
+
+    public AiCallBudget callBudget() {
+        return new AiCallBudget(
+                () -> {
+                    long remaining = remainingNanos();
+                    if (remaining == 0) throw new Expired();
+                    return Duration.ofNanos(remaining);
+                });
     }
 
     /** A late result cannot advance the pipeline, even if the provider ignores interruption. */

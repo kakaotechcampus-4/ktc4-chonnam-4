@@ -12,6 +12,7 @@ import com.neuringo.neuringobe.ai.application.model.SynthesizedSpeech;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.FailureMapping;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,6 +32,8 @@ public final class TypecastTextToSpeechProvider implements TextToSpeechProvider 
     static final String TTS_PATH = "/v1/text-to-speech";
 
     private final RestClient restClient;
+    private final HttpClient httpClient;
+    private final Duration requestTimeout;
     private final OpenAiFailureClassifier failureClassifier;
     private final String providerName;
     private final String model;
@@ -49,11 +52,13 @@ public final class TypecastTextToSpeechProvider implements TextToSpeechProvider 
             String language,
             AudioFormat audioFormat) {
         Objects.requireNonNull(apiKey, "apiKey must not be null");
+        this.requestTimeout = Objects.requireNonNull(requestTimeout);
+        this.httpClient = SpeechHttp.httpClient(requestTimeout);
         if (audioFormat != AudioFormat.MP3 && audioFormat != AudioFormat.WAV) {
             throw new IllegalArgumentException("typecast supports only mp3 or wav output");
         }
         this.restClient =
-                SpeechHttp.restClient(baseUrl, requestTimeout)
+                SpeechHttp.restClient(baseUrl, requestTimeout, httpClient)
                         .mutate()
                         .defaultHeader("X-API-KEY", apiKey)
                         .build();
@@ -76,7 +81,7 @@ public final class TypecastTextToSpeechProvider implements TextToSpeechProvider 
         ResponseEntity<byte[]> response;
         try {
             response =
-                    restClient
+                    SpeechHttp.forCall(restClient, httpClient, requestTimeout, request.callBudget())
                             .post()
                             .uri(TTS_PATH)
                             .contentType(MediaType.APPLICATION_JSON)
