@@ -93,7 +93,7 @@ public class LearningGoalService {
 
     public LearningGoalResponse get(UUID goalId, Authentication authentication) {
         LearningGoal goal = goals.findById(goalId).orElseThrow(this::notFound);
-        access.requireInstructor(authentication, goal.getChildId());
+        access.requireInstructor(authentication, goal.getChildId(), this::notFound);
         return LearningGoalResponse.from(goal);
     }
 

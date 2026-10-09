@@ -126,7 +126,8 @@ class GoalQuizSupplyIntegrationTest {
         mvc.perform(
                         get("/api/v1/learning-goals/{goalId}", goalId)
                                 .with(TestInstructors.instructor("other-teacher")))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("GOAL_NOT_FOUND"));
 
         String activityBody =
                 mvc.perform(

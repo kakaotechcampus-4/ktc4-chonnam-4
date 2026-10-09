@@ -164,10 +164,15 @@ class ActivityAssignmentIntegrationTest {
                         UUID.randomUUID()),
                 HttpStatus.NOT_FOUND,
                 "CHILD_NOT_FOUND");
+        // 남의 활동은 없는 활동과 같은 code 다. code 가 다르면 그 ID 의 활동이 있다는 게 드러난다.
         assertError(
                 fixtures.get(other, "/api/v1/activities/{id}", activityId),
                 HttpStatus.NOT_FOUND,
-                "CHILD_NOT_FOUND");
+                "ACTIVITY_NOT_FOUND");
+        assertError(
+                fixtures.get(other, "/api/v1/activities/{id}/quiz-items", activityId),
+                HttpStatus.NOT_FOUND,
+                "ACTIVITY_NOT_FOUND");
         assertError(
                 fixtures.get(other, "/api/v1/children/{id}", childId),
                 HttpStatus.NOT_FOUND,

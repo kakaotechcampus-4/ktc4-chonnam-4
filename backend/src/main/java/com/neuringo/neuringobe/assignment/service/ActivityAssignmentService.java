@@ -161,11 +161,9 @@ public class ActivityAssignmentService {
         Activity activity =
                 activities
                         .findById(activityId)
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
-        access.requireOwnerOrInstructor(authentication, activity.getChildId());
+                        .orElseThrow(ActivityAssignmentService::activityNotFound);
+        access.requireOwnerOrInstructor(
+                authentication, activity.getChildId(), ActivityAssignmentService::activityNotFound);
         return ActivityDetailResponse.of(
                 ActivityResponse.from(activity), quizAssignment.list(activityId, authentication));
     }
@@ -187,4 +185,8 @@ public class ActivityAssignmentService {
 
     /** created 가 false 면 같은 요청 키로 이미 만든 활동을 돌려준 것이다. */
     public record Assignment(ActivityResponse activity, boolean created) {}
+
+    private static ResourceNotFoundException activityNotFound() {
+        return new ResourceNotFoundException("ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.");
+    }
 }

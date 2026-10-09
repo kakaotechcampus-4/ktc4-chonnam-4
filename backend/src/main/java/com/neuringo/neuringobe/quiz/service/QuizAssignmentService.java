@@ -96,11 +96,9 @@ public class QuizAssignmentService {
         Activity activity =
                 activities
                         .findById(activityId)
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
-        access.requireOwnerOrInstructor(authentication, activity.getChildId());
+                        .orElseThrow(QuizAssignmentService::activityNotFound);
+        access.requireOwnerOrInstructor(
+                authentication, activity.getChildId(), QuizAssignmentService::activityNotFound);
         return assignments.findByActivityIdOrderByQuestionOrder(activityId).stream()
                 .map(assigned -> AssignedQuizItemResponse.from(assigned, requireVersion(assigned)))
                 .toList();
@@ -121,5 +119,9 @@ public class QuizAssignmentService {
 
     private ApiException conflict(String code, String message) {
         return new ApiException(HttpStatus.CONFLICT, code, message);
+    }
+
+    private static ResourceNotFoundException activityNotFound() {
+        return new ResourceNotFoundException("ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.");
     }
 }
