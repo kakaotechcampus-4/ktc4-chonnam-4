@@ -10,8 +10,8 @@
 #
 # 막는 것
 #   이름: .env·키·인증서·Terraform state/plan/변수 파일·자격증명 폴더·DB 덤프·로컬 DB·로컬 AI 설정
-#   내용: 계정 ID 가 든 ARN·ECR 주소, EC2 공인 주소, AWS 로그인 포털 주소, 운영진 노션 문서 링크
-#   허용: 이름 끝이 .example·.sample·.template 인 견본, AWS 문서 예시 계정 123456789012, 문서용 IP 대역
+#   내용: 계정 ID 가 든 ARN·ECR 주소, EC2 공인 주소, CloudFront 테스트 주소, AWS 로그인 포털 주소, 운영진 노션 문서 링크
+#   허용: 이름 끝이 .example·.sample·.template 인 견본, AWS 문서 예시 계정 123456789012·예시 주소 d111111abcdef8, 문서용 IP 대역
 #         (192.0.2·198.51.100·203.0.113 — 자체 검사의 가짜 값은 이 대역만 쓴다)
 # 걸린 곳은 파일·줄·규칙만 찍는다. 값은 찍지 않는다(공개 로그).
 set -euo pipefail
@@ -68,6 +68,7 @@ CONTENT_RULES=$(
 arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:	계정 ID 가 든 ARN	:(123456789012|000000000000):
 [0-9]{12}\.dkr\.ecr\.	계정 ID 가 든 ECR 주소	^(123456789012|000000000000)\.
 ec2-[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}-[0-9]{1,3}\.	EC2 공인 주소	^ec2-(192-0-2|198-51-100|203-0-113)-
+d[a-z0-9]{12,13}\.cloudfront\.net	CloudFront 테스트 주소(외부인 가입·남용을 부르지 않게)	^d(111111abcdef8|1abcdefghijkl)\.
 [a-z0-9-]+\.awsapps\.com|signin\.aws/platform|eli\.so/	AWS 로그인 포털 주소	-
 elice[-]track	운영진 노션 문서 링크(공개 레포에 넣지 않는다)	-
 EOF

@@ -95,19 +95,31 @@ bash scripts/verify.sh infra
 
 켜진 EC2 가 정확히 1대여야 plan 이 돈다. 서버가 꺼져 있으면 plan 을 건너뛴다(Summary 에 이유).
 
-## 서버를 끄고 켤 때 (Elastic IP 받기 전)
+## 서버를 끄고 켤 때
 
-서버를 껐다 켜면 공인 IP 가 바뀐다. 옛 IP 는 다른 AWS 고객에게 갈 수 있어, 그동안 CloudFront 가 로그인·토큰을 그 IP 로 보낼 수 있다.
+서버를 껐다 켜면 공인 IP 가 바뀐다(고정 IP 없음). 옛 IP 는 다른 AWS 고객에게 갈 수 있어, 그동안 CloudFront 가 켜져 있으면 로그인·토큰을 그 IP 로 보낼 수 있다.
+그래서 서버는 **Actions → Dev server** 로만 켜고 끈다. Terraform·승인을 거치지 않는다.
 
-1. 끄기 전: Settings → Variables 에 `EDGE_ENABLED` = `false` → Actions → **Infra** → Run workflow(develop) → 승인 → CloudFront 가 꺼진다 → 그다음 서버를 끈다.
-2. 켠 뒤: 서버를 켠다 → `EDGE_ENABLED` 를 `true` 로 바꾸거나 지운다 → Infra → 승인 → 새 주소로 CloudFront 가 켜진다.
-3. 깜빡하면: 서버가 꺼질 때 경보 메일이 오고, 매일 drift 가 주소가 바뀐 것을 빨간불로 알린다.
+1. 끄기: Dev server → **끄기**. CloudFront 를 닫고(`scripts/edge-toggle.sh off`, 다 퍼져서 꺼진 것을 다시 읽어 확인) → 서버를 끈다.
+2. 켜기: Dev server → **켜기**(또는 바로 PR 미리보기 올리기). 서버를 켜고 → 새 주소를 CloudFront 원본에 넣고 연다 → develop 최신으로 맞춘다.
+3. 콘솔에서 껐다면: 서버가 꺼질 때 경보 메일이 온다. Dev server 의 켜기나 끄기를 바로 돌린다.
 
-Elastic IP 를 받으면 이 절차는 필요 없다(docs/cd-architecture.md 12절 요청 초안).
+Terraform 은 CloudFront 의 켜짐(enabled)을 보지 않는다(`ignore_changes`). 원본 주소는 서버가 켜져 있을 때 Terraform 이 읽는 주소와 Dev server 가 넣은 주소가 같아 drift 가 나지 않는다.
+**구조**(동작·캐시·보안 헤더·나라 제한)를 바꿀 때만 이 폴더 → PR → Infra(승인)다.
+
+## PR 에서 머지 전에 적용하기
+
+같은 레포 PR 이면 Infra 가 PR 에서도 plan 을 만들고, 승인하면 **머지 전에** apply 한다(Atlantis 방식).
+
+1. `infra/**` 를 고친 PR 을 연다 → Infra 실행의 Summary 에서 plan 표를 본다(서버가 꺼져 있으면 Dev server 로 켠 뒤 Re-run).
+2. 지우는 리소스(버킷·ECR·배포·비밀값)가 있으면 가드가 막는다. 정말 지울 때만 PR 에 `allow-destroy` 라벨을 붙인다(다시 돈다).
+3. apply 잡의 **Review deployments → infra → Approve** → 적용.
+4. 적용이 성공하면 PR 을 머지한다. 머지하지 않고 닫으면 develop 에서 Infra 를 다시 돌려 되돌린다(매일 drift 도 알린다).
+5. 인프라를 바꾸는 PR 은 한 번에 하나만 적용한다. apply 중에는 그 PR 에 push 하지 않는다(새 push 가 실행을 취소한다).
 
 ## 그 밖의 안전장치
 
-- 운영진 보안 그룹에 인터넷 전체에서 80번(또는 모든 포트)으로 들어오는 규칙이 있으면 plan 이 멈춘다. 백엔드가 CloudFront 없이 평문으로 열리기 때문이다. 팀원이 연 규칙인지 확인해 지운다.
+- 운영진 보안 그룹에 인터넷 전체에서 80번(또는 모든 포트)으로 들어오는 규칙이 있으면 plan 이 멈춘다. 서버(web)가 CloudFront 없이 평문으로 열리기 때문이다. 팀원이 연 규칙인지 확인해 지운다.
 - CloudFront 는 한국에서만 연다(`allowed_countries`). 사용자 테스트 주소는 공개 로그에 찍지 않는다. 콘솔(CloudFront)이나 Parameter Store `/neuringo/dev/infra/cloudfront-domain` 에서 보고 팀에만 알린다.
 
 ## state

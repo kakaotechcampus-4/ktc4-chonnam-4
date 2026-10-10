@@ -30,10 +30,6 @@ variable "ecr_repository_url" {
   sensitive = true
 }
 
-variable "web_bucket" {
-  type = string
-}
-
 variable "cloudfront_distribution_id" {
   type      = string
   sensitive = true
@@ -73,12 +69,6 @@ resource "aws_ssm_parameter" "ecr_repository_url" {
   name  = "${local.prefix}/infra/ecr-repository-url"
   type  = "String"
   value = var.ecr_repository_url
-}
-
-resource "aws_ssm_parameter" "web_bucket" {
-  name  = "${local.prefix}/infra/web-bucket"
-  type  = "String"
-  value = var.web_bucket
 }
 
 resource "aws_ssm_parameter" "cloudfront_distribution_id" {
@@ -142,7 +132,6 @@ output "parameter_names" {
   description = "만든 Parameter Store 이름(검사·문서용)"
   value = sort([
     aws_ssm_parameter.ecr_repository_url.name,
-    aws_ssm_parameter.web_bucket.name,
     aws_ssm_parameter.cloudfront_distribution_id.name,
     aws_ssm_parameter.cloudfront_domain.name,
     aws_ssm_parameter.backup_bucket.name,

@@ -96,7 +96,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_surplus_charged" {
 
 resource "aws_cloudwatch_metric_alarm" "status_check_failed" {
   alarm_name          = "neuringo-${var.env}-status-check-failed"
-  alarm_description   = "서버 상태 검사 실패 또는 서버가 꺼졌다. 꺼졌다면 CloudFront 가 옛 IP 를 보고 있으니 서버를 켜고 Infra 를 다시 돌리거나 CloudFront 를 끈다(EDGE_ENABLED=false)"
+  alarm_description   = "서버 상태 검사 실패 또는 서버가 꺼졌다. Dev server 의 끄기로 껐다면 정상이다. 콘솔에서 껐다면 CloudFront 가 옛 IP 를 보고 있을 수 있으니 Dev server 의 켜기나 끄기를 돌린다"
   namespace           = "AWS/EC2"
   metric_name         = "StatusCheckFailed"
   dimensions          = { InstanceId = var.instance_id }

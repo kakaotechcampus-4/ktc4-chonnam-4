@@ -14,7 +14,7 @@ run "ecr_is_immutable_scanned_and_pruned" {
     error_message = "푸시할 때 취약점 스캔을 켠다"
   }
   assert {
-    condition     = jsondecode(aws_ecr_lifecycle_policy.this.policy).rules[0].selection.countNumber == 10
-    error_message = "이미지는 최근 10개만 남긴다(저장 비용)"
+    condition     = jsondecode(aws_ecr_lifecycle_policy.this.policy).rules[0].selection.countNumber == 30
+    error_message = "이미지는 최근 30개(백엔드·화면 약 15커밋)만 남긴다(저장 비용)"
   }
 }

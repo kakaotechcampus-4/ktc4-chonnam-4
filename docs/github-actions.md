@@ -21,10 +21,13 @@ bash scripts/verify.sh docker     # 백엔드 이미지 빌드·기동 (마찬�
 | `e2e.yml` | FE `src`·`e2e`·설정, BE `main`·`build.gradle`, `scripts/e2e.sh` 변경 PR · develop push | 실제 백엔드(local)·DB·프론트 빌드로 강사 흐름 브라우저 테스트 → 경고 기록 → 개인정보 마커 스캔 | E2E: PR 경고·develop 막음<br>마커 스캔: 항상 막음 | `verify.sh e2e` |
 | `security.yml` | 모든 PR · develop push · 매주 월 03:00 KST | 공개하면 안 되는 파일·값(.env·키·state·계정 ID 든 ARN·로그인 포털 주소 등, `scripts/check-public-files.sh`) · gitleaks(PR 은 그 PR 커밋, 그 밖에는 전체 이력) · dependency-review(develop 로 가는 PR 의 npm) | 공개 파일·gitleaks 막음 · dependency-review 경고 | `verify.sh security` |
 | `docker-build.yml` | BE `main`·Gradle 설정·`Dockerfile`·`deploy/**` 변경 PR·push | 백엔드 이미지 빌드 → root 아님 확인 → `deploy/compose.dev.yml` 로 기동해 local 프로필이 요청을 받는지(`GET /api/v1/csrf` 200). push 없음 | 막음 | `verify.sh docker` |
-| `deploy.yml` | develop push 에서 Backend CI·Frontend CI 가 통과한 커밋(`workflow_run`) · 수동(develop 에서만, 커밋 SHA 로 되돌리기) | 백엔드: 이미지 → ECR(커밋 SHA 태그) → SSM 으로 서버 반영 → 상태 확인 → 안 되면 직전 상태(이미지·설정)로 되돌림. 프론트: 빌드(AWS 권한 없는 잡) → S3 → CloudFront 캐시 비우기. 같은 부분을 바꾼 더 새 커밋이 있으면 옛 커밋은 건너뛴다. 변수·인프라가 없거나 서버가 꺼져 있으면 건너뛰고 Summary 에 이유 | 배포 실패·되돌림이면 빨간색 | 서버 쪽은 `scripts/test-host-deploy.sh`([deploy/README.md](../deploy/README.md)) |
+| `deploy.yml` | develop push 에서 Backend CI·Frontend CI 가 끝난 커밋(`workflow_run`) · 수동(develop 에서만, 커밋 SHA 로 되돌리기) | 같은 커밋의 두 CI 가 모두 통과했을 때만 `release.yml` 로 화면·백엔드를 함께 배포. 화면·백엔드를 바꾼 더 새 커밋이 있으면 옛 커밋은 건너뛴다. 변수·인프라가 없거나 서버가 꺼져 있거나 PR 미리보기 중이면 건너뛰고 Summary 에 이유 | 배포 실패·되돌림이면 빨간색 | 서버 쪽은 `scripts/test-host-deploy.sh`([deploy/README.md](../deploy/README.md)) |
+| `release.yml` | 재사용(`deploy.yml`·`dev-server.yml` 이 부른다) | resolve(ECR 에 있나) → build(백엔드·화면 동시, AWS 권한 없음·캐시 없음) → deploy(ECR → SSM → 상태 확인·되돌림 → 서버에서 CloudFront 로 화면·API·커밋 확인) → 결과 보고서 | 배포 실패·되돌림·자리 있음이면 빨간색 | `scripts/test-host-deploy.sh` |
+| `dev-server.yml` | PR 열기·Ready·다시 열기(기본값 — 미리보기) · PR 라벨(`preview` 붙이기·떼기, 라벨 있는 PR 의 push·닫기, `no-preview`, `dev-off`) · 수동(아무 브랜치, 팀원 누구나) · `dev-server-idle.yml` 이 부름 | PR 미리보기 올리기·다시 올리기·끝내기(그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로) · 상태 보기 · 켜기 · 끄기(CloudFront 먼저 닫고 서버) · 안 쓰면 끄기 | 작업 실패면 빨간색(PR 을 열거나 push 해서 저절로 돈 실행의 서버 꺼짐·자리 있음은 건너뜀) | `scripts/test-dev-server.sh`·`edge-toggle.test.mjs`·`test-host-deploy.sh`(status.sh) |
+| `dev-server-idle.yml` | 20분마다(develop) · 수동(아무 브랜치) | `dev-server.yml` 을 "안 쓰면 끄기"로 부른다: 자리가 비었고 60분 동안 배포·테스트 주소 요청이 없으면 끈다 | 끄기 실패면 빨간색(그대로 둘 때는 초록) | — |
 | `host-setup.yml` | 수동 실행만(develop) | 서버 기본 설정(`deploy/host/setup.sh`)을 SSM 으로: Docker·Compose·AWS CLI·swap·journald 상한·보안 업데이트·`/opt/neuringo` | — | `SETUP_DRY_RUN=1 bash deploy/host/setup.sh` |
 | `ops-backup.yml` | 매일 03:00 KST · 수동(develop) | 서버 DB 백업(`pg_dump` → S3) → 같은 서버의 임시 postgres(네트워크 없음, 끝나면 볼륨까지 지움)에 복구해 테이블·마이그레이션·행 수 확인. 숫자만 Summary 에. 배포와 같은 서버 잠금을 잡는다. 서버가 꺼져 있거나 아직 배포 전이면 건너뜀 | 백업·복구 실패면 빨간색 | `scripts/test-host-deploy.sh` |
-| `infra.yml` | `infra/**`·`scripts/tf-*` 변경 PR · develop push · 매일 09:00 KST · 수동 | 검사(fmt·validate·`terraform test`·구성 검사, 자격증명 없음, PR 은 여기까지) → develop: plan(읽기만, 바뀌는 리소스·동작 표와 비용·안전 가드를 Summary 에) → Environment `infra` 승인 → 가드 다시 → apply(승인한 plan 과 같을 때만). 매일 drift. 변수가 없거나 서버가 꺼져 있으면 건너뛰고 이유를 남긴다. 사용법은 [infra/README.md](../infra/README.md) | 검사·가드·drift 막음 | `verify.sh infra` |
+| `infra.yml` | `infra/**`·`scripts/tf-*` 변경 PR · develop push · 매일 09:00 KST · 수동 | 검사(fmt·validate·`terraform test`·구성 검사, 자격증명 없음) → plan(읽기만, 바뀌는 리소스·동작 표와 비용·안전 가드를 Summary 에) → Environment `infra` 승인 → 가드 다시 → apply(승인한 plan 과 같을 때만). 같은 레포 PR 은 **머지 전에** apply 하고 성공하면 머지한다(지우는 plan 은 `allow-destroy` 라벨). 포크 PR 은 검사만. 매일 drift. 변수가 없거나 서버가 꺼져 있으면 건너뛰고 이유를 남긴다. 사용법은 [infra/README.md](../infra/README.md) | 검사·가드·drift 막음 | `verify.sh infra` |
 | `aws-probe.yml` | 수동 실행만(develop) | CD 설계 0단계. OIDC(`ktc-github-deploy`)로 읽기 호출·IAM 정책 시뮬레이션만 해서 팀 AWS 계정에서 되는 것을 표로 남긴다. 계정 ID·ARN·주소는 찍지 않는다. 변수 `AWS_ACCOUNT_ID` 가 없으면 건너뛴다 | — | `bash scripts/aws-probe.sh`(SSO 로그인 뒤) |
 | `codeql.yml` | 모든 PR·push + 매주 월 03:30 UTC | 백엔드(Java)·프론트(JS/TS) 정적 보안 분석 → Security 탭. 두 언어 결과를 표로 모아 PR 코멘트·실행 요약에 남긴다(Report job) | GitHub 기본(새 고위험 경고) | — |
 | `codeql-comment.yml` | CodeQL 실행이 끝난 뒤(`workflow_run`), 포크에서 온 PR 만 | 포크 PR 은 토큰이 읽기 전용이라 Report job 이 코멘트를 못 단다. develop 의 파일·권한으로 돌아 SARIF 에서 표를 다시 만들고 같은 코멘트를 단다. 포크 코드는 실행하지 않고, PR 은 head 저장소·브랜치로 찾아 head 가 분석한 커밋일 때만 단다(`scripts/codeql-comment.sh`) | — | `scripts/test-codeql-comment.sh` |
@@ -51,7 +54,7 @@ flowchart LR
   BE --> OUT
   E2E --> OUT
   CQ --> CMT["PR 코멘트 1개<br/>(push 마다 고쳐 씀)"]
-  BE -.->|"develop 통과"| DEP["Deploy (dev)<br/>OIDC → ECR · S3<br/>→ SSM → 상태 확인 · 되돌림"]
+  BE -.->|"develop 통과"| DEP["Deploy (dev)<br/>OIDC → ECR(화면·백엔드)<br/>→ SSM → 상태 확인 · 되돌림"]
   FE -.->|"develop 통과"| DEP
   INF -.->|"develop · 승인"| APPLY["Infra apply (dev)<br/>OIDC → Terraform"]
   MAN["수동 실행"] -.-> PROBE["AWS probe · Host setup<br/>OIDC · SSM"]
@@ -70,7 +73,7 @@ flowchart LR
 | lint·zizmor 지적 | PR 의 Files changed 에 줄 단위 주석 |
 | gitleaks | Security 실행 로그. 비밀 값은 가려서(`--redact`) 파일·줄·규칙만 나온다 |
 | dependency-review | Security 실행의 **Summary** |
-| 배포 결과·건너뛴 이유 | Deploy 실행의 **Summary**(커밋·결과·프론트 주소, 또는 없는 변수·인프라 값 이름). 서버 쪽 앱 로그는 공개 로그에 싣지 않고 서버의 `/opt/neuringo/logs` 에 남긴다(SSM 세션으로 본다) |
+| 배포 결과·건너뛴 이유 | Deploy·Dev server 실행의 **Summary**(무엇을 올렸나·확인 표·자리·다음에 누를 것, 또는 건너뛴 이유). 테스트 주소는 적지 않는다(디스코드 고정 메시지). 서버 쪽 앱 로그는 공개 로그에 싣지 않고 서버의 `/opt/neuringo/logs` 에 남긴다(SSM 세션으로 본다) |
 | 백업·복구 확인 | Ops backup 실행의 **Summary**(백업 크기·테이블 수·마이그레이션 버전·행 수) |
 | 인프라 plan·apply·drift | Infra 실행의 **Summary**(바뀌는 리소스·동작 표, 가드 결과, apply 결과 한 줄). plan·apply 원문과 리소스 값은 찍지 않는다. 오류는 계정 ID·ARN·IP·ID·메일을 가려 로그에 남긴다 |
 | 사용자 테스트 주소 | 공개 로그·Summary 에는 찍지 않는다. 콘솔 CloudFront 또는 Parameter Store `/neuringo/dev/infra/cloudfront-domain` 에서 보고 팀에만 알린다 |
@@ -100,7 +103,7 @@ flowchart LR
 **머지 전에 꼭 등록할 secret 은 없다.**
 - AWS 는 secret 이 아니라 저장소 **변수** `AWS_ACCOUNT_ID` 하나다. OIDC 로 1시간짜리 자격증명을 받으므로 액세스 키를 두지 않는다(팀 계정에서는 만들 수도 없다).
 - `ALERT_EMAILS`(선택): 경보·예산 메일 주소 JSON 배열(예: `["a@example.com"]`). Infra 가 Terraform 변수로 넘긴다. 없으면 메일 구독 없이 만든다.
-- 변수 `EDGE_ENABLED`(선택): `false` 면 CloudFront 를 끈다. 서버를 끄기 전에 쓴다(Elastic IP 받기 전, [infra/README.md](../infra/README.md)).
+- 서버 켜기·끄기·CloudFront 여닫기는 **Dev server** 가 한다(변수 없음, [infra/README.md](../infra/README.md) "서버를 끄고 켤 때"). 옛 변수 `EDGE_ENABLED` 는 쓰지 않는다(지운다).
 - Environment `infra`(승인자 지정, develop 만)는 첫 apply 전에, `dev`(develop 만, 승인자 없음)는 머지 전에 만든다. 없으면 GitHub 이 보호 없는 환경을 자동으로 만든다.
 - `AWS_ACCOUNT_ID` 는 변수라 각 단계 머리에 그대로 찍힌다(운영진 가이드: 비밀값이 아님). 숨기려면 같은 이름의 secret 으로 옮긴다.
 - SSH 배포용 secret(`DEV_*`)은 등록하지 않는다. AWS 환경은 22번을 열지 않는다([cd-architecture.md](cd-architecture.md)).

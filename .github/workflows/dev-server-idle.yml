@@ -1,0 +1,30 @@
+name: Dev server 자동 끄기
+# PR 을 열면 서버가 저절로 켜진다(dev-server.yml 기본값). 그래서 끄는 것도 저절로 한다.
+# 20분마다 dev-server.yml 을 "안 쓰면 끄기"로 부른다: 서버가 켜져 있고, 미리보기 자리가 비었고,
+# 60분 동안 테스트 주소 요청·배포가 없으면 대문(CloudFront)을 닫고 서버를 끈다(끄기와 같은 순서).
+# 실행 목록이 Dev server 를 덮지 않게 파일을 따로 둔다. schedule 은 기본 브랜치(develop)의 이 파일로만 돈다.
+# 머지 전에 시험할 때는 Run workflow 에서 브랜치를 고른다.
+
+on:
+  schedule:
+    - cron: "4,24,44 * * * *"
+  workflow_dispatch:
+
+# 앞 실행이 끝나기 전에 다음 차례가 오면 기다린다(끄는 중에 또 끄지 않게).
+concurrency:
+  group: dev-server-idle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  idle:
+    permissions:
+      contents: read
+      actions: read # 도는 중인 Dev server·Deploy 실행이 있으면 끄지 않는다
+      id-token: write # dev-server.yml 의 잡들이 GitHub OIDC 로 AWS 임시 자격증명을 받는다
+      pull-requests: write # dev-server.yml 의 plan 잡이 선언한 권한(이 실행에서는 쓰지 않는다)
+    uses: ./.github/workflows/dev-server.yml
+    with:
+      action: 안 쓰면 끄기
