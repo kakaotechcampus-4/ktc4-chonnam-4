@@ -7,6 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.neuringo.neuringobe.IntegrationTest;
+import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
+import com.neuringo.neuringobe.ai.application.model.AiFailureType;
+import com.neuringo.neuringobe.ai.application.model.AiOperation;
+import com.neuringo.neuringobe.ai.application.model.LlmRequest;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayCanonicalRetentionService;
@@ -55,7 +59,11 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
             "roleplay.http.notices[1].kind=SAFETY_ESCALATION_TEACHER",
             "roleplay.http.notices[1].text=private teacher stop notice",
             "roleplay.http.notices[1].version=test-v1",
-            "roleplay.http.notices[1].approval-reference=test-teacher-approval"
+            "roleplay.http.notices[1].approval-reference=test-teacher-approval",
+            "roleplay.http.notices[2].kind=SAFETY_CHECK_ERROR",
+            "roleplay.http.notices[2].text=test evaluation retry notice",
+            "roleplay.http.notices[2].version=test-v1",
+            "roleplay.http.notices[2].approval-reference=test-evaluation-approval"
         })
 class RoleplayHttpIntegrationTest {
     static final Path UPLOADS = directory();
@@ -126,6 +134,173 @@ class RoleplayHttpIntegrationTest {
                                 UUID.class,
                                 f.session()))
                 .isEqualTo(f.child());
+        assertEmptySpool();
+    }
+
+    @Test
+    void evaluationFailureRetriesSameCandidateAndCommitsOnce() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.failNextCall(AiOperation.RESPONSE_EVALUATION, AiFailureType.TIMEOUT);
+
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {1, 2, 3}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+
+        assertThat(state.llmRequests)
+                .extracting(LlmRequest::operation)
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        var evaluations =
+                state.llmRequests.stream()
+                        .filter(r -> r.operation() == AiOperation.RESPONSE_EVALUATION)
+                        .toList();
+        var candidateId = state.llmRequests.get(1).traceContext().candidateId();
+        assertThat(candidateId).isNotNull();
+        assertThat(evaluations)
+                .extracting(r -> r.traceContext().candidateId())
+                .containsExactly(candidateId, candidateId);
+        assertThat(evaluations).extracting(LlmRequest::currentAttempt).containsExactly(1, 2);
+        assertThat(evaluations)
+                .extracting(LlmRequest::attemptContext)
+                .containsExactly(new AiAttemptContext(1, 1, 1), new AiAttemptContext(1, 1, 2));
+        assertThat(state.calls.stream().filter("TTS"::equals).count()).isEqualTo(1);
+        assertThat(state.calls.stream().filter("PUBLISH"::equals).count()).isEqualTo(1);
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select candidate_id from roleplay_turn where session_id=?",
+                                UUID.class,
+                                f.session()))
+                .isEqualTo(candidateId);
+        assertEmptySpool();
+    }
+
+    @Test
+    void rejectedCandidateIsReplacedAndOnlyApprovedCandidateIsDeliveredAndStored()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        String rejectedText = "친구는 슬픈 기분일 거야. 친구는 어떤 기분일까?";
+        state.rejectNextCandidate(rejectedText);
+        var result =
+                mvc.perform(
+                                request(
+                                                f.session(),
+                                                UUID.randomUUID(),
+                                                new byte[] {1, 2, 3},
+                                                "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                        .andExpect(jsonPath("$.data.messages.length()").value(1))
+                        .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"))
+                        .andExpect(jsonPath("$.data.checkpointVersion").value(1))
+                        .andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain(rejectedText);
+        assertThat(state.llmRequests)
+                .extracting(LlmRequest::operation)
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        var rejectedId = state.llmRequests.get(1).traceContext().candidateId();
+        var approvedId = state.llmRequests.get(3).traceContext().candidateId();
+        assertThat(approvedId).isNotNull().isNotEqualTo(rejectedId);
+        assertThat(state.llmRequests.get(2).traceContext().candidateId()).isEqualTo(rejectedId);
+        assertThat(state.llmRequests.get(4).traceContext().candidateId()).isEqualTo(approvedId);
+        assertThat(state.llmRequests.get(3).userPrompt())
+                .contains(rejectedId.toString(), rejectedText);
+        assertThat(state.calls.stream().filter("TTS"::equals).count()).isEqualTo(1);
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select candidate_id from roleplay_turn where session_id=?",
+                                UUID.class,
+                                f.session()))
+                .isEqualTo(approvedId);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select response_text from roleplay_turn where session_id=?",
+                                String.class,
+                                f.session()))
+                .isEqualTo("친구는 어떤 기분일까?");
+        assertEmptySpool();
+    }
+
+    @Test
+    void exhaustedEvaluationRetriesReturnNoticeWithoutDeliveringOrSavingCandidate()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        for (int i = 0; i < 3; i++) {
+            state.failNextCall(AiOperation.RESPONSE_EVALUATION, AiFailureType.TIMEOUT);
+        }
+        var result =
+                mvc.perform(
+                                request(
+                                                f.session(),
+                                                UUID.randomUUID(),
+                                                new byte[] {1, 2, 3},
+                                                "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("RETRY_REQUIRED"))
+                        .andExpect(jsonPath("$.data.action").value("RETRY_TURN"))
+                        .andExpect(jsonPath("$.data.messages.length()").value(1))
+                        .andExpect(
+                                jsonPath("$.data.messages[0].text")
+                                        .value("test evaluation retry notice"))
+                        .andExpect(jsonPath("$.data.messages[0].speech.available").value(false))
+                        .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                        .andExpect(jsonPath("$.data.checkpointVersion").isEmpty())
+                        .andReturn();
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("친구는 어떤 기분일까?", "candidateId", "test-evaluation-approval");
+        assertThat(state.llmRequests)
+                .extracting(LlmRequest::operation)
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        var evaluations =
+                state.llmRequests.stream()
+                        .filter(r -> r.operation() == AiOperation.RESPONSE_EVALUATION)
+                        .toList();
+        var candidateId = state.llmRequests.get(1).traceContext().candidateId();
+        assertThat(candidateId).isNotNull();
+        assertThat(evaluations)
+                .extracting(r -> r.traceContext().candidateId())
+                .containsExactly(candidateId, candidateId, candidateId);
+        assertThat(evaluations).extracting(LlmRequest::currentAttempt).containsExactly(1, 2, 3);
+        assertThat(state.calls).doesNotContain("TTS", "PUBLISH");
+        assertThat(count(f)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session()))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_turn_number from roleplay_session where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
         assertEmptySpool();
     }
 
