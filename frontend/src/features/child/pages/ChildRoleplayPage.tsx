@@ -114,6 +114,7 @@ function ChildRoleplayPage() {
   const [isFinished, setIsFinished] = useState(false)
   const [isWrappedUp, setIsWrappedUp] = useState(false)
   const [lastDeliveredReply, setLastDeliveredReply] = useState<string | null>(null)
+  const hintCountRef = useRef(0)
   const threadEndRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   // 완료 요청을 다시 보내도 스탬프가 두 번 지급되지 않도록 화면에 머무는 동안 같은 값을 쓴다.
@@ -129,10 +130,19 @@ function ChildRoleplayPage() {
     enabled: Boolean(activityId),
   })
 
+  // 깡총이 힌트는 다음 답을 위한 참고라 기록에 쌓지 않는다. 새 힌트가 오면 이전 힌트를 지우고 마지막 힌트 1개만 남긴다.
+  // 아이가 그 힌트를 보고 답했다는 흐름이 보이도록, 마지막 힌트는 나온 자리에 그대로 둔다.
+  const showRabbitHint = (text: string) => {
+    hintCountRef.current += 1
+    const hint: ThreadMessage = { id: `hint-${hintCountRef.current}`, speaker: "rabbit", text }
+    setReplies((prev) => [...prev.filter((message) => message.speaker !== "rabbit"), hint])
+  }
+
   const turnMutation = useMutation({
     mutationFn: sendRoleplayTurn,
     onSuccess: (result, input) => {
-      setReplies((prev) => [...prev, { id: `reply-${prev.length}`, ...result.reply }])
+      if (result.reply.speaker === "rabbit") showRabbitHint(result.reply.text)
+      else setReplies((prev) => [...prev, { id: `reply-${prev.length}`, ...result.reply }])
       if (result.status === "DELIVERED") {
         setLastDeliveredReply(input.text)
         setTurnIndex((prev) => prev + 1)
@@ -181,10 +191,7 @@ function ChildRoleplayPage() {
 
   // 녹음·STT(S6) 전이라 "듣고 있어요" 화면이 끝나도 보낼 음성이 없다. 깡총이가 글자로 답하도록 안내한다.
   const handleVoiceFinish = () => {
-    setReplies((prev) => [
-      ...prev,
-      { id: `voice-${prev.length}`, speaker: "rabbit", text: "말로 답하기는 아직 준비 중이야. 글자로 알려줄래?" },
-    ])
+    showRabbitHint("말로 답하기는 아직 준비 중이야. 글자로 알려줄래?")
   }
 
   const retryLoad = () => {
