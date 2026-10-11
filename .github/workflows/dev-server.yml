@@ -1,0 +1,628 @@
+name: Dev server
+# 팀 테스트 서버(AWS dev)를 쓰는 길(사용 설명서: 팀 노션 "Dev server 사용 설명서").
+#
+#   PR 에서 — 기본값(아무것도 안 해도)
+#     PR 열기 · draft 를 Ready for review 로 · 다시 열기   PR 미리보기 올리기(preview 라벨을 붙인 것과 같고, 라벨도 붙여 둔다).
+#                           건너뜀: draft · no-preview 라벨 · 문서(docs/·*.md)만 바꾼 PR · 봇이 연 PR · develop 으로 가지 않는 PR.
+#                           다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀(자리가 비면 push 하거나 preview 라벨을 떼었다 붙인다)
+#   PR 에서 — 라벨로 바꾸기
+#     preview 라벨 붙이기   PR 미리보기 올리기: (꺼져 있으면 켜기부터) 이 PR 을 develop 에 합친 코드로 화면·API 를 띄운다.
+#                           미리보기 전용 DB 는 매번 새로. 자리 1시간(한 번에 PR 하나)
+#     preview 라벨이 있는 PR 에 push   다시 올리기(서버가 켜져 있고 자리가 이 PR 것이거나 비었을 때만. 아니면 조용히 건너뜀)
+#     preview 라벨 떼기·PR 닫기·머지   미리보기 끝내기(이 PR 의 미리보기가 떠 있을 때만): develop 최신으로 되돌린다
+#     no-preview 라벨       이 PR 은 저절로 띄우지 않는다. PR 을 열 때 붙여 두거나, 나중에 붙이면 미리보기를 끝내고 preview 라벨을 뗀다
+#     dev-off 라벨 붙이기   끄기(아래와 같다). 라벨은 바로 떼어 둔다
+#   Actions → Dev server → Run workflow — 할 일
+#     상태 보기 · 켜기 · 미리보기 끝내기 · 끄기
+#   저절로 — dev-server-idle.yml 이 20분마다 부른다(이 파일을 workflow_call 로)
+#     안 쓰면 끄기          서버가 켜져 있고, 미리보기 자리가 비었고, 60분 동안 테스트 주소 요청·배포가 없으면 끈다(끄기와 같은 순서)
+#
+# PR 에서 돌 때는 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 돈다. 그래서 파이프라인을 바꾼 PR 도 머지 전에
+# 자기 버전으로 시험된다(2026-10-07 결정 — PR 실행에도 배포 역할을 준다. 포크 PR 은 GitHub 이 권한을 주지 않는다,
+# docs/cd-architecture.md §8). 파이프라인을 바꾸는 브랜치는 Run workflow 에서 그 브랜치를 골라 상태·켜기·끄기도 시험한다.
+# 결과 보고서는 실행 화면의 Summary 다. 공개 레포라 테스트 주소·계정 ID·서버 주소는 찍지 않는다(주소는 디스코드 고정 메시지).
+# 고정 IP 가 없어 서버를 껐다 켜면 주소가 바뀐다. 그래서 끌 때는 대문(CloudFront)을 먼저 닫고(다 닫힌 것을 본 뒤) 서버를 끈다.
+# 대문 여닫기는 Terraform 밖이다(scripts/edge-toggle.sh, 승인 없이 몇 초).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 할 일(PR 미리보기는 PR 에 preview 라벨을 붙인다)
+        type: choice
+        options:
+          - 상태 보기
+          - 켜기
+          - 미리보기 끝내기
+          - 끄기
+        default: 상태 보기
+  # dev-server-idle.yml(20분마다)이 "안 쓰면 끄기"로 부른다. 실행 목록이 Dev server 를 덮지 않게 따로 둔다.
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled, unlabeled, synchronize, closed]
+
+# 같은 PR 의 라벨·push 는 한 번에 하나씩(마지막 것이 이긴다). 버튼(수동 실행)은 서로 막지 않는다 — 서버 쪽 잠금이 줄 세운다.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('dev-server-pr-{0}', github.event.pull_request.number) || format('dev-server-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    # PR 이벤트는 열기(기본값)와 preview·no-preview·dev-off 라벨과 관계있을 때만 돈다(다른 라벨·preview 없는 PR 의 push 는 건너뛴다).
+    if: >-
+      github.event_name != 'pull_request' || inputs.action != '' ||
+      github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'ready_for_review' ||
+      github.event.label.name == 'preview' || github.event.label.name == 'no-preview' || github.event.label.name == 'dev-off' ||
+      ((github.event.action == 'synchronize' || github.event.action == 'closed') &&
+       contains(github.event.pull_request.labels.*.name, 'preview'))
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # dev-off 라벨을 떼어 둔다
+    outputs:
+      task: ${{ steps.what.outputs.task }}
+      power_on: ${{ steps.what.outputs.power_on }}
+      release: ${{ steps.what.outputs.release }}
+      power_off: ${{ steps.what.outputs.power_off }}
+      mode: ${{ steps.what.outputs.mode }}
+      sha: ${{ steps.what.outputs.sha }}
+      pr: ${{ steps.what.outputs.pr }}
+      title: ${{ steps.what.outputs.title }}
+      author: ${{ steps.what.outputs.author }}
+      head: ${{ steps.what.outputs.head }}
+      base: ${{ steps.what.outputs.base }}
+      end_preview: ${{ steps.what.outputs.end_preview }}
+      end_only_pr: ${{ steps.what.outputs.end_only_pr }}
+      quiet: ${{ steps.what.outputs.quiet }}
+      idle_only: ${{ steps.what.outputs.idle_only }}
+
+    steps:
+      - name: Decide what to do
+        id: what
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ inputs.action }}
+          PR_ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HAS_PREVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'preview') }}
+          HAS_NO_PREVIEW: ${{ contains(github.event.pull_request.labels.*.name, 'no-preview') }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          MERGE_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          out() { echo "$1=$2" >>"$GITHUB_OUTPUT"; }
+          fail() { echo "::error title=Dev server::$1"; printf '## Dev server — %s ❌\n\n%s\n' "${task:-?}" "$1" >>"$GITHUB_STEP_SUMMARY"; exit 1; }
+          skip() { printf '## Dev server — 할 일 없음\n\n%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; out task none; exit 0; }
+          [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "저장소 변수 AWS_ACCOUNT_ID(12자리)가 없다(관리자가 한 번 등록한다)."
+          [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}(\[bot\])?$ ]] || fail "누른 사람 아이디 모양이 틀렸다."
+          develop_sha() { gh api "repos/$REPO/commits/develop" --jq .sha; }
+          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha="" auto=false idle_only=false
+          steps=()
+
+          # 버튼(workflow_dispatch)이나 다른 워크플로(workflow_call)가 할 일을 정해 부르면 그것을 따른다(부른 쪽 이벤트가 PR 이어도).
+          if [ -z "$ACTION" ] && [ "$EVENT" = pull_request ]; then
+            [ "$HEAD_REPO" = "$REPO" ] ||
+              skip "포크에서 온 PR 이라 미리보기를 하지 않는다(자격증명이 있는 서버에서 돌기 때문). 브랜치를 이 레포에 올려 PR 을 다시 연다."
+            [[ "$PR" =~ ^[0-9]{1,6}$ ]] || fail "PR 번호를 읽지 못했다."
+            # 라벨은 지금 것을 다시 읽는다. gh pr create --label 처럼 PR 을 만든 뒤 라벨을 붙이면 opened 이벤트에는 라벨이 없다.
+            if live=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name' 2>/dev/null); then
+              if grep -qx preview <<<"$live"; then HAS_PREVIEW=true; else HAS_PREVIEW=false; fi
+              if grep -qx no-preview <<<"$live"; then HAS_NO_PREVIEW=true; else HAS_NO_PREVIEW=false; fi
+            fi
+            case "$PR_ACTION:$LABEL" in
+              opened:* | reopened:* | ready_for_review:*) task="PR 미리보기 올리기" auto=true ;;
+              labeled:preview) task="PR 미리보기 올리기" ;;
+              synchronize:*) task="PR 미리보기 다시 올리기" ;;
+              unlabeled:preview | closed:*) task="미리보기 끝내기" ;;
+              labeled:no-preview)
+                [ "$HAS_PREVIEW" = true ] || skip "no-preview 라벨 — 이 PR 은 앞으로 열 때 저절로 띄우지 않는다(떠 있는 미리보기는 없다)."
+                # GITHUB_TOKEN 으로 뗀 라벨은 실행을 만들지 않는다. 끝내기는 이 실행이 한다.
+                gh api -X DELETE "repos/$REPO/issues/$PR/labels/preview" >/dev/null 2>&1 || true
+                task="미리보기 끝내기" ;;
+              labeled:dev-off) task="끄기" ;;
+              *) skip "preview·no-preview·dev-off 라벨과 관계없는 이벤트다." ;;
+            esac
+            if [ "$PR_ACTION" = closed ] && [ "$HAS_PREVIEW" != true ]; then skip "preview 라벨이 없는 PR 이다."; fi
+            # 기본값(PR 을 열면 띄운다)에서 빼는 PR. 지금 보려면 preview 라벨을 붙인다.
+            if [ "$auto" = true ]; then
+              [ "$DRAFT" != true ] || skip "draft PR 이라 저절로 띄우지 않는다. Ready for review 로 바꾸면 띄운다(지금 보려면 preview 라벨)."
+              [ "$HAS_NO_PREVIEW" != true ] || skip "no-preview 라벨이 있어 저절로 띄우지 않는다(보려면 no-preview 를 떼고 preview 라벨)."
+              # 라벨을 달고 연 PR 은 labeled 실행이 따로 돈다(두 번 올리지 않게). 다시 열기·Ready 는 라벨 실행이 없으니 여기서 올린다.
+              if [ "$PR_ACTION" = opened ] && [ "$HAS_PREVIEW" = true ]; then skip "preview 라벨을 달고 연 PR 이라 라벨 실행이 올린다."; fi
+              [ "$BASE_REF" = develop ] || skip "develop 으로 가는 PR 이 아니라 띄우지 않는다."
+              [ "$AUTHOR_TYPE" != Bot ] || skip "봇이 연 PR 이라 저절로 띄우지 않는다(보려면 preview 라벨)."
+              # 문서만 바꾼 PR 은 화면·API 가 develop 과 같다. 파일 목록을 못 읽으면 그대로 띄운다.
+              files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' 2>/dev/null) || files=""
+              if [ -n "$files" ] && ! grep -qvE '^docs/|\.md$' <<<"$files"; then
+                skip "문서(docs/·*.md)만 바꾼 PR 이라 저절로 띄우지 않는다(보려면 preview 라벨)."
+              fi
+            fi
+          else
+            task=$ACTION
+          fi
+
+          case $task in
+            "상태 보기")
+              steps=("서버·대문·올라간 것·자리·권한을 읽기만 한다(아무것도 바꾸지 않는다)") ;;
+            "켜기")
+              power_on=true release=true sha=$(develop_sha)
+              steps=("서버 켜기(꺼져 있으면) · 서버 기본 설정 확인" "대문(CloudFront)에 새 서버 주소를 넣고 열기" "develop 최신 \`${sha:0:7}\` 으로 맞추기(이미 떠 있으면 그대로)" "테스트 주소로 화면·API 확인") ;;
+            "PR 미리보기 올리기" | "PR 미리보기 다시 올리기")
+              pr=$(gh api "repos/$REPO/pulls/$PR") || fail "PR #$PR 을 읽지 못했다."
+              field() { jq -r "$1" <<<"$pr"; }
+              [ "$(field .base.ref)" = develop ] || fail "PR #$PR 은 develop 으로 가는 PR 이 아니다."
+              # pull_request 실행의 커밋(github.sha)은 GitHub 이 이 PR 을 develop 에 합친 커밋이다. 충돌이 있으면 실행 자체가 생기지 않는다.
+              sha=$MERGE_SHA
+              head=$(field .head.sha)
+              [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "합친 커밋을 받지 못했다."
+              parents=$(gh api "repos/$REPO/commits/$sha" --jq '[.parents[].sha] | join(" ")')
+              read -r base second <<<"$parents"
+              [ "$second" = "$head" ] || fail "합친 커밋이 PR 의 최신 커밋을 담고 있지 않다(방금 push 했으면 그 실행이 이어서 돈다)."
+              gh api "repos/$REPO/contents/frontend/Dockerfile?ref=$sha" >/dev/null 2>&1 ||
+                fail "이 PR 을 합친 코드에 화면 이미지(frontend/Dockerfile)가 없다. develop 을 받은 뒤 다시 올린다."
+              out pr "$PR"
+              out title "$(field .title | tr -d '\r\n' | cut -c1-100)"
+              out author "$(field .user.login)"
+              out head "$head"
+              out base "$base"
+              release=true mode=preview
+              if [ "$auto" = true ]; then
+                # 기본값으로 띄운다. 다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀(PR 검사가 빨개지지 않게).
+                # 라벨은 상태 표시다(이 PR 에 push 하면 다시 올리고, 떼면 끝낸다). GITHUB_TOKEN 으로 단 라벨은 실행을 새로 만들지 않는다.
+                power_on=true quiet=true
+                gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=preview" >/dev/null 2>&1 ||
+                  echo "::warning title=라벨::preview 라벨을 붙이지 못했다(미리보기는 그대로 올린다)"
+                steps=("PR 을 열어 저절로(기본값) — preview 라벨을 붙여 둠. 띄우지 않으려면 no-preview 라벨" \
+                  "서버가 꺼져 있으면 켜고 대문 열기 · 서버 기본 설정 확인")
+              elif [ "$task" = "PR 미리보기 올리기" ]; then
+                power_on=true
+                steps=("서버가 꺼져 있으면 켜고 대문 열기 · 서버 기본 설정 확인")
+              else
+                # push 할 때마다 서버를 켜지는 않는다. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다.
+                quiet=true
+                steps=("서버가 켜져 있을 때만(꺼져 있으면 건너뜀)")
+              fi
+              steps+=("자리 확인(다른 PR 이 쓰는 중이면 빌드 전에 멈춤 — 저절로 돈 실행은 건너뜀)" \
+                "PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 의 워크플로·스크립트로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
+                "서버에서 자리 다시 확인(잠금 안) → 미리보기 DB 새로 만들기 → 바꿔 띄우기 → 상태 확인" "테스트 주소로 화면·API·커밋 확인") ;;
+            "미리보기 끝내기")
+              release=true end_preview=true sha=$(develop_sha)
+              if [ "$EVENT" = pull_request ]; then
+                end_only_pr=$PR quiet=true
+                steps=("PR #$PR 의 미리보기가 떠 있을 때만(아니면 빌드 전에 건너뜀)")
+              fi
+              steps+=("develop 최신 \`${sha:0:7}\` 으로 되돌리기(배포 전 백업)" "미리보기 DB·계정·자리 지우기") ;;
+            "끄기")
+              power_off=true
+              if [ "$EVENT" = pull_request ]; then
+                gh api -X DELETE "repos/$REPO/issues/$PR/labels/dev-off" >/dev/null 2>&1 || true
+              fi
+              steps=("다른 사람 미리보기가 자리를 쓰는 중이면 멈춤" "대문(CloudFront) 닫기 → 다 닫힌 것을 다시 읽어 확인" "배포·백업이 끝나길 기다린 뒤 서버 끄기") ;;
+            "안 쓰면 끄기")
+              power_off=true idle_only=true
+              steps=("서버가 꺼져 있으면 할 일 없음" "미리보기 자리를 누가 쓰는 중이거나, 60분 안에 테스트 주소 요청·배포가 있었으면 그대로 둠" \
+                "아니면 끄기와 같다: 대문(CloudFront) 닫기 → 확인 → 서버 끄기") ;;
+            *) fail "모르는 작업: $task" ;;
+          esac
+          [ -z "$sha" ] || [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "배포할 커밋을 정하지 못했다."
+          out task "$task"
+          out power_on "$power_on"
+          out release "$release"
+          out power_off "$power_off"
+          out mode "$mode"
+          out sha "$sha"
+          out end_preview "$end_preview"
+          out end_only_pr "$end_only_pr"
+          out quiet "$quiet"
+          out idle_only "$idle_only"
+          {
+            echo "## Dev server — $task"
+            echo
+            if [ "$EVENT" = pull_request ]; then
+              echo "PR #$PR · **$ACTOR** · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST) · 이 PR 을 develop 에 합친 커밋의 워크플로로 돈다"
+            elif [ "$EVENT" = schedule ]; then
+              echo "저절로(20분마다) · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST)"
+            else
+              echo "누른 사람 **$ACTOR** · $(TZ=Asia/Seoul date '+%m/%d %H:%M') (KST)"
+            fi
+            echo
+            echo "이 실행이 하는 일:"
+            n=1
+            for s in "${steps[@]}"; do echo "$n. $s"; n=$((n + 1)); done
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  power_on:
+    needs: plan
+    if: needs.plan.outputs.power_on == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: dev
+    # 켜기·끄기가 겹치지 않게 한 번에 하나(기다린다. 취소하지 않는다).
+    concurrency:
+      group: dev-server-power
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+    outputs:
+      was_off: ${{ steps.power.outputs.was_off }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-dev-server-on
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      - name: Start server
+        id: power
+        run: |
+          before=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
+          echo "was_off=$([ "$before" = running ] && echo false || echo true)" >>"$GITHUB_OUTPUT"
+          code=0
+          bash scripts/server-power.sh start || code=$?
+          took=$(sed -n 's/^SERVER_SECONDS=//p' "$GITHUB_OUTPUT" | tail -n 1)
+          {
+            echo "### 서버 켜기"
+            echo
+            if [ "$code" = 77 ]; then
+              echo "❌ 배포 역할에 서버 켜기 권한이 없다. AWS 콘솔(EC2 → 인스턴스 → 서버 체크 → **인스턴스 상태 ▼ → 인스턴스 시작**)에서 켠 뒤 같은 작업을 다시 누른다."
+              echo "주황색 **인스턴스 시작** 버튼은 새 서버를 만드는 마법사다. 누르지 않는다."
+            elif [ "$code" = 0 ]; then
+              [ "$before" = running ] && echo "- 이미 켜져 있었다" || echo "- 켰다: ${took:-?}초(공인 주소가 생기고 SSM 이 붙을 때까지)"
+            else
+              echo "❌ 서버를 켜지 못했다(종료 코드 $code). 로그를 본다."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+      # 서버 기본 설정(deploy/host/setup.sh)은 여러 번 돌려도 결과가 같다. 켤 때마다 확인한다(이미 되어 있으면 몇 초).
+      # PR 미리보기는 컨테이너의 인스턴스 메타데이터 차단(7번)이 있어야 뜬다.
+      - name: Server basic setup (idempotent)
+        run: |
+          remote="$RUNNER_TEMP/host-setup.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo 'mkdir -p /opt/neuringo/state'
+            echo 'exec 9>/opt/neuringo/state/deploy.lock'
+            echo 'flock -w 600 9 || { echo "[setup] 배포·백업이 10분 안에 끝나지 않아 멈췄다"; exit 1; }'
+            cat deploy/host/setup.sh
+          } >"$remote"
+          code=0
+          out=$(bash scripts/ssm-run.sh "$remote" "host setup") || code=$?
+          rm -f "$remote"
+          echo "$out"
+          changed=$(grep -E '^\[setup\] ' <<<"$out" | grep -vE '이미 있음|배포 폴더|끝' | sed 's/^\[setup\] //' | paste -sd ',' - || true)
+          {
+            echo
+            echo "### 서버 기본 설정"
+            echo
+            if [ "$code" != 0 ]; then
+              echo "❌ 서버 기본 설정이 실패했다(종료 코드 $code). 로그의 [setup] 줄을 본다."
+            elif [ -n "$changed" ]; then
+              echo "- 고쳤다: $changed"
+            else
+              echo "- 이미 되어 있다(Docker·swap·로그 상한·보안 업데이트·컨테이너 IMDS 차단)"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+      - name: Open CloudFront with the new server address
+        env:
+          CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
+          DNS: ${{ steps.power.outputs.SERVER_DNS }}
+        run: |
+          out=$(bash scripts/edge-toggle.sh on "$DNS")
+          echo "$out"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          {
+            echo
+            echo "### 대문(CloudFront) 열기"
+            echo
+            if [ "$(value EDGE_RESULT)" = changed ]; then
+              echo "- 새 서버 주소를 넣고 열었다($(value EDGE_SECONDS)초). 전 세계 엣지에 퍼지는 데 2~3분 걸린다(아래 확인이 기다린다)."
+            else
+              echo "- 이미 열려 있고 주소도 같다"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: [plan, power_on]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.release == 'true' && (needs.power_on.result == 'success' || needs.power_on.result == 'skipped')
+    permissions:
+      contents: read
+      id-token: write # release.yml 의 잡들이 GitHub OIDC 로 AWS 임시 자격증명을 받는다
+    uses: ./.github/workflows/release.yml
+    with:
+      sha: ${{ needs.plan.outputs.sha }}
+      mode: ${{ needs.plan.outputs.mode }}
+      pr: ${{ needs.plan.outputs.pr }}
+      by: ${{ github.actor }}
+      title: ${{ needs.plan.outputs.title }}
+      author: ${{ needs.plan.outputs.author }}
+      head: ${{ needs.plan.outputs.head }}
+      base: ${{ needs.plan.outputs.base }}
+      end_preview: ${{ needs.plan.outputs.end_preview == 'true' }}
+      end_only_pr: ${{ needs.plan.outputs.end_only_pr }}
+      quiet: ${{ needs.plan.outputs.quiet == 'true' }}
+      # 대문을 막 열었으면 퍼질 때까지(최대 5분) 기다리며 확인한다.
+      edge_wait: ${{ needs.power_on.outputs.was_off == 'true' && 300 || 60 }}
+
+  power_off:
+    needs: plan
+    if: needs.plan.outputs.power_off == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # 끄기는 배포가 아니다. 안 쓰면 끄기가 20분마다 돌아 배포 기록(Environments → dev)을 채우지 않게 기록을 만들지 않는다.
+    environment:
+      name: dev
+      deployment: false
+    concurrency:
+      group: dev-server-power
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read # 안 쓰면 끄기: 도는 중인 Dev server·Deploy 실행이 있나 본다
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-dev-server-off
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      # 다른 사람이 미리보기로 테스트하는 중이면 끄지 않는다. 그 사람이 끝내거나 자리 시간이 지난 뒤 끈다.
+      # 안 쓰면 끄기(20분마다)는 자리가 비었고 60분 동안 테스트 주소 요청·배포가 없을 때만 끈다. 아니면 초록으로 그대로 둔다.
+      - name: Nobody else is previewing?
+        id: who
+        env:
+          ACTOR: ${{ github.actor }}
+          IDLE_ONLY: ${{ needs.plan.outputs.idle_only }}
+          IDLE_MINUTES: 60
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          state=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
+          if [ "$state" != running ]; then
+            if [ "$IDLE_ONLY" = true ]; then
+              echo "go=false" >>"$GITHUB_OUTPUT"
+              printf '### 할 일 없음\n\n서버가 꺼져 있다(%s).\n' "${state:-읽지 못함}" >>"$GITHUB_STEP_SUMMARY"
+            else
+              echo "go=true" >>"$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          remote="$RUNNER_TEMP/status.sh"
+          # shellcheck disable=SC2016 # $f 는 서버에서 풀린다
+          printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\n[ -f "$f" ] && bash "$f" || echo LEASE_ACTIVE=0\n' >"$remote"
+          out=$(bash scripts/ssm-run.sh "$remote" "status") || true
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          kst() { TZ=Asia/Seoul date -d "$1" '+%H:%M' 2>/dev/null || echo "$1"; }
+          if [ "$IDLE_ONLY" = true ]; then
+            keep() { echo "go=false" >>"$GITHUB_OUTPUT"; printf '### 그대로 둔다\n\n%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; exit 0; }
+            # 켜기·미리보기·배포가 도는 중이면(빌드하는 몇 분 동안은 자리가 아직 없다) 끄지 않는다.
+            busy=0
+            for wf in dev-server.yml deploy.yml; do
+              for st in queued in_progress waiting; do
+                n=$(gh run list -R "$REPO" --workflow "$wf" --status "$st" --limit 20 --json databaseId --jq length 2>/dev/null) || n=0
+                busy=$((busy + ${n:-0}))
+              done
+            done
+            [ "$busy" -eq 0 ] || keep "Dev server·Deploy 실행이 ${busy}개 도는 중이다."
+            [ -n "$(value LEASE_ACTIVE)" ] || keep "서버 상태를 읽지 못했다. 20분 뒤 다시 본다."
+            [ "$(value LEASE_ACTIVE)" != 1 ] ||
+              keep "PR #$(value LEASE_PR) 미리보기를 $(value LEASE_BY) 님이 $(kst "$(value LEASE_UNTIL)") (KST) 까지 쓰는 중이다."
+            # 마지막 사용 = 서버를 켠 시각·마지막 배포(state/dev.release)·화면 컨테이너의 마지막 요청 중 가장 늦은 것.
+            last=0 last_at=""
+            for at in "$(value STATUS_BOOTED_AT)" "$(value STATUS_AT)" "$(value STATUS_LAST_REQUEST)"; do
+              [ -n "$at" ] || continue # date -d "" 는 오늘 0시가 된다
+              t=$(date -u -d "$at" +%s 2>/dev/null) || continue
+              if [ "$t" -gt "$last" ]; then last=$t last_at=$at; fi
+            done
+            idle=$((($(date +%s) - last) / 60))
+            [ "$last" -eq 0 ] || [ "$idle" -ge "$IDLE_MINUTES" ] ||
+              keep "마지막 사용 $(kst "$last_at") (KST), ${idle}분 전. ${IDLE_MINUTES}분 동안 안 쓰면 끈다."
+            echo "go=true" >>"$GITHUB_OUTPUT"
+            if [ "$last" -eq 0 ]; then
+              printf '### 끈다\n\n미리보기 자리가 비었고 마지막 사용 기록이 없다.\n' >>"$GITHUB_STEP_SUMMARY"
+            else
+              printf '### 끈다\n\n미리보기 자리가 비었고 마지막 사용 %s (KST) 뒤 %s분 동안 안 썼다.\n' "$(kst "$last_at")" "$idle" >>"$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+          echo "go=true" >>"$GITHUB_OUTPUT"
+          if [ "$(value LEASE_ACTIVE)" = 1 ] && [ "$(value LEASE_BY)" != "$ACTOR" ]; then
+            until_kst=$(TZ=Asia/Seoul date -d "$(value LEASE_UNTIL)" '+%H:%M' 2>/dev/null || value LEASE_UNTIL)
+            {
+              echo "### 끄지 않았다 ⛔"
+              echo
+              echo "PR #$(value LEASE_PR) 미리보기를 **$(value LEASE_BY)** 님이 $until_kst (KST) 까지 쓰는 중이다."
+              echo "그 사람이 미리보기를 끝내거나(PR 에서 preview 라벨 떼기) 시간이 지난 뒤 끈다. 급하면 먼저 알리고 미리보기 끝내기 → 끄기."
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "::error title=끄지 않음::다른 사람 미리보기가 자리를 쓰는 중"
+            exit 1
+          fi
+
+      - name: Close CloudFront and wait until it is closed
+        if: steps.who.outputs.go == 'true'
+        env:
+          CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
+        run: |
+          out=$(bash scripts/edge-toggle.sh off)
+          echo "$out"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          {
+            echo "### 대문(CloudFront) 닫기"
+            echo
+            echo "- $([ "$(value EDGE_RESULT)" = changed ] && echo 닫았다 || echo '이미 닫혀 있었다') · 다 퍼진 것 확인(상태 $(value EDGE_STATUS), 켜짐 $(value EDGE_ENABLED)) · $(value EDGE_SECONDS)초"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Stop server
+        if: steps.who.outputs.go == 'true'
+        run: |
+          code=0
+          out=$(bash scripts/server-power.sh stop) || code=$?
+          echo "$out"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          {
+            echo
+            echo "### 서버 끄기"
+            echo
+            case $code in
+              0) echo "- 껐다($(value SERVER_HOW), $(value SERVER_SECONDS)초). 다시 쓸 때 **켜기**를 누른다. DB·마지막으로 올린 버전은 디스크에 남는다." ;;
+              77) echo "❌ 배포 역할에 끄기 권한이 없다. 대문은 닫혀 있으니 AWS 콘솔(인스턴스 상태 ▼ → **인스턴스 중지**)에서 끈다. **인스턴스 종료**는 서버를 지우니 누르지 않는다." ;;
+              *) echo "❌ 서버를 끄지 못했다(종료 코드 $code). 대문은 닫혀 있다. 로그를 본다." ;;
+            esac
+            echo
+            echo "끄면 \"서버 꺼짐\" 경보 메일이 갈 수 있다(정상)."
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+  status:
+    needs: [plan, power_on, release, power_off]
+    # 안 쓰면 끄기(20분마다)는 끄기 잡의 보고서로 충분하다(매번 상태 표를 만들지 않는다).
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.task != 'none' && needs.plan.outputs.idle_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-dev-server-status
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      - name: Report current state
+        env:
+          CF_DISTRIBUTION_ID: ${{ steps.infra.outputs.cloudfront_distribution_id }}
+          DOMAIN: ${{ steps.infra.outputs.cloudfront_domain }}
+          TASK: ${{ needs.plan.outputs.task }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          power=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state) || power=""
+          edge=$(bash scripts/edge-toggle.sh status) || edge=""
+          server=""
+          state=$(sed -n 's/^SERVER_STATE=//p' <<<"$power")
+          if [ "$state" = running ] && [[ "$DOMAIN" =~ ^[a-z0-9]+\.cloudfront\.net$ ]]; then
+            remote="$RUNNER_TEMP/status.sh"
+            # shellcheck disable=SC2016 # $f 는 서버에서 풀린다
+            printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\nif [ -f "$f" ]; then EDGE_DOMAIN=%s bash "$f"; else echo STATUS_RELEASE=없음; fi\n' "$DOMAIN" >"$remote"
+            server=$(bash scripts/ssm-run.sh "$remote" "status") || true
+          fi
+          perms=""
+          if [ "$TASK" = "상태 보기" ]; then perms=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh perms) || true; fi
+          value() { sed -n "s/^$2=//p" <<<"$1" | tail -n 1; }
+          kst() { [ -n "$1" ] && TZ=Asia/Seoul date -d "$1" '+%m/%d %H:%M' 2>/dev/null || echo "${1:-?}"; }
+          yesno() { [ "$1" = yes ] && echo "✅ 있음" || echo "❌ 없음(콘솔에서)"; }
+          case $state in
+            running) server_line="🟢 켜짐" ;;
+            stopped) server_line="⚪ 꺼짐" ;;
+            "") server_line="? 읽지 못함" ;;
+            *) server_line="🟡 $state" ;;
+          esac
+          enabled=$(value "$edge" EDGE_ENABLED)
+          case "${enabled,,}:$(value "$edge" EDGE_STATUS)" in
+            true:Deployed) edge_line="🟢 열림" ;;
+            false:Deployed) edge_line="⚪ 닫힘" ;;
+            true:*) edge_line="🟡 여는 중(퍼지는 중)" ;;
+            false:*) edge_line="🟡 닫는 중(퍼지는 중)" ;;
+            *) edge_line="? 읽지 못함" ;;
+          esac
+          release=$(value "$server" STATUS_RELEASE)
+          mode=$(value "$server" STATUS_MODE)
+          {
+            echo
+            echo "## 지금 상태"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 서버 | $server_line |"
+            echo "| 대문(CloudFront) | $edge_line |"
+            if [ "$state" = running ]; then
+              if [ "$mode" = preview ]; then
+                echo "| 올라간 것 | PR #$(value "$server" STATUS_PR) 미리보기 \`${release:0:7}\` · $(value "$server" STATUS_BY) · $(kst "$(value "$server" STATUS_AT)") |"
+              elif [ "$mode" = develop ]; then
+                echo "| 올라간 것 | develop \`${release:0:7}\` · $(kst "$(value "$server" STATUS_AT)") |"
+              else
+                echo "| 올라간 것 | 아직 없음 |"
+              fi
+              if [ "$(value "$server" LEASE_ACTIVE)" = 1 ]; then
+                echo "| 미리보기 자리 | PR #$(value "$server" LEASE_PR) · $(value "$server" LEASE_BY) · $(kst "$(value "$server" LEASE_UNTIL)") (KST) 까지 |"
+              else
+                echo "| 미리보기 자리 | 비어 있음(누구나 올릴 수 있다) |"
+              fi
+              echo "| 테스트 주소 응답 | API $(value "$server" EDGE_API) · 화면 $(value "$server" EDGE_PAGE) · 커밋 일치 $(value "$server" EDGE_RELEASE_MATCH) |"
+              echo "| 컨테이너 | $(value "$server" STATUS_CONTAINERS) |"
+              echo "| 서버 여유 | 메모리 $(value "$server" STATUS_MEM_AVAILABLE_MB) MB · 디스크 $(value "$server" STATUS_DISK_FREE_GB) GB |"
+            else
+              echo "| 올라간 것 | 서버가 꺼져 있어 켠 뒤에 보인다(켜면 마지막으로 올린 버전이 다시 뜬다) |"
+            fi
+            if [ -n "$perms" ]; then
+              echo "| 배포 역할 권한 | 서버 켜기 $(yesno "$(value "$perms" PERM_START)") · 끄기 $(yesno "$(value "$perms" PERM_STOP)") |"
+            fi
+            echo
+            echo "테스트 주소는 디스코드 고정 메시지에 있다. 다음에 할 것:"
+            if [ "$state" != running ]; then
+              echo "- PR 을 열면 저절로 뜬다. 이미 연 PR 은 **preview** 라벨을 붙이거나 Run workflow → **켜기**"
+            elif [ "$mode" = preview ]; then
+              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기). 서버는 60분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+            else
+              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). 서버는 60분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"

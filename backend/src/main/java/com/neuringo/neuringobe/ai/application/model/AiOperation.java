@@ -6,5 +6,11 @@ public enum AiOperation {
     CAUSE_ANALYSIS,
     RESPONSE_GENERATION,
     RESPONSE_EVALUATION,
-    NEXT_DIFFICULTY_DECISION
+    NEXT_DIFFICULTY_DECISION,
+    SPEECH_TRANSCRIPTION,
+    SPEECH_SYNTHESIS;
+
+    public boolean isSpeech() {
+        return this == SPEECH_TRANSCRIPTION || this == SPEECH_SYNTHESIS;
+    }
 }

@@ -111,18 +111,9 @@ jobs:
           cat "$RUNNER_TEMP/codeql-summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment on PR
-        # 포크 PR 은 토큰에 쓰기 권한이 없어 건너뛴다.
+        # 포크 PR 은 토큰에 쓰기 권한이 없다. 이 실행이 끝나면 codeql-comment.yml 이 대신 단다.
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          marker='<!-- codeql-summary -->'
-          body="$marker"$'\n'"$(cat "$RUNNER_TEMP/codeql-summary.md")"
-          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n1)
-          if [ -n "$id" ]; then
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
-          else
-            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" > /dev/null
-          fi
+        run: bash scripts/codeql-comment.sh post "$PR_NUMBER" "$RUNNER_TEMP/codeql-summary.md"

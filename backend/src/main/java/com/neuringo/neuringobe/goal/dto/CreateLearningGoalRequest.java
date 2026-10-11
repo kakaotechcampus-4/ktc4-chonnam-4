@@ -9,6 +9,7 @@ import java.util.UUID;
 public record CreateLearningGoalRequest(
         @NotBlank @Size(max = 200) String title,
         @Size(max = 30) String situationType,
+        @Size(max = 30) String category,
         List<Map<String, Object>> characters,
         List<String> requiredElements,
         List<String> forbiddenExpressions,

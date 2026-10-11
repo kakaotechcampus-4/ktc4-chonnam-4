@@ -8,6 +8,7 @@ import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
+import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import {
   completeActivity,
@@ -29,10 +30,16 @@ type ThreadMessage = {
   inputMode?: RoleplayInputMode
 }
 
+// 깡총이가 화면 끝까지 닿도록 레이아웃을 wide로 쓰고, 나머지 대화·입력은 기존 본문 폭(688px)에 맞춘다.
+const COLUMN = "mx-auto w-full max-w-[43rem]"
+
 function ThreadBubble({ message }: { message: ThreadMessage }) {
+  // 깡총이(힌트·도움)는 Figma C-RP-02처럼 화면 오른쪽 끝에서 튀어나온다. 역할극에서만 이렇게 보여 준다.
+  if (message.speaker === "rabbit") return <RabbitHintBubble>{message.text}</RabbitHintBubble>
+
   if (message.speaker === "child") {
     return (
-      <div className="flex items-center justify-end gap-2">
+      <div className={`${COLUMN} flex items-center justify-end gap-2`}>
         <p className="max-w-[80%] rounded-[var(--child-radius-card)] rounded-br-md bg-[#EDE9FE] px-5 py-3 text-lg font-medium text-[var(--child-text)] shadow-sm">
           “{message.text}”
         </p>
@@ -46,13 +53,10 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
       </div>
     )
   }
-  // 깡총이(힌트·도움)는 Figma C-RP-02처럼 오른쪽에 선다.
-  return message.speaker === "rabbit" ? (
-    <SpeechBubble character="rabbit" side="right" characterAlign="top" className="justify-start">
+  return (
+    <SpeechBubble character="turtle" className={COLUMN}>
       {message.text}
     </SpeechBubble>
-  ) : (
-    <SpeechBubble character="turtle">{message.text}</SpeechBubble>
   )
 }
 
@@ -76,7 +80,7 @@ function RoleplayWrapUpView({
           <Character name="rabbit" size="md" />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-3xl font-bold text-[var(--child-text)]">정말 잘 이야기했어!</p>
+          <p className="font-child-display font-extrabold text-3xl text-[var(--child-text)]">정말 잘 이야기했어!</p>
           <p className="text-lg text-[var(--child-text-muted)]">
             친구 마음을 헤아려서 말해준 게 {withNameSuffix(childName)}는 참 멋있었어
           </p>
@@ -175,6 +179,14 @@ function ChildRoleplayPage() {
     turnMutation.mutate({ activityId, turnIndex, text, requestId: crypto.randomUUID() })
   }
 
+  // 녹음·STT(S6) 전이라 "듣고 있어요" 화면이 끝나도 보낼 음성이 없다. 깡총이가 글자로 답하도록 안내한다.
+  const handleVoiceFinish = () => {
+    setReplies((prev) => [
+      ...prev,
+      { id: `voice-${prev.length}`, speaker: "rabbit", text: "말로 답하기는 아직 준비 중이야. 글자로 알려줄래?" },
+    ])
+  }
+
   const retryLoad = () => {
     if (activitiesQuery.isError) activitiesQuery.refetch()
     if (scenarioQuery.isError) scenarioQuery.refetch()
@@ -188,6 +200,8 @@ function ChildRoleplayPage() {
       activityTitle="역할극"
       stepLabel={scenarioQuery.data?.place}
       backgroundImage={themeparkBackgroundUrl}
+      dimBackground
+      wide
     >
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
@@ -209,18 +223,26 @@ function ChildRoleplayPage() {
               <ThreadBubble key={message.id} message={message} />
             ))}
             {turnMutation.isPending ? (
-              <SpeechBubble character="turtle">생각하고 있어요…</SpeechBubble>
+              <SpeechBubble character="turtle" className={COLUMN}>
+                생각하고 있어요…
+              </SpeechBubble>
             ) : null}
             <div ref={threadEndRef} />
           </div>
 
-          {isFinished ? (
-            <ChildButton className="h-16 w-full text-xl" onClick={() => setIsWrappedUp(true)}>
-              이야기 마무리하기
-            </ChildButton>
-          ) : (
-            <RoleplayComposer onSend={send} disabled={turnMutation.isPending} />
-          )}
+          <div className={COLUMN}>
+            {isFinished ? (
+              <ChildButton className="h-16 w-full text-xl" onClick={() => setIsWrappedUp(true)}>
+                이야기 마무리하기
+              </ChildButton>
+            ) : (
+              <RoleplayComposer
+                onSend={send}
+                onVoiceFinish={handleVoiceFinish}
+                disabled={turnMutation.isPending}
+              />
+            )}
+          </div>
         </div>
       ) : null}
 

@@ -33,7 +33,7 @@ function NextActivityDialog({
 
             <Character name="turtle" size="md" />
             <DialogPrimitive.Title asChild>
-              <p className="text-2xl font-bold text-[var(--child-text)]">다음 활동도 해볼까?</p>
+              <p className="font-child-display font-extrabold text-2xl text-[var(--child-text)]">다음 활동도 해볼까?</p>
             </DialogPrimitive.Title>
 
             {activity ? (

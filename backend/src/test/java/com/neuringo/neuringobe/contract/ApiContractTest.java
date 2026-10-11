@@ -64,7 +64,7 @@ class ApiContractTest {
     void backendAnswersAsTheSharedContractSays(String name, JsonNode scenario) {
         TestFixtures.Instructor instructor = fixtures.instructor();
         UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
-        fixtures.createChild(classId, TestFixtures.NAMESAKE);
+        UUID childId = fixtures.createChild(classId, TestFixtures.NAMESAKE);
         TestFixtures.Credentials fresh = TestFixtures.newCredentials();
         Map<String, String> values = new HashMap<>();
         values.put("classId", classId.toString());
@@ -75,12 +75,17 @@ class ApiContractTest {
         values.put("instructorPassword", instructor.password());
         values.put("newEmail", fresh.email());
         values.put("newPassword", fresh.password());
+        values.put("childId", childId.toString());
+        values.put("requestKey", UUID.randomUUID().toString());
         // 다른 강사는 가입·로그인이 느려서(BCrypt) 쓰는 시나리오에서만 만든다.
-        if (scenario.toString().contains("{otherClassId}")) {
+        String text = scenario.toString();
+        if (text.contains("{otherClassId}") || text.contains("{otherChildId}")) {
             TestFixtures.Instructor other = fixtures.signUpInstructor();
+            UUID otherClassId = fixtures.createClassroom(other, TestFixtures.CLASSROOM_B1);
+            values.put("otherClassId", otherClassId.toString());
             values.put(
-                    "otherClassId",
-                    fixtures.createClassroom(other, TestFixtures.CLASSROOM_B1).toString());
+                    "otherChildId",
+                    fixtures.createChild(other, otherClassId, TestFixtures.CHILD_B1_1).toString());
         }
 
         MvcTestResult result = send(scenario.get("request"), values, instructor);
@@ -90,6 +95,11 @@ class ApiContractTest {
                 .as("%s — HTTP 상태", name)
                 .isEqualTo(expected.get("status").intValue());
         JsonNode expectedBody = expected.get("body");
+        if (expectedBody == null) {
+            // 204 처럼 본문이 없는 응답(contracts/README.md).
+            assertThat(TestFixtures.body(result)).as("%s — 본문이 없어야 한다", name).isEmpty();
+            return;
+        }
         if (expectedBody.isString() && "<any>".equals(expectedBody.asString())) {
             return;
         }
@@ -102,19 +112,34 @@ class ApiContractTest {
             JsonNode request, Map<String, String> values, TestFixtures.Instructor instructor) {
         String path = fill(request.get("path").asString(), values);
         MockMvcTester.MockMvcRequestBuilder builder;
-        if ("GET".equals(request.get("method").asString())) {
+        String method = request.get("method").asString();
+        if ("GET".equals(method)) {
             builder = mvc.get().uri(path);
         } else {
-            // 본문 안의 {자리표시자} 도 채운다(가입 이메일 등). JSON 의 괄호 뒤에는 따옴표가 와서 자리표시자로 읽히지 않는다.
-            String content =
-                    request.has("rawBody")
-                            ? request.get("rawBody").asString()
-                            : fill(JSON.writeValueAsString(request.get("body")), values);
-            builder = mvc.post().uri(path).contentType(MediaType.APPLICATION_JSON).content(content);
+            if ("DELETE".equals(method)) {
+                builder = mvc.delete().uri(path);
+            } else {
+                // 본문 안의 {자리표시자} 도 채운다(가입 이메일 등). JSON 의 괄호 뒤에는 따옴표가 와서 자리표시자로 읽히지 않는다.
+                String content =
+                        request.has("rawBody")
+                                ? request.get("rawBody").asString()
+                                : fill(JSON.writeValueAsString(request.get("body")), values);
+                builder =
+                        mvc.post()
+                                .uri(path)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(content);
+            }
             boolean withCsrf = !request.has("csrf") || request.get("csrf").asBoolean();
             if (withCsrf) {
                 TestFixtures.CsrfCredentials csrf = fixtures.fetchCsrf();
                 builder.header(csrf.headerName(), csrf.token()).cookie(csrf.cookies());
+            }
+        }
+        JsonNode headers = request.get("headers");
+        if (headers != null) {
+            for (String name : headers.propertyNames()) {
+                builder.header(name, fill(headers.get(name).asString(), values));
             }
         }
         return withAuth(builder, request.get("auth"), instructor).exchange();

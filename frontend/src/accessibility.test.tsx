@@ -37,7 +37,7 @@ const PAGES: [string, string, Access][] = [
   ["/child/hello", "오늘도 만나서 반가워", "아동"],
   ["/child/activities", "친구 마음 알아보기", "아동"],
   ["/child/activities/mock-activity-1", "이어서 하기", "아동"],
-  ["/child/quiz/mock-activity-1", "친구가 실수로 네 장난감을 밟아서 부서졌어. 지금 네 기분은 어때?", "아동"],
+  ["/child/quiz/mock-activity-1", "지금 네 기분은 어때?", "아동"],
   ["/child/roleplay/mock-activity-1", "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?", "아동"],
   ["/child/_dev/states", "상태 컴포넌트 미리보기 (개발용)", "공개"],
 ]

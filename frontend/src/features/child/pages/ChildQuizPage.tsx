@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { ScanFace } from "lucide-react"
+import { CircleCheck, ScanFace } from "lucide-react"
 import themeparkBackgroundUrl from "@/assets/child/themepark-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
@@ -9,6 +9,8 @@ import { Character } from "../components/Character"
 import { EmotionFace } from "../components/EmotionFace"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { EmotionChoices } from "../components/quiz/EmotionChoices"
+import { PhotoGate } from "../components/quiz/PhotoGate"
+import { QuizGuideBubble } from "../components/quiz/QuizGuideBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import {
   getMyActivities,
@@ -83,81 +85,112 @@ function QuizQuestionView({
     submitMutation.mutate({ activityId, questionId: question.questionId, choiceId: selectedChoiceId, attempt })
   }
 
-  const visual =
-    question.type === "SELF_EMOTION_SITUATION" ? (
-      // 표정 인식 기능 도입 여부가 미정이라 Figma의 얼굴 프레임만 둔다.
-      <div className="flex flex-col items-center gap-3 rounded-[var(--child-radius-card)] bg-[var(--child-surface)]/90 p-5 shadow-sm">
-        <div className="flex h-44 w-36 items-center justify-center rounded-[50%] border-4 border-dashed border-[var(--child-primary)]/60 text-[var(--child-primary)]/60">
-          <ScanFace className="size-14" />
+  const isSelf = question.type === "SELF_EMOTION_SITUATION"
+
+  const answerPanel = (
+    <div className="flex flex-col gap-4 text-left">
+      <div className="flex flex-col gap-1">
+        <p className="font-child-display text-2xl font-extrabold text-[#252331]">{CHOICE_PROMPTS[question.type]}</p>
+        {isSelf ? <p className="text-sm text-[#6B6776]">표정을 선택하고 똑같이 따라 해보세요</p> : null}
+      </div>
+      <EmotionChoices
+        choices={choices}
+        selectedChoiceId={selectedChoiceId}
+        onSelect={setSelectedChoiceId}
+        disabled={!isAnswering || submitMutation.isPending}
+      />
+
+      <div aria-live="polite">
+        {feedback.kind === "hint" ? (
+          <SpeechBubble character="rabbit" characterAlign="top">
+            괜찮아, 다시 한번 살펴볼까?
+            <span className="mt-1 block font-extrabold text-[var(--child-text)]">
+              힌트 {feedback.hint.level}: {feedback.hint.text}
+            </span>
+            <span className="mt-1 block text-base text-[var(--child-text-muted)]">
+              보기가 두 개로 줄었어! 다시 골라봐
+            </span>
+          </SpeechBubble>
+        ) : feedback.kind === "correct" ? (
+          <SpeechBubble character="turtle">맞아! 잘 찾았어</SpeechBubble>
+        ) : feedback.kind === "final" ? (
+          <SpeechBubble character="turtle">괜찮아! 다음 문제로 가볼까?</SpeechBubble>
+        ) : null}
+      </div>
+
+      {isAnswering ? (
+        <ChildButton
+          className="h-16 w-full font-child-display text-xl font-extrabold"
+          onClick={submit}
+          disabled={!selectedChoiceId || submitMutation.isPending}
+        >
+          {submitMutation.isPending
+            ? "확인하고 있어요…"
+            : feedback.kind === "hint"
+              ? "다시 골라볼래요"
+              : "이 표정으로 확인할래요"}
+        </ChildButton>
+      ) : (
+        <ChildButton className="h-16 w-full font-child-display text-xl font-extrabold" onClick={onNext}>
+          {isLast ? "다 풀었어요" : "다음 문제"}
+        </ChildButton>
+      )}
+
+      {isSelf ? (
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-sm text-[#6B6776]">다른 마음도 괜찮아요. 내 마음과 가장 가까운 표정을 골라요.</p>
+          {/* Figma 오른쪽 아래 깡총이 자리. 장식이라 읽지 않는다. */}
+          <div aria-hidden="true" className="hidden shrink-0 md:block">
+            <Character name="rabbit" size="md" />
+          </div>
         </div>
-        <p className="text-base font-semibold break-keep text-[var(--child-text)]">
-          얼굴을 화면 안에 맞추고 표정을 지어봐!
-        </p>
-      </div>
-    ) : question.type === "OTHER_EMOTION_IMAGE" && question.imageEmotion ? (
-      <div className="flex items-center justify-center rounded-[var(--child-radius-card)] bg-[var(--child-surface)]/90 p-6 shadow-sm">
-        {/* 정답이 드러나지 않도록 감정 이름 대신 "친구 얼굴"로 읽게 한다. */}
-        <EmotionFace emotion={question.imageEmotion} label="친구 얼굴" className="size-40" />
-      </div>
-    ) : null
+      ) : null}
+    </div>
+  )
 
   return (
     // break-keep은 상속되므로 말풍선·보기 문구가 단어 중간에서 줄바꿈되지 않는다.
-    <div className="flex flex-col gap-5 break-keep">
-      <SpeechBubble character="turtle">
-        {question.situation ? `${question.situation} ` : ""}
-        {question.question}
-      </SpeechBubble>
+    <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-6 break-keep">
+      <QuizGuideBubble situation={question.situation} question={question.question} />
 
-      <div className={visual ? "grid items-start gap-5 md:grid-cols-[1fr_1.5fr]" : "flex flex-col gap-5"}>
-        {visual}
-
-        <div className="flex flex-col gap-4">
-          <p className="text-xl font-bold text-[var(--child-text)]">{CHOICE_PROMPTS[question.type]}</p>
-          <EmotionChoices
-            choices={choices}
-            selectedChoiceId={selectedChoiceId}
-            onSelect={setSelectedChoiceId}
-            disabled={!isAnswering || submitMutation.isPending}
-          />
-
-          <div aria-live="polite">
-            {feedback.kind === "hint" ? (
-              <SpeechBubble character="rabbit" characterAlign="top">
-                괜찮아, 다시 한번 살펴볼까?
-                <span className="mt-1 block font-bold text-[var(--child-text)]">
-                  힌트 {feedback.hint.level}: {feedback.hint.text}
+      {/* 포토 게이트는 Figma 신버전 시안이 있는 내 감정 문항(C-QZ-01)에만 둔다.
+          친구 감정 문항(C-QZ-02·03)은 신버전 시안이 없어 와이어프레임 배치를 따르고, 깡총이는 힌트 때만 나온다. */}
+      {isSelf ? (
+        <div className="grid items-start gap-6 md:grid-cols-[minmax(0,22.5rem)_1fr] md:gap-8">
+          <PhotoGate
+            caption={
+              <>
+                <span className="font-child-display text-base font-extrabold text-[#252331]">
+                  얼굴을 맞추고 표정을 지어봐!
                 </span>
-                <span className="mt-1 block text-base text-[var(--child-text-muted)]">
-                  보기가 두 개로 줄었어! 다시 골라봐
+                {/* Figma 시안 문구 그대로. 지금은 카메라를 켜지 않으므로 표정 인식 기능이 정해지면 실제 상태와 맞춰야 한다. */}
+                <span className="flex items-center gap-1 text-xs font-bold text-[#6654D9]">
+                  <CircleCheck className="size-4 fill-[#8BCB4A] text-white" aria-hidden="true" />
+                  카메라 준비 완료 · 얼굴을 찾았어요
                 </span>
-              </SpeechBubble>
-            ) : feedback.kind === "correct" ? (
-              <SpeechBubble character="turtle">맞아! 잘 찾았어</SpeechBubble>
-            ) : feedback.kind === "final" ? (
-              <SpeechBubble character="turtle">괜찮아! 다음 문제로 가볼까?</SpeechBubble>
-            ) : null}
-          </div>
-
-          {isAnswering ? (
-            <ChildButton
-              className="h-16 w-full text-xl"
-              onClick={submit}
-              disabled={!selectedChoiceId || submitMutation.isPending}
-            >
-              {submitMutation.isPending
-                ? "확인하고 있어요…"
-                : feedback.kind === "hint"
-                  ? "다시 골라볼래요"
-                  : "확인했어요"}
-            </ChildButton>
-          ) : (
-            <ChildButton className="h-16 w-full text-xl" onClick={onNext}>
-              {isLast ? "다 풀었어요" : "다음 문제"}
-            </ChildButton>
-          )}
+              </>
+            }
+          >
+            {/* 표정 인식 기능 도입 여부가 미정이라 Figma의 얼굴 프레임 모양만 둔다 (카메라는 켜지 않는다). */}
+            <div className="flex h-[76%] w-[57%] items-center justify-center rounded-[50%] bg-white/70">
+              <div className="flex h-[88%] w-[84%] items-center justify-center rounded-[50%] border-3 border-dashed border-[#A99BF5] text-[#A99BF5]">
+                <ScanFace className="size-12" />
+              </div>
+            </div>
+          </PhotoGate>
+          {answerPanel}
         </div>
-      </div>
+      ) : question.type === "OTHER_EMOTION_IMAGE" && question.imageEmotion ? (
+        <div className="grid items-center gap-6 md:grid-cols-[minmax(0,16rem)_1fr] md:gap-8">
+          <div className="mx-auto flex size-56 items-center justify-center rounded-full bg-white shadow-sm md:size-64">
+            {/* 정답이 드러나지 않도록 감정 이름 대신 "친구 얼굴"로 읽게 한다. */}
+            <EmotionFace emotion={question.imageEmotion} label="친구 얼굴" className="size-[72%]" />
+          </div>
+          {answerPanel}
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-[43rem]">{answerPanel}</div>
+      )}
 
       <StateDialog open={showSubmitError}>
         <ErrorState
@@ -180,7 +213,7 @@ function QuizDoneView({ total, onContinue }: { total: number; onContinue: () => 
           <Character name="rabbit" size="md" />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-3xl font-bold break-keep text-[var(--child-text)]">
+          <p className="font-child-display font-extrabold text-3xl break-keep text-[var(--child-text)]">
             표정 퀴즈 {total}개를 다 풀었어!
           </p>
           <p className="text-lg text-[var(--child-text-muted)]">친구 마음을 잘 살펴봤구나</p>
@@ -245,9 +278,15 @@ function ChildQuizPage() {
 
   return (
     <ChildLayout
-      activityTitle="표정 퀴즈"
-      stepLabel={isDone ? "완료" : questions.length ? `${questionIndex + 1}/${questions.length} 문항` : undefined}
+      headerCenter={
+        <p className="flex items-center gap-2 rounded-[var(--child-radius-pill)] bg-[#6654D9] px-5 py-2 text-sm font-bold text-white shadow-sm">
+          <span>표정 퀴즈</span>
+          <span>{isDone ? "완료" : questions.length ? `${questionIndex + 1}/${questions.length} 문항` : null}</span>
+        </p>
+      }
       backgroundImage={themeparkBackgroundUrl}
+      dimBackground
+      wide
     >
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">

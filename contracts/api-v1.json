@@ -9,7 +9,10 @@
     "instructorEmail": "로그인한 강사의 이메일",
     "instructorPassword": "로그인한 강사의 비밀번호. 실행마다 새로 만든다",
     "newEmail": "아직 가입하지 않은 이메일. 시나리오마다 새로 만든다",
-    "newPassword": "가입 규칙(8자 이상)을 지키는 새 비밀번호. 시나리오마다 새로 만든다"
+    "newPassword": "가입 규칙(8자 이상)을 지키는 새 비밀번호. 시나리오마다 새로 만든다",
+    "childId": "로그인한 강사의 아동 ID. 백엔드는 시나리오마다 만든 아동, 프론트 MSW 는 픽스처 A1-1 을 쓴다",
+    "otherChildId": "다른 강사의 아동 ID. 백엔드는 다른 강사를 가입시켜 만들고, 프론트 MSW 는 픽스처 C1-1 을 쓴다",
+    "requestKey": "Idempotency-Key 등으로 보낼 새 UUID. 시나리오마다 새로 만든다"
   },
   "scenarios": [
     {
@@ -448,6 +451,220 @@
       "name": "CSRF 토큰 없는 변경 요청은 로그인했어도 403",
       "request": { "method": "POST", "path": "/api/v1/classrooms", "body": { "name": "햇살반" }, "csrf": false },
       "response": { "status": 403, "body": "<any>" }
+    },
+    {
+      "name": "아동 한 명 조회는 200 과 아동 모양",
+      "request": { "method": "GET", "path": "/api/v1/children/{childId}" },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "childId": "{childId}", "classId": "{classId}", "displayName": "김하늘", "status": "ACTIVE" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 아동 조회는 404 CHILD_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/children/{otherChildId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/children/{otherChildId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "배정 전 아동의 활동 목록은 빈 배열",
+      "request": { "method": "GET", "path": "/api/v1/children/{childId}/activities?size=100" },
+      "response": { "status": 200, "body": { "data": [], "meta": { "traceId": "<uuid>" } } }
+    },
+    {
+      "name": "목표 전 아동의 목표 목록은 빈 배열",
+      "request": { "method": "GET", "path": "/api/v1/children/{childId}/learning-goals" },
+      "response": { "status": 200, "body": { "data": [], "meta": { "traceId": "<uuid>" } } }
+    },
+    {
+      "name": "학습 목표 저장은 201 과 목표 모양",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/children/{childId}/learning-goals",
+        "body": { "title": "친구 감정 알아보기", "category": "EMPATHY_EXPRESSION" }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "goalId": "<uuid>",
+            "childId": "{childId}",
+            "instructorId": "{instructorId}",
+            "parentGoalId": null,
+            "title": "친구 감정 알아보기",
+            "situationType": null,
+            "category": "EMPATHY_EXPRESSION",
+            "characters": [],
+            "requiredElements": [],
+            "forbiddenExpressions": [],
+            "contentHash": "<string>",
+            "createdAt": "<string>"
+          },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "공백 목표 제목은 422 VALIDATION_FAILED(title)",
+      "request": { "method": "POST", "path": "/api/v1/children/{childId}/learning-goals", "body": { "title": "   " } },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/children/{childId}/learning-goals",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "title", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "Idempotency-Key 없는 활동 배정은 400 INVALID_REQUEST",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "body": { "childId": "{childId}", "goal": { "title": "친구 감정 알아보기" } }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "목표 없는 활동 배정은 422 VALIDATION_FAILED(goal)",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}" }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "goal", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 이전 목표로 활동 배정은 404 GOAL_NOT_FOUND",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}", "goal": { "title": "다음 목표", "parentGoalId": "{unknownClassId}" } }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "GOAL_NOT_FOUND",
+            "message": "학습 목표를 찾을 수 없습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 아동에게 활동 배정은 404 CHILD_NOT_FOUND",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{otherChildId}", "goal": { "title": "친구 감정 알아보기" } }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "아동 삭제는 기록과 함께 지우고 204",
+      "request": { "method": "DELETE", "path": "/api/v1/children/{childId}" },
+      "response": { "status": 204 }
+    },
+    {
+      "name": "다른 강사의 아동 삭제는 404 CHILD_NOT_FOUND",
+      "request": { "method": "DELETE", "path": "/api/v1/children/{otherChildId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/children/{otherChildId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "학급 삭제는 아동·기록과 함께 지우고 204",
+      "request": { "method": "DELETE", "path": "/api/v1/classrooms/{classId}" },
+      "response": { "status": 204 }
+    },
+    {
+      "name": "다른 강사의 학급 삭제는 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "DELETE", "path": "/api/v1/classrooms/{otherClassId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
     }
   ]
 }

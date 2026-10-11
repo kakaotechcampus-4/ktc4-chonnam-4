@@ -1,0 +1,323 @@
+package com.neuringo.neuringobe.assignment;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.jayway.jsonpath.JsonPath;
+import com.neuringo.neuringobe.LocalProfileIntegrationTest;
+import com.neuringo.neuringobe.TestFixtures;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.IntFunction;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
+
+/**
+ * 활동 배정(ADR 2026-10-03 D4). 서버가 목표를 저장하고 승인 문항을 골라 활동과 함께 한 번에 만들고, 같은 요청 키의 재전송과 같은 목표의 중복 배정을
+ * 막는다. 배정이 실패하면 목표도 남지 않는다. V6 시드 문항이 있어 유형마다 승인 문항이 하나 이상 있다.
+ */
+@LocalProfileIntegrationTest
+class ActivityAssignmentIntegrationTest {
+
+    private static final int CONCURRENT_REQUESTS = 8;
+
+    @Autowired private TestFixtures fixtures;
+
+    private TestFixtures.Instructor instructor;
+    private static final String GOAL = "친구 감정 알아보기";
+
+    private UUID childId;
+
+    @BeforeEach
+    void setUp() {
+        instructor = fixtures.instructor();
+        UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
+        childId = fixtures.createChild(classId, TestFixtures.NAMESAKE);
+    }
+
+    @Test
+    void assignsActivityWithServerPickedQuizItemsInTypeOrder() {
+        MvcTestResult result = assign(childId, GOAL, UUID.randomUUID());
+
+        assertThat(result).hasStatus(HttpStatus.CREATED);
+        String activityId = JsonPath.read(TestFixtures.body(result), "$.data.activityId");
+        assertThat(result.getResponse().getHeader("Location"))
+                .isEqualTo("/api/v1/activities/" + activityId);
+        assertThat(JsonPath.<String>read(TestFixtures.body(result), "$.data.status"))
+                .isEqualTo("NOT_STARTED");
+
+        String detail = TestFixtures.body(fixtures.get("/api/v1/activities/{id}", activityId));
+        assertThat(JsonPath.<List<String>>read(detail, "$.data.quizItems[*].quizType"))
+                .containsExactly(
+                        "SELF_EMOTION_SITUATION", "OTHER_EMOTION_SITUATION", "OTHER_EMOTION_IMAGE");
+        assertThat(JsonPath.<List<Integer>>read(detail, "$.data.quizItems[*].questionOrder"))
+                .containsExactly(1, 2, 3);
+        assertThat(JsonPath.<Map<String, Object>>read(detail, "$.data"))
+                .containsKeys("activity", "quizItems", "sessionSummary", "learningRecord");
+        assertThat(JsonPath.<Object>read(detail, "$.data.sessionSummary")).isNull();
+    }
+
+    @Test
+    void savesTheGoalWithItsCategoryInTheSameRequest() {
+        MvcTestResult result =
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "goal",
+                                Map.of("title", GOAL, "category", "EMOTION_RECOGNITION")),
+                        UUID.randomUUID());
+
+        assertThat(result).hasStatus(HttpStatus.CREATED);
+        String goalId = JsonPath.read(TestFixtures.body(result), "$.data.goalId");
+        String goal = TestFixtures.body(fixtures.get("/api/v1/learning-goals/{id}", goalId));
+        assertThat(JsonPath.<String>read(goal, "$.data.title")).isEqualTo(GOAL);
+        assertThat(JsonPath.<String>read(goal, "$.data.category")).isEqualTo("EMOTION_RECOGNITION");
+        assertThat(JsonPath.<Object>read(goal, "$.data.situationType")).isNull();
+    }
+
+    @Test
+    void failedAssignmentLeavesNoGoalBehind() {
+        assign(childId, GOAL, UUID.randomUUID());
+
+        // 중복 배정을 몇 번 시도해도 목표 행이 늘지 않는다.
+        assertError(
+                assign(childId, GOAL, UUID.randomUUID()),
+                HttpStatus.CONFLICT,
+                "DUPLICATE_ASSIGNMENT");
+        assertError(
+                assign(childId, GOAL, UUID.randomUUID()),
+                HttpStatus.CONFLICT,
+                "DUPLICATE_ASSIGNMENT");
+
+        assertThat(goalIdsOf(childId)).hasSize(1);
+    }
+
+    @Test
+    void sameRequestKeyReturnsTheFirstActivityInsteadOfCreatingAnother() {
+        UUID key = UUID.randomUUID();
+        MvcTestResult first = assign(childId, GOAL, key);
+        MvcTestResult retry = assign(childId, GOAL, key);
+
+        assertThat(first).hasStatus(HttpStatus.CREATED);
+        assertThat(retry).hasStatus(HttpStatus.OK);
+        String firstId = JsonPath.read(TestFixtures.body(first), "$.data.activityId");
+        assertThat(JsonPath.<String>read(TestFixtures.body(retry), "$.data.activityId"))
+                .isEqualTo(firstId);
+        assertThat(activityIdsOf(childId)).containsExactly(firstId);
+        assertThat(goalIdsOf(childId)).hasSize(1);
+    }
+
+    @Test
+    void sameRequestKeyForAnotherGoalIsRejected() {
+        UUID key = UUID.randomUUID();
+        assign(childId, GOAL, key);
+
+        assertError(assign(childId, "도움 요청하기", key), HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED");
+    }
+
+    @Test
+    void sameKeySentConcurrentlyForDifferentChildrenCreatesOnlyOneAndAnswers409() throws Exception {
+        // 잠금은 아동별이라 서로 다른 아동의 요청은 동시에 "키 없음"을 볼 수 있다. 그래도 500 이 아니라 순차 요청과 같은 409 여야 한다.
+        UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_B1);
+        List<UUID> targets = new ArrayList<>();
+        for (int i = 0; i < CONCURRENT_REQUESTS; i++) {
+            targets.add(fixtures.createChild(classId, "동시 배정 아동 " + i));
+        }
+        UUID key = UUID.randomUUID();
+
+        List<MvcTestResult> results = concurrently(i -> assign(targets.get(i), GOAL, key));
+
+        List<Integer> statuses = results.stream().map(r -> r.getResponse().getStatus()).toList();
+        assertThat(statuses).filteredOn(status -> status == 201).hasSize(1);
+        assertThat(statuses).filteredOn(status -> status != 201).containsOnly(409);
+        assertThat(results)
+                .filteredOn(r -> r.getResponse().getStatus() == 409)
+                .allSatisfy(
+                        r ->
+                                assertThat(
+                                                JsonPath.<String>read(
+                                                        TestFixtures.body(r), "$.error.code"))
+                                        .isEqualTo("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    void sameGoalContentIsNotAssignedTwiceWhileTheFirstHasNotStarted() {
+        assign(childId, GOAL, UUID.randomUUID());
+
+        // 목표는 배정마다 새로 저장되지만 내용이 같으면 같은 목표다(ADR 2026-10-03 D6).
+        assertError(
+                assign(childId, GOAL, UUID.randomUUID()),
+                HttpStatus.CONFLICT,
+                "DUPLICATE_ASSIGNMENT");
+        assertThat(activityIdsOf(childId)).hasSize(1);
+    }
+
+    @Test
+    void differentGoalContentCanBeAssignedAlongside() {
+        assign(childId, GOAL, UUID.randomUUID());
+
+        assertThat(assign(childId, "도움이 필요할 때 말로 요청한다", UUID.randomUUID()))
+                .hasStatus(HttpStatus.CREATED);
+        assertThat(activityIdsOf(childId)).hasSize(2);
+    }
+
+    @Test
+    void otherInstructorCannotAssignOrReadAndSeesNotFound() {
+        TestFixtures.Instructor other = fixtures.signUpInstructor();
+        MvcTestResult created = assign(childId, GOAL, UUID.randomUUID());
+        String activityId = JsonPath.read(TestFixtures.body(created), "$.data.activityId");
+
+        assertError(
+                fixtures.postJsonWithKey(
+                        other,
+                        "/api/v1/activities",
+                        Map.of("childId", childId, "goal", Map.of("title", GOAL)),
+                        UUID.randomUUID()),
+                HttpStatus.NOT_FOUND,
+                "CHILD_NOT_FOUND");
+        // 남의 활동은 없는 활동과 같은 code 다. code 가 다르면 그 ID 의 활동이 있다는 게 드러난다.
+        assertError(
+                fixtures.get(other, "/api/v1/activities/{id}", activityId),
+                HttpStatus.NOT_FOUND,
+                "ACTIVITY_NOT_FOUND");
+        assertError(
+                fixtures.get(other, "/api/v1/activities/{id}/quiz-items", activityId),
+                HttpStatus.NOT_FOUND,
+                "ACTIVITY_NOT_FOUND");
+        assertError(
+                fixtures.get(other, "/api/v1/children/{id}", childId),
+                HttpStatus.NOT_FOUND,
+                "CHILD_NOT_FOUND");
+    }
+
+    @Test
+    void parentGoalOfAnotherChildIsHiddenAndNothingIsSaved() {
+        UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_B1);
+        UUID otherChild = fixtures.createChild(classId, TestFixtures.CHILD_B1_1);
+        String otherGoalId =
+                JsonPath.read(
+                        TestFixtures.body(assign(otherChild, GOAL, UUID.randomUUID())),
+                        "$.data.goalId");
+
+        assertError(
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "goal",
+                                Map.of("title", "다음 목표", "parentGoalId", otherGoalId)),
+                        UUID.randomUUID()),
+                HttpStatus.NOT_FOUND,
+                "GOAL_NOT_FOUND");
+        assertThat(goalIdsOf(childId)).isEmpty();
+    }
+
+    @Test
+    void requestWithoutGoalIsRejected() {
+        MvcTestResult result =
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of("childId", childId),
+                        UUID.randomUUID());
+
+        assertThat(result).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(
+                        JsonPath.<List<String>>read(
+                                TestFixtures.body(result), "$.error.fieldErrors[*].field"))
+                .containsExactly("goal");
+        assertThat(goalIdsOf(childId)).isEmpty();
+    }
+
+    @Test
+    void requestWithoutKeyIsRejected() {
+        MvcTestResult result =
+                fixtures.postJson(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of("childId", childId, "goal", Map.of("title", GOAL)));
+
+        assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(activityIdsOf(childId)).isEmpty();
+        assertThat(goalIdsOf(childId)).isEmpty();
+    }
+
+    @Test
+    void childDetailShowsTheChildOfAnOwnedClassroom() {
+        String body = TestFixtures.body(fixtures.get("/api/v1/children/{id}", childId));
+
+        assertThat(JsonPath.<String>read(body, "$.data.childId")).isEqualTo(childId.toString());
+        assertThat(JsonPath.<String>read(body, "$.data.displayName"))
+                .isEqualTo(TestFixtures.NAMESAKE);
+    }
+
+    /**
+     * request(i) 를 여러 스레드에서 한꺼번에 출발시킨다(ConcurrentRegistrationIntegrationTest 와 같은 방식). 돌려주는 목록은 i
+     * 순서다.
+     */
+    private static List<MvcTestResult> concurrently(IntFunction<MvcTestResult> request)
+            throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(CONCURRENT_REQUESTS);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<MvcTestResult>> futures = new ArrayList<>();
+            for (int i = 0; i < CONCURRENT_REQUESTS; i++) {
+                int index = i;
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    return request.apply(index);
+                                }));
+            }
+            start.countDown();
+            List<MvcTestResult> results = new ArrayList<>();
+            for (Future<MvcTestResult> future : futures) {
+                results.add(future.get(30, TimeUnit.SECONDS));
+            }
+            return results;
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private MvcTestResult assign(UUID child, String goalTitle, UUID key) {
+        return fixtures.postJsonWithKey(
+                instructor,
+                "/api/v1/activities",
+                Map.of("childId", child, "goal", Map.of("title", goalTitle)),
+                key);
+    }
+
+    private List<String> goalIdsOf(UUID child) {
+        return JsonPath.read(
+                TestFixtures.body(fixtures.get("/api/v1/children/{id}/learning-goals", child)),
+                "$.data[*].goalId");
+    }
+
+    private List<String> activityIdsOf(UUID child) {
+        return JsonPath.read(
+                TestFixtures.body(fixtures.get("/api/v1/children/{id}/activities", child)),
+                "$.data[*].activityId");
+    }
+
+    private static void assertError(MvcTestResult result, HttpStatus status, String code) {
+        assertThat(result).hasStatus(status);
+        assertThat(JsonPath.<String>read(TestFixtures.body(result), "$.error.code"))
+                .isEqualTo(code);
+    }
+}

@@ -88,7 +88,7 @@ function ChildActivitiesPage() {
   return (
     <ChildLayout
       headerCenter={
-        <p className="rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-6 py-2 text-2xl font-bold text-[var(--child-text)] shadow-sm">
+        <p className="rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-6 py-2 font-child-display font-extrabold text-2xl text-[var(--child-text)] shadow-sm">
           {withNameSuffix(childName)}의 활동
         </p>
       }

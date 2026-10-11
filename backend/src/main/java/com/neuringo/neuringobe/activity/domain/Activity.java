@@ -53,12 +53,18 @@ public class Activity {
     @Column(name = "reward_issued_at")
     private Instant rewardIssuedAt;
 
+    // 배정 요청의 Idempotency-Key. 같은 키로 다시 오면 새로 만들지 않고 이 활동을 돌려준다(ADR 2026-10-03 D4).
+    @Column(name = "idempotency_key", updatable = false)
+    private UUID idempotencyKey;
+
     protected Activity() {}
 
-    public Activity(UUID activityId, UUID childId, UUID goalId, Instant assignedAt) {
+    public Activity(
+            UUID activityId, UUID childId, UUID goalId, UUID idempotencyKey, Instant assignedAt) {
         this.activityId = activityId;
         this.childId = childId;
         this.goalId = goalId;
+        this.idempotencyKey = idempotencyKey;
         this.activityType = "QUIZ_ROLEPLAY";
         this.status = ActivityStatus.NOT_STARTED;
         this.assignedAt = assignedAt;
@@ -74,6 +80,10 @@ public class Activity {
 
     public UUID getGoalId() {
         return goalId;
+    }
+
+    public UUID getIdempotencyKey() {
+        return idempotencyKey;
     }
 
     public String getActivityType() {

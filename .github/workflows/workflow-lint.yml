@@ -3,7 +3,7 @@ name: Workflow lint
 #
 #   actionlint  문법·표현식 타입·action 입력·run: 셸(shellcheck) 오류         → 차단
 #   zizmor      템플릿 인젝션·과한 권한·자격증명 잔존·SHA 로 고정하지 않은 액션  → 1차 도입 동안 경고만
-#   shellcheck  scripts/*.sh                                                    → 차단
+#   shellcheck  scripts/*.sh · deploy/host/*.sh                                 → 차단
 #
 # 운영진 소유 워크플로(assign-mentor·convention-check·notify-discord)는 팀이 고칠 수 없으므로
 # scripts/verify.sh 가 검사 대상에서 뺀다.
@@ -14,10 +14,12 @@ on:
     paths:
       - '.github/workflows/**'
       - 'scripts/**'
+      - 'deploy/**'
   pull_request:
     paths:
       - '.github/workflows/**'
       - 'scripts/**'
+      - 'deploy/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -30,7 +32,7 @@ jobs:
   lint:
     # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
       - name: Checkout

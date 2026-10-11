@@ -116,6 +116,10 @@ public class SecurityConfig {
                                                 org.springframework.http.HttpMethod.POST,
                                                 "/api/v1/activity-quiz-items/*/hints")
                                         .hasRole("CHILD")
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.POST,
+                                                "/api/v1/roleplay-sessions/*/voice-inputs")
+                                        .hasRole("CHILD")
                                         .requestMatchers("/api/v1/auth/**", "/api/v1/users/me")
                                         .hasAnyRole("INSTRUCTOR", "OPERATOR")
                                         .anyRequest()
