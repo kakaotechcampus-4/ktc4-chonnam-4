@@ -33,7 +33,29 @@ mock_provider "aws" {
       account_id = "123456789012"
     }
   }
+  mock_data "aws_region" {
+    defaults = {
+      region = "ap-northeast-2"
+    }
+  }
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/neuringo/neuringo-dev-idle-off"
+    }
+  }
+  mock_resource "aws_lambda_function" {
+    defaults = {
+      arn = "arn:aws:lambda:ap-northeast-2:123456789012:function:neuringo-dev-idle-off"
+    }
+  }
+  mock_resource "aws_cloudwatch_event_rule" {
+    defaults = {
+      arn = "arn:aws:events:ap-northeast-2:123456789012:rule/neuringo-dev-idle-off"
+    }
+  }
 }
+
+mock_provider "archive" {}
 
 override_data {
   target = data.aws_instances.app
@@ -73,6 +95,10 @@ run "dev_wires_modules" {
   assert {
     condition     = length(random_id.suffix.hex) == 6
     error_message = "버킷 이름 접미사는 6자리 16진수다"
+  }
+  assert {
+    condition     = module.idle_off.function_name == "neuringo-dev-idle-off"
+    error_message = "안 쓰면 끄기(Lambda)를 이 서버·대문에 잇는다"
   }
 }
 

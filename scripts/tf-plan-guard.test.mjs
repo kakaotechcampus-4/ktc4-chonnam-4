@@ -232,3 +232,75 @@ test("구성 검사: 레포 밖 모듈·다른 provider 를 막는다", () => {
 test("바뀌는 것이 없으면 그렇게 적는다", () => {
   assert.match(summary(review({ resource_changes: [] })), /바뀌는 리소스가 없다/)
 })
+
+const lambdaRole = (principal) => JSON.stringify({ Statement: [{ Effect: "Allow", Action: "sts:AssumeRole", Principal: principal }] })
+const policy = (...statements) => JSON.stringify({ Statement: statements.map((s) => ({ Effect: "Allow", Resource: "*", ...s })) })
+
+test("안 쓰면 끄기 Lambda(역할·좁은 정책·EventBridge 호출)는 통과한다", () => {
+  const plan = {
+    resource_changes: [
+      change("aws_iam_role", "this", ["create"], { path: "/neuringo/", assume_role_policy: lambdaRole({ Service: "lambda.amazonaws.com" }) }),
+      change("aws_iam_role_policy", "this", ["create"], {
+        policy: policy({ Action: ["ec2:DescribeInstances", "ssm:ListCommands"] }, { Action: "ec2:StopInstances" }, { Action: ["cloudfront:UpdateDistribution"] }),
+      }),
+      change("aws_lambda_function", "this", ["create"], { memory_size: 128, timeout: 900 }),
+      change("aws_lambda_permission", "events", ["create"], { principal: "events.amazonaws.com" }, null, "managed", { source_arn: true }),
+      change("aws_cloudwatch_event_rule", "every", ["create"]),
+      change("aws_cloudwatch_event_target", "lambda", ["create"]),
+    ],
+  }
+  assert.deepEqual(review(plan).violations, [])
+  assert.match(summary(review(plan)), /IAM 범위/)
+})
+
+test("Lambda 말고 사람·다른 계정·다른 서비스가 맡는 역할, 운영진 경로, 정해지지 않은 정책은 막는다", () => {
+  const plan = {
+    resource_changes: [
+      change("aws_iam_role", "user", ["create"], { assume_role_policy: lambdaRole({ AWS: "arn:aws:iam::123456789012:root" }) }),
+      change("aws_iam_role", "ec2", ["create"], { assume_role_policy: lambdaRole({ Service: ["lambda.amazonaws.com", "ec2.amazonaws.com"] }) }),
+      change("aws_iam_role", "anyone", ["create"], { assume_role_policy: lambdaRole("*") }),
+      change("aws_iam_role", "ktc", ["create"], { path: "/ktc/", assume_role_policy: lambdaRole({ Service: "lambda.amazonaws.com" }) }),
+      change("aws_iam_role", "later", ["create"], {}, null, "managed", { assume_role_policy: true }),
+    ],
+  }
+  const violations = review(plan).violations
+  assert.equal(violations.length, 5, violations.join("\n"))
+  assert.match(violations.join("\n"), /\/ktc\//)
+})
+
+test("정책에 전체·IAM·서버 만들기·지우기·켜기·NotAction 이 있으면 막는다", () => {
+  const plan = {
+    resource_changes: [
+      change("aws_iam_role_policy", "wide", ["create"], {
+        policy: policy(
+          { Action: "*" },
+          { Action: "s3:*" },
+          { Action: ["iam:PassRole", "sts:AssumeRole"] },
+          { Action: ["ec2:TerminateInstances", "ec2:RunInstances", "ec2:StartInstances"] },
+          { NotAction: "s3:GetObject" },
+        ),
+      }),
+      change("aws_iam_role_policy", "later", ["update"], {}, null, "managed", { policy: true }),
+    ],
+  }
+  const violations = review(plan).violations
+  assert.equal(violations.length, 8 + 1, violations.join("\n"))
+})
+
+test("Lambda 를 누구나 부르게 하거나(함수 URL·주체 *) 비싸게 잡으면 막는다", () => {
+  const plan = {
+    resource_changes: [
+      change("aws_lambda_permission", "public", ["create"], { principal: "*" }),
+      change("aws_lambda_permission", "url", ["create"], { principal: "lambda.amazonaws.com", source_arn: "arn:x", function_url_auth_type: "NONE" }),
+      change("aws_lambda_permission", "any_rule", ["create"], { principal: "events.amazonaws.com" }),
+      change("aws_lambda_function", "big", ["create"], { memory_size: 10240, timeout: 900 }),
+    ],
+  }
+  const violations = review(plan).violations
+  assert.equal(violations.length, 5, violations.join("\n"))
+})
+
+test("구성 검사: archive provider(Lambda 코드 묶기)는 통과한다", () => {
+  const text = ["terraform {", "  required_providers {", '    archive = { source = "hashicorp/archive", version = "= 2.7.1" }', "  }", "}", 'data "archive_file" "code" {}'].join("\n")
+  assert.deepEqual(reviewConfig([{ path: "infra/modules/idle-off/main.tf", text }]), [])
+})
