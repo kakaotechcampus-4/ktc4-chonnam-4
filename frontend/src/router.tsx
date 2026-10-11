@@ -3,6 +3,9 @@ import App from './App'
 import { ClassroomListPage } from './features/instructor/pages/ClassroomListPage'
 import { ClassroomDetailPage } from './features/instructor/pages/ClassroomDetailPage'
 import { ClassroomCreatePage } from './features/instructor/pages/ClassroomCreatePage'
+import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
+import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
+import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
 import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
 import { RequireInstructorAuth } from './features/instructor/auth/RequireInstructorAuth'
@@ -41,6 +44,30 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ClassroomDetailPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/classrooms/:classId/children/:childId',
+    element: (
+      <RequireInstructorAuth>
+        <ChildDetailPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/activities/new',
+    element: (
+      <RequireInstructorAuth>
+        <ActivityCreatePage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/activities/:activityId/report',
+    element: (
+      <RequireInstructorAuth>
+        <ActivityReportPage />
       </RequireInstructorAuth>
     ),
   },

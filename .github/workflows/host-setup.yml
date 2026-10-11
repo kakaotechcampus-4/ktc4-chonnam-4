@@ -1,0 +1,82 @@
+name: Host setup
+# 팀 서버(EC2) 기본 설정 — deploy/host/setup.sh 를 SSM 으로 root 로 돌린다(docs/cd-architecture.md 3절).
+# 수동 실행만(Actions → Host setup → Run workflow, develop 에서만). 여러 번 돌려도 결과가 같다. 첫 배포 전에 한 번 돌린다.
+# 배포·매일 백업과 같은 서버 잠금(/opt/neuringo/state/deploy.lock)을 잡고 돈다(Docker 를 다시 설치하다 배포와 겹치지 않게).
+# Docker·Compose·AWS CLI, swap 2 GiB, journald 상한, 보안 업데이트 자동 설치, /opt/neuringo 폴더.
+# 22번·SSH 키 없이 OIDC(ktc-github-deploy) + SSM 으로만 접속한다.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: host-setup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    # 다른 브랜치를 고르면 그 브랜치의 setup.sh 가 서버에서 root 로 돈다. develop 에서만 돌린다.
+    if: github.ref == 'refs/heads/develop'
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+
+    steps:
+      - name: Check AWS_ACCOUNT_ID variable
+        id: account
+        env:
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          if [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >>"$GITHUB_OUTPUT"
+          echo "### 서버 설정을 건너뛰었다" >>"$GITHUB_STEP_SUMMARY"
+          echo "::notice title=건너뜀::AWS_ACCOUNT_ID 변수가 없다"
+
+      - name: Checkout
+        if: steps.account.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.account.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-host-setup
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Run setup on server (SSM)
+        if: steps.account.outputs.ready == 'true'
+        run: |
+          remote="$RUNNER_TEMP/host-setup.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo 'umask 077'
+            echo 'mkdir -p /opt/neuringo/state'
+            echo 'exec 9>/opt/neuringo/state/deploy.lock'
+            echo 'flock -w 600 9 || { echo "[setup] 배포·백업이 10분 안에 끝나지 않아 멈췄다"; exit 1; }'
+            cat deploy/host/setup.sh
+          } >"$remote"
+          code=0
+          bash scripts/ssm-run.sh "$remote" "host setup" || code=$?
+          rm -f "$remote"
+          if [ "$code" = 0 ]; then
+            echo "### 서버 기본 설정 완료" >>"$GITHUB_STEP_SUMMARY"
+          elif [ "$code" = 69 ]; then
+            echo "### 서버가 꺼져 있다 — 콘솔(EC2 → 인스턴스 → 인스턴스 시작)에서 켠 뒤 다시 실행한다" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "### 서버 기본 설정 실패(종료 코드 $code) — 로그의 [setup] 줄을 본다" >>"$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$code"

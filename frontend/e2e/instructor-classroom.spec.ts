@@ -21,8 +21,12 @@ test("강사가 가입해 학급을 만들고 동명이인 두 명을 등록하�
   await signUp(page)
   await page.getByRole("link", { name: "학급 생성" }).click()
   // 목록 화면에도 "학급명 검색" 칸이 있다. 생성 화면으로 바뀐 뒤에 입력해야 검색칸에 들어가지 않는다.
+  // 라우터는 주소를 먼저 바꾸고 화면은 나중에 바꾸므로, 주소만 확인해서는 목록 화면의 검색칸에 입력될 수 있다.
+  // 생성 화면의 입력칸을 이름 그대로 찾고, 값이 들어간 것을 확인한 뒤에 저장을 누른다.
   await expect(page).toHaveURL(/\/classrooms\/new$/)
-  await page.getByLabel(/학급명/).fill(classroomName)
+  const classroomNameInput = page.getByRole("textbox", { name: "학급명 *", exact: true })
+  await classroomNameInput.fill(classroomName)
+  await expect(classroomNameInput).toHaveValue(classroomName)
   await page.getByRole("button", { name: "저장" }).dblclick()
 
   const heading = page.getByRole("heading", { name: `학급 상세 · ${classroomName}` })

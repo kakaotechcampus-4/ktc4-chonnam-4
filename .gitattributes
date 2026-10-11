@@ -31,3 +31,7 @@ backend/gradlew   text eol=lf
 # 컨테이너 빌드 파일도 리눅스에서 읽히므로 LF 로 둔다.
 Dockerfile        text eol=lf
 .dockerignore     text eol=lf
+# Terraform 은 CRLF 를 줄 맞춤 차이로 본다(`terraform fmt -check` 실패). 스크립트·서버 배포 파일도 러너·서버(리눅스)에서 읽힌다.
+infra/**          text=auto eol=lf
+scripts/**        text=auto eol=lf
+deploy/**         text=auto eol=lf

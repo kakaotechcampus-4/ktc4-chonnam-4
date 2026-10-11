@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // 종단(E2E) 테스트 설정. 백엔드·DB 는 scripts/e2e.sh 가 띄우고, 프론트는 아래 webServer 가 빌드해 띄운다.
 //   bash scripts/verify.sh e2e   # 로컬 (Docker·JDK 21·Node 24 필요)
 //
-// 주소는 고정이다. 프론트가 API 주소를 http://localhost:8080 으로 하드코딩했고(api.ts),
+// 주소는 고정이다. 프론트 API 주소는 VITE_API_BASE_URL 이 없으면 http://localhost:8080 이고(api.ts, E2E 는 넘기지 않는다),
 // 백엔드 local 프로필 CORS 가 http://localhost:5173 만 연다. 그래서 미리보기 서버도 5173 에 띄운다.
 const isCI = !!process.env.CI;
 

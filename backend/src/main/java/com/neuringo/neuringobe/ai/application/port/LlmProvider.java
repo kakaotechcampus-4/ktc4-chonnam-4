@@ -6,5 +6,6 @@ import com.neuringo.neuringobe.ai.application.model.LlmRequest;
 
 public interface LlmProvider {
 
+    /** Honor a supplied local call budget and perform one attempt; orchestration owns retries. */
     AiCallResult<LlmCompletion> complete(LlmRequest request);
 }

@@ -33,6 +33,9 @@ public class LearningGoal {
     @Column(name = "situation_type")
     private String situationType;
 
+    @Column(name = "category")
+    private String category;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "characters_json", columnDefinition = "jsonb", nullable = false)
     private List<Map<String, Object>> characters;
@@ -60,6 +63,7 @@ public class LearningGoal {
             UUID parentGoalId,
             String title,
             String situationType,
+            String category,
             List<Map<String, Object>> characters,
             List<String> requiredElements,
             List<String> forbiddenExpressions,
@@ -71,6 +75,7 @@ public class LearningGoal {
         this.parentGoalId = parentGoalId;
         this.title = title;
         this.situationType = situationType;
+        this.category = category;
         this.characters = characters;
         this.requiredElements = requiredElements;
         this.forbiddenExpressions = forbiddenExpressions;
@@ -100,6 +105,10 @@ public class LearningGoal {
 
     public String getSituationType() {
         return situationType;
+    }
+
+    public String getCategory() {
+        return category;
     }
 
     public List<Map<String, Object>> getCharacters() {

@@ -6,3 +6,5 @@
 !settings.gradle
 !build.gradle
 !src/main/
+# 로컬에만 있는 Spring 비밀 설정은 이미지에 넣지 않는다(CI 는 깨끗한 checkout 이라 원래 없다).
+src/main/resources/application-*secret*.yml
