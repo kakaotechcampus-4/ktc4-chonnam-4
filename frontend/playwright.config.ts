@@ -9,6 +9,8 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: "./e2e",
+  // e2e/deployed 는 배포된 테스트 주소를 여는 테스트다(playwright.deployed.config.ts). 로컬·CI E2E 에서는 돌지 않는다.
+  testIgnore: ["deployed/**"],
   // Vitest 의 test-results/vitest-junit.xml 을 지우지 않도록 하위 폴더를 쓴다(Playwright 는 시작할 때 outputDir 을 비운다).
   outputDir: "test-results/playwright",
   // 한 DB 를 같이 쓰는 흐름 테스트라 순서대로 하나씩 돌린다.
