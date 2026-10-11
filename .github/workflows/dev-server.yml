@@ -527,6 +527,22 @@ jobs:
             false:*) edge_line="🟡 닫는 중(퍼지는 중)" ;;
             *) edge_line="? 읽지 못함" ;;
           esac
+          # 안 쓰면 끄기(Lambda)의 마지막 판단(CloudWatch 로그, 최근 6시간). 읽지 못해도 이 줄만 비운다.
+          idle=$(bash scripts/idle-last.sh) || idle=""
+          case "$(value "$idle" IDLE_RESULT)" in
+            keep) idle_what="그대로 둠" ;;
+            stopped) idle_what="껐다" ;;
+            skip) idle_what="서버 꺼짐(할 일 없음)" ;;
+            closing) idle_what="끄는 중" ;;
+            abort) idle_what="그만둠(대문 다시 엶)" ;;
+            error) idle_what="❌ 실패(경보 메일)" ;;
+            *) idle_what="" ;;
+          esac
+          case "$(value "$idle" IDLE_LOG)" in
+            ok) idle_line="$(kst "$(value "$idle" IDLE_AT)") · $idle_what — $(value "$idle" IDLE_REASON)" ;;
+            none) idle_line="최근 6시간 기록 없음(Lambda 를 아직 apply 하지 않았거나 막 만들었다)" ;;
+            *) idle_line="읽지 못함(배포 역할의 CloudWatch 로그 읽기 권한)" ;;
+          esac
           release=$(value "$server" STATUS_RELEASE)
           mode=$(value "$server" STATUS_MODE)
           {
@@ -537,6 +553,7 @@ jobs:
             echo "|---|---|"
             echo "| 서버 | $server_line |"
             echo "| 대문(CloudFront) | $edge_line |"
+            echo "| 안 쓰면 끄기 마지막 판단(10분마다) | $idle_line |"
             if [ "$state" = running ]; then
               if [ "$mode" = preview ]; then
                 echo "| 올라간 것 | PR #$(value "$server" STATUS_PR) 미리보기 \`${release:0:7}\` · $(value "$server" STATUS_BY) · $(kst "$(value "$server" STATUS_AT)") |"

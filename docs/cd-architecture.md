@@ -218,7 +218,7 @@ flowchart TB
 
 | 작업 | 안에서 일어나는 일 | 걸리는 시간(목표) |
 |---|---|---|
-| 상태 보기 | 서버·CloudFront 상태, 서버의 `status.sh`(올라간 것·자리·컨테이너·여유), 켜기·끄기 권한(DryRun) | 30초 |
+| 상태 보기 | 서버·CloudFront 상태, 안 쓰면 끄기(Lambda)의 마지막 판단(`scripts/idle-last.sh`, CloudWatch 로그), 서버의 `status.sh`(올라간 것·자리·컨테이너·여유), 켜기·끄기 권한(DryRun) | 30초 |
 | 켜기 | `server-power.sh start`(공인 주소·SSM 연결까지 기다림) → 서버 기본 설정(`setup.sh`, 이미 됐으면 몇 초) → `edge-toggle.sh on <새 주소>` → develop 최신으로 맞춤(이미 떠 있으면 그대로) → 서버에서 CloudFront 로 확인(퍼질 때까지 최대 5분) | 3~5분 |
 | PR 미리보기 올리기 | PR 확인(같은 레포·→ develop) → GitHub 이 PR 을 develop 에 합친 커밋(충돌이 있으면 실행이 생기지 않는다) → (꺼져 있으면 켜기) → 이미지 2개 빌드(권한 없음) → 서버: 자리 확인 → 미리보기 DB·계정 새로 → 바꿔 띄움 → 확인 | 5~7분 |
 | 미리보기 끝내기 | develop 최신으로 배포(배포 전 백업) → 미리보기 DB·계정·자리·기준점 지움. 실패하면 미리보기 전 develop 으로 | 1~3분 |
