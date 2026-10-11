@@ -1,5 +1,6 @@
-# 백엔드 이미지 저장소(ECR). 태그는 커밋 SHA 하나만 쓰고 덮어쓰지 못하게 한다(되돌리기가 그 태그를 믿는다).
-# 이미지가 쌓이면 저장 비용이 늘어서 최근 keep_images 개만 남긴다.
+# 이미지 저장소(ECR). 한 커밋의 백엔드 <SHA> 와 화면 web-<SHA> 를 같은 저장소에 둔다(서버 역할 권한·설정값을 늘리지 않게).
+# 태그는 덮어쓰지 못하게 한다(되돌리기가 그 태그를 믿는다). PR 미리보기도 PR 을 develop 에 합친 커밋 SHA 로 올린다.
+# 이미지가 쌓이면 저장 비용이 늘어서 최근 keep_images 개만 남긴다(한 커밋에 2개라 약 15커밋, 월 0.5 USD 안팎).
 
 terraform {
   required_version = "= 1.16.4"
@@ -20,7 +21,7 @@ variable "name" {
 variable "keep_images" {
   description = "남길 이미지 수"
   type        = number
-  default     = 10
+  default     = 30
 }
 
 resource "aws_ecr_repository" "this" {

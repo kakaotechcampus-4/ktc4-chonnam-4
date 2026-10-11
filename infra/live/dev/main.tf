@@ -56,12 +56,6 @@ variable "enable_anomaly_detection" {
   default     = false
 }
 
-variable "edge_enabled" {
-  description = "CloudFront 를 켤지. 서버를 끄기 전에 false(저장소 변수 EDGE_ENABLED)로 끄고, 켠 뒤 다시 true 로 apply 한다"
-  type        = bool
-  default     = true
-}
-
 variable "db_password_version" {
   type    = number
   default = 1
@@ -107,13 +101,12 @@ module "storage" {
   suffix = random_id.suffix.hex
 }
 
+# CloudFront 켜고 끄기는 Terraform 밖(dev-server.yml → scripts/edge-toggle.sh)이다. 여기서는 구조와 원본 주소만 정한다.
 module "edge" {
   source                      = "../../modules/edge"
   env                         = var.env
-  suffix                      = random_id.suffix.hex
-  api_origin_domain           = data.aws_instance.app.public_dns
+  origin_domain               = data.aws_instance.app.public_dns
   instance_security_group_ids = tolist(data.aws_instance.app.vpc_security_group_ids)
-  enabled                     = var.edge_enabled
 }
 
 module "observability" {
@@ -135,7 +128,6 @@ module "config" {
   source                     = "../../modules/config"
   env                        = var.env
   ecr_repository_url         = module.registry.repository_url
-  web_bucket                 = module.edge.web_bucket
   cloudfront_distribution_id = module.edge.distribution_id
   cloudfront_domain          = module.edge.domain
   backup_bucket              = module.storage.bucket

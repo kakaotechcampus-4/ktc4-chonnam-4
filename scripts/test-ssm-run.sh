@@ -78,6 +78,7 @@ export FAKE_STDOUT="[deploy] 배포 완료 abc
 pull 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/neuringo/backend:abc
 role arn:aws:iam::123456789012:role/ktc-ec2-ssm-role on $INSTANCE
 host ec2-198-51-100-2.ap-northeast-2.compute.amazonaws.com 10.0.1.23
+edge https://d111111abcdef8.cloudfront.net/api/v1/csrf
 DEPLOY_RESULT=ok"
 run
 check "성공하면 0 으로 끝난다" same "$code" 0
@@ -88,6 +89,7 @@ check "계정 ID 가 없다" lacks "$out" "123456789012"
 check "ARN 이 없다" lacks "$out" "arn:aws"
 check "EC2 주소가 없다" lacks "$out" "ec2-198-51-100-2"
 check "IP 가 없다" lacks "$out" "10.0.1.23"
+check "테스트 주소(CloudFront)가 없다" lacks "$out" "cloudfront.net"
 check "인스턴스 ID 가 없다" lacks "$out" "$INSTANCE"
 
 # GitHub Actions 에서는 인스턴스 ID 를 가리라는 지시(::add-mask::)만 남기고, 그 밖의 줄에는 ID 가 없다.

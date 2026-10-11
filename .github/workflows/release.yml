@@ -1,0 +1,441 @@
+name: Release
+# 커밋 하나를 화면(web)·백엔드 이미지 2개로 만들어 ECR 에 올리고 서버에서 바꿔 띄운다. 직접 돌리지 않는다(workflow_call).
+# deploy.yml(develop 자동 배포)과 dev-server.yml(켜기·PR 미리보기·끝내기)이 부른다.
+#
+#   resolve  서버·자리를 먼저 본다(PR 실행) · 이 커밋의 이미지가 ECR 에 벌써 있나(있으면 빌드를 건너뛴다)   AWS 읽기
+#   build    백엔드·화면 이미지를 따로(동시에) 빌드해 파일로 넘긴다                         AWS 권한 없음
+#   deploy   이미지 올리기(ECR) → 서버에서 바꿔 띄우기(SSM → deploy/host/deploy.sh)
+#            → 서버에서 CloudFront 주소로 화면·API 를 불러 이 커밋이 보이는지 확인(status.sh)
+# 스크립트(scripts/·deploy/)는 이 워크플로를 부른 커밋의 것이다. develop 배포면 develop, PR 미리보기면 그 PR 을 develop 에
+# 합친 커밋 — 파이프라인을 바꾼 PR 도 머지 전에 자기 버전으로 시험한다(2026-10-07 결정, docs/cd-architecture.md §8).
+# 서버에서 배포는 한 번에 하나다(서버 잠금 flock). 그래서 여기서는 concurrency 로 묶지 않는다(기다리던 실행이 조용히 취소되지 않게).
+# 결과 보고서는 실행 화면의 Summary 다. 테스트 주소·계정 ID·서버 주소는 찍지 않는다(공개 레포).
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: 빌드·배포할 커밋 SHA(40자리). PR 미리보기는 PR 을 develop 에 합친 커밋
+        type: string
+        required: true
+      mode:
+        description: develop 또는 preview
+        type: string
+        default: develop
+      pr:
+        description: PR 번호(preview)
+        type: string
+        default: ""
+      by:
+        description: 누른 사람(GitHub 아이디)
+        type: string
+        default: ""
+      title:
+        description: PR 제목(보고서용)
+        type: string
+        default: ""
+      author:
+        description: PR 작성자(보고서용)
+        type: string
+        default: ""
+      head:
+        description: PR 브랜치 끝 커밋(보고서용)
+        type: string
+        default: ""
+      base:
+        description: 합친 develop 커밋(보고서용)
+        type: string
+        default: ""
+      end_preview:
+        description: 미리보기를 끝내고 develop 으로(자리를 무시한다)
+        type: boolean
+        default: false
+      end_only_pr:
+        description: 끝내기를 이 PR 의 미리보기가 떠 있을 때만 한다(PR 라벨을 떼거나 PR 을 닫을 때)
+        type: string
+        default: ""
+      quiet:
+        description: 서버 꺼짐·자리 있음을 실패가 아니라 건너뜀으로 본다(PR 을 열거나 push 해서 저절로 돈 실행)
+        type: boolean
+        default: false
+      force:
+        description: 같은 커밋이 떠 있어도 다시 띄운다(설정값만 바꿨을 때)
+        type: boolean
+        default: false
+      edge_wait:
+        description: 배포 뒤 CloudFront 로 확인할 때 기다릴 초(대문을 막 열었으면 길게)
+        type: number
+        default: 30
+    outputs:
+      result:
+        description: ok·unchanged·rolled_back·failed·skipped_preview·slot_taken·server_off·…
+        value: ${{ jobs.deploy.outputs.result }}
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    # ubuntu-latest 는 2026-10-19 ~ 11-19 사이 26.04 로 바뀐다. 검증한 24.04 LTS 로 고정한다.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      build_backend: ${{ steps.ecr.outputs.build_backend }}
+      build_web: ${{ steps.ecr.outputs.build_web }}
+
+    steps:
+      - name: Check inputs
+        env:
+          SHA: ${{ inputs.sha }}
+          MODE: ${{ inputs.mode }}
+          PR: ${{ inputs.pr }}
+          BY: ${{ inputs.by }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::커밋 SHA(40자리)가 아니다"; exit 1; }
+          [[ "$MODE" =~ ^(develop|preview)$ ]] || { echo "::error::mode 는 develop 또는 preview"; exit 1; }
+          if [ "$MODE" = preview ]; then
+            [[ "$PR" =~ ^[0-9]{1,6}$ ]] || { echo "::error::PR 번호가 필요하다"; exit 1; }
+            [[ "$BY" =~ ^[A-Za-z0-9-]{1,39}$ ]] || { echo "::error::누른 사람 아이디가 필요하다"; exit 1; }
+          fi
+          [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo "::error::저장소 변수 AWS_ACCOUNT_ID(12자리)가 없다"; exit 1; }
+
+      - name: Checkout (이 워크플로를 부른 커밋의 스크립트)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-release-resolve
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      # 빌드 전에 서버를 한 번 본다(빌드·이미지 올리기 약 3분을 기다리지 않고 바로 답하게).
+      # - PR 에 push·라벨 떼기로 저절로 돈 실행(quiet)은 서버가 꺼져 있으면 건너뛴다(꺼진 서버를 위해 빌드하지 않게).
+      # - PR 미리보기는 다른 PR 이 자리를 쓰는 중이면 멈춘다(quiet 면 건너뜀). PR 끝내기는 그 PR 의 미리보기가 떠 있지 않으면 건너뛴다.
+      # 여기서는 빠른 답만 한다. 진짜 판정은 서버가 잠금 안에서 다시 한다(deploy.sh). 서버 상태를 읽지 못하면 그대로 간다.
+      - name: Go on?
+        id: gate
+        env:
+          INFRA_READY: ${{ steps.infra.outputs.ready }}
+          QUIET: ${{ inputs.quiet }}
+          MODE: ${{ inputs.mode }}
+          PR: ${{ inputs.pr }}
+          END_ONLY_PR: ${{ inputs.end_only_pr }}
+        run: |
+          ready=$INFRA_READY
+          state=""
+          if [ "$ready" = true ] && { [ "$QUIET" = true ] || [ "$MODE" = preview ] || [ -n "$END_ONLY_PR" ]; }; then
+            state=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
+          fi
+          if [ "$ready" = true ] && [ "$QUIET" = true ] && [ "$state" != running ]; then
+            ready=false
+            printf '## ⏭️ 건너뜀 — 서버가 꺼져 있다\n\nPR 에서 저절로 돈 실행이라 서버를 켜지 않는다. 필요하면 PR 에 preview 라벨을 다시 붙이거나 Run workflow → 켜기.\n' >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=건너뜀::서버가 꺼져 있다"
+          fi
+          if [ "$ready" = true ] && [ "$state" = running ] && { [ "$MODE" = preview ] || [ -n "$END_ONLY_PR" ]; }; then
+            remote="$RUNNER_TEMP/status.sh"
+            # shellcheck disable=SC2016 # $f 는 서버에서 풀린다
+            printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\n[ -f "$f" ] && bash "$f" || echo LEASE_ACTIVE=0\n' >"$remote"
+            out=$(bash scripts/ssm-run.sh "$remote" "status") || out=""
+            value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+            kst() { TZ=Asia/Seoul date -d "$1" '+%m/%d %H:%M' 2>/dev/null || echo "$1"; }
+            if [ -z "$(value LEASE_ACTIVE)" ]; then
+              echo "::warning::서버 상태를 읽지 못해 그대로 간다(서버가 잠금 안에서 다시 본다)"
+            elif [ -n "$END_ONLY_PR" ]; then
+              if [ "$(value STATUS_MODE)" != preview ] || [ "$(value STATUS_PR)" != "$END_ONLY_PR" ]; then
+                ready=false
+                printf '## ⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다\n\n서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다.\n' >>"$GITHUB_STEP_SUMMARY"
+                echo "::notice title=건너뜀::PR #$END_ONLY_PR 의 미리보기가 떠 있지 않다"
+              fi
+            elif [ "$(value LEASE_ACTIVE)" = 1 ] && [ "$(value LEASE_PR)" != "$PR" ]; then
+              ready=false
+              holder="PR #$(value LEASE_PR) · $(value LEASE_BY) · $(kst "$(value LEASE_UNTIL)") (KST) 까지"
+              if [ "$QUIET" = true ]; then
+                printf '## ⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중\n\n| 지금 자리 | %s |\n|---|---|\n\n자리가 비면 이 PR 에 push 하거나 preview 라벨을 떼었다 다시 붙이면 올라간다.\n' "$holder" >>"$GITHUB_STEP_SUMMARY"
+                echo "::notice title=건너뜀::다른 PR 이 미리보기 자리를 쓰는 중"
+              else
+                printf '## PR #%s 미리보기 — ⛔ 자리 있음 — 다른 PR 이 미리보기 중\n\n| 지금 자리 | %s |\n|---|---|\n\n자리 주인이 **미리보기 끝내기**(그 PR 에서 preview 라벨 떼기)를 하거나 시간이 지난 뒤 이 PR 의 preview 라벨을 떼었다 다시 붙인다. 빌드 전에 멈춰 이미지는 만들지 않았다.\n' "$PR" "$holder" >>"$GITHUB_STEP_SUMMARY"
+                echo "::error title=자리 있음::다른 PR 이 미리보기 중($holder)"
+                exit 1
+              fi
+            fi
+          fi
+          echo "ready=$ready" >>"$GITHUB_OUTPUT"
+
+      # ECR 태그는 불변이다. 같은 커밋을 다시 띄울 때(되돌리기·끝내기·같은 PR 다시 올리기)는 이미 올린 이미지를 쓴다.
+      - name: Images already in ECR?
+        id: ecr
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          REPO: ${{ steps.infra.outputs.ecr_repository_url }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          name=${REPO#*/}
+          has() { aws ecr describe-images --repository-name "$name" --image-ids "imageTag=$1" --region ap-northeast-2 >/dev/null 2>&1; }
+          if has "$SHA"; then echo "build_backend=false" >>"$GITHUB_OUTPUT"; else echo "build_backend=true" >>"$GITHUB_OUTPUT"; fi
+          if has "web-$SHA"; then echo "build_web=false" >>"$GITHUB_OUTPUT"; else echo "build_web=true" >>"$GITHUB_OUTPUT"; fi
+
+  # 이미지 빌드는 AWS 권한이 없는 잡에서 한다(Dockerfile·npm 설치 스크립트·Gradle 빌드가 자격증명에 닿지 않게).
+  # 캐시도 쓰지 않는다(PR 코드가 develop 이 쓰는 캐시를 바꾸지 않게).
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.ready == 'true' && (needs.resolve.outputs.build_backend == 'true' || needs.resolve.outputs.build_web == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        component: [backend, web]
+
+    steps:
+      - name: Checkout (빌드할 커밋)
+        if: (matrix.component == 'backend' && needs.resolve.outputs.build_backend == 'true') || (matrix.component == 'web' && needs.resolve.outputs.build_web == 'true')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Build image
+        if: (matrix.component == 'backend' && needs.resolve.outputs.build_backend == 'true') || (matrix.component == 'web' && needs.resolve.outputs.build_web == 'true')
+        env:
+          COMPONENT: ${{ matrix.component }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          started=$SECONDS
+          if [ "$COMPONENT" = backend ]; then
+            docker build --quiet -t "neuringo-backend:$SHA" backend >/dev/null
+            image="neuringo-backend:$SHA"
+          else
+            if [ ! -f frontend/Dockerfile ]; then
+              echo "::error::이 커밋에는 화면 이미지(frontend/Dockerfile)가 없다. develop 을 받은(merge·rebase) 뒤 다시 올린다"
+              exit 1
+            fi
+            docker build --quiet --build-arg "RELEASE=$SHA" -t "neuringo-web:$SHA" frontend >/dev/null
+            image="neuringo-web:$SHA"
+          fi
+          mkdir -p "$RUNNER_TEMP/images"
+          docker save "$image" | gzip -1 >"$RUNNER_TEMP/images/$COMPONENT.tar.gz"
+          took=$((SECONDS - started))
+          echo "$took" >"$RUNNER_TEMP/images/$COMPONENT.seconds"
+          label=$([ "$COMPONENT" = backend ] && echo 백엔드 || echo 화면)
+          echo "- ${label} 이미지 빌드: $((took / 60))분 $((took % 60))초" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Hand over image
+        if: (matrix.component == 'backend' && needs.resolve.outputs.build_backend == 'true') || (matrix.component == 'web' && needs.resolve.outputs.build_web == 'true')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: images-${{ matrix.component }}
+          path: ${{ runner.temp }}/images
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    needs: [resolve, build]
+    if: always() && needs.resolve.result == 'success' && needs.resolve.outputs.ready == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
+    outputs:
+      result: ${{ steps.deploy.outputs.result }}
+
+    steps:
+      - name: Checkout (이 워크플로를 부른 커밋의 서버 스크립트)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Take over images
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: images-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/images
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/ktc-github-deploy
+          role-session-name: neuringo-release-deploy
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - name: Read infra outputs
+        id: infra
+        run: bash scripts/infra-outputs.sh dev
+
+      # 빌드 잡이 넘긴 이미지를 불러와(실행하지 않는다) ECR 에 올린다. 이미 있는 태그는 건너뛴다(태그 불변).
+      - name: Push images (ECR)
+        if: needs.build.result == 'success'
+        env:
+          REPO: ${{ steps.infra.outputs.ecr_repository_url }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          registry=${REPO%%/*}
+          name=${REPO#*/}
+          aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry" >/dev/null 2>&1
+          for component in backend web; do
+            file="$RUNNER_TEMP/images/$component.tar.gz"
+            [ -f "$file" ] || continue
+            if [ "$component" = backend ]; then local_image="neuringo-backend:$SHA" tag="$SHA"; else local_image="neuringo-web:$SHA" tag="web-$SHA"; fi
+            gunzip -c "$file" | docker load >/dev/null
+            if aws ecr describe-images --repository-name "$name" --image-ids "imageTag=$tag" --region ap-northeast-2 >/dev/null 2>&1; then
+              echo "이미 올린 이미지($component ${SHA:0:7})를 쓴다"
+              continue
+            fi
+            docker tag "$local_image" "$REPO:$tag"
+            docker push --quiet "$REPO:$tag" >/dev/null
+            echo "이미지를 올렸다($component ${SHA:0:7})"
+          done
+          docker logout "$registry" >/dev/null 2>&1 || true
+
+      - name: Deploy to server (SSM)
+        id: deploy
+        env:
+          REPO: ${{ steps.infra.outputs.ecr_repository_url }}
+          SHA: ${{ inputs.sha }}
+          MODE: ${{ inputs.mode }}
+          PR: ${{ inputs.pr }}
+          BY: ${{ inputs.by }}
+          TITLE: ${{ inputs.title }}
+          AUTHOR: ${{ inputs.author }}
+          HEAD_SHA: ${{ inputs.head }}
+          BASE_SHA: ${{ inputs.base }}
+          END_PREVIEW: ${{ inputs.end_preview && '1' || '0' }}
+          END_ONLY_PR: ${{ inputs.end_only_pr }}
+          QUIET: ${{ inputs.quiet }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+          BACKUP_BUCKET: ${{ steps.infra.outputs.backup_bucket }}
+        run: |
+          remote="$RUNNER_TEMP/remote.sh"
+          IMAGE="$REPO:$SHA" WEB_IMAGE="$REPO:web-$SHA" RELEASE="$SHA" NEURINGO_ENV=dev MODE="$MODE" \
+            PREVIEW_PR="$PR" PREVIEW_BY="$BY" END_PREVIEW="$END_PREVIEW" END_ONLY_PR="$END_ONLY_PR" FORCE="$FORCE" \
+            bash scripts/release-bundle.sh >"$remote"
+          code=0
+          out=$(bash scripts/ssm-run.sh "$remote" "release ${SHA:0:7} $MODE") || code=$?
+          rm -f "$remote"
+          echo "$out"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          kst() { [ -n "$1" ] && TZ=Asia/Seoul date -d "$1" '+%m/%d %H:%M' 2>/dev/null || echo "$1"; }
+          clean() { tr -d '`|<>\r\n' <<<"$1" | cut -c1-80; }
+          result=$(value DEPLOY_RESULT)
+          case $code in
+            69) result=server_off ;;
+            124) result=timeout ;;
+          esac
+          echo "result=${result:-failed}" >>"$GITHUB_OUTPUT"
+
+          case $code:$result in
+            0:ok) head="✅ 올라감" ;;
+            0:unchanged) head="✅ 이미 이 커밋이 떠 있다(바꾸지 않음)" ;;
+            75:not_this_pr) head="⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다" ;;
+            75:*) head="⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중" ;;
+            76:*) head="⛔ 자리 있음 — 다른 PR 이 미리보기 중" ;;
+            69:*) head="⏭️ 건너뜀 — 서버가 꺼져 있다" ;;
+            2:*) head="↩️ 실패해서 되돌렸다" ;;
+            3:*) head="🚨 되돌리기도 실패 — 서버를 확인해야 한다" ;;
+            124:*) head="⏱️ 시간 초과" ;;
+            *) head="❌ 실패 ($result, 종료 코드 $code)" ;;
+          esac
+          if [ "$MODE" = preview ]; then
+            what="PR #$PR 미리보기"
+          elif [ "$END_PREVIEW" = 1 ]; then
+            what="미리보기 끝내기 → develop"
+          else
+            what="develop 배포"
+          fi
+          {
+            echo "## $what — $head"
+            echo
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            if [ "$MODE" = preview ]; then
+              echo "| PR | #$PR $(clean "$TITLE") (작성 $(clean "$AUTHOR")) |"
+              echo "| 올린 코드 | PR 을 develop 에 합친 결과 \`${SHA:0:7}\` (develop \`${BASE_SHA:0:7}\` + PR \`${HEAD_SHA:0:7}\`) |"
+              echo "| 누른 사람 | $BY |"
+            else
+              echo "| 올린 코드 | develop \`${SHA:0:7}\` |"
+            fi
+            [ -n "$(value PREVIEW_UNTIL)" ] && echo "| 자리 | $(kst "$(value PREVIEW_UNTIL)") (KST) 까지. 같은 PR 을 다시 올리면 1시간 연장 |"
+            [ -n "$(value PREVIEW_HOLDER_PR)" ] && echo "| 지금 자리 | PR #$(value PREVIEW_HOLDER_PR) · $(value PREVIEW_HOLDER_BY) · $(kst "$(value PREVIEW_HOLDER_UNTIL)") (KST) 까지 |"
+            [ -n "$(value DEPLOY_SECONDS)" ] && echo "| 서버에서 바꿔 띄우기 | $(value DEPLOY_SECONDS)초 |"
+            [ -n "$(value FLYWAY_VERSION)" ] && echo "| DB | $([ "$MODE" = preview ] && echo "미리보기 전용 DB 를 새로 만듦 · " || echo "기본 DB · ")마이그레이션 $(value FLYWAY_VERSION) |"
+            [ "$(value PREVIEW_ENDED)" = 1 ] && echo "| 미리보기 | 끝냄(미리보기 DB·자리 정리) |"
+            echo
+            case $code:$result in
+              75:not_this_pr) echo "서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다." ;;
+              75:*) echo "미리보기가 끝나면(끝내기 또는 자리 시간이 지난 뒤 develop 배포·켜기) develop 최신으로 돌아간다. 이미지는 ECR 에 올려 두었다." ;;
+              76:*) echo "자리 주인이 **미리보기 끝내기**를 누르거나 시간이 지난 뒤 다시 누른다." ;;
+              2:*) echo "새 버전이 상태 확인(API 200·화면 200·화면 헤더의 커밋)을 통과하지 못해 직전 상태로 되돌렸다. 앱 로그는 서버의 \`/opt/neuringo/logs/failed-*.log\`(SSM 세션)." ;;
+              3:*) echo "web·backend 를 멈췄다. SSM 세션으로 서버에 들어가 \`/opt/neuringo/logs\` 를 본다." ;;
+              69:*) echo "이미지는 ECR 에 올려 두었다. **Dev server → 켜기**를 누르면 develop 최신으로 맞춰 띄운다." ;;
+            esac
+            if [ "$result" = needs_host_setup ]; then
+              echo "서버에 컨테이너의 인스턴스 메타데이터 차단이 없다. **Dev server → 켜기**(서버 기본 설정을 같이 한다) 또는 **Actions → Host setup** 뒤 다시 누른다."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          # PR 을 열거나 push 해서 저절로 돈 실행(quiet)은 서버 꺼짐·자리 있음을 실패로 치지 않는다(PR 검사가 빨갛게 되지 않게).
+          if [ "$QUIET" = true ] && { [ "$code" = 69 ] || [ "$code" = 76 ]; }; then
+            echo "::notice title=건너뜀::$head"
+            exit 0
+          fi
+          case $code in
+            0) exit 0 ;;
+            75) echo "::notice title=건너뜀::$head"; exit 0 ;;
+            69)
+              if [ "$MODE" = develop ] && [ "$END_PREVIEW" = 0 ]; then
+                echo "::warning title=배포 건너뜀::서버가 꺼져 있다. Dev server → 켜기 를 누르면 develop 최신으로 띄운다"
+                exit 0
+              fi
+              exit 1 ;;
+            *) exit "$code" ;;
+          esac
+
+      # CloudFront 는 한국에서만 열려 GitHub 러너(미국)는 403 을 받는다. 서울에 있는 서버에서 불러 본다. 주소는 찍지 않는다.
+      - name: Check through CloudFront (from the server)
+        if: steps.deploy.outputs.result == 'ok' || steps.deploy.outputs.result == 'unchanged'
+        env:
+          DOMAIN: ${{ steps.infra.outputs.cloudfront_domain }}
+          EDGE_WAIT: ${{ inputs.edge_wait }}
+        run: |
+          [[ "$DOMAIN" =~ ^[a-z0-9]+\.cloudfront\.net$ ]] || { echo "::warning::CloudFront 주소 모양이 틀렸다"; exit 0; }
+          [[ "$EDGE_WAIT" =~ ^[0-9]{1,4}$ ]] || EDGE_WAIT=30
+          remote="$RUNNER_TEMP/edge-check.sh"
+          printf '#!/usr/bin/env bash\nEDGE_DOMAIN=%s EDGE_WAIT=%s bash /opt/neuringo/current/deploy/host/status.sh\n' "$DOMAIN" "$EDGE_WAIT" >"$remote"
+          out=$(SSM_TIMEOUT=$((EDGE_WAIT + 120)) bash scripts/ssm-run.sh "$remote" "edge check") || true
+          rm -f "$remote"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          mark() { [ "$1" = "$2" ] && echo "✅ $1" || echo "❌ ${1:-응답 없음}"; }
+          {
+            echo
+            echo "### 테스트 주소(CloudFront)로 확인 — 서버에서 불러 봄"
+            echo
+            echo "| 확인 | 결과 |"
+            echo "|---|---|"
+            echo "| API \`/api/v1/csrf\` | $(mark "$(value EDGE_API)" 200) |"
+            echo "| 화면 \`/\` | $(mark "$(value EDGE_PAGE)" 200) |"
+            echo "| 화면이 이 커밋인가(\`X-Neuringo-Release\`) | $(mark "$(value EDGE_RELEASE_MATCH)" yes) |"
+            echo
+            echo "주소는 디스코드 고정 메시지에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
+          } >>"$GITHUB_STEP_SUMMARY"
+          if [ "$(value EDGE_API)" != 200 ] || [ "$(value EDGE_RELEASE_MATCH)" != yes ]; then
+            echo "::warning title=CloudFront 확인::테스트 주소에서 이 커밋이 아직 보이지 않는다. 대문이 닫혀 있으면 Dev server → 켜기"
+          fi

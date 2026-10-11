@@ -6,7 +6,6 @@ mock_provider "aws" {}
 variables {
   env                        = "dev"
   ecr_repository_url         = "123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/neuringo/backend"
-  web_bucket                 = "neuringo-dev-web-abc123"
   cloudfront_distribution_id = "E2FAKE"
   cloudfront_domain          = "d111111abcdef8.cloudfront.net"
   backup_bucket              = "neuringo-dev-backups-abc123"
@@ -15,11 +14,10 @@ variables {
 run "names_match_scripts_and_secrets_are_write_only" {
   command = apply
 
-  # scripts/infra-outputs.sh 가 읽는 다섯 개와 deploy/host/params.txt 의 필수값 다섯 개
+  # scripts/infra-outputs.sh 가 읽는 네 개와 deploy/host/params.txt 의 필수값 다섯 개
   assert {
     condition = output.parameter_names == sort([
       "/neuringo/dev/infra/ecr-repository-url",
-      "/neuringo/dev/infra/web-bucket",
       "/neuringo/dev/infra/cloudfront-distribution-id",
       "/neuringo/dev/infra/cloudfront-domain",
       "/neuringo/dev/infra/backup-bucket",

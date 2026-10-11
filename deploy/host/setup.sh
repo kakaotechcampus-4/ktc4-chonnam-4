@@ -7,6 +7,7 @@
 # - swap 2 GiB: 메모리 4 GiB 를 backend·postgres 가 나눠 쓰다 순간적으로 넘칠 때 앱이 죽지 않게
 # - journald 로그 상한 500 MB, 보안 업데이트 자동 설치(unattended-upgrades)
 # - /opt/neuringo/{releases,state,backups,logs} (root 만, 700)
+# - 컨테이너에서 인스턴스 메타데이터(IMDS) 차단(systemd 유닛 + iptables DOCKER-USER)
 # 이미 된 것은 건너뛰고 "이미 있음" 이라고 적는다. 22번·SSH 키는 건드리지 않는다.
 set -euo pipefail
 
@@ -118,6 +119,31 @@ for sub in releases state backups logs; do
   act chmod 700 "$HOME_DIR/$sub"
 done
 say "배포 폴더: $HOME_DIR/{releases,state,backups,logs}"
+
+# 7. 컨테이너에서 인스턴스 메타데이터(IMDS, 169.254.169.254)를 막는다.
+#    막지 않으면 컨테이너 안의 코드(PR 미리보기 포함)가 서버 역할 자격증명을 받아 Parameter Store 의 비밀값을 읽을 수 있다.
+#    앱은 AWS 를 부르지 않는다. 서버(호스트)의 aws CLI·SSM Agent 는 컨테이너 밖이라 그대로 된다.
+#    Docker 가 (다시) 뜰 때마다 DOCKER-USER 사슬 맨 앞에 규칙을 넣는다(이미 있으면 넣지 않는다).
+IMDS_UNIT="$ETC/systemd/system/neuringo-imds-block.service"
+if [ -f "$IMDS_UNIT" ]; then
+  say "컨테이너 IMDS 차단: 이미 있음"
+else
+  say "컨테이너 IMDS 차단: systemd 유닛"
+  write_file "$IMDS_UNIT" "[Unit]
+Description=neuringo: block instance metadata (IMDS) from containers
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT'
+
+[Install]
+WantedBy=docker.service"
+  act systemctl daemon-reload
+  act systemctl enable --now neuringo-imds-block.service
+fi
 
 say "끝"
 echo "SETUP_RESULT=ok"

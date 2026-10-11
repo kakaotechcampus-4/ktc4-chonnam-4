@@ -1,5 +1,6 @@
 name: Docker build
-# 백엔드 이미지를 빌드하고 deploy/compose.dev.yml 로 PostgreSQL 과 함께 띄워 요청을 받는지(GET /api/v1/csrf 200) 본다.
+# 백엔드·화면 이미지를 빌드하고 deploy/compose.dev.yml 로 PostgreSQL 과 함께 띄워, 서버처럼 화면(nginx)을 거쳐
+# 요청을 받는지(API 200·화면 200·커밋 헤더·SPA 주소·없는 파일 404) 본다.
 # 이미지를 레지스트리에 올리지는(push) 않는다. 배포는 deploy.yml(OIDC·ECR·SSM)이 한다.
 # 로컬에서 같은 검사: bash scripts/verify.sh docker
 
@@ -14,6 +15,10 @@ on:
       - 'backend/gradlew'
       - 'backend/Dockerfile'
       - 'backend/.dockerignore'
+      - 'frontend/Dockerfile'
+      - 'frontend/nginx.conf'
+      - 'frontend/.dockerignore'
+      - 'frontend/package-lock.json'
       - 'deploy/**'
       - 'scripts/docker-smoke.sh'
       - '.github/workflows/docker-build.yml'
@@ -27,6 +32,10 @@ on:
       - 'backend/gradlew'
       - 'backend/Dockerfile'
       - 'backend/.dockerignore'
+      - 'frontend/Dockerfile'
+      - 'frontend/nginx.conf'
+      - 'frontend/.dockerignore'
+      - 'frontend/package-lock.json'
       - 'deploy/**'
       - 'scripts/docker-smoke.sh'
       - '.github/workflows/docker-build.yml'

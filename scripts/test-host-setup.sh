@@ -28,7 +28,8 @@ lacks() { ! has "$@"; }
 same() { [ "$1" = "$2" ]; }
 
 # 새 서버: docker·aws·swap 이 없고 /etc 도 비어 있다. 실제 명령이 불리면 표시를 남긴다.
-mkdir -p "$tmp/fresh/bin" "$tmp/fresh/etc" "$tmp/configured/bin" "$tmp/configured/etc/systemd/journald.conf.d" "$tmp/configured/etc/sysctl.d"
+mkdir -p "$tmp/fresh/bin" "$tmp/fresh/etc" "$tmp/configured/bin" "$tmp/configured/etc/systemd/journald.conf.d" "$tmp/configured/etc/sysctl.d" \
+  "$tmp/configured/etc/systemd/system"
 for cmd in apt-get systemctl snap fallocate mkswap sysctl; do
   printf '#!/usr/bin/env bash\necho "%s $*" >>"%s/real-calls"\n' "$cmd" "$tmp" >"$tmp/fresh/bin/$cmd"
   cp "$tmp/fresh/bin/$cmd" "$tmp/configured/bin/$cmd"
@@ -44,6 +45,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/configured/bin/dpkg"
 printf 'VERSION_ID="24.04"\n' >"$tmp/configured/etc/os-release"
 echo "vm.swappiness=10" >"$tmp/configured/etc/sysctl.d/99-neuringo.conf"
 printf '[Journal]\nSystemMaxUse=500M\n' >"$tmp/configured/etc/systemd/journald.conf.d/neuringo.conf"
+printf '[Unit]\n' >"$tmp/configured/etc/systemd/system/neuringo-imds-block.service"
 mkdir -p "$tmp/configured/home/releases" "$tmp/configured/home/state" "$tmp/configured/home/backups" "$tmp/configured/home/logs"
 chmod +x "$tmp"/fresh/bin/* "$tmp"/configured/bin/*
 
@@ -72,6 +74,8 @@ check "새 서버: swappiness 를 정한다" has "$out" "99-neuringo.conf 에 �
 check "새 서버: journald 상한을 둔다" has "$out" "journald.conf.d/neuringo.conf 에 쓴다"
 check "새 서버: 보안 업데이트를 설치한다" has "$out" "unattended-upgrades"
 check "새 서버: 배포 폴더를 700 으로 만든다" has "$out" "chmod 700 $tmp/fresh/home/state"
+check "새 서버: 컨테이너의 IMDS 접근을 막는 유닛을 쓴다" has "$out" "neuringo-imds-block.service 에 쓴다"
+check "새 서버: 그 유닛을 켠다" has "$out" "systemctl enable --now neuringo-imds-block.service"
 check "마른 실행은 실제로 아무것도 부르지 않는다" bash -c "[ ! -f '$tmp/real-calls' ]"
 check "마른 실행은 파일을 만들지 않는다" bash -c "[ ! -e '$tmp/fresh/etc/sysctl.d/99-neuringo.conf' ] && [ ! -e '$tmp/fresh/home' ]"
 

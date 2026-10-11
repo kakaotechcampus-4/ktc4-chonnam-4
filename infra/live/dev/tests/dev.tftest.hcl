@@ -13,11 +13,6 @@ mock_provider "aws" {
       domain_name = "d111111abcdef8.cloudfront.net"
     }
   }
-  mock_resource "aws_cloudfront_function" {
-    defaults = {
-      arn = "arn:aws:cloudfront::123456789012:function/neuringo-dev-spa-rewrite"
-    }
-  }
   mock_resource "aws_sns_topic" {
     defaults = {
       arn = "arn:aws:sns:ap-northeast-2:123456789012:neuringo-dev-alerts"
@@ -72,8 +67,8 @@ run "dev_wires_modules" {
     error_message = "사용자 테스트 주소(CloudFront 기본 주소)를 내보낸다"
   }
   assert {
-    condition     = length(module.config.parameter_names) == 9
-    error_message = "워크플로·서버가 읽는 Parameter Store 값 9개를 만든다"
+    condition     = length(module.config.parameter_names) == 8
+    error_message = "워크플로·서버가 읽는 Parameter Store 값 8개를 만든다"
   }
   assert {
     condition     = length(random_id.suffix.hex) == 6

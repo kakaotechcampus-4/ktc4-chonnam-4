@@ -9,7 +9,7 @@
 #   bash scripts/verify.sh infra        # Infra 의 check 와 같다 (Docker 필요 — Terraform fmt·validate·test·구성 검사, AWS 호출 없음)
 #   bash scripts/verify.sh security     # Security 와 같다 — 공개하면 안 되는 파일·값 검사 + gitleaks (gitleaks 는 Docker 필요)
 #   bash scripts/verify.sh e2e          # E2E 와 같다 (Docker·JDK 21·Node 24, 8080·5173 이 비어 있어야 한다)
-#   bash scripts/verify.sh docker       # Docker build 와 같다 (Docker 필요 — 이미지 빌드·compose 기동, 18080 을 쓴다)
+#   bash scripts/verify.sh docker       # Docker build 와 같다 (Docker 필요 — 백엔드·화면 이미지 빌드·compose 기동, 18080 을 쓴다)
 #
 # PowerShell 에서는 docs/testing.md 의 개별 명령을 그대로 쓰면 된다.
 set -uo pipefail
@@ -120,7 +120,7 @@ e2e_record_selftest() { bash scripts/test-e2e-record.sh; }
 aws_probe_selftest() { bash scripts/test-aws-probe.sh; }
 host_deploy_selftest() { bash scripts/test-host-deploy.sh; }
 ssm_run_selftest() { bash scripts/test-ssm-run.sh; }
-web_deploy_selftest() { bash scripts/test-web-deploy.sh; }
+dev_server_selftest() { bash scripts/test-dev-server.sh && node --test scripts/edge-toggle.test.mjs; }
 host_setup_selftest() { bash scripts/test-host-setup.sh; }
 infra_outputs_selftest() { bash scripts/test-infra-outputs.sh; }
 tf_selftest() { bash scripts/test-tf.sh; }
@@ -194,11 +194,11 @@ workflows() {
   run "scripts: 개인정보 마커 스캔 자체 검사" e2e_scan_selftest
   run "scripts: E2E 경고 기록 자체 검사" e2e_record_selftest
   run "scripts: AWS 권한 확인 자체 검사" aws_probe_selftest
-  run "scripts: 서버 배포·백업·복구 확인·배포 묶음 자체 검사" host_deploy_selftest
+  run "scripts: 서버 배포(develop·PR 미리보기)·상태·백업·복구 확인·배포 묶음 자체 검사" host_deploy_selftest
   run "scripts: 서버 기본 설정 자체 검사" host_setup_selftest
   run "scripts: SSM 실행 자체 검사" ssm_run_selftest
   run "scripts: 인프라 값 읽기 자체 검사" infra_outputs_selftest
-  run "scripts: 프론트 배포 자체 검사" web_deploy_selftest
+  run "scripts: 서버 켜기·끄기·CloudFront 여닫기 자체 검사" dev_server_selftest
   run "scripts: Terraform 실행·state 버킷 자체 검사" tf_selftest
   run "scripts: plan 가드 자체 검사" plan_guard_selftest
   run "scripts: 공개 파일 검사 자체 검사" public_files_selftest
@@ -227,7 +227,7 @@ e2e() {
 
 # 함수 이름을 docker 로 하면 docker 명령을 가려 버린다.
 image() {
-  run "docker: 이미지 빌드 → root 아님 → compose 기동 → 요청 받음(csrf 200)" docker_smoke
+  run "docker: 백엔드·화면 이미지 빌드 → root 아님 → compose 기동 → 화면을 거쳐 API·화면·SPA 주소 확인" docker_smoke
 }
 
 case "${1:-all}" in

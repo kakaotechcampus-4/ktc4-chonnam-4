@@ -20,3 +20,23 @@ AI_API_KEY?=ai/api-key
 AI_MODEL?=ai/model
 AI_TIMEOUT?=ai/timeout
 AI_MAX_RETRIES?=ai/max-retries
+
+# 음성 인식(STT)·음성 합성(TTS). LLM 과 따로 켠다. 없으면 기본값(끔)으로 뜬다.
+# 켰는데(STT_PROVIDER·TTS_PROVIDER) 키나 목소리 ID 가 없으면 앱이 시작되지 않는다 → 배포는 직전 설정으로 되돌린다.
+STT_PROVIDER?=stt/provider
+STT_PROVIDER_NAME?=stt/provider-name
+STT_BASE_URL?=stt/base-url
+STT_API_KEY?=stt/api-key
+STT_MODEL?=stt/model
+STT_LANGUAGE?=stt/language
+STT_TIMEOUT?=stt/timeout
+STT_INCLUDE_LOGPROBS?=stt/include-logprobs
+TTS_PROVIDER?=tts/provider
+TTS_PROVIDER_NAME?=tts/provider-name
+TTS_BASE_URL?=tts/base-url
+TTS_API_KEY?=tts/api-key
+TTS_MODEL?=tts/model
+TTS_VOICE_ID?=tts/voice-id
+TTS_LANGUAGE?=tts/language
+TTS_AUDIO_FORMAT?=tts/audio-format
+TTS_TIMEOUT?=tts/timeout

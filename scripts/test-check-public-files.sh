@@ -31,6 +31,7 @@ ecr="$acct.dkr.ecr.ap-northeast-2.amazonaws.com/neuringo/backend"
 dns="ec2-$(printf '%s' 13-125-7-9).ap-northeast-2.compute.amazonaws.com"
 portal="https://d-0000000000.aws$(printf apps).com/start"
 notion="https://app.notion.com/p/elice$(printf -- -track)/x"
+cf="d$(printf '%s' 3kq9x7m2p4w8z).cloudfront.net"     # 예시가 아닌 CloudFront 주소
 
 repo() { # 새 임시 레포
   rm -rf "$tmp/r"
@@ -59,9 +60,9 @@ echo "check-public-files.sh 자체 검사"
 repo
 put deploy/.env.example "DB_PASSWORD="
 put infra/terraform.tfvars.example 'monthly_budget_usd = 70'
-put docs/a.md "예시 arn:aws:iam::123456789012:role/x · ec2-203-0-113-10.ap-northeast-2.compute.amazonaws.com"
+put docs/a.md "예시 arn:aws:iam::123456789012:role/x · ec2-203-0-113-10.ap-northeast-2.compute.amazonaws.com · d111111abcdef8.cloudfront.net"
 scan
-check "견본(.example)·예시 계정·문서용 IP 는 통과한다" same "$code" 0
+check "견본(.example)·예시 계정·문서용 IP·예시 CloudFront 주소는 통과한다" same "$code" 0
 
 for f in .env backend/.env.local infra/live/dev/terraform.tfstate infra/live/dev/dev.tfplan infra/prod.tfvars \
   deploy/server.pem .aws/credentials backend/src/main/resources/application-dev-secret.yml backups/daily.dump \
@@ -79,7 +80,7 @@ check "계정 ID 가 든 ARN 을 막는다" same "$code" 1
 check "어느 파일 몇 번째 줄인지 알려 준다" has "$out" "docs/b.md:1"
 check "값(계정 ID)은 찍지 않는다" lacks "$out" "$acct"
 
-for v in "$ecr" "$dns" "$portal" "$notion"; do
+for v in "$ecr" "$dns" "$portal" "$notion" "$cf"; do
   repo
   put docs/c.md "주소 $v"
   scan
