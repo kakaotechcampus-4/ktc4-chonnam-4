@@ -102,7 +102,7 @@ function QuizQuestionView({
 
       <div aria-live="polite">
         {feedback.kind === "hint" ? (
-          <SpeechBubble character="rabbit" characterAlign="top">
+          <SpeechBubble character="rabbit" mood="sad" characterAlign="top">
             괜찮아, 다시 한번 살펴볼까?
             <span className="mt-1 block font-extrabold text-[var(--child-text)]">
               힌트 {feedback.hint.level}: {feedback.hint.text}
@@ -112,9 +112,9 @@ function QuizQuestionView({
             </span>
           </SpeechBubble>
         ) : feedback.kind === "correct" ? (
-          <SpeechBubble character="turtle">맞아! 잘 찾았어</SpeechBubble>
+          <SpeechBubble character="turtle" mood="happy">맞아! 잘 찾았어</SpeechBubble>
         ) : feedback.kind === "final" ? (
-          <SpeechBubble character="turtle">괜찮아! 다음 문제로 가볼까?</SpeechBubble>
+          <SpeechBubble character="turtle" mood="wink">괜찮아! 다음 문제로 가볼까?</SpeechBubble>
         ) : null}
       </div>
 
