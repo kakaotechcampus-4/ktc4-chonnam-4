@@ -315,6 +315,16 @@ export async function logout(): Promise<void> {
   }
 }
 
+/**
+ * 즉시 탈퇴한다. 확인 절차 없이 계정과 학급·아동·학습 기록이 모두 지워진다. 성공했을 때만 토큰을 지운다.
+ * 실패하면 계정이 그대로라 로그인 상태를 유지한다.
+ */
+export async function withdraw(): Promise<void> {
+  cancelPendingRequests()
+  await writeRequest<void>('DELETE', '/users/me')
+  clearAccessToken()
+}
+
 export function hasAccessToken(): boolean {
   return getAccessToken() !== null
 }

@@ -167,6 +167,49 @@ class DeletionIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("CLASSROOM_NOT_FOUND"));
     }
 
+    /** 강사 탈퇴. 그 강사의 모든 학급·아동·학습 기록과 계정 행이 사라지고, 다른 강사의 데이터는 그대로다. */
+    @Test
+    void withdrawalDeletesEveryClassroomChildRecordAndTheAccount() throws Exception {
+        UUID firstClass = createClassroom("탈퇴 강사 첫 반");
+        UUID secondClass = createClassroom("탈퇴 강사 둘째 반");
+        UUID solved = createChild(firstClass, "기록 있는 아동");
+        solveWithHint(assign(solved), enter(solved));
+        UUID assigned = createChild(secondClass, "배정만 된 아동");
+        assign(assigned);
+        createClassroom("탈퇴 강사 빈 반");
+        UUID otherClass =
+                UUID.fromString(
+                        JsonPath.read(
+                                mvc.perform(
+                                                post("/api/v1/classrooms")
+                                                        .with(TestInstructors.instructor(OTHER))
+                                                        .with(csrf())
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .content("{\"name\":\"남을 강사의 반\"}"))
+                                        .andExpect(status().isOk())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString(),
+                                "$.data.classId"));
+        long quizItems = items.count();
+
+        mvc.perform(delete("/api/v1/users/me").with(owner()).with(csrf()))
+                .andExpect(status().isNoContent());
+
+        assertThat(rowsOf(solved)).allSatisfy((table, count) -> assertThat(count).isZero());
+        assertThat(rowsOf(assigned)).allSatisfy((table, count) -> assertThat(count).isZero());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from classroom where instructor_id = ?",
+                                Long.class,
+                                TestInstructors.id(OWNER)))
+                .isZero();
+        assertThat(users.existsById(TestInstructors.id(OWNER))).isFalse();
+        assertThat(classrooms.existsById(otherClass)).isTrue();
+        assertThat(users.existsById(TestInstructors.id(OTHER))).isTrue();
+        assertThat(items.count()).isEqualTo(quizItems);
+    }
+
     /**
      * 학급 삭제가 학급을 잠그고 아동 목록을 읽은 순간에 같은 학급으로 아동 등록이 들어오는 경우. 등록은 삭제가 끝날 때까지 기다려야 하고, 끝난 뒤에는 500 이 아니라
      * 학급 없음 404 가 되어야 한다. 삭제 트랜잭션을 테스트가 직접 열어 "목록을 읽은 직후"에 멈춰 둔다.

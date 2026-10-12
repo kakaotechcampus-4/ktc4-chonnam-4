@@ -456,6 +456,19 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
+  // 즉시 탈퇴: 그 강사의 학급·아동·기록, 모든 세션, 계정을 지운다.
+  http.delete("*/api/v1/users/me", ({ request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const owned = classrooms.filter((c) => c.instructorId === session.userId).map((c) => c.classId)
+    removeChildren(children.filter((c) => owned.includes(c.classId)).map((c) => c.childId))
+    classrooms = classrooms.filter((c) => c.instructorId !== session.userId)
+    for (const [token, userId] of sessions) if (userId === session.userId) sessions.delete(token)
+    accounts = accounts.filter((a) => a.userId !== session.userId)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.get("*/api/v1/classrooms", ({ request }) => {
     const session = authenticate(request)
     if (session instanceof Response) return session

@@ -44,6 +44,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>공개 경로(가입·로그인·CSRF 토큰)는 틀린 토큰이 달려 있어도 열린다(PublicEndpoints 의 규칙).
  *   <li>"이용약관·개인정보 처리방침 각각 필수 동의, 버전·시각 저장": 둘 중 하나라도 빠지면 422 이고 계정이 생기지 않는다. 가입하면 서버가 정한 버전과 동의
  *       시각이 계정 행에 함께 저장된다.
+ *   <li>"확인 없이 즉시 탈퇴, 같은 이메일 재가입은 새 ID": 탈퇴하면 그 강사의 모든 토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
  * </ul>
  */
 @LocalProfileIntegrationTest
@@ -128,6 +129,32 @@ class AuthIntegrationTest {
                                 Long.class,
                                 credentials.email()))
                 .isZero();
+    }
+
+    @Test
+    void withdrawalEndsEverySessionAndSameEmailSignsUpAsNewAccount() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+        String otherTab = fixtures.login(instructor.email(), instructor.password());
+
+        MvcTestResult withdrawal =
+                send(mvc.delete().uri("/api/v1/users/me"), null, instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.NO_CONTENT);
+        assertUnauthorized(
+                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), instructor.accessToken())
+                        .exchange(),
+                "INVALID_TOKEN");
+        assertUnauthorized(
+                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), otherTab).exchange(),
+                "INVALID_TOKEN");
+        assertUnauthorized(
+                fixtures.loginRequest(instructor.email(), instructor.password()),
+                "INVALID_CREDENTIALS");
+
+        UUID again =
+                fixtures.signUp(
+                        new TestFixtures.Credentials(instructor.email(), instructor.password()));
+        assertThat(again).isNotEqualTo(instructor.userId());
     }
 
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */

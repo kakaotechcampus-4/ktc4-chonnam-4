@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 아동·학급 영구 삭제(ADR 2026-10-04). 정본 05 는 삭제 대신 상태 변경(PATCH)을 두지만, S2 테스트 데이터 정리를 위해 03 VS-002 의 연쇄 영구
- * 삭제를 따른다. 경로는 정본 05 의 자원 경로를 그대로 쓴다.
+ * 삭제를 따른다. 경로는 정본 05 의 자원 경로를 그대로 쓴다. 강사 탈퇴도 같은 삭제 경로를 쓰므로 여기에 둔다.
  */
 @RestController
 public class DeletionController {
@@ -28,6 +28,13 @@ public class DeletionController {
     public void deleteChild(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID childId) {
         deletionService.deleteChild(user.userId(), childId);
+    }
+
+    /** 강사 즉시 탈퇴. 재인증·확인 없이 계정과 소유 데이터를 모두 지운다. */
+    @DeleteMapping("/api/v1/users/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void withdraw(@AuthenticationPrincipal AuthenticatedUser user) {
+        deletionService.deleteInstructor(user.userId());
     }
 
     @DeleteMapping("/api/v1/classrooms/{classId}")

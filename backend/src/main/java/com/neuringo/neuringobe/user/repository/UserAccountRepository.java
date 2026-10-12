@@ -11,6 +11,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> {
 
+    /** 강사 탈퇴. 동의 기록도 같은 행이라 함께 사라진다. */
+    @Modifying
+    @Query(value = "delete from user_account where user_id = :userId", nativeQuery = true)
+    int deleteByUserId(@Param("userId") UUID userId);
+
     // email 은 정규화(trim·소문자)한 값으로 조회한다.
     Optional<UserAccount> findByEmail(String email);
 
