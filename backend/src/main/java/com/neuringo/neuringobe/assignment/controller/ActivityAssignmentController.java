@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
 import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.assignment.service.ActivityAssignmentService;
+import com.neuringo.neuringobe.auth.security.SensitiveReadLog;
 import com.neuringo.neuringobe.common.ApiResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -21,9 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ActivityAssignmentController {
 
     private final ActivityAssignmentService service;
+    private final SensitiveReadLog sensitiveReads;
 
-    public ActivityAssignmentController(ActivityAssignmentService service) {
+    public ActivityAssignmentController(
+            ActivityAssignmentService service, SensitiveReadLog sensitiveReads) {
         this.service = service;
+        this.sensitiveReads = sensitiveReads;
     }
 
     /** 같은 Idempotency-Key 로 다시 오면 처음 만든 활동을 200 으로 돌려준다. 응답을 못 받은 화면이 같은 키로 다시 보내도 활동은 하나다. */
@@ -46,6 +50,9 @@ public class ActivityAssignmentController {
     @GetMapping("/api/v1/activities/{activityId}")
     public ApiResponse<ActivityDetailResponse> detail(
             @PathVariable UUID activityId, Authentication authentication) {
-        return ApiResponse.of(service.detail(activityId, authentication));
+        ActivityDetailResponse detail = service.detail(activityId, authentication);
+        sensitiveReads.recordIfInstructor(
+                authentication, SensitiveReadLog.Target.ACTIVITY, activityId);
+        return ApiResponse.of(detail);
     }
 }
