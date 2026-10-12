@@ -41,6 +41,9 @@ public final class TestInstructors {
                             null,
                             UserRole.INSTRUCTOR,
                             AccountStatus.ACTIVE,
+                            Instant.now(),
+                            "v1",
+                            "v1",
                             Instant.now()));
         }
     }

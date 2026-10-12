@@ -21,9 +21,10 @@ export type Child = {
   status: ChildStatus
 }
 
-export type UserRole = 'INSTRUCTOR' | 'OPERATOR'
+// 운영자 역할과 정지·초대·탈퇴 상태는 쓰지 않아 뺐다. 탈퇴하면 계정 행이 지워진다.
+export type UserRole = 'INSTRUCTOR'
 
-export type AccountStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'WITHDRAWN'
+export type AccountStatus = 'ACTIVE'
 
 export type User = {
   userId: string
@@ -276,6 +277,9 @@ export type SignupInput = {
   password: string
   name: string
   orgName?: string
+  // 이용약관·개인정보 처리방침 각각 필수 동의. 버전과 시각은 서버가 정해 저장한다.
+  termsAgreed: boolean
+  privacyAgreed: boolean
 }
 
 export function signup(input: SignupInput): Promise<User> {

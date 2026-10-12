@@ -319,6 +319,9 @@ function signupViolations(body: Record<string, unknown>): FieldError[] {
   else if (new TextEncoder().encode(password).length > 72)
     errors.push({ field: "passwordWithinByteLimit", message: "비밀번호가 너무 깁니다." })
   for (const message of nameViolations(body.name)) errors.push({ field: "name", message })
+  if (body.termsAgreed !== true) errors.push({ field: "termsAgreed", message: "이용약관에 동의해야 가입할 수 있습니다." })
+  if (body.privacyAgreed !== true)
+    errors.push({ field: "privacyAgreed", message: "개인정보 처리방침에 동의해야 가입할 수 있습니다." })
   return errors
 }
 

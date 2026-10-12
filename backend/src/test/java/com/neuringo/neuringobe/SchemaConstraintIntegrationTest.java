@@ -17,6 +17,7 @@ import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -86,6 +87,44 @@ class SchemaConstraintIntegrationTest {
                 .isEqualTo(CHECK_VIOLATION);
         assertThat(sqlStateOf(() -> insertUser(newEmail(), UserRole.INSTRUCTOR.name(), "UNKNOWN")))
                 .isEqualTo(CHECK_VIOLATION);
+    }
+
+    // V11 이 운영자 역할과 정지·초대·탈퇴 상태를 뺐다. 운영자가 없고 탈퇴는 행을 지운다.
+    @ParameterizedTest
+    @ValueSource(strings = {"OPERATOR"})
+    void userRoleColumnRejectsRemovedRoles(String role) {
+        assertThat(sqlStateOf(() -> insertUser(newEmail(), role, AccountStatus.ACTIVE.name())))
+                .isEqualTo(CHECK_VIOLATION);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"INVITED", "SUSPENDED", "WITHDRAWN"})
+    void accountStatusColumnRejectsRemovedStatuses(String status) {
+        assertThat(sqlStateOf(() -> insertUser(newEmail(), UserRole.INSTRUCTOR.name(), status)))
+                .isEqualTo(CHECK_VIOLATION);
+    }
+
+    // 동의 기록은 약관 버전·방침 버전·시각이 모두 있거나 모두 없어야 한다(V11).
+    @Test
+    void consentColumnsAreAllOrNothing() {
+        UUID userId = insertInstructor();
+
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        jdbcTemplate.update(
+                                                "UPDATE user_account SET terms_version = 'v1'"
+                                                        + " WHERE user_id = ?",
+                                                userId)))
+                .isEqualTo(CHECK_VIOLATION);
+        assertThatCode(
+                        () ->
+                                jdbcTemplate.update(
+                                        "UPDATE user_account SET terms_version = 'v1',"
+                                                + " privacy_version = 'v1', consented_at = now()"
+                                                + " WHERE user_id = ?",
+                                        userId))
+                .doesNotThrowAnyException();
     }
 
     @Test

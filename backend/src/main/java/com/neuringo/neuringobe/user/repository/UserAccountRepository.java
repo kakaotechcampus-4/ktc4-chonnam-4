@@ -26,9 +26,11 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
             value =
                     """
                     INSERT INTO user_account
-                        (user_id, email, password_hash, name, org_name, role, status, created_at)
+                        (user_id, email, password_hash, name, org_name, role, status, created_at,
+                         terms_version, privacy_version, consented_at)
                     VALUES
-                        (:userId, :email, :passwordHash, :name, :orgName, :role, :status, :createdAt)
+                        (:userId, :email, :passwordHash, :name, :orgName, :role, :status, :createdAt,
+                         :termsVersion, :privacyVersion, :consentedAt)
                     ON CONFLICT (email) DO NOTHING
                     """,
             nativeQuery = true)
@@ -40,5 +42,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
             @Param("orgName") String orgName,
             @Param("role") String role,
             @Param("status") String status,
-            @Param("createdAt") Instant createdAt);
+            @Param("createdAt") Instant createdAt,
+            @Param("termsVersion") String termsVersion,
+            @Param("privacyVersion") String privacyVersion,
+            @Param("consentedAt") Instant consentedAt);
 }

@@ -67,7 +67,11 @@ class SchemaIntegrityIntegrationTest {
                         "org_name",
                         "role",
                         "status",
-                        "created_at");
+                        "created_at",
+                        // 가입 동의 기록(V11). 동의 내용 외 개인정보는 늘리지 않는다.
+                        "terms_version",
+                        "privacy_version",
+                        "consented_at");
     }
 
     @Test
