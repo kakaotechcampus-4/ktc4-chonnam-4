@@ -381,10 +381,18 @@ export function getLearningGoal(goalId: string): Promise<LearningGoal> {
 
 export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
 
+/**
+ * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈를 배정한다.
+ * 역할극은 역할극 API 가 생기기 전이라 서버가 받지 않는다.
+ */
+export type ActivityType = 'FIRST_COMBINED' | 'SELF_EMOTION_QUIZ' | 'OTHER_EMOTION_QUIZ' | 'ROLEPLAY'
+
 export type Activity = {
   activityId: string
   childId: string
-  goalId: string
+  // 독립 퀴즈는 학습 목표가 없다.
+  goalId: string | null
+  activityType: ActivityType
   scenarioId: string | null
   scenarioSource: string | null
   initialSupportLevel: string | null
@@ -442,11 +450,16 @@ export function getActivity(activityId: string): Promise<ActivityDetail> {
  * 배정이 실패하면 목표도 저장되지 않는다.
  * requestKey 는 "배정하기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 써야 활동이 하나만 남는다.
  */
-export function createActivity(childId: string, goal: LearningGoalInput, requestKey: string): Promise<Activity> {
+export function createActivity(
+  childId: string,
+  activityType: ActivityType,
+  goal: LearningGoalInput | null,
+  requestKey: string,
+): Promise<Activity> {
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, goal },
+    { childId, activityType, ...(goal ? { goal } : {}) },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }

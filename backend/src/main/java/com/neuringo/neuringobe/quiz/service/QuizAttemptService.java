@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.quiz.service;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
@@ -383,7 +384,10 @@ public class QuizAttemptService {
         children.findByIdForUpdate(activity.getChildId())
                 .orElseThrow(
                         () -> new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
-        boolean first = !results.existsInitialDifficultyUsedByChild(activity.getChildId());
+        // 첫 난이도는 최초 결합 활동의 퀴즈로만 정한다. 독립 퀴즈 결과는 저장만 한다.
+        boolean first =
+                activity.getActivityType() == ActivityType.FIRST_COMBINED
+                        && !results.existsInitialDifficultyUsedByChild(activity.getChildId());
         results.saveAndFlush(
                 new QuizResult(activity.getActivityId(), summary, decision, first, Instant.now()));
         if (first) {

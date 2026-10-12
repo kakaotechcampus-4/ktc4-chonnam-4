@@ -2,11 +2,13 @@ import { http, HttpResponse } from "msw"
 import type {
   Activity,
   ActivityStatus,
+  ActivityType,
   AssignedQuizItem,
   Child,
   Classroom,
   LearningGoal,
   QuizResult,
+  QuizType,
   User,
 } from "@/features/instructor/api"
 
@@ -124,6 +126,55 @@ const QUIZ_POOL: Omit<AssignedQuizItem, "activityQuizId" | "activityId" | "quest
   },
 ]
 
+type PoolItem = Omit<AssignedQuizItem, "activityQuizId" | "activityId" | "questionOrder">
+
+// 독립 퀴즈 10문항(내 감정 10 / 상대 감정 상황 7 + 이미지 3)을 채울 만큼 가짜 서버에만 더 둔 승인 문항.
+// 실제 서버의 시드는 이보다 적어 로컬에서는 독립 퀴즈 배정이 422 다.
+function fillerItems(quizType: QuizType, count: number): PoolItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    itemId: crypto.randomUUID(),
+    itemVersion: 1,
+    quizType,
+    questionText: `채움 문항 ${index + 1}. 어떤 기분일까?`,
+    imageUrl: quizType === "OTHER_EMOTION_IMAGE" ? "/quiz-images/sample-anger.svg" : null,
+    choices: ["기쁨", "슬픔", "화남"],
+  }))
+}
+
+const FULL_POOL: PoolItem[] = [
+  ...QUIZ_POOL,
+  ...fillerItems("SELF_EMOTION_SITUATION", 9),
+  ...fillerItems("OTHER_EMOTION_SITUATION", 6),
+  ...fillerItems("OTHER_EMOTION_IMAGE", 2),
+]
+
+// 서버 QuizAssignmentService.COMPOSITION 과 같은 유형별 문항 구성. 위에서부터 그 순서대로 붙는다.
+const COMPOSITION: Record<ActivityType, QuizType[]> = {
+  FIRST_COMBINED: ["SELF_EMOTION_SITUATION", "OTHER_EMOTION_SITUATION", "OTHER_EMOTION_IMAGE"],
+  SELF_EMOTION_QUIZ: Array<QuizType>(10).fill("SELF_EMOTION_SITUATION"),
+  OTHER_EMOTION_QUIZ: [
+    ...Array<QuizType>(7).fill("OTHER_EMOTION_SITUATION"),
+    ...Array<QuizType>(3).fill("OTHER_EMOTION_IMAGE"),
+  ],
+  ROLEPLAY: [],
+}
+
+/**
+ * 서버처럼 유형별 구성대로 문항 풀에서 고른다. 가짜 서버는 무작위 대신 풀 순서대로, 같은 문항은 두 번 쓰지 않는다.
+ * 칸을 하나라도 못 채우면 빈 목록이다(서버와 같다).
+ */
+function pickItems(activityType: ActivityType): PoolItem[] {
+  const used = new Set<string>()
+  const picks: PoolItem[] = []
+  for (const type of COMPOSITION[activityType]) {
+    const item = quizPool.find((candidate) => candidate.quizType === type && !used.has(candidate.itemId))
+    if (!item) return []
+    used.add(item.itemId)
+    picks.push(item)
+  }
+  return picks
+}
+
 type StoredActivity = Activity & { idempotencyKey: string | null }
 
 // 만든 학급·아동·계정·세션·목표·활동은 다음 요청에 반영된다(실제 서버처럼). 테스트가 끝나면 setup 이 resetMswData() 로 픽스처만 남긴다.
@@ -136,7 +187,7 @@ let activities: StoredActivity[] = []
 let activityQuizzes: AssignedQuizItem[] = []
 let quizResults = new Map<string, QuizResult>()
 // 비워 두면 승인 문항이 없는 서버처럼 배정이 422 QUIZ_ITEMS_UNAVAILABLE 이다.
-let quizPool = QUIZ_POOL
+let quizPool = FULL_POOL
 
 export function resetMswData() {
   accounts = [instructors.a, instructors.b]
@@ -150,7 +201,7 @@ export function resetMswData() {
   activities = []
   activityQuizzes = []
   quizResults = new Map()
-  quizPool = QUIZ_POOL
+  quizPool = FULL_POOL
 }
 
 /** 승인 문항이 없는 서버로 바꾼다. 배정이 422 QUIZ_ITEMS_UNAVAILABLE 이 된다. */
@@ -166,22 +217,29 @@ export function seedActivity({
   childId,
   goalTitle,
   category,
+  activityType = "FIRST_COMBINED",
   status = "NOT_STARTED",
   result,
 }: {
   childId: string
-  goalTitle: string
+  goalTitle?: string
   category?: string
+  activityType?: ActivityType
   status?: ActivityStatus
   result?: Omit<QuizResult, "activityId">
 }): StoredActivity {
-  const goal = newGoal(childId, instructors.a.userId, { title: goalTitle, category })
-  goals = [...goals, goal]
-  const activity = newActivity(childId, goal.goalId, null)
+  let goalId: string | null = null
+  if (activityType === "FIRST_COMBINED" || activityType === "ROLEPLAY") {
+    const goal = newGoal(childId, instructors.a.userId, { title: goalTitle ?? "학습 목표", category })
+    goals = [...goals, goal]
+    goalId = goal.goalId
+  }
+  const activity = newActivity(childId, activityType, goalId, null)
   activity.status = status
   if (status !== "NOT_STARTED") activity.startedAt = activity.assignedAt
+  if (status === "COMPLETED") activity.completedAt = activity.assignedAt
   activities = [...activities, activity]
-  attachQuizzes(activity.activityId)
+  attachQuizzes(activity.activityId, activityType)
   if (result) quizResults.set(activity.activityId, { activityId: activity.activityId, ...result })
   return activity
 }
@@ -227,11 +285,17 @@ function goalInput(body: Record<string, unknown>): GoalInput {
   }
 }
 
-function newActivity(childId: string, goalId: string, idempotencyKey: string | null): StoredActivity {
+function newActivity(
+  childId: string,
+  activityType: ActivityType,
+  goalId: string | null,
+  idempotencyKey: string | null,
+): StoredActivity {
   return {
     activityId: crypto.randomUUID(),
     childId,
     goalId,
+    activityType,
     scenarioId: null,
     scenarioSource: null,
     initialSupportLevel: null,
@@ -245,10 +309,10 @@ function newActivity(childId: string, goalId: string, idempotencyKey: string | n
   }
 }
 
-function attachQuizzes(activityId: string) {
+function attachQuizzes(activityId: string, activityType: ActivityType) {
   activityQuizzes = [
     ...activityQuizzes,
-    ...quizPool.map((item, index) => ({
+    ...pickItems(activityType).map((item, index) => ({
       ...item,
       activityQuizId: crypto.randomUUID(),
       activityId,
@@ -614,8 +678,8 @@ export const handlers = [
     return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toActivity)))
   }),
 
-  // 활동 배정(ADR 2026-10-03 D4). 서버처럼 목표를 함께 저장하고 문항을 자동으로 붙인다. 같은 요청 키는 처음 활동을 200 으로,
-  // 같은 목표의 시작 전 활동은 409 다. 실패하면 목표도 저장하지 않는다.
+  // 활동 배정. 서버처럼 목표를 함께 저장하고 유형별 구성대로 문항을 붙인다. 같은 요청 키는
+  // 처음 활동을 200 으로 돌려준다. 실패하면 목표도 저장하지 않는다.
   http.post("*/api/v1/activities", async ({ request }) => {
     if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
     const session = authenticate(request)
@@ -626,24 +690,38 @@ export const handlers = [
     const body = await readJson(request)
     if (!body) return invalidRequest(path)
     const childId = String(body.childId ?? "")
+    // 서버처럼 유형을 비우면 최초 결합이다.
+    const activityType = (body.activityType ?? "FIRST_COMBINED") as ActivityType
+    if (!(activityType in COMPOSITION)) return invalidRequest(path)
     const goalBody = typeof body.goal === "object" && body.goal !== null ? (body.goal as Record<string, unknown>) : null
     const errors: FieldError[] = [
       ...(UUID_FORMAT.test(childId) ? [] : [{ field: "childId", message: "널이어서는 안됩니다" }]),
-      ...(goalBody ? goalFieldErrors(goalBody, "goal.") : [{ field: "goal", message: "널이어서는 안됩니다" }]),
+      ...(goalBody ? goalFieldErrors(goalBody, "goal.") : []),
     ]
     if (errors.length > 0) return validationFailed(path, errors)
     const child = ownedChild(childId, session)
     if (!child) return childNotFound(path)
-    const input = goalInput(goalBody!)
-    if (input.parentGoalId && !goals.some((g) => g.goalId === input.parentGoalId && g.childId === childId)) {
+    const requiresGoal = activityType === "FIRST_COMBINED" || activityType === "ROLEPLAY"
+    if (requiresGoal && !goalBody) {
+      return apiError(422, "GOAL_REQUIRED", "이 활동에는 학습 목표가 필요합니다.", path)
+    }
+    if (!requiresGoal && goalBody) {
+      return apiError(422, "GOAL_NOT_ALLOWED", "표정 퀴즈 활동에는 학습 목표를 붙이지 않습니다.", path)
+    }
+    const input = goalBody ? goalInput(goalBody) : null
+    if (input?.parentGoalId && !goals.some((g) => g.goalId === input.parentGoalId && g.childId === childId)) {
       return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
     }
     // 아직 저장하지 않는다. 확인을 모두 통과한 뒤에 저장해야 실패한 배정이 목표를 남기지 않는다.
-    const goal = newGoal(childId, session.userId, input)
+    const goal = input ? newGoal(childId, session.userId, input) : null
     const prior = activities.find((a) => a.idempotencyKey === key)
     if (prior) {
       const priorGoal = goals.find((g) => g.goalId === prior.goalId)
-      if (prior.childId !== childId || priorGoal?.contentHash !== goal.contentHash) {
+      if (
+        prior.childId !== childId ||
+        prior.activityType !== activityType ||
+        priorGoal?.contentHash !== goal?.contentHash
+      ) {
         return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.", path)
       }
       return HttpResponse.json(envelope(toActivity(prior)))
@@ -651,20 +729,31 @@ export const handlers = [
     if (child.status !== "ACTIVE") {
       return apiError(409, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.", path)
     }
-    // 같은 목표는 ID 가 아니라 내용(contentHash)으로 판단한다(ADR 2026-10-03 D6).
-    const sameGoals = new Set(
-      goals.filter((g) => g.childId === childId && g.contentHash === goal.contentHash).map((g) => g.goalId),
-    )
-    if (activities.some((a) => a.childId === childId && sameGoals.has(a.goalId) && a.status === "NOT_STARTED")) {
-      return apiError(409, "DUPLICATE_ASSIGNMENT", "같은 목표로 시작하지 않은 활동이 이미 있습니다.", path)
+    if (activityType === "ROLEPLAY") {
+      return apiError(422, "ACTIVITY_TYPE_NOT_AVAILABLE", "역할극 활동은 아직 배정할 수 없습니다.", path)
     }
-    if (quizPool.length === 0) {
-      return apiError(422, "QUIZ_ITEMS_UNAVAILABLE", "배정할 수 있는 승인된 퀴즈 문항이 없습니다.", path)
+    const childActivities = activities.filter((a) => a.childId === childId)
+    if (activityType === "FIRST_COMBINED") {
+      // 최초 결합은 아동마다 한 번이다.
+      if (childActivities.some((a) => a.activityType === "FIRST_COMBINED")) {
+        return apiError(409, "FIRST_ACTIVITY_EXISTS", "최초 활동은 아동마다 한 번만 배정할 수 있습니다.", path)
+      }
+    } else {
+      // 독립 퀴즈는 최초 결합을 마친 뒤에만, (아동, 유형) 기준 시작 전 하나만.
+      if (!childActivities.some((a) => a.activityType === "FIRST_COMBINED" && a.status === "COMPLETED")) {
+        return apiError(409, "FIRST_ACTIVITY_NOT_COMPLETED", "최초 활동을 마친 뒤에 배정할 수 있습니다.", path)
+      }
+      if (childActivities.some((a) => a.activityType === activityType && a.status === "NOT_STARTED")) {
+        return apiError(409, "DUPLICATE_ASSIGNMENT", "같은 활동이 시작 전 상태로 이미 있습니다.", path)
+      }
     }
-    goals = [...goals, goal]
-    const activity = newActivity(childId, goal.goalId, key)
+    if (pickItems(activityType).length === 0) {
+      return apiError(422, "QUIZ_ITEMS_UNAVAILABLE", "배정할 수 있는 승인된 퀴즈 문항이 모자랍니다.", path)
+    }
+    if (goal) goals = [...goals, goal]
+    const activity = newActivity(childId, activityType, goal?.goalId ?? null, key)
     activities = [...activities, activity]
-    attachQuizzes(activity.activityId)
+    attachQuizzes(activity.activityId, activityType)
     return HttpResponse.json(envelope(toActivity(activity)), {
       status: 201,
       headers: { Location: `/api/v1/activities/${activity.activityId}` },

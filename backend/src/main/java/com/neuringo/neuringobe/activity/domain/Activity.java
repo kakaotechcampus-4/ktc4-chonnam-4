@@ -19,11 +19,13 @@ public class Activity {
     @Column(name = "child_id", nullable = false)
     private UUID childId;
 
-    @Column(name = "goal_id", nullable = false)
+    // 독립 퀴즈는 학습 목표가 없어 null 이다(V10).
+    @Column(name = "goal_id")
     private UUID goalId;
 
-    @Column(name = "activity_type", nullable = false)
-    private String activityType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity_type", nullable = false, updatable = false)
+    private ActivityType activityType;
 
     @Column(name = "scenario_id")
     private UUID scenarioId;
@@ -60,12 +62,17 @@ public class Activity {
     protected Activity() {}
 
     public Activity(
-            UUID activityId, UUID childId, UUID goalId, UUID idempotencyKey, Instant assignedAt) {
+            UUID activityId,
+            UUID childId,
+            ActivityType activityType,
+            UUID goalId,
+            UUID idempotencyKey,
+            Instant assignedAt) {
         this.activityId = activityId;
         this.childId = childId;
+        this.activityType = activityType;
         this.goalId = goalId;
         this.idempotencyKey = idempotencyKey;
-        this.activityType = "QUIZ_ROLEPLAY";
         this.status = ActivityStatus.NOT_STARTED;
         this.assignedAt = assignedAt;
     }
@@ -86,7 +93,7 @@ public class Activity {
         return idempotencyKey;
     }
 
-    public String getActivityType() {
+    public ActivityType getActivityType() {
         return activityType;
     }
 
