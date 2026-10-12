@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
-import { http, HttpResponse } from "msw"
+import { getResponse, http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
-import { emptyQuizPool, fixtures, seedActivity, storedGoals } from "@/test/msw/handlers"
+import { emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import { ActivityCreatePage } from "./ActivityCreatePage"
@@ -174,6 +174,32 @@ describe("활동 만들기 화면", () => {
     expect(keys).toHaveLength(2)
     expect(keys[0]).toBe(keys[1])
     server.events.removeAllListeners()
+  })
+
+  it("서버는 배정했는데 응답을 못 받고 활동 목록이 다시 불려도, 같은 배정을 다시 보낼 수 있다", async () => {
+    // 서버에서는 목표와 활동이 저장되고 응답만 사라진 경우다. 다시 불린 목록에는 방금 만든 최초 활동이 들어 있다.
+    server.use(
+      http.post(
+        "*/api/v1/activities",
+        async ({ request }) => {
+          await getResponse(handlers, request)
+          return HttpResponse.error()
+        },
+        { once: true },
+      ),
+    )
+    const { user, router, queryClient } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await goToConfirm(user)
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("서버에 연결할 수 없습니다")
+    await queryClient.refetchQueries({ queryKey: ["children", CHILD.childId, "activities"] })
+
+    await user.click(await screen.findByRole("button", { name: "배정하기" }))
+
+    await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
+    expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`)
+    expect(storedGoals(CHILD.childId)).toHaveLength(1)
   })
 
   it("분류 칩을 바꾸면 가려진 목표 선택을 비운다", async () => {

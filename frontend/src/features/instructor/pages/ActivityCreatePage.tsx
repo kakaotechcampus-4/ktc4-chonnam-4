@@ -83,10 +83,17 @@ type Availability = { firstCombined: boolean; quiz: boolean }
 /**
  * 지금 배정할 유형. 주소의 유형이 지금 고를 수 없는 것이면(새로고침 뒤 상태가 바뀐 경우 등) 고르지 않은 것으로 본다.
  * 고를 수 있는 것이 최초 결합 하나뿐이면 미리 고른 것으로 본다.
+ * 이미 보낸 배정의 유형(sentType)은 그대로 둔다. 서버가 저장하고 응답만 잃었다면 다시 불린 목록에 그 활동이 들어 있어
+ * 새 배정으로는 고를 수 없지만, 같은 요청 키로 다시 보내면 서버가 처음 만든 활동을 돌려준다.
  */
-function resolveType(requested: string | null, availability: Availability | null): ActivityType | null {
+function resolveType(
+  requested: string | null,
+  availability: Availability | null,
+  sentType: ActivityType | null,
+): ActivityType | null {
   if (!availability) return null
   if (isAssignableType(requested)) {
+    if (requested === sentType) return requested
     const allowed = requested === 'FIRST_COMBINED' ? availability.firstCombined : availability.quiz
     return allowed ? requested : null
   }
@@ -126,6 +133,8 @@ function ActivityCreatePage() {
   const [presetId, setPresetId] = useState<string | null>(null)
   const [customTitle, setCustomTitle] = useState('')
   const [customCategory, setCustomCategory] = useState<GoalCategory | null>(null)
+  // 이 화면에서 이 아동에게 보낸 배정의 유형. 응답을 못 받았을 때 다시 보낼 수 있게 남긴다.
+  const [sent, setSent] = useState<{ childId: string; type: ActivityType } | null>(null)
 
   const classroomsQuery = useQuery({ queryKey: ['classrooms'], queryFn: listClassrooms })
   const childrenQuery = useQuery({
@@ -141,7 +150,7 @@ function ActivityCreatePage() {
     enabled: !!child,
   })
   const availability = activitiesQuery.data ? typeAvailability(activitiesQuery.data) : null
-  const activityType = resolveType(requestedType, availability)
+  const activityType = resolveType(requestedType, availability, sent?.childId === childId ? sent.type : null)
   const needsGoal = activityType === 'FIRST_COMBINED'
   const steps = activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal')
 
@@ -221,6 +230,7 @@ function ActivityCreatePage() {
       return
     }
     isSubmittingRef.current = true
+    setSent({ childId: child.childId, type: activityType })
     assignMutation.mutate(
       { target: child, type: activityType, choice: needsGoal ? goal : null },
       {
