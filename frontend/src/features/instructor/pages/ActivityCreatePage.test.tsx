@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react"
+import axe from "axe-core"
 import { getResponse, http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
 import { emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
@@ -200,6 +201,21 @@ describe("활동 만들기 화면", () => {
     await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
     expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`)
     expect(storedGoals(CHILD.childId)).toHaveLength(1)
+  })
+
+  it("표정 퀴즈 종류를 펼친 유형 화면에 접근성 위반이 없다", async () => {
+    seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
+    const { user, container } = renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
+
+    await user.click(await screen.findByRole("radio", { name: "표정 퀴즈만" }))
+    await screen.findByRole("radio", { name: "내 감정 알기" })
+
+    // accessibility.test.tsx 와 같은 기준(WCAG A·AA)이다. 그 표는 첫 화면만 열어 펼친 상태를 보지 못한다.
+    const results = await axe.run(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    })
+    expect(results.violations.map((v) => v.id)).toEqual([])
   })
 
   it("분류 칩을 바꾸면 가려진 목표 선택을 비운다", async () => {

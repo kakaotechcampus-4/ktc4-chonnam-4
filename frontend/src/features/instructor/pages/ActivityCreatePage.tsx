@@ -696,40 +696,44 @@ function TypeCard({
   children?: ReactNode
 }) {
   const disabled = disabledReason !== undefined
+  // 카드 틀과 고르는 부분(role="radio")을 나눈다. "표정 퀴즈만"의 하위 라디오(children)는 고르는 부분 밖, 카드 틀 안에 둔다.
+  // 라디오 안에 다른 입력이 들어가면 화면 낭독기가 하위 입력을 제대로 읽지 못한다(nested-interactive).
   return (
     <div
-      role="radio"
-      aria-checked={checked}
-      aria-disabled={disabled}
-      aria-label={title}
-      tabIndex={disabled ? -1 : 0}
-      onClick={() => !disabled && onSelect()}
-      onKeyDown={(e) => {
-        if (!disabled && (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-          e.preventDefault()
-          onSelect()
-        }
-      }}
       className={cn(
         cardClass,
-        'flex flex-col p-6 text-left',
-        disabled
-          ? 'cursor-not-allowed text-[var(--instructor-text-disabled)]'
-          : 'cursor-pointer hover:border-[var(--instructor-primary)]',
+        'flex flex-col p-6',
+        disabled ? 'text-[var(--instructor-text-disabled)]' : 'hover:border-[var(--instructor-primary)]',
         checked && 'border-2 border-[var(--instructor-primary)]'
       )}
     >
-      <div className="flex items-start justify-between">
-        <span className="text-base font-bold">{title}</span>
-        {badge && (
-          <span className="rounded-full bg-[var(--instructor-surface-muted)] px-2.5 py-0.5 text-xs font-semibold">
-            {badge}
-          </span>
-        )}
+      <div
+        role="radio"
+        aria-checked={checked}
+        aria-disabled={disabled}
+        aria-label={title}
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => !disabled && onSelect()}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            onSelect()
+          }
+        }}
+        className={cn('flex flex-1 flex-col text-left', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
+      >
+        <div className="flex items-start justify-between">
+          <span className="text-base font-bold">{title}</span>
+          {badge && (
+            <span className="rounded-full bg-[var(--instructor-surface-muted)] px-2.5 py-0.5 text-xs font-semibold">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="mt-2 text-sm">{description}</p>
+        <p className="mt-4 text-xs text-[var(--instructor-text-muted)]">{meta.join(' · ')}</p>
+        {disabledReason && <p className="mt-2 text-xs font-semibold">{disabledReason}</p>}
       </div>
-      <p className="mt-2 text-sm">{description}</p>
-      <p className="mt-4 text-xs text-[var(--instructor-text-muted)]">{meta.join(' · ')}</p>
-      {disabledReason && <p className="mt-2 text-xs font-semibold">{disabledReason}</p>}
       {children}
     </div>
   )
