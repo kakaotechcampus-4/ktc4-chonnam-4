@@ -103,6 +103,16 @@ describe("활동 만들기 화면", () => {
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
   })
 
+  it("예전 활동이 여럿 남은 아동도 마친 최초 활동이 하나라도 있으면 표정 퀴즈를 고를 수 있다", async () => {
+    // V10 은 예전 활동을 모두 최초 결합으로 바꾸고 지우지 않는다. 최신 활동이 아직 안 끝났어도 서버는 배정한다.
+    seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
+    seedActivity({ childId: CHILD.childId, goalTitle: "친구 감정 알아보기", status: "NOT_STARTED" })
+    renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
+
+    expect(await screen.findByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("aria-disabled", "true")
+    expect(screen.getByRole("radio", { name: "표정 퀴즈만" })).not.toHaveAttribute("aria-disabled", "true")
+  })
+
   it("최초 활동을 마친 아동에게는 목표 없이 상대 감정 퀴즈를 배정한다", async () => {
     seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
     let body: unknown

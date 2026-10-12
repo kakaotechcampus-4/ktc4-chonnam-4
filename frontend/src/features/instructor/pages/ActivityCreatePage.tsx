@@ -68,12 +68,13 @@ const COMPOSITION_TEXT: Record<ActivityType, string> = {
 /**
  * 아동의 지난 활동으로 지금 고를 수 있는 유형을 정한다. 최초 결합은 아동당 한 번이고,
  * 그것을 마친 뒤에 독립 퀴즈가 열린다. 역할극은 아직 없다. 서버도 같은 규칙으로 막는다.
+ * V10 이 예전 활동을 모두 최초 결합으로 바꿔 한 아동에게 여럿 있을 수 있으므로, 서버처럼 마친 것이 하나라도 있는지 본다.
  */
 function typeAvailability(activities: Activity[]): Availability {
-  const first = activities.find((a) => a.activityType === 'FIRST_COMBINED')
+  const firsts = activities.filter((a) => a.activityType === 'FIRST_COMBINED')
   return {
-    firstCombined: first === undefined,
-    quiz: first?.status === 'COMPLETED',
+    firstCombined: firsts.length === 0,
+    quiz: firsts.some((a) => a.status === 'COMPLETED'),
   }
 }
 

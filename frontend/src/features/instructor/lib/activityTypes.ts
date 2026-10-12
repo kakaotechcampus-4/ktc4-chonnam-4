@@ -7,4 +7,3 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   OTHER_EMOTION_QUIZ: '표정 퀴즈 · 상대 감정 알기',
   ROLEPLAY: '역할극',
 }
-
