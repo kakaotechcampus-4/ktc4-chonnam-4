@@ -94,6 +94,28 @@ export AI_BASE_URL=https://.../v1 AI_API_KEY=... AI_MODEL=...
 ./gradlew roleplayEval --args="--provider openai --repeats 3 --run-id haiku45-r1 --note '모델 비교 1차'"
 ```
 
+환경변수를 매번 넣기 번거로우면 `backend/.env.local` 파일에 적는다. `roleplayEval`만 이 파일을 읽는다(Spring 앱 실행에는 쓰이지 않는다). `.gitignore`의 `.env.*`에 걸려서 커밋되지 않는다. 셸에 같은 이름의 환경변수가 있으면 셸 값이 우선한다.
+
+```dotenv
+# backend/.env.local — 키를 다른 곳에 붙여 넣지 않는다
+AI_BASE_URL=https://.../v1
+AI_API_KEY=...
+AI_MODEL=gpt-5.4-nano
+AI_TIMEOUT=30s
+EVAL_PRICE_INPUT_PER_MTOK=0.20
+EVAL_PRICE_OUTPUT_PER_MTOK=1.25
+# 음성 왕복(--speech)도 돌릴 때
+STT_API_KEY=...
+TTS_API_KEY=...
+TTS_VOICE_ID=...
+```
+
+Windows PowerShell에서는 `--args` 전체를 작은따옴표로 감싼다. 그래야 인자가 쪼개지지 않는다.
+
+```powershell
+./gradlew roleplayEval '--args=--provider openai --cases P1 --run-id check'
+```
+
 일부만 돌릴 때는 `--cases P1,L1` 또는 `--suites ladder`를 쓴다. 턴 예산(기본 60s, 운영 상한)은 `--budget 30s`로 바꾼다.
 
 PoC처럼 Elice MLAPI의 OpenAI 호환 엔드포인트를 쓰면, Claude·GPT·Gemini 모두 `AI_BASE_URL`과 `AI_MODEL`만 바꿔서 같은 방법으로 잰다.
