@@ -333,7 +333,8 @@ public final class RoleplayEvalMain {
     private static String requireEnv(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException(name + " 환경변수가 필요합니다");
+            throw new IllegalStateException(
+                    name + " is not set (backend/.env.local or shell environment)");
         }
         return value;
     }
