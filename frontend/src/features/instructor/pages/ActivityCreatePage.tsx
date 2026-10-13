@@ -80,6 +80,13 @@ function typeAvailability(activities: Activity[]): Availability {
 
 type Availability = { firstCombined: boolean; quiz: boolean }
 
+/** 유형 선택 화면 위 안내. 아동이 지금 어느 단계인지에 맞춰 다음에 열리는 것을 알린다. */
+function typeGuide(availability: Availability): string {
+  if (availability.firstCombined) return '처음 배정하는 아동은 최초 결합 활동부터 시작해요.'
+  if (!availability.quiz) return '최초 결합 활동을 마치면 표정 퀴즈를 만들 수 있어요.'
+  return '최초 결합 활동을 마쳐서 표정 퀴즈를 만들 수 있어요.'
+}
+
 /**
  * 지금 배정할 유형. 주소의 유형이 지금 고를 수 없는 것이면(새로고침 뒤 상태가 바뀐 경우 등) 고르지 않은 것으로 본다.
  * 고를 수 있는 것이 최초 결합 하나뿐이면 미리 고른 것으로 본다.
@@ -615,7 +622,7 @@ function TypeStep({
       <div>
         <h2 className="text-lg font-bold">어떤 활동을 만들까요?</h2>
         <p className="mt-1 text-sm text-[var(--instructor-text-muted)]">
-          {child.displayName} · 처음 배정하는 아동은 최초 결합 활동부터 시작해요.
+          {child.displayName} · {typeGuide(availability)}
         </p>
       </div>
 

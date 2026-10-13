@@ -91,6 +91,12 @@ describe("활동 만들기 화면", () => {
     expect(await screen.findByRole("heading", { name: "학습 목표 설정" })).toBeInTheDocument()
   })
 
+  it("활동이 없는 아동에게는 최초 결합부터 시작한다고 안내한다", async () => {
+    renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
+
+    expect(await screen.findByText(/처음 배정하는 아동은 최초 결합 활동부터 시작해요/)).toBeInTheDocument()
+  })
+
   it("최초 활동을 배정받고 아직 마치지 않은 아동은 고를 수 있는 유형이 없다", async () => {
     seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "IN_PROGRESS" })
     renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
@@ -102,6 +108,8 @@ describe("활동 만들기 화면", () => {
     expect(screen.getByText("최초 활동을 마치면 열려요.")).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "역할극만" })).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
+    expect(screen.getByText(/최초 결합 활동을 마치면 표정 퀴즈를 만들 수 있어요/)).toBeInTheDocument()
+    expect(screen.queryByText(/처음 배정하는 아동은/)).not.toBeInTheDocument()
   })
 
   it("예전 활동이 여럿 남은 아동도 마친 최초 활동이 하나라도 있으면 표정 퀴즈를 고를 수 있다", async () => {
@@ -112,6 +120,7 @@ describe("활동 만들기 화면", () => {
 
     expect(await screen.findByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByRole("radio", { name: "표정 퀴즈만" })).not.toHaveAttribute("aria-disabled", "true")
+    expect(screen.getByText(/최초 결합 활동을 마쳐서 표정 퀴즈를 만들 수 있어요/)).toBeInTheDocument()
   })
 
   it("최초 활동을 마친 아동에게는 목표 없이 상대 감정 퀴즈를 배정한다", async () => {
