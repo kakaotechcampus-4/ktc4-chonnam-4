@@ -110,10 +110,11 @@ flowchart LR
   - 그 밖(`/`, `/classrooms` 같은 화면 주소): 캐시 끔. nginx 가 파일이 없으면 `index.html` 을 준다(SPA 새로고침·딥 링크). 새 배포·미리보기가 바로 보인다.
   - 응답 헤더 `X-Neuringo-Release: <커밋 SHA>` 를 모든 응답에 붙인다. 배포 확인이 "지금 보이는 화면이 이 커밋인가"를 이 헤더로 본다.
   - 사용자 지정 오류 응답(403·404 → index.html)은 쓰지 않는다. 배포 전체에 걸려서 `/api` 의 404·403 까지 HTML 200 으로 바뀐다.
-- `/api/*` → nginx 가 같은 compose 네트워크의 **backend:8080** 으로 넘긴다(`proxy_read_timeout` 65초, 업로드 5 MB).
+- `/api/*` → nginx 가 같은 compose 네트워크의 **backend:8080** 으로 넘긴다(`proxy_read_timeout` 110초, 업로드 5 MB).
   - CloudFront: 캐시 정책 `Managed-CachingDisabled`, 원본 요청 정책 `Managed-AllViewerExceptHostHeader`.
   - CloudFront 는 GET·HEAD 의 `Authorization` 헤더를 기본으로 지운다. 강사 화면은 GET 에도 Bearer 토큰을 싣는다 → 이 정책으로 헤더·쿠키·쿼리를 모두 넘긴다.
-  - 원본 응답 제한 시간은 60초다(`origin_read_timeout`. 기본 30초, 한도 상향 요청 없이 올릴 수 있는 최대가 60초). AI 한 턴은 PoC 실측 LLM 만 약 15초(느릴 때 18초)이고 STT·TTS 가 더해진다. 넘으면 CloudFront 가 504 를 돌려주므로 앱이 한 턴 상한을 둔다(§6).
+  - 원본 응답 제한 시간은 120초다(`origin_read_timeout`. 기본 30초, 한도 상향 요청 없이 둘 수 있는 최대가 120초). AI 한 턴은 PoC 실측 LLM 만 약 15초(느릴 때 18초)이고 STT·TTS 가 더해진다. 앱이 한 턴 상한(`roleplay.http.turn-budget`, 최대 60초)을 둔다(§6).
+  - 제한 시간은 안쪽일수록 짧다: 서버 한 턴(최대 60초) < nginx(110초) < CloudFront(120초). 서버가 먼저 끝내야 서버가 만든 응답(시간 초과 안내 포함)이 그대로 간다. 바깥이 먼저 끊으면 화면은 504 를 받고 서버는 모른 채 턴을 끝까지 처리한다. POST 는 CloudFront 가 끊어도 다시 보내지 않는다.
 - 화면과 API 가 같은 출처라 쿠키·CSRF·CORS 가 지금 코드 그대로 동작한다.
 - 보안 그룹 인바운드는 **CloudFront 원본용 관리형 접두사 목록(`com.amazonaws.global.cloudfront.origin-facing`) → TCP 80** 하나다. 22번은 열지 않는다. 이 접두사 목록은 보안 그룹 규칙 한도를 여러 칸 차지하므로 다른 규칙을 거의 두지 않는다.
 
@@ -337,7 +338,7 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 | 키 전달 | `params.txt` 의 이름 → Parameter Store `SecureString`(`/neuringo/<env>/ai·stt·tts/…`) → `deploy.sh` 가 서버 `.env`(권한 600)로. Terraform 은 만들지 않는다(사람이 가진 값이라 plan·state 에 두지 않는다) | 이름 ✅. 값을 넣는 사람은 키 담당자. 팀 SSO 역할로 `ssm:PutParameter` 가 되는지는 처음 넣을 때 확인하고, 안 되면 운영진에 요청한다. 키는 GitHub·레포·채팅에 두지 않는다 |
 | 잘못 넣었을 때 | STT·TTS 를 켰는데 키·목소리 ID 가 없으면 앱이 시작되지 않는다 → 상태 확인 실패 → 직전 `.env` 로 되돌림(§3) | ✅ 설계에 있음 |
 | 나가는 길 | 서버 → 인터넷 443. 운영진 보안 그룹의 아웃바운드가 막혀 있으면 요청한다 | 서버를 켠 첫 실습에서 확인 |
-| 대기 시간 | CloudFront 60초(§2). 한 턴 = STT + 분석·후보·평가(+재시도) + TTS | 오케스트레이션이 한 턴 상한(예: 45~50초)을 두고 넘으면 안전한 기본 응답(`SAFE_FALLBACK`)으로 간다. AI 를 기다리는 동안 DB 트랜잭션을 잡지 않는다(dev 커넥션 풀 10개) |
+| 대기 시간 | CloudFront 120초·nginx 110초(§2). 한 턴 = STT + 분석·후보·평가(+재시도) + TTS | 오케스트레이션이 한 턴 상한(`roleplay.http.turn-budget`, 최대 60초)을 두고 넘으면 안전한 기본 응답(`SAFE_FALLBACK`)으로 간다. AI 를 기다리는 동안 DB 트랜잭션을 잡지 않는다(dev 커넥션 풀 10개) |
 | 음성 업로드 | 한 턴 최대 2 MB. CloudFront 는 그대로 넘긴다 | Spring 기본 업로드 한도(`spring.servlet.multipart.max-file-size`)는 1 MB 라 업로드 API 를 만들 때 올린다 |
 | 마이크 | HTTPS 화면에서만 열린다 | ✅ CloudFront HTTPS. 마이크를 막는 응답 헤더(`Permissions-Policy`)는 두지 않는다 |
 | 비용 | AWS Budgets·Cost Explorer 는 외부 API 요금을 보지 못한다 | 제공자 콘솔에서 월 사용 한도·알림을 건다. 앱이 하루 토큰 상한과 요청당 `max_tokens` 를 두고, 넘으면 기본 응답으로 간다(VS-017 기본 응답 사용률). 호출마다 토큰 수(`AiCallMetadata`)를 비식별 로그로 남겨 비용 보고(§7)에 합친다 |
@@ -510,7 +511,7 @@ CI 검사는 이미 push 된 뒤에 돈다. 공개 레포라 push 한 순간 공
 
 - 운영진 문서: 카테캠 노션 "AWS 사용 가이드", "GitHub Actions ↔ AWS 인증 (OIDC)"
 - 팀 문서: 기능 명세/task 할당 문서 03(VS-017)·06(DEC-007)·07(P0)·08(스프린트 Task·결정 Gate)
-- CloudFront: [원본 응답 제한 시간(기본 30초, 60초까지)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DownloadDistValuesOrigin.html#DownloadDistValuesOriginResponseTimeout) · [커스텀 원본 요청 동작(Authorization 헤더)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RequestAndResponseBehaviorCustomOrigin.html) · [Authorization 전달](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/add-origin-custom-headers.html) · [요금(상시 무료)](https://aws.amazon.com/cloudfront/pricing/)
+- CloudFront: [원본 응답 제한 시간(기본 30초, 120초까지)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DownloadDistValuesOrigin.html#DownloadDistValuesOriginResponseTimeout) · [커스텀 원본 요청 동작(Authorization 헤더)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/RequestAndResponseBehaviorCustomOrigin.html) · [Authorization 전달](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/add-origin-custom-headers.html) · [요금(상시 무료)](https://aws.amazon.com/cloudfront/pricing/)
 - RDS: [PostgreSQL 요금](https://aws.amazon.com/rds/postgresql/pricing/) · [db.t4g.micro 지역별 가격(bytebase)](https://www.bytebase.com/dbcost/rds/instance/db.t4g.micro/) · [PostgreSQL 18.4 지원(2026-05)](https://aws.amazon.com/about-aws/whats-new/2026/05/amazon-rds-postgresql/) · [Free Tier 약관](https://aws.amazon.com/free/terms/)
 - 모델(다른 길 A): [Bedrock 리전](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints-region-availability.html) · [Bedrock 요금](https://aws.amazon.com/bedrock/pricing/) · [Transcribe 지원 언어](https://docs.aws.amazon.com/transcribe/latest/dg/supported-languages.html) · [Polly 요금](https://aws.amazon.com/polly/pricing/)
 - 비용: [공인 IPv4 요금](https://aws.amazon.com/blogs/aws/new-aws-public-ipv4-address-charge-public-ip-insights/) · [EC2 온디맨드 요금](https://aws.amazon.com/ec2/pricing/on-demand/) · [EBS 요금](https://aws.amazon.com/ebs/pricing/) · [CloudWatch 요금](https://aws.amazon.com/cloudwatch/pricing/)
