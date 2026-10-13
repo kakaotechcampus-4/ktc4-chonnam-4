@@ -101,11 +101,13 @@ public class DeletionService {
      * 강사 즉시 탈퇴. 확인 절차 없이 그 강사의 학급·아동·학습 기록, 세션, 계정(동의 기록 포함)을 한 트랜잭션에서 영구 삭제한다. 같은 이메일로 다시 가입하면 새
      * 계정이 된다.
      *
-     * <p>학급을 학급 삭제와 같은 잠금으로 먼저 잡아, 목록을 읽은 뒤 등록된 아동이 남지 않게 한다. 계정 행은 마지막에 지운다. 같은 강사가 다른 탭에서 동시에 학급을
-     * 만들면 그 학급이 FK 에 걸려 이 트랜잭션 전체가 되돌아가고, 다시 탈퇴하면 된다(부분 삭제는 남지 않는다).
+     * <p>계정 행을 맨 먼저 잠가, 세션을 지운 뒤 다른 탭의 로그인이 새 세션을 저장하지 못하게 한다. 로그인은 탈퇴가 끝나기를 기다렸다가 계정이 없어 일반 로그인
+     * 오류를 받는다. 이어서 학급을 학급 삭제와 같은 잠금으로 잡아, 목록을 읽은 뒤 등록된 아동이 남지 않게 한다. 계정 행은 마지막에 지운다. 같은 강사가 다른 탭에서
+     * 동시에 학급을 만들면 그 학급이 FK 에 걸려 이 트랜잭션 전체가 되돌아가고, 다시 탈퇴하면 된다(부분 삭제는 남지 않는다).
      */
     @Transactional
     public void deleteInstructor(UUID instructorId) {
+        users.findForUpdate(instructorId);
         List<UUID> classIds =
                 classrooms.findByInstructorIdForUpdate(instructorId).stream()
                         .map(Classroom::getClassId)

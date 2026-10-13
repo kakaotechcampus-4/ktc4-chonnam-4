@@ -3,10 +3,10 @@
 여러 도메인의 기존 행을 한 트랜잭션에서 명시적으로 잠글 때는 다음 순서를 따른다.
 
 ```text
-학급 → 활동 → 아동 → 역할극 세션
+계정 → 학급 → 활동 → 아동 → 역할극 세션
 ```
 
-- 각 작업은 필요한 행만 잠근다. 모든 요청에서 학급·활동·아동·세션을 전부 잠그지 않는다.
+- 각 작업은 필요한 행만 잠근다. 모든 요청에서 계정·학급·활동·아동·세션을 전부 잠그지 않는다.
 - 앞 단계의 잠금을 생략할 수 있지만, 뒤 단계의 잠금을 잡은 뒤 앞 단계로 돌아가지 않는다.
 - 같은 종류의 여러 행을 잠그면 ID 오름차순 등 일정한 순서를 사용한다.
 - 외부 AI 호출 동안 이 행 잠금을 유지하지 않는다. 역할극은 최종 저장 트랜잭션에서만 획득한다.
@@ -20,6 +20,8 @@
 | 퀴즈 응답·결과 확정 | 활동 → 결과 확정 시 아동 | `QuizAttemptService.requireLockedActivity`, `snapshotIfComplete` |
 | 아동 삭제 | 활동 목록 → 아동 목록 → 세션 목록 | `DeletionService.deleteChildren` |
 | 학급 삭제 | 학급 → 활동 목록 → 아동 목록 → 세션 목록 | `DeletionService.deleteClassroom`, `deleteChildren` |
+| 강사 탈퇴 | 계정 → 학급 목록 → 활동 목록 → 아동 목록 → 세션 목록 | `DeletionService.deleteInstructor`, `deleteChildren` |
+| 로그인 | 계정(공유 잠금) | `AuthService.login` |
 | 활동 배정 | 아동 | `ActivityAssignmentService` |
 | 역할극 표준 발화 정리·종료 | 세션 | `RoleplayCanonicalRetentionService` |
 
