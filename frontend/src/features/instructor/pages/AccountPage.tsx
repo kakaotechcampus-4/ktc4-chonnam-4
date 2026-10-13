@@ -1,20 +1,22 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getCurrentUser, withdraw } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
-import { cardClass, dangerButtonClass, errorTextClass } from '../components/styles'
+import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
+import { cardClass, dangerButtonClass } from '../components/styles'
 import { cn } from '@/lib/utils'
 
 /**
  * 내 계정 정보와 회원 탈퇴. 시안이 없어 기존 강사 레이아웃·카드·버튼만 조립한 임시 화면이다.
  *
- * 탈퇴는 정책상 비밀번호 재입력·확인 창 없이 바로 실행된다. 대신 사이드바에서 이 화면을 한 번 더 거치고, 정보 카드와 떨어진
- * 별도 카드에 되돌릴 수 없다는 안내와 함께 두어 실수로 누르는 일을 줄인다.
+ * 탈퇴는 비밀번호를 다시 묻지 않는다. 대신 아동·학급 삭제와 같은 확인 창을 한 번 거쳐 실수로 누르는 일을 줄인다.
  */
 function AccountPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
 
   // 사이드바(InstructorLayout)와 같은 키라 이미 받은 값을 그대로 쓴다.
   const { data: user } = useQuery({
@@ -56,23 +58,37 @@ function AccountPage() {
           <p className="mb-5 text-sm text-[var(--instructor-text-muted)]">
             탈퇴하면 모든 학급·아동·학습 기록이 바로 삭제되고 복구할 수 없어요.
           </p>
-          {withdrawMutation.isError && (
-            <p role="alert" className={cn(errorTextClass, 'mb-3')}>
-              {describeError(withdrawMutation.error, '탈퇴하지 못했습니다. 잠시 후 다시 시도해 주세요.')}
-            </p>
-          )}
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => withdrawMutation.mutate()}
-              disabled={withdrawMutation.isPending}
-              className={dangerButtonClass}
-            >
-              {withdrawMutation.isPending ? '탈퇴 중...' : '회원 탈퇴'}
+            <button type="button" onClick={() => setIsWithdrawOpen(true)} className={dangerButtonClass}>
+              회원 탈퇴
             </button>
           </div>
         </section>
       </div>
+
+      <DeleteConfirmDialog
+        open={isWithdrawOpen}
+        onOpenChange={(open) => {
+          setIsWithdrawOpen(open)
+          if (!open) withdrawMutation.reset()
+        }}
+        title="정말 탈퇴할까요?"
+        description={
+          <>
+            <p>계정과 모든 학급·아동·학습 기록이 바로 삭제돼요.</p>
+            <p>삭제하면 되돌릴 수 없어요.</p>
+          </>
+        }
+        actionLabel="회원 탈퇴"
+        pendingLabel="탈퇴 중..."
+        isPending={withdrawMutation.isPending}
+        error={
+          withdrawMutation.isError
+            ? describeError(withdrawMutation.error, '탈퇴하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+            : null
+        }
+        onConfirm={() => withdrawMutation.mutate()}
+      />
     </InstructorLayout>
   )
 }
