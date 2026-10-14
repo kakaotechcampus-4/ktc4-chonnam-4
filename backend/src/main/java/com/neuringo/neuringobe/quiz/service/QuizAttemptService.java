@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -72,7 +73,11 @@ public class QuizAttemptService {
     public SavedAttempt put(
             UUID assignmentId, PutQuizAttemptRequest request, Authentication authentication) {
         ActivityQuiz assigned = requireAssignment(assignmentId);
-        Activity activity = requireLockedActivity(assigned.getActivityId(), authentication);
+        Activity activity =
+                requireLockedActivity(
+                        assigned.getActivityId(),
+                        authentication,
+                        QuizAttemptService::assignmentNotFound);
         QuizItem item = assignmentService.requireVersion(assigned);
         validateCameraFields(item, request);
         QuizAttempt existing = attempts.findByActivityQuizId(assignmentId).orElse(null);
@@ -134,7 +139,8 @@ public class QuizAttemptService {
 
     public QuizAttemptResponse get(UUID assignmentId, Authentication authentication) {
         ActivityQuiz assigned = requireAssignment(assignmentId);
-        requireActivity(assigned.getActivityId(), authentication);
+        requireActivity(
+                assigned.getActivityId(), authentication, QuizAttemptService::assignmentNotFound);
         QuizAttempt attempt =
                 attempts.findByActivityQuizId(assignmentId)
                         .orElseThrow(
@@ -188,7 +194,8 @@ public class QuizAttemptService {
     public QuizHintResponse issueHint(
             UUID assignmentId, UUID requestKey, Authentication authentication) {
         ActivityQuiz assigned = requireAssignment(assignmentId);
-        requireLockedActivity(assigned.getActivityId(), authentication);
+        requireLockedActivity(
+                assigned.getActivityId(), authentication, QuizAttemptService::assignmentNotFound);
         QuizAttempt attempt =
                 attempts.findByActivityQuizId(assignmentId)
                         .orElseThrow(
@@ -227,7 +234,7 @@ public class QuizAttemptService {
     }
 
     public QuizResultResponse result(UUID activityId, Authentication authentication) {
-        requireActivity(activityId, authentication);
+        requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
         QuizResult result =
                 results.findById(activityId)
                         .orElseThrow(() -> conflict("QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다."));
@@ -324,36 +331,33 @@ public class QuizAttemptService {
     }
 
     private ActivityQuiz requireAssignment(UUID id) {
-        return assignments
-                .findById(id)
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "ACTIVITY_QUIZ_NOT_FOUND", "배정 문항을 찾을 수 없습니다."));
+        return assignments.findById(id).orElseThrow(QuizAttemptService::assignmentNotFound);
     }
 
-    private Activity requireActivity(UUID id, Authentication authentication) {
-        Activity activity =
-                activities
-                        .findById(id)
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
-        access.requireOwnerOrInstructor(authentication, activity.getChildId());
+    /**
+     * 권한이 없을 때는 요청에 들어온 ID 의 자원이 없는 것과 같은 오류로 숨긴다(배정 문항 ID 로 들어오면 {@code ACTIVITY_QUIZ_NOT_FOUND},
+     * 활동 ID 면 {@code ACTIVITY_NOT_FOUND}). 남의 자원이 있다는 게 오류 code 로 드러나지 않는다.
+     */
+    private Activity requireActivity(
+            UUID id, Authentication authentication, Supplier<ResourceNotFoundException> hidden) {
+        Activity activity = activities.findById(id).orElseThrow(hidden);
+        access.requireOwnerOrInstructor(authentication, activity.getChildId(), hidden);
         return activity;
     }
 
-    private Activity requireLockedActivity(UUID id, Authentication authentication) {
-        Activity activity =
-                activities
-                        .findByIdForUpdate(id)
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
-        access.requireOwnerOrInstructor(authentication, activity.getChildId());
+    private Activity requireLockedActivity(
+            UUID id, Authentication authentication, Supplier<ResourceNotFoundException> hidden) {
+        Activity activity = activities.findByIdForUpdate(id).orElseThrow(hidden);
+        access.requireOwnerOrInstructor(authentication, activity.getChildId(), hidden);
         return activity;
+    }
+
+    private static ResourceNotFoundException assignmentNotFound() {
+        return new ResourceNotFoundException("ACTIVITY_QUIZ_NOT_FOUND", "배정 문항을 찾을 수 없습니다.");
+    }
+
+    private static ResourceNotFoundException activityNotFound() {
+        return new ResourceNotFoundException("ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.");
     }
 
     private void snapshotIfComplete(Activity activity) {

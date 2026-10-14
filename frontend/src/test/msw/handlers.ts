@@ -383,6 +383,9 @@ function signupViolations(body: Record<string, unknown>): FieldError[] {
   else if (new TextEncoder().encode(password).length > 72)
     errors.push({ field: "passwordWithinByteLimit", message: "비밀번호가 너무 깁니다." })
   for (const message of nameViolations(body.name)) errors.push({ field: "name", message })
+  if (body.termsAgreed !== true) errors.push({ field: "termsAgreed", message: "이용약관에 동의해야 가입할 수 있습니다." })
+  if (body.privacyAgreed !== true)
+    errors.push({ field: "privacyAgreed", message: "개인정보 처리방침에 동의해야 가입할 수 있습니다." })
   return errors
 }
 
@@ -514,6 +517,19 @@ export const handlers = [
     const session = authenticate(request)
     if (session instanceof Response) return session
     sessions.delete(session.token)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  // 즉시 탈퇴: 그 강사의 학급·아동·기록, 모든 세션, 계정을 지운다.
+  http.delete("*/api/v1/users/me", ({ request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const owned = classrooms.filter((c) => c.instructorId === session.userId).map((c) => c.classId)
+    removeChildren(children.filter((c) => owned.includes(c.classId)).map((c) => c.childId))
+    classrooms = classrooms.filter((c) => c.instructorId !== session.userId)
+    for (const [token, userId] of sessions) if (userId === session.userId) sessions.delete(token)
+    accounts = accounts.filter((a) => a.userId !== session.userId)
     return new HttpResponse(null, { status: 204 })
   }),
 

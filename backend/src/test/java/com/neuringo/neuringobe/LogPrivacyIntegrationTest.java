@@ -46,6 +46,13 @@ class LogPrivacyIntegrationTest {
                             t.fixtures.get("/api/v1/classrooms/{classId}/children", classId);
                         }),
                 scenario(
+                        "아동 상세 조회(민감 조회 기록이 남는 경로)",
+                        (t, name) -> {
+                            UUID classId = t.fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
+                            UUID childId = t.fixtures.createChild(classId, name);
+                            t.fixtures.get("/api/v1/children/{childId}", childId);
+                        }),
+                scenario(
                         "너무 긴 이름(422)",
                         (t, name) -> {
                             UUID classId = t.fixtures.createClassroom(TestFixtures.CLASSROOM_A1);

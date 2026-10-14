@@ -21,9 +21,10 @@ export type Child = {
   status: ChildStatus
 }
 
-export type UserRole = 'INSTRUCTOR' | 'OPERATOR'
+// 운영자 역할과 정지·초대·탈퇴 상태는 쓰지 않아 뺐다. 탈퇴하면 계정 행이 지워진다.
+export type UserRole = 'INSTRUCTOR'
 
-export type AccountStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'WITHDRAWN'
+export type AccountStatus = 'ACTIVE'
 
 export type User = {
   userId: string
@@ -276,6 +277,9 @@ export type SignupInput = {
   password: string
   name: string
   orgName?: string
+  // 이용약관·개인정보 처리방침 각각 필수 동의. 버전과 시각은 서버가 정해 저장한다.
+  termsAgreed: boolean
+  privacyAgreed: boolean
 }
 
 export function signup(input: SignupInput): Promise<User> {
@@ -309,6 +313,16 @@ export async function logout(): Promise<void> {
   } finally {
     clearAccessToken()
   }
+}
+
+/**
+ * 즉시 탈퇴한다. 서버는 비밀번호를 다시 묻지 않고 계정과 학급·아동·학습 기록을 모두 지운다(확인 창은 화면이 띄운다). 성공했을 때만 토큰을 지운다.
+ * 실패하면 계정이 그대로라 로그인 상태를 유지한다.
+ */
+export async function withdraw(): Promise<void> {
+  cancelPendingRequests()
+  await writeRequest<void>('DELETE', '/users/me')
+  clearAccessToken()
 }
 
 export function hasAccessToken(): boolean {

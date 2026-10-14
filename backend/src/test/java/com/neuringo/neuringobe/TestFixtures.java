@@ -78,7 +78,18 @@ public class TestFixtures {
     /** 가입 요청(POST /api/v1/users)을 그대로 보낸다. 결과는 확인하지 않는다. */
     public MvcTestResult signUpRequest(String email, String password, String name) {
         return postPublicJson(
-                "/api/v1/users", Map.of("email", email, "password", password, "name", name));
+                "/api/v1/users",
+                Map.of(
+                        "email",
+                        email,
+                        "password",
+                        password,
+                        "name",
+                        name,
+                        "termsAgreed",
+                        true,
+                        "privacyAgreed",
+                        true));
     }
 
     /** 로그인해 토큰 원문을 받는다. */

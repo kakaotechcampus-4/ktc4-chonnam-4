@@ -16,6 +16,8 @@ public interface ChildRepository extends JpaRepository<Child, UUID> {
 
     List<Child> findByClassId(UUID classId);
 
+    List<Child> findByClassIdIn(Collection<UUID> classIds);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Child c where c.childId = :childId")
     Optional<Child> findByIdForUpdate(@Param("childId") UUID childId);

@@ -5,7 +5,7 @@ import { dangerButtonClass, errorTextClass, inputClass, outlineButtonClass } fro
 /**
  * 영구 삭제 확인 창 (ADR 2026-10-04 D4). 무엇이 함께 지워지는지 description 으로 알린다.
  * confirmText 를 주면 그 이름을 똑같이 입력해야 삭제 버튼이 켜진다. 피해가 큰 학급 삭제에만 쓴다.
- * 삭제 중에는 닫히지 않고, 실패하면 창 안에 오류를 보인다.
+ * 삭제 중에는 닫히지 않고, 실패하면 창 안에 오류를 보인다. 회원 탈퇴처럼 버튼 글자가 다르면 actionLabel·pendingLabel 로 바꾼다.
  */
 function DeleteConfirmDialog({
   open,
@@ -13,6 +13,8 @@ function DeleteConfirmDialog({
   title,
   description,
   confirmText,
+  actionLabel = '영구 삭제',
+  pendingLabel = '삭제 중...',
   isPending,
   error,
   onConfirm,
@@ -22,6 +24,8 @@ function DeleteConfirmDialog({
   title: string
   description: ReactNode
   confirmText?: string
+  actionLabel?: string
+  pendingLabel?: string
   isPending: boolean
   error: string | null
   onConfirm: () => void
@@ -79,7 +83,7 @@ function DeleteConfirmDialog({
                 disabled={!isConfirmed || isPending}
                 onClick={onConfirm}
               >
-                {isPending ? '삭제 중...' : '영구 삭제'}
+                {isPending ? pendingLabel : actionLabel}
               </button>
             </div>
           </AlertDialog.Content>

@@ -56,6 +56,10 @@ logging:
     com.neuringo: INFO
 
 neuringo:
+  # 가입 동의를 받는 약관 버전. 약관 본문이 바뀌면 올린다.
+  consent:
+    terms-version: v1
+    privacy-version: v1
   child-access:
     hmac-secret: ${CHILD_ACCESS_HMAC_SECRET:}
   ai:
