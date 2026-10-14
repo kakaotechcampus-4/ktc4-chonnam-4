@@ -565,6 +565,8 @@ jobs:
             printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\nif [ -f "$f" ]; then EDGE_DOMAIN=%s bash "$f"; else echo STATUS_RELEASE=없음; fi\n' "$DOMAIN" >"$remote"
             server=$(bash scripts/ssm-run.sh "$remote" "status") || true
           fi
+          # 다음 단계(디스코드 알림)가 서버를 다시 부르지 않게 남긴다. 서버 공인 주소는 들어 있지 않다.
+          printf '%s\n' "$power" "$server" >"$RUNNER_TEMP/dev-state.txt"
           perms=""
           if [ "$TASK" = "상태 보기" ]; then perms=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh perms) || true; fi
           value() { sed -n "s/^$2=//p" <<<"$1" | tail -n 1; }
@@ -617,7 +619,7 @@ jobs:
               echo "| 배포 역할 권한 | 서버 켜기 $(yesno "$(value "$perms" PERM_START)") · 끄기 $(yesno "$(value "$perms" PERM_STOP)") |"
             fi
             echo
-            echo "테스트 주소는 디스코드 고정 메시지에 있다. 다음에 할 것:"
+            echo "테스트 주소는 디스코드 #pr-주소 채널에 있다(이 실행이 결과와 함께 알린다). 다음에 할 것:"
             if [ "$state" != running ]; then
               echo "- PR 을 열면 저절로 뜬다. 이미 연 PR 은 **preview** 라벨을 붙이거나 Run workflow → **켜기**"
             elif [ "$mode" = preview ]; then
@@ -626,3 +628,22 @@ jobs:
               echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). 서버는 60분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
             fi
           } >>"$GITHUB_STEP_SUMMARY"
+
+      # 팀 디스코드 #pr-주소 에 결과를 한 번 알린다(떴음·자리 있음·서버 꺼짐·실패·끝냄·켜기·끄기). 팀만 보는 채널이라 테스트 주소는
+      # 메시지에만 넣는다. 알리지 못해도 이 실행은 실패로 치지 않는다(경고만). 상태 보기는 알리지 않는다.
+      - name: Tell the team (Discord)
+        if: always()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_PREVIEW_WEBHOOK }}
+          DOMAIN: ${{ steps.infra.outputs.cloudfront_domain }}
+          TASK: ${{ needs.plan.outputs.task }}
+          PR: ${{ needs.plan.outputs.pr || needs.plan.outputs.end_only_pr }}
+          TITLE: ${{ needs.plan.outputs.title }}
+          AUTHOR: ${{ needs.plan.outputs.author }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          BY: ${{ github.actor }}
+          POWER_ON_JOB: ${{ needs.power_on.result }}
+          RELEASE_JOB: ${{ needs.release.result }}
+          RELEASE_RESULT: ${{ needs.release.outputs.result }}
+          POWER_OFF_JOB: ${{ needs.power_off.result }}
+        run: node scripts/preview-notify.mjs "$RUNNER_TEMP/dev-state.txt"

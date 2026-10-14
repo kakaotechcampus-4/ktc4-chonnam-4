@@ -434,7 +434,7 @@ jobs:
             echo "| 화면 \`/\` | $(mark "$(value EDGE_PAGE)" 200) |"
             echo "| 화면이 이 커밋인가(\`X-Neuringo-Release\`) | $(mark "$(value EDGE_RELEASE_MATCH)" yes) |"
             echo
-            echo "주소는 디스코드 고정 메시지에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
+            echo "주소는 디스코드 #pr-주소 채널에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
           } >>"$GITHUB_STEP_SUMMARY"
           if [ "$(value EDGE_API)" != 200 ] || [ "$(value EDGE_RELEASE_MATCH)" != yes ]; then
             echo "::warning title=CloudFront 확인::테스트 주소에서 이 커밋이 아직 보이지 않는다. 대문이 닫혀 있으면 Dev server → 켜기"
