@@ -206,6 +206,247 @@ class RoleplayHttpIntegrationTest {
     }
 
     @Test
+    void endedChildSessionCannotSubmitOrReplayVoiceInput() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var originalKey = UUID.randomUUID();
+        mvc.perform(
+                        request(f.session(), originalKey, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+
+        mvc.perform(delete("/api/v1/child-access-sessions/current").session(session).with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(session.isInvalid()).isTrue();
+        state.calls.clear();
+
+        for (var key : List.of(originalKey, UUID.randomUUID())) {
+            mvc.perform(
+                            request(f.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"));
+        }
+
+        assertThat(state.calls).isEmpty();
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session()))
+                .isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void reentryWithOriginalCodeReplaysStoredTurnWithoutAdditionalCalls() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var code =
+                codes.issue(f.child(), UUID.randomUUID(), f.instructor()).response().accessCode();
+        var session = enter(code);
+        var originalSessionId = session.getId();
+        var key = UUID.randomUUID();
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(false));
+        var originalTurnId =
+                jdbc.queryForObject(
+                        "select turn_id from roleplay_turn where session_id=?",
+                        UUID.class,
+                        f.session());
+        var originalText =
+                jdbc.queryForObject(
+                        "select response_text from roleplay_turn where session_id=?",
+                        String.class,
+                        f.session());
+
+        mvc.perform(delete("/api/v1/child-access-sessions/current").session(session).with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(session.isInvalid()).isTrue();
+        var reentered = enter(code);
+        assertThat(reentered.getId()).isNotEqualTo(originalSessionId);
+        state.calls.clear();
+
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(reentered)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.replayed").value(true))
+                .andExpect(jsonPath("$.data.messages[0].text").value(originalText))
+                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                .andExpect(jsonPath("$.data.messages[0].speech.available").value(false))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+
+        assertThat(state.calls).isEmpty();
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_turn_id from roleplay_session where session_id=?",
+                                UUID.class,
+                                f.session()))
+                .isEqualTo(originalTurnId);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session()))
+                .isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void reentryContinuesWithNextTurnAndReplaysItsRetry() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var code =
+                codes.issue(f.child(), UUID.randomUUID(), f.instructor()).response().accessCode();
+        var session = enter(code);
+        var firstKey = UUID.randomUUID();
+        mvc.perform(
+                        request(f.session(), firstKey, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+        var firstTurnId =
+                jdbc.queryForObject(
+                        "select last_turn_id from roleplay_session where session_id=?",
+                        UUID.class,
+                        f.session());
+
+        mvc.perform(delete("/api/v1/child-access-sessions/current").session(session).with(csrf()))
+                .andExpect(status().isNoContent());
+        var reentered = enter(code);
+        var nextKey = UUID.randomUUID();
+        state.calls.clear();
+
+        mvc.perform(
+                        request(f.session(), nextKey, new byte[] {4, 5, 6}, "audio/webm")
+                                .session(reentered)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.replayed").value(false))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(2));
+        assertThat(state.calls.stream().filter("STT"::equals).count()).isEqualTo(1);
+        assertThat(state.calls.stream().filter("RESPONSE_GENERATION"::equals).count()).isEqualTo(1);
+        assertThat(count(f)).isEqualTo(2);
+        assertThat(
+                        jdbc.queryForList(
+                                "select turn_number from roleplay_turn where session_id=? order by turn_number",
+                                Integer.class,
+                                f.session()))
+                .containsExactly(1, 2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select turn_id from roleplay_turn where session_id=? and idempotency_key=?",
+                                UUID.class,
+                                f.session(),
+                                firstKey))
+                .isEqualTo(firstTurnId);
+        var nextTurnId =
+                jdbc.queryForObject(
+                        "select turn_id from roleplay_turn where session_id=? and idempotency_key=?",
+                        UUID.class,
+                        f.session(),
+                        nextKey);
+        assertThat(nextTurnId).isNotEqualTo(firstTurnId);
+        state.calls.clear();
+
+        mvc.perform(
+                        request(f.session(), nextKey, new byte[] {4, 5, 6}, "audio/webm")
+                                .session(reentered)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(true))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(2));
+        assertThat(state.calls).isEmpty();
+        assertThat(count(f)).isEqualTo(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_turn_id from roleplay_session where session_id=?",
+                                UUID.class,
+                                f.session()))
+                .isEqualTo(nextTurnId);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session()))
+                .isEqualTo(2);
+        assertEmptySpool();
+    }
+
+    @Test
+    void reentryAsAnotherChildCannotReplayStoredTurn() throws Exception {
+        var original = RoleplayHttpFixtures.fixture(jdbc);
+        var other = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(original);
+        var key = UUID.randomUUID();
+        mvc.perform(
+                        request(original.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(false));
+        var originalTurnId =
+                jdbc.queryForObject(
+                        "select last_turn_id from roleplay_session where session_id=?",
+                        UUID.class,
+                        original.session());
+
+        mvc.perform(delete("/api/v1/child-access-sessions/current").session(session).with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(session.isInvalid()).isTrue();
+        var reentered = enter(other);
+        state.calls.clear();
+
+        mvc.perform(
+                        request(original.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(reentered)
+                                .with(csrf()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("ROLEPLAY_NOT_FOUND"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        assertThat(state.calls).isEmpty();
+        assertThat(count(original)).isEqualTo(1);
+        assertThat(count(other)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_turn_id from roleplay_session where session_id=?",
+                                UUID.class,
+                                original.session()))
+                .isEqualTo(originalTurnId);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                original.session()))
+                .isEqualTo(1);
+        assertEmptySpool();
+
+        mvc.perform(
+                        request(other.session(), key, new byte[] {1, 2, 3}, "audio/webm")
+                                .session(reentered)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(false))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+        assertThat(count(other)).isEqualTo(1);
+        assertThat(count(original)).isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
     void foreignSessionAndPausedChildCannotSubmit() throws Exception {
         var f = RoleplayHttpFixtures.fixture(jdbc);
         var other = RoleplayHttpFixtures.fixture(jdbc);
@@ -549,6 +790,10 @@ class RoleplayHttpIntegrationTest {
     private MockHttpSession enter(RoleplayHttpFixtures.Fixture f) throws Exception {
         var code =
                 codes.issue(f.child(), UUID.randomUUID(), f.instructor()).response().accessCode();
+        return enter(code);
+    }
+
+    private MockHttpSession enter(String code) throws Exception {
         return (MockHttpSession)
                 mvc.perform(
                                 post("/api/v1/child-access-sessions")
