@@ -21,9 +21,10 @@ export type Child = {
   status: ChildStatus
 }
 
-export type UserRole = 'INSTRUCTOR' | 'OPERATOR'
+// 운영자 역할과 정지·초대·탈퇴 상태는 쓰지 않아 뺐다. 탈퇴하면 계정 행이 지워진다.
+export type UserRole = 'INSTRUCTOR'
 
-export type AccountStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'WITHDRAWN'
+export type AccountStatus = 'ACTIVE'
 
 export type User = {
   userId: string
@@ -276,6 +277,9 @@ export type SignupInput = {
   password: string
   name: string
   orgName?: string
+  // 이용약관·개인정보 처리방침 각각 필수 동의. 버전과 시각은 서버가 정해 저장한다.
+  termsAgreed: boolean
+  privacyAgreed: boolean
 }
 
 export function signup(input: SignupInput): Promise<User> {
@@ -309,6 +313,16 @@ export async function logout(): Promise<void> {
   } finally {
     clearAccessToken()
   }
+}
+
+/**
+ * 즉시 탈퇴한다. 서버는 비밀번호를 다시 묻지 않고 계정과 학급·아동·학습 기록을 모두 지운다(확인 창은 화면이 띄운다). 성공했을 때만 토큰을 지운다.
+ * 실패하면 계정이 그대로라 로그인 상태를 유지한다.
+ */
+export async function withdraw(): Promise<void> {
+  cancelPendingRequests()
+  await writeRequest<void>('DELETE', '/users/me')
+  clearAccessToken()
 }
 
 export function hasAccessToken(): boolean {
@@ -381,10 +395,18 @@ export function getLearningGoal(goalId: string): Promise<LearningGoal> {
 
 export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
 
+/**
+ * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈를 배정한다.
+ * 역할극은 역할극 API 가 생기기 전이라 서버가 받지 않는다.
+ */
+export type ActivityType = 'FIRST_COMBINED' | 'SELF_EMOTION_QUIZ' | 'OTHER_EMOTION_QUIZ' | 'ROLEPLAY'
+
 export type Activity = {
   activityId: string
   childId: string
-  goalId: string
+  // 독립 퀴즈는 학습 목표가 없다.
+  goalId: string | null
+  activityType: ActivityType
   scenarioId: string | null
   scenarioSource: string | null
   initialSupportLevel: string | null
@@ -442,11 +464,16 @@ export function getActivity(activityId: string): Promise<ActivityDetail> {
  * 배정이 실패하면 목표도 저장되지 않는다.
  * requestKey 는 "배정하기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 써야 활동이 하나만 남는다.
  */
-export function createActivity(childId: string, goal: LearningGoalInput, requestKey: string): Promise<Activity> {
+export function createActivity(
+  childId: string,
+  activityType: ActivityType,
+  goal: LearningGoalInput | null,
+  requestKey: string,
+): Promise<Activity> {
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, goal },
+    { childId, activityType, ...(goal ? { goal } : {}) },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }

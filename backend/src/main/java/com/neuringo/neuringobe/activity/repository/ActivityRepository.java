@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.activity.repository;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -27,8 +28,10 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
 
     Optional<Activity> findByIdempotencyKey(UUID idempotencyKey);
 
-    boolean existsByChildIdAndGoalIdInAndStatus(
-            UUID childId, Collection<UUID> goalIds, ActivityStatus status);
+    boolean existsByChildIdAndActivityType(UUID childId, ActivityType activityType);
+
+    boolean existsByChildIdAndActivityTypeAndStatus(
+            UUID childId, ActivityType activityType, ActivityStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Activity a where a.activityId = :id")

@@ -73,11 +73,14 @@ public class AuthService {
         String hashToCompare = found.map(UserAccount::getPasswordHash).orElse(dummyPasswordHash);
         boolean matches = passwordEncoder.matches(request.password(), hashToCompare);
         if (found.isEmpty() || !matches) {
-            throw new ApiException(
-                    HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
+            throw invalidCredentials();
         }
 
-        UserAccount user = found.get();
+        // 진행 중인 탈퇴가 끝나기를 기다린 뒤 계정이 남아 있을 때만 세션을 만든다. 그 사이 탈퇴됐으면 없는 계정과 같은 오류다.
+        UserAccount user =
+                userAccountRepository
+                        .findForShare(found.get().getUserId())
+                        .orElseThrow(AuthService::invalidCredentials);
         // 로그인할 때마다 새 무작위 토큰을 발급한다. 클라이언트가 보낸 값을 세션 식별자로 쓰지 않으므로 세션 고정이 생기지 않는다.
         String token = newToken();
         Instant now = clock.instant();
@@ -134,5 +137,10 @@ public class AuthService {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is required by the Java platform", ex);
         }
+    }
+
+    private static ApiException invalidCredentials() {
+        return new ApiException(
+                HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.");
     }
 }

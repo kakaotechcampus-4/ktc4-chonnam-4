@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.goal.controller;
 
+import com.neuringo.neuringobe.auth.security.SensitiveReadLog;
 import com.neuringo.neuringobe.common.ApiResponse;
 import com.neuringo.neuringobe.goal.dto.CreateLearningGoalRequest;
 import com.neuringo.neuringobe.goal.dto.LearningGoalResponse;
@@ -19,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class LearningGoalController {
     private final LearningGoalService service;
+    private final SensitiveReadLog sensitiveReads;
 
-    public LearningGoalController(LearningGoalService service) {
+    public LearningGoalController(LearningGoalService service, SensitiveReadLog sensitiveReads) {
         this.service = service;
+        this.sensitiveReads = sensitiveReads;
     }
 
     @PostMapping("/api/v1/children/{childId}/learning-goals")
@@ -37,12 +40,17 @@ public class LearningGoalController {
     @GetMapping("/api/v1/children/{childId}/learning-goals")
     public ApiResponse<List<LearningGoalResponse>> list(
             @PathVariable UUID childId, Authentication authentication) {
-        return ApiResponse.of(service.list(childId, authentication));
+        List<LearningGoalResponse> goals = service.list(childId, authentication);
+        sensitiveReads.recordIfInstructor(
+                authentication, SensitiveReadLog.Target.CHILD_GOALS, childId);
+        return ApiResponse.of(goals);
     }
 
     @GetMapping("/api/v1/learning-goals/{goalId}")
     public ApiResponse<LearningGoalResponse> get(
             @PathVariable UUID goalId, Authentication authentication) {
-        return ApiResponse.of(service.get(goalId, authentication));
+        LearningGoalResponse goal = service.get(goalId, authentication);
+        sensitiveReads.recordIfInstructor(authentication, SensitiveReadLog.Target.GOAL, goalId);
+        return ApiResponse.of(goal);
     }
 }

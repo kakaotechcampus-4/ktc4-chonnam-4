@@ -148,7 +148,7 @@ class DefaultSecurityPolicyTest {
                                 + credentials.email()
                                 + "\",\"password\":\""
                                 + credentials.password()
-                                + "\",\"name\":\"테스트 강사\"}",
+                                + "\",\"name\":\"테스트 강사\",\"termsAgreed\":true,\"privacyAgreed\":true}",
                         null);
         MvcTestResult login =
                 post(
@@ -182,7 +182,7 @@ class DefaultSecurityPolicyTest {
                         + credentials.email()
                         + "\",\"password\":\""
                         + credentials.password()
-                        + "\",\"name\":\"테스트 강사\"}",
+                        + "\",\"name\":\"테스트 강사\",\"termsAgreed\":true,\"privacyAgreed\":true}",
                 null);
         MvcTestResult login =
                 post(

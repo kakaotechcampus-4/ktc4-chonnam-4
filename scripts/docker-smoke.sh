@@ -70,3 +70,16 @@ echo "  /assets/does-not-exist.js → 404"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/v1/does-not-exist")
 [ "$code" != 200 ] || fail "없는 API 가 200 이다(index.html 로 빠지면 안 된다)"
 echo "  /api/v1/does-not-exist → $code (화면으로 빠지지 않는다)"
+
+# CloudFront 를 거친 https 요청(CloudFront 는 서버에 http 로 오고 CloudFront-Forwarded-Proto: https 를 붙인다).
+# 백엔드가 https 인 줄 알아야 쿠키에 Secure 가 붙는다(nginx 가 X-Forwarded-Proto 로 넘기고 Spring 이 읽는다).
+cookie=$(curl -fsS -o /dev/null -D - -H 'CloudFront-Forwarded-Proto: https' "$BASE/api/v1/csrf" | tr -d '\r' |
+  grep -i '^set-cookie: XSRF-TOKEN=') || fail "CSRF 쿠키가 오지 않는다"
+grep -qiE ';[[:space:]]*secure(;|$)' <<<"$cookie" ||
+  fail "CloudFront 를 거친 https 요청인데 CSRF 쿠키에 Secure 가 없다 — nginx 의 X-Forwarded-Proto, 백엔드의 server.forward-headers-strategy 를 본다"
+echo "  CloudFront 를 거친 https 요청 → CSRF 쿠키에 Secure"
+# 브라우저가 X-Forwarded-Proto 를 직접 넣어도(CloudFront 헤더 없이 http) Secure 로 속지 않는다 — nginx 가 덮어쓴다.
+cookie=$(curl -fsS -o /dev/null -D - -H 'X-Forwarded-Proto: https' "$BASE/api/v1/csrf" | tr -d '\r' |
+  grep -i '^set-cookie: XSRF-TOKEN=') || fail "CSRF 쿠키가 오지 않는다"
+! grep -qiE ';[[:space:]]*secure(;|$)' <<<"$cookie" || fail "브라우저가 넣은 X-Forwarded-Proto 가 백엔드에 닿았다"
+echo "  브라우저가 넣은 X-Forwarded-Proto 는 쓰지 않는다"

@@ -160,7 +160,7 @@ class RoleplayChildScopeIntegrationTest {
                 "a".repeat(64),
                 now);
         jdbc.update(
-                "insert into activity(activity_id,child_id,goal_id,scenario_id,status,assigned_at) values(?,?,?,?,'IN_PROGRESS',?)",
+                "insert into activity(activity_id,child_id,goal_id,scenario_id,activity_type,status,assigned_at) values(?,?,?,?,'ROLEPLAY','IN_PROGRESS',?)",
                 activity,
                 child,
                 goal,

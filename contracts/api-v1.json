@@ -32,7 +32,13 @@
         "method": "POST",
         "path": "/api/v1/users",
         "auth": false,
-        "body": { "email": "{newEmail}", "password": "{newPassword}", "name": "테스트 강사" }
+        "body": {
+          "email": "{newEmail}",
+          "password": "{newPassword}",
+          "name": "테스트 강사",
+          "termsAgreed": true,
+          "privacyAgreed": true
+        }
       },
       "response": {
         "status": 200,
@@ -55,7 +61,13 @@
         "method": "POST",
         "path": "/api/v1/users",
         "auth": false,
-        "body": { "email": "{instructorEmail}", "password": "{newPassword}", "name": "테스트 강사" }
+        "body": {
+          "email": "{instructorEmail}",
+          "password": "{newPassword}",
+          "name": "테스트 강사",
+          "termsAgreed": true,
+          "privacyAgreed": true
+        }
       },
       "response": {
         "status": 409,
@@ -77,7 +89,13 @@
         "method": "POST",
         "path": "/api/v1/users",
         "auth": false,
-        "body": { "email": "{newEmail}", "password": "abcdefg", "name": "테스트 강사" }
+        "body": {
+          "email": "{newEmail}",
+          "password": "abcdefg",
+          "name": "테스트 강사",
+          "termsAgreed": true,
+          "privacyAgreed": true
+        }
       },
       "response": {
         "status": 422,
@@ -89,6 +107,34 @@
             "path": "/api/v1/users",
             "traceId": "<uuid>",
             "fieldErrors": [{ "field": "password", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "개인정보 처리방침 동의가 없으면 422 VALIDATION_FAILED(privacyAgreed)",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/users",
+        "auth": false,
+        "body": {
+          "email": "{newEmail}",
+          "password": "{newPassword}",
+          "name": "테스트 강사",
+          "termsAgreed": true,
+          "privacyAgreed": false
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/users",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "privacyAgreed", "message": "<string>" }]
           }
         }
       }
@@ -557,7 +603,7 @@
       }
     },
     {
-      "name": "목표 없는 활동 배정은 422 VALIDATION_FAILED(goal)",
+      "name": "유형을 비운 활동 배정은 최초 결합이라 목표가 없으면 422 GOAL_REQUIRED",
       "request": {
         "method": "POST",
         "path": "/api/v1/activities",
@@ -569,11 +615,77 @@
         "body": {
           "error": {
             "status": 422,
-            "code": "VALIDATION_FAILED",
-            "message": "요청 값이 올바르지 않습니다.",
+            "code": "GOAL_REQUIRED",
+            "message": "이 활동에는 학습 목표가 필요합니다.",
             "path": "/api/v1/activities",
             "traceId": "<uuid>",
-            "fieldErrors": [{ "field": "goal", "message": "<string>" }]
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "목표를 붙인 독립 퀴즈 배정은 422 GOAL_NOT_ALLOWED",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}", "activityType": "SELF_EMOTION_QUIZ", "goal": { "title": "친구 감정 알아보기" } }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "GOAL_NOT_ALLOWED",
+            "message": "표정 퀴즈 활동에는 학습 목표를 붙이지 않습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "최초 활동을 마치기 전 독립 퀴즈 배정은 409 FIRST_ACTIVITY_NOT_COMPLETED",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}", "activityType": "SELF_EMOTION_QUIZ" }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "status": 409,
+            "code": "FIRST_ACTIVITY_NOT_COMPLETED",
+            "message": "최초 활동을 마친 뒤에 배정할 수 있습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "역할극 활동 배정은 아직 422 ACTIVITY_TYPE_NOT_AVAILABLE",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": { "childId": "{childId}", "activityType": "ROLEPLAY", "goal": { "title": "친구 감정 알아보기" } }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "ACTIVITY_TYPE_NOT_AVAILABLE",
+            "message": "역할극 활동은 아직 배정할 수 없습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
           }
         }
       }

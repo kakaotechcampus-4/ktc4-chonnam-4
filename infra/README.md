@@ -18,6 +18,7 @@ infra/
     config/          Parameter Store — 워크플로가 읽는 인프라 값 5개, 서버 .env 값 4개(비밀값 2개는 쓰기 전용)
     observability/   로그 그룹(30일), SNS 경보 주제·메일 구독, CPU 크레딧 과금·상태 검사 경보
     cost/            월 예산(실제 80%·예측 100% 알림), 이상 탐지(⚑4 확인 뒤 켠다)
+    idle-off/        안 쓰면 끄기: EventBridge 10분마다 → Lambda(lambda/idle_off.py, 자체 검사 test_idle_off.py) · 이 서버·이 배포만 다루는 역할 · 실패 경보
   */tests/*.tftest.hcl   terraform test(mock provider, AWS 호출 없음)
 ```
 

@@ -17,6 +17,7 @@ import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -88,6 +89,44 @@ class SchemaConstraintIntegrationTest {
                 .isEqualTo(CHECK_VIOLATION);
     }
 
+    // V11 이 운영자 역할과 정지·초대·탈퇴 상태를 뺐다. 운영자가 없고 탈퇴는 행을 지운다.
+    @ParameterizedTest
+    @ValueSource(strings = {"OPERATOR"})
+    void userRoleColumnRejectsRemovedRoles(String role) {
+        assertThat(sqlStateOf(() -> insertUser(newEmail(), role, AccountStatus.ACTIVE.name())))
+                .isEqualTo(CHECK_VIOLATION);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"INVITED", "SUSPENDED", "WITHDRAWN"})
+    void accountStatusColumnRejectsRemovedStatuses(String status) {
+        assertThat(sqlStateOf(() -> insertUser(newEmail(), UserRole.INSTRUCTOR.name(), status)))
+                .isEqualTo(CHECK_VIOLATION);
+    }
+
+    // 동의 기록은 약관 버전·방침 버전·시각이 모두 있거나 모두 없어야 한다(V11).
+    @Test
+    void consentColumnsAreAllOrNothing() {
+        UUID userId = insertInstructor();
+
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        jdbcTemplate.update(
+                                                "UPDATE user_account SET terms_version = 'v1'"
+                                                        + " WHERE user_id = ?",
+                                                userId)))
+                .isEqualTo(CHECK_VIOLATION);
+        assertThatCode(
+                        () ->
+                                jdbcTemplate.update(
+                                        "UPDATE user_account SET terms_version = 'v1',"
+                                                + " privacy_version = 'v1', consented_at = now()"
+                                                + " WHERE user_id = ?",
+                                        userId))
+                .doesNotThrowAnyException();
+    }
+
     @Test
     void childRequiresExistingClassroom() {
         assertThat(sqlStateOf(() -> insertChild(UUID.randomUUID(), ChildStatus.ACTIVE.name())))
@@ -135,17 +174,14 @@ class SchemaConstraintIntegrationTest {
     }
 
     @Test
-    void onlyOneNotStartedActivityPerChildAndGoal() {
+    void goalIdNoLongerLimitsNotStartedActivities() {
+        // V10 이 V6 의 "시작 전 아동·목표 ID 하나" 인덱스를 지웠다. 역할극은 목표가 아니라 시나리오로 같은 활동을 판단한다.
         UUID instructorId = insertInstructor();
         UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
         UUID goalId = insertGoal(childId, instructorId);
-        insertActivity(childId, goalId, "COMPLETED", null);
-        insertActivity(childId, goalId, "NOT_STARTED", null);
+        insertActivity(childId, "ROLEPLAY", goalId, "NOT_STARTED", null);
 
-        assertThat(sqlStateOf(() -> insertActivity(childId, goalId, "NOT_STARTED", null)))
-                .isEqualTo(UNIQUE_VIOLATION);
-        UUID otherGoal = insertGoal(childId, instructorId);
-        assertThatCode(() -> insertActivity(childId, otherGoal, "NOT_STARTED", null))
+        assertThatCode(() -> insertActivity(childId, "ROLEPLAY", goalId, "NOT_STARTED", null))
                 .doesNotThrowAnyException();
     }
 
@@ -154,11 +190,80 @@ class SchemaConstraintIntegrationTest {
         UUID instructorId = insertInstructor();
         UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
         UUID key = UUID.randomUUID();
-        insertActivity(childId, insertGoal(childId, instructorId), "NOT_STARTED", key);
+        insertActivity(childId, "ROLEPLAY", insertGoal(childId, instructorId), "NOT_STARTED", key);
         UUID otherGoal = insertGoal(childId, instructorId);
 
-        assertThat(sqlStateOf(() -> insertActivity(childId, otherGoal, "NOT_STARTED", key)))
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "ROLEPLAY",
+                                                otherGoal,
+                                                "NOT_STARTED",
+                                                key)))
                 .isEqualTo(UNIQUE_VIOLATION);
+    }
+
+    @Test
+    void onlyOneNotStartedIndependentQuizPerChildAndType() {
+        UUID childId = insertChild(insertClassroom(insertInstructor(), "ACTIVE"), "ACTIVE");
+        insertActivity(childId, "SELF_EMOTION_QUIZ", null, "COMPLETED", null);
+        insertActivity(childId, "SELF_EMOTION_QUIZ", null, "NOT_STARTED", null);
+
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "SELF_EMOTION_QUIZ",
+                                                null,
+                                                "NOT_STARTED",
+                                                null)))
+                .isEqualTo(UNIQUE_VIOLATION);
+        assertThatCode(
+                        () ->
+                                insertActivity(
+                                        childId, "OTHER_EMOTION_QUIZ", null, "NOT_STARTED", null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void goalPresenceFollowsActivityType() {
+        UUID instructorId = insertInstructor();
+        UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
+        UUID goalId = insertGoal(childId, instructorId);
+
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "SELF_EMOTION_QUIZ",
+                                                goalId,
+                                                "NOT_STARTED",
+                                                null)))
+                .isEqualTo(CHECK_VIOLATION);
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "FIRST_COMBINED",
+                                                null,
+                                                "NOT_STARTED",
+                                                null)))
+                .isEqualTo(CHECK_VIOLATION);
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "QUIZ_ROLEPLAY",
+                                                goalId,
+                                                "NOT_STARTED",
+                                                null)))
+                .isEqualTo(CHECK_VIOLATION);
     }
 
     private UUID insertInstructor() {
@@ -216,12 +321,14 @@ class SchemaConstraintIntegrationTest {
         return goalId;
     }
 
-    private void insertActivity(UUID childId, UUID goalId, String status, UUID idempotencyKey) {
+    private void insertActivity(
+            UUID childId, String activityType, UUID goalId, String status, UUID idempotencyKey) {
         jdbcTemplate.update(
-                "INSERT INTO activity (activity_id, child_id, goal_id, status, assigned_at, idempotency_key)"
-                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO activity (activity_id, child_id, activity_type, goal_id, status, assigned_at,"
+                        + " idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 UUID.randomUUID(),
                 childId,
+                activityType,
                 goalId,
                 status,
                 Timestamp.from(Instant.now()),

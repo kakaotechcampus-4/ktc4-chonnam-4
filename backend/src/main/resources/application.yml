@@ -33,6 +33,10 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+  # 서버에서는 화면 컨테이너(nginx) 뒤에서 돈다. nginx 가 넘기는 X-Forwarded-Proto 로 https 인 줄 알아야
+  # CSRF 쿠키·아동 세션 쿠키처럼 요청의 https 여부를 따르는 쿠키에 Secure 가 붙는다. 이 헤더는 Tomcat 이 믿는 프록시(사설·루프백 주소, 기본값)에서 온 것만 쓴다.
+  # backend 는 compose 네트워크 안에만 있어 밖에서 직접 보낸 헤더는 닿지 않는다. 확인: scripts/docker-smoke.sh, frontend/e2e/deployed/edge.spec.ts
+  forward-headers-strategy: native
   servlet:
     session:
       cookie:
@@ -56,6 +60,10 @@ logging:
     com.neuringo: INFO
 
 neuringo:
+  # 가입 동의를 받는 약관 버전. 약관 본문이 바뀌면 올린다.
+  consent:
+    terms-version: v1
+    privacy-version: v1
   child-access:
     hmac-secret: ${CHILD_ACCESS_HMAC_SECRET:}
   ai:

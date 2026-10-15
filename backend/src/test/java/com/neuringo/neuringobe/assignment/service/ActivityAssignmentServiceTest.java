@@ -6,7 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.child.domain.Child;
@@ -31,7 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.PlatformTransactionManager;
 
-/** 통합 테스트는 V6 시드 문항이 늘 있어 "승인 문항 없음"을 만들 수 없다. 그 경로만 여기서 본다. */
+/** 통합 테스트는 시드 문항이 늘 있어 "최초 결합 문항 없음"을 만들 수 없다. 그 경로만 여기서 본다. */
 @ExtendWith(MockitoExtension.class)
 class ActivityAssignmentServiceTest {
 
@@ -61,17 +61,14 @@ class ActivityAssignmentServiceTest {
         given(goalService.newGoal(childId, GOAL_REQUEST, authentication))
                 .willReturn(goal(goalId, childId));
         given(activities.findByIdempotencyKey(key)).willReturn(Optional.empty());
-        given(goals.findByChildIdAndContentHash(childId, "hash")).willReturn(List.of());
-        given(
-                        activities.existsByChildIdAndGoalIdInAndStatus(
-                                childId, List.of(), ActivityStatus.NOT_STARTED))
+        given(activities.existsByChildIdAndActivityType(childId, ActivityType.FIRST_COMBINED))
                 .willReturn(false);
-        given(quizAssignment.pickInitialItems()).willReturn(List.of());
+        given(quizAssignment.pickItems(ActivityType.FIRST_COMBINED)).willReturn(List.of());
 
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, GOAL_REQUEST),
+                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)
@@ -95,7 +92,7 @@ class ActivityAssignmentServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, GOAL_REQUEST),
+                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)

@@ -129,6 +129,12 @@
   box-sizing: border-box;
 }
 
+/* 아동 화면은 태블릿 화면을 꽉 채운다. 위 1126px 고정·테두리(Vite 템플릿)는 강사 화면에만 남긴다. */
+#root:has(.child-scope) {
+  width: 100%;
+  border-inline: none;
+}
+
 body {
   margin: 0;
 }
