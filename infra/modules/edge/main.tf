@@ -109,12 +109,14 @@ resource "aws_cloudfront_distribution" "this" {
   origin {
     origin_id   = local.origin_id
     domain_name = var.origin_domain
+    # origin_read_timeout: 서버 한 턴 상한(최대 60초)·nginx(110초)보다 길게 둔다. 안쪽이 먼저 끝나야 서버가 만든 응답
+    # (시간 초과 안내 포함)이 그대로 간다. 120초는 한도 상향 요청 없이 둘 수 있는 최대다(CustomOriginConfig API 문서, 2026-10-13 확인).
     custom_origin_config {
       http_port                = 80
       https_port               = 443
       origin_protocol_policy   = "http-only"
       origin_ssl_protocols     = ["TLSv1.2"]
-      origin_read_timeout      = 60
+      origin_read_timeout      = 120
       origin_keepalive_timeout = 5
     }
   }
