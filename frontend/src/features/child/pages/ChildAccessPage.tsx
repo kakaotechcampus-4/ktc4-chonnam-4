@@ -117,7 +117,7 @@ function ChildAccessPage() {
           {/* 안내가 나타나고 사라질 때 화면이 흔들리지 않도록 높이를 미리 잡아 둔다. */}
           <div className="flex min-h-20 items-center" aria-live="polite">
             {isInvalid ? (
-              <SpeechBubble character="rabbit">
+              <SpeechBubble character="rabbit" mood="sad">
                 코드가 맞지 않아요. 다시 눌러볼까?
               </SpeechBubble>
             ) : null}

@@ -13,6 +13,7 @@ import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { PageTabs } from '../components/PageTabs'
 import { cardClass, errorTextClass } from '../components/styles'
+import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
 
 const QUIZ_TAB = '표정 퀴즈'
@@ -47,8 +48,9 @@ function ActivityReportPage() {
 
   const goalQuery = useQuery({
     queryKey: ['learning-goals', activity?.goalId],
-    queryFn: () => getLearningGoal(activity!.goalId),
-    enabled: !!activity,
+    queryFn: () => getLearningGoal(activity!.goalId!),
+    // 독립 퀴즈는 목표가 없다.
+    enabled: !!activity?.goalId,
   })
 
   // 시작 전 활동은 결과가 있을 수 없어 묻지 않는다.
@@ -100,7 +102,9 @@ function ActivityReportPage() {
       ) : (
         <section role="tabpanel" aria-label={QUIZ_TAB} className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold">{goalQuery.data?.title ?? '학습 목표'}</h2>
+            <h2 className="text-base font-bold">
+              {activity.goalId ? (goalQuery.data?.title ?? '학습 목표') : ACTIVITY_TYPE_LABELS[activity.activityType]}
+            </h2>
             <ActivityStatusBadge status={activity.status} />
           </div>
 

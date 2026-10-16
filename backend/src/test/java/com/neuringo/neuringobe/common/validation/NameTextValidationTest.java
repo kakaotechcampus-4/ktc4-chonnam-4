@@ -104,7 +104,12 @@ class NameTextValidationTest {
     void appliesToSignupNameEmailAndOrgName() {
         SignupRequest request =
                 new SignupRequest(
-                        "a" + NUL + "@example.com", "password1", ZERO_WIDTH_SPACE, "센터" + NUL);
+                        "a" + NUL + "@example.com",
+                        "password1",
+                        ZERO_WIDTH_SPACE,
+                        "센터" + NUL,
+                        true,
+                        true);
 
         Set<String> fields =
                 validator.validate(request).stream()
@@ -121,7 +126,9 @@ class NameTextValidationTest {
                         "a" + HIGH_SURROGATE + "@example.com",
                         "password1",
                         "홍길동",
-                        "센터" + LOW_SURROGATE);
+                        "센터" + LOW_SURROGATE,
+                        true,
+                        true);
 
         Set<String> fields =
                 validator.validate(request).stream()
@@ -133,7 +140,10 @@ class NameTextValidationTest {
 
     @Test
     void allowsMissingOrgName() {
-        assertThat(validator.validate(new SignupRequest("a@example.com", "password1", "홍길동", null)))
+        assertThat(
+                        validator.validate(
+                                new SignupRequest(
+                                        "a@example.com", "password1", "홍길동", null, true, true)))
                 .isEmpty();
     }
 

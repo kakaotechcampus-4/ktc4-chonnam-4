@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.user.service;
 
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
+import com.neuringo.neuringobe.user.config.ConsentProperties;
 import com.neuringo.neuringobe.user.domain.AccountStatus;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.domain.UserRole;
@@ -9,6 +10,7 @@ import com.neuringo.neuringobe.user.dto.SignupRequest;
 import com.neuringo.neuringobe.user.dto.UserResponse;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,21 +23,28 @@ public class UserService {
 
     private final UserAccountRepository userAccountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ConsentProperties consent;
     private final Clock clock;
 
     public UserService(
             UserAccountRepository userAccountRepository,
             PasswordEncoder passwordEncoder,
+            ConsentProperties consent,
             Clock clock) {
         this.userAccountRepository = userAccountRepository;
         this.passwordEncoder = passwordEncoder;
+        this.consent = consent;
         this.clock = clock;
     }
 
-    /** 공개 가입. 역할은 강사로 고정한다(DEC-001 6절, 경로는 `제안`). */
+    /**
+     * 공개 가입. 역할은 강사로 고정한다. 약관 동의는 요청 검증에서 확인했고, 동의한 버전은 서버 설정 값을 계정과 같은 행에 저장해 계정만 생기고 동의 기록이 빠지는
+     * 일이 없다.
+     */
     @Transactional
     public UserResponse signup(SignupRequest request) {
         String email = UserAccount.normalizeEmail(request.email());
+        Instant now = clock.instant();
 
         UserAccount user =
                 new UserAccount(
@@ -46,7 +55,10 @@ public class UserService {
                         blankToNull(request.orgName()),
                         UserRole.INSTRUCTOR,
                         AccountStatus.ACTIVE,
-                        clock.instant());
+                        now,
+                        consent.termsVersion(),
+                        consent.privacyVersion(),
+                        now);
 
         // 먼저 조회하고 저장하면 동시 가입이 조회를 함께 통과할 수 있어, 중복 판단을 DB UNIQUE 하나에 맡긴다.
         // 충돌을 예외가 아닌 0 행으로 받아 이메일 원문이 DB 오류 로그에 남지 않게 한다(insertIfEmailAbsent 참고).
@@ -59,7 +71,10 @@ public class UserService {
                         user.getOrgName(),
                         user.getRole().name(),
                         user.getStatus().name(),
-                        user.getCreatedAt());
+                        user.getCreatedAt(),
+                        user.getTermsVersion(),
+                        user.getPrivacyVersion(),
+                        user.getConsentedAt());
         if (inserted == 0) {
             throw duplicateEmail();
         }

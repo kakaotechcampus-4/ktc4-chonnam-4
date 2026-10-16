@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.ai.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
@@ -19,6 +20,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 
 class SpringAiLlmProviderTest {
 
@@ -64,13 +67,45 @@ class SpringAiLlmProviderTest {
         assertThatThrownBy(() -> provider.complete(request())).isSameAs(conversionError);
     }
 
+    @Test
+    void realOpenAiChatModelPassesSingleAttemptCheckWhenRetriesAreZero() {
+        // Spring AI 2 는 SDK 재시도를 클라이언트에만 넣고, ChatModel 기본 옵션의 maxRetries 는 늘 기본값 3 이다.
+        // 그 값으로 검사하면 실제 OpenAI 모델에서는 재시도를 꺼도 항상 막힌다.
+        SpringAiLlmProvider provider = provider(openAiChatModel(), 0);
+
+        assertThatCode(provider::requireSingleAttempt).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsConfiguredSdkRetries() {
+        SpringAiLlmProvider provider = provider(openAiChatModel(), 1);
+
+        assertThatThrownBy(provider::requireSingleAttempt)
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    private static OpenAiChatModel openAiChatModel() {
+        // 호출하지 않으므로 연결되지 않는 주소를 둔다.
+        return OpenAiChatModel.builder()
+                .options(
+                        OpenAiChatOptions.builder()
+                                .apiKey("test-key")
+                                .baseUrl("http://127.0.0.1:1/v1")
+                                .build())
+                .build();
+    }
+
     private SpringAiLlmProvider provider(ChatModel chatModel) {
+        return provider(chatModel, 0);
+    }
+
+    private SpringAiLlmProvider provider(ChatModel chatModel, int maxRetries) {
         return new SpringAiLlmProvider(
                 chatModel,
                 new OpenAiFailureClassifier(),
                 "test-provider",
                 Duration.ofSeconds(10),
-                0,
+                maxRetries,
                 "test-model");
     }
 

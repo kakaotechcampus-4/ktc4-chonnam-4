@@ -6,6 +6,7 @@ import { ClassroomCreatePage } from './features/instructor/pages/ClassroomCreate
 import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
 import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
 import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
+import { AccountPage } from './features/instructor/pages/AccountPage'
 import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
 import { RequireInstructorAuth } from './features/instructor/auth/RequireInstructorAuth'
@@ -68,6 +69,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ActivityReportPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/account',
+    element: (
+      <RequireInstructorAuth>
+        <AccountPage />
       </RequireInstructorAuth>
     ),
   },

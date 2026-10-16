@@ -114,12 +114,13 @@ function ChildActivitiesPage() {
           </div>
         ) : (
           <>
-            {/* 원본 시안처럼 열기구를 화면 폭의 약 27% 크기로 두고 화면 전체에 고르게 펼친다. */}
+            {/* 원본 시안처럼 열기구를 화면 폭의 약 27% 크기로 두고 화면 전체에 고르게 펼친다.
+                가로가 넓은 태블릿(갤럭시 탭 1138×712)에서 세로가 넘치지 않도록 최대 크기를 화면 높이에도 맞춘다. */}
             <ul className="flex w-full flex-wrap items-start justify-evenly gap-y-4">
               {balloons.map(({ activity, isCompleted, passenger, color, offset }) => {
                 const badge = STATUS_BADGES[activity.status]
                 return (
-                  <li key={activity.activityId} className={cn("w-[27%] min-w-40 max-w-64", offset)}>
+                  <li key={activity.activityId} className={cn("w-[27%] min-w-40 max-w-[min(16rem,34svh)]", offset)}>
                     <button
                       type="button"
                       disabled={isCompleted}

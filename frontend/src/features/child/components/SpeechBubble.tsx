@@ -1,6 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { Character, type CharacterName } from "./Character"
+import { Character, type CharacterMood, type CharacterName } from "./Character"
 
 const SPEAKER_NAMES: Record<CharacterName, string> = {
   turtle: "거북이 안내자",
@@ -16,11 +16,14 @@ const BUBBLE_STYLES: Record<CharacterName, string> = {
 /** 캐릭터 대사 말풍선. 퀴즈 상황 설명·역할극 질문(거북이)과 힌트(깡총이)에 함께 쓴다. 캐릭터는 항상 왼쪽에 선다. */
 function SpeechBubble({
   character,
+  mood,
   characterAlign = "bottom",
   children,
   className,
 }: {
   character: CharacterName
+  /** 캐릭터 표정·동작. 정답·완료는 happy, 오답·재시도는 sad (Character 참고). */
+  mood?: CharacterMood
   /** 캐릭터를 말풍선 아래(기본) 또는 위(이름 옆)에 맞춘다. 말풍선 꼬리 모서리도 같은 쪽으로 둔다. */
   characterAlign?: "top" | "bottom"
   children: React.ReactNode
@@ -30,7 +33,7 @@ function SpeechBubble({
 
   return (
     <div className={cn("flex gap-3", isTop ? "items-start" : "items-end", className)}>
-      <Character name={character} size="sm" />
+      <Character name={character} size="sm" mood={mood} />
       <div
         className={cn(
           "flex flex-col gap-1 rounded-[var(--child-radius-card)] px-5 py-3 text-left shadow-sm",

@@ -92,7 +92,7 @@ public class SecurityConfig {
                                         .requestMatchers(PublicEndpoints.MATCHER)
                                         .permitAll()
                                         .requestMatchers("/actuator/health", "/actuator/info")
-                                        .hasAnyRole("INSTRUCTOR", "OPERATOR")
+                                        .hasRole("INSTRUCTOR")
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.DELETE,
                                                 "/api/v1/child-access-sessions/current")
@@ -120,8 +120,9 @@ public class SecurityConfig {
                                                 org.springframework.http.HttpMethod.POST,
                                                 "/api/v1/roleplay-sessions/*/voice-inputs")
                                         .hasRole("CHILD")
-                                        .requestMatchers("/api/v1/auth/**", "/api/v1/users/me")
-                                        .hasAnyRole("INSTRUCTOR", "OPERATOR")
+                                        .requestMatchers(
+                                                "/api/v1/auth/**", "/api/v1/users/me/withdrawal")
+                                        .hasRole("INSTRUCTOR")
                                         .anyRequest()
                                         .hasRole("INSTRUCTOR"));
     }

@@ -8,6 +8,7 @@ import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import { PageTabs } from '../components/PageTabs'
 import { cardClass, dangerOutlineButtonClass, errorTextClass, primaryButtonClass } from '../components/styles'
+import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { formatDateTime } from '../lib/dateTime'
 import { cn } from '@/lib/utils'
 
@@ -157,7 +158,9 @@ function ChildDetailPage() {
                           to={`/activities/${activity.activityId}/report`}
                           className="font-semibold hover:underline"
                         >
-                          {goalTitles.get(activity.goalId) ?? '학습 목표'}
+                          {activity.goalId
+                            ? (goalTitles.get(activity.goalId) ?? '학습 목표')
+                            : ACTIVITY_TYPE_LABELS[activity.activityType]}
                         </Link>
                       </td>
                       <td className="px-4 py-3.5">

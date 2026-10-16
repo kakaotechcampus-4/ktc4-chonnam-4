@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.quiz.controller;
 
+import com.neuringo.neuringobe.auth.security.SensitiveReadLog;
 import com.neuringo.neuringobe.common.ApiResponse;
 import com.neuringo.neuringobe.quiz.dto.AssignedQuizItemResponse;
 import com.neuringo.neuringobe.quiz.dto.FinalizeQuizAttemptRequest;
@@ -28,10 +29,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class QuizController {
     private final QuizAssignmentService assignments;
     private final QuizAttemptService attempts;
+    private final SensitiveReadLog sensitiveReads;
 
-    public QuizController(QuizAssignmentService assignments, QuizAttemptService attempts) {
+    public QuizController(
+            QuizAssignmentService assignments,
+            QuizAttemptService attempts,
+            SensitiveReadLog sensitiveReads) {
         this.assignments = assignments;
         this.attempts = attempts;
+        this.sensitiveReads = sensitiveReads;
     }
 
     @GetMapping("/api/v1/activities/{activityId}/quiz-items")
@@ -60,7 +66,13 @@ public class QuizController {
     @GetMapping("/api/v1/activity-quiz-items/{activityQuizId}/attempt")
     public ApiResponse<QuizAttemptResponse> getAttempt(
             @PathVariable UUID activityQuizId, Authentication authentication) {
-        return ApiResponse.of(attempts.get(activityQuizId, authentication));
+        QuizAttemptResponse attempt =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.QUIZ_ATTEMPT,
+                        activityQuizId,
+                        () -> attempts.get(activityQuizId, authentication));
+        return ApiResponse.of(attempt);
     }
 
     @PatchMapping("/api/v1/activity-quiz-items/{activityQuizId}/attempt")
@@ -89,6 +101,12 @@ public class QuizController {
     @GetMapping("/api/v1/activities/{activityId}/quiz-result")
     public ApiResponse<QuizResultResponse> result(
             @PathVariable UUID activityId, Authentication authentication) {
-        return ApiResponse.of(attempts.result(activityId, authentication));
+        QuizResultResponse result =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.QUIZ_RESULT,
+                        activityId,
+                        () -> attempts.result(activityId, authentication));
+        return ApiResponse.of(result);
     }
 }

@@ -15,7 +15,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: '이름',
 }
 
-// 필수 약관 동의. 서버 기록(버전·시각)은 S3 범위라 지금은 가입 버튼을 여는 조건으로만 쓴다.
+// 필수 약관 동의. 체크 여부를 가입 요청에 실어 보내고, 동의한 버전·시각은 서버가 기록한다.
 type Agreements = { terms: boolean; privacy: boolean }
 
 const AGREEMENT_LABELS: Record<keyof Agreements, string> = {
@@ -51,6 +51,8 @@ function SignupPage() {
         email: trimmedEmail,
         password,
         name: name.trim(),
+        termsAgreed: agreements.terms,
+        privacyAgreed: agreements.privacy,
       })
       try {
         await login(trimmedEmail, password)

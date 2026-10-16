@@ -41,6 +41,16 @@ public class UserAccount {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    // 이용약관·개인정보 처리방침 동의. V11 전에 가입한 계정은 셋 다 비어 있다(V11 참고).
+    @Column(name = "terms_version")
+    private String termsVersion;
+
+    @Column(name = "privacy_version")
+    private String privacyVersion;
+
+    @Column(name = "consented_at")
+    private Instant consentedAt;
+
     protected UserAccount() {}
 
     /** 가입·로그인에서 같은 이메일을 같은 값으로 보도록 앞뒤 공백을 지우고 소문자로 바꾼다(DEC-001 6절). */
@@ -56,7 +66,10 @@ public class UserAccount {
             String orgName,
             UserRole role,
             AccountStatus status,
-            Instant createdAt) {
+            Instant createdAt,
+            String termsVersion,
+            String privacyVersion,
+            Instant consentedAt) {
         this.userId = userId;
         this.email = email;
         this.passwordHash = passwordHash;
@@ -65,6 +78,9 @@ public class UserAccount {
         this.role = role;
         this.status = status;
         this.createdAt = createdAt;
+        this.termsVersion = termsVersion;
+        this.privacyVersion = privacyVersion;
+        this.consentedAt = consentedAt;
     }
 
     public UUID getUserId() {
@@ -97,5 +113,17 @@ public class UserAccount {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public String getTermsVersion() {
+        return termsVersion;
+    }
+
+    public String getPrivacyVersion() {
+        return privacyVersion;
+    }
+
+    public Instant getConsentedAt() {
+        return consentedAt;
     }
 }

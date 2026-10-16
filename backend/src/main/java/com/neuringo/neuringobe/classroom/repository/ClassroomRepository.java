@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.classroom.repository;
 
 import com.neuringo.neuringobe.classroom.domain.Classroom;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,7 +31,16 @@ public interface ClassroomRepository extends JpaRepository<Classroom, UUID> {
     Optional<Classroom> findOwnedForUpdate(
             @Param("classId") UUID classId, @Param("instructorId") UUID instructorId);
 
+    /** 강사 탈퇴. 학급 삭제와 같은 잠금을 강사의 모든 학급에 ID 순서로 잡는다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Classroom c where c.instructorId = :instructorId order by c.classId")
+    List<Classroom> findByInstructorIdForUpdate(@Param("instructorId") UUID instructorId);
+
     @Modifying
     @Query(value = "delete from classroom where class_id = :classId", nativeQuery = true)
     int deleteByClassId(@Param("classId") UUID classId);
+
+    @Modifying
+    @Query(value = "delete from classroom where class_id in (:classIds)", nativeQuery = true)
+    int deleteByClassIds(@Param("classIds") Collection<UUID> classIds);
 }

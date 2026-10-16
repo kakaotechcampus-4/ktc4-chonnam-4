@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.TestcontainersConfiguration;
 import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
@@ -293,7 +294,8 @@ class QuizFlowIntegrationTest {
                                 .content("{\"firstResponse\":\"슬픔\"}"))
                 .andExpect(status().isCreated());
 
-        UUID laterActivity = createActivity();
+        // 뒤에 푼 퀴즈는 독립 퀴즈다. 첫 난이도는 최초 결합 활동의 퀴즈로만 정한다.
+        UUID laterActivity = createIndependentQuiz();
         UUID laterAssignment =
                 assign(laterActivity, saveItem(QuizType.OTHER_EMOTION_SITUATION, "슬픔"), 1);
         mvc.perform(
@@ -333,10 +335,25 @@ class QuizFlowIntegrationTest {
                         new Activity(
                                 UUID.randomUUID(),
                                 childId,
+                                ActivityType.FIRST_COMBINED,
                                 goalId,
                                 UUID.randomUUID(),
                                 Instant.now()));
         return activity.getActivityId();
+    }
+
+    /** 목표 없는 독립 퀴즈 활동. 최초 결합은 아동당 한 번이라 두 번째 활동은 이걸로 만든다. */
+    private UUID createIndependentQuiz() {
+        return activities
+                .save(
+                        new Activity(
+                                UUID.randomUUID(),
+                                childId,
+                                ActivityType.OTHER_EMOTION_QUIZ,
+                                null,
+                                UUID.randomUUID(),
+                                Instant.now()))
+                .getActivityId();
     }
 
     private UUID saveItem(QuizType type, String correct) {

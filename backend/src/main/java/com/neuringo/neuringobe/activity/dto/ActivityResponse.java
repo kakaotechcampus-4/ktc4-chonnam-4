@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.activity.dto;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -10,6 +11,7 @@ public record ActivityResponse(
         UUID activityId,
         UUID childId,
         UUID goalId,
+        ActivityType activityType,
         UUID scenarioId,
         String scenarioSource,
         String initialSupportLevel,
@@ -25,6 +27,7 @@ public record ActivityResponse(
                 activity.getActivityId(),
                 activity.getChildId(),
                 activity.getGoalId(),
+                activity.getActivityType(),
                 activity.getScenarioId(),
                 activity.getScenarioSource(),
                 activity.getInitialSupportLevel(),

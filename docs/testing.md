@@ -28,6 +28,7 @@
 | 동시성 | 동시에 들어온 등록의 유실·학급 혼입, 같은 이메일 동시 가입 | `ConcurrentRegistrationIntegrationTest` | — |
 | 결정 표 | AI 평가 결과 전달 게이트(안전·PASS·치명 실패 0건), 형식이 틀린 평가 결과는 게이트 전에 형식 오류 | `ai/application/EvaluationResultDeliveryGateTest` | — |
 | AI 제공자 연동 규칙 | `ai-provider-contract.md` 의 실패 분류·재시도 가능 여부·자동 재시도 0회·추적 ID 미포함 | `ai/infrastructure/AiProviderContractTest`(MockServer) | — |
+| AI 품질 회귀 | 프롬프트·모델을 바꿨을 때 형식 실패·판정·지연이 나빠짐(고정 입력 14턴) | `ai/eval/RoleplayEvalRunnerTest`(가짜 모델). 실제 모델은 `./gradlew roleplayEval` — [ai-quality-measurement.md](ai-quality-measurement.md) | — |
 | 아키텍처 | 계층 방향, 엔티티 노출, 트랜잭션 위치, 도메인 순환, 로그 경로 | `ArchitectureTest` | — |
 | 속성 기반 | 응답 해석이 어떤 본문·상태 코드에서도 깨지지 않음(무작위 입력 수백 개) | — | `api.property.test.ts`(fast-check) |
 | 접근성 | WCAG 2.x A·AA(레이블·이름·역할·키보드·색 대비·누를 수 있는 크기) | — | `src/accessibility.test.tsx`(jsdom) · `e2e/accessibility.spec.ts`(실제 브라우저) · `e2e/child-flow.spec.ts` |
@@ -209,6 +210,22 @@ Playwright 로 실제 백엔드(local 프로필)·PostgreSQL·프론트 빌드�
 - 오프라인에서 누른 저장은 실패하지 않고 멈춰 있다가 다시 연결되면 한 번 나간다(React Query `networkMode: online`). 오류 문구를 기다리지 않는다.
 - 같은 실행의 테스트는 표시(marker)를 같이 쓴다. "저장되지 않았다"는 그 테스트에서 가입한 강사의 학급 목록으로 본다.
 - 아동 활동 화면은 `page.goto` 로 바로 열지 않는다(가드가 코드 입력 화면으로 보낸다). 입장한 뒤 화면 안의 링크로 옮겨 간다.
+
+## 배포 주소 테스트 (AWS)
+
+배포된 테스트 주소(CloudFront → EC2 의 nginx·백엔드)를 밖에서 연다. CI E2E 가 못 보는 앞단 설정(https·캐시·압축·보안 헤더·국가 제한·쿠키)과 실제 망의 속도·기기 화면을 본다. 기대값의 근거는 `infra/modules/edge/main.tf`·03 인수 조건·06 DEC-002·022 다.
+
+- 실행: Dev server 를 켠 뒤 한국에 있는 PC 에서
+  `cd frontend && DEPLOYED_BASE_URL=https://<테스트 주소> npm run test:deployed`
+  - 주소는 레포·PR·로그에 적지 않는다(디스코드 고정 메시지). 도는 동안은 요청이 가서 "안 쓰면 끄기"가 끄지 않는다.
+  - 기본 E2E(`playwright.config.ts`)는 `e2e/deployed` 를 돌지 않는다. 설정은 `frontend/playwright.deployed.config.ts`(pc · 태블릿 세로 · 가로).
+- 파일
+  - `e2e/deployed/edge.spec.ts`: http → https 301, `/api` 는 http 403, 화면 주소 POST 403, 화면·API·빌드 파일에 HSTS(1년 이상)·nosniff·X-Frame-Options·Referrer-Policy, 화면은 캐시 안 됨·`/assets` 는 캐시(`x-cache: Hit`)·br/gzip 압축, `/api` 는 늘 Miss, 없는 빌드 파일 404, 커밋 표시(`X-Neuringo-Release`, `EXPECTED_RELEASE` 로 비교), 로그인 없이 API 는 백엔드 401 JSON, 다른 출처 preflight 거부, CSRF 쿠키 HttpOnly·Secure
+  - `e2e/deployed/screens.spec.ts`: 로그인·가입·아동 코드 화면이 HTTP/2 이상·가로 넘침 없음·스크립트 오류 없음·섞인 내용(http) 없음, 보호 경로, 키패드 44px, 다크 모드 기기에서 체크박스가 체크 전에 비어 보이는지
+  - `e2e/deployed/speed.spec.ts`: 빈 캐시 PC LCP 2.5초·첫 바이트 0.8초, 태블릿·10Mbps·지연 60ms·CPU 4배에서 LCP 4초, API 왕복 p95 300ms, JS 압축 300KB 이하·다음 화면은 캐시. 기획안에 웹 속도 숫자가 없어 Core Web Vitals 경계를 쓴다. 숫자는 통과해도 목록에 찍힌다
+  - `e2e/deployed/instructor-flow.spec.ts`: 학급 → 아동 → 활동(목표·배정) → 리포트 빈 상태 → 학급 삭제로 정리, 새 탭은 다시 로그인(DEC-002)·로그아웃. 배포 주소에서는 테스트 강사 계정(`DEPLOYED_INSTRUCTOR_EMAIL`·`_PASSWORD`)으로 돌거나, `DEPLOYED_ALLOW_SIGNUP=1` 이면 실행마다 임의 값으로 새로 가입한다(`localhost` 는 늘 새로 가입). 학급·아동·활동은 테스트가 지우지만 강사 계정은 지우는 API 가 없어 dev DB 에 남는다
+  - `e2e/deployed/outside-korea.spec.ts`: `EXPECT_GEO_BLOCK=1` 일 때만. 한국 밖(GitHub 러너)에서 화면·API 가 CloudFront 403(`x-cache: Error`)이고 서버 응답이 섞이지 않는지
+- 서버와 같은 구성을 로컬에 띄워(`deploy/compose.dev.yml`) `DEPLOYED_BASE_URL=http://localhost:<포트>` 로 돌리면 앞단 검사(edge)는 건너뛰고 화면·흐름만 돈다.
 
 ## DB 마이그레이션 규칙
 

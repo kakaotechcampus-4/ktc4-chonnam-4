@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.child.controller;
 
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
+import com.neuringo.neuringobe.auth.security.SensitiveReadLog;
 import com.neuringo.neuringobe.child.dto.ChildResponse;
 import com.neuringo.neuringobe.child.dto.CreateChildRequest;
 import com.neuringo.neuringobe.child.service.ChildService;
@@ -21,9 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChildController {
 
     private final ChildService childService;
+    private final SensitiveReadLog sensitiveReads;
 
-    public ChildController(ChildService childService) {
+    public ChildController(ChildService childService, SensitiveReadLog sensitiveReads) {
         this.childService = childService;
+        this.sensitiveReads = sensitiveReads;
     }
 
     @PostMapping
@@ -37,6 +40,12 @@ public class ChildController {
     @GetMapping
     public ApiResponse<List<ChildResponse>> list(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID classId) {
-        return ApiResponse.of(childService.list(user.userId(), classId));
+        List<ChildResponse> children =
+                sensitiveReads.read(
+                        user.userId(),
+                        SensitiveReadLog.Target.CLASSROOM_CHILDREN,
+                        classId,
+                        () -> childService.list(user.userId(), classId));
+        return ApiResponse.of(children);
     }
 }
