@@ -520,11 +520,15 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  // 즉시 탈퇴: 그 강사의 학급·아동·기록, 모든 세션, 계정을 지운다.
-  http.delete("*/api/v1/users/me", ({ request }) => {
+  // 즉시 탈퇴: 현재 비밀번호가 맞으면 그 강사의 학급·아동·기록, 모든 세션, 계정을 지운다.
+  http.post("*/api/v1/users/me/withdrawal", async ({ request }) => {
     if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
     const session = authenticate(request)
     if (session instanceof Response) return session
+    const body = (await request.json()) as { password?: unknown }
+    const account = accounts.find((a) => a.userId === session.userId)
+    if (account && account.password !== body.password)
+      return apiError(403, "PASSWORD_MISMATCH", "비밀번호가 올바르지 않습니다.", "/api/v1/users/me/withdrawal")
     const owned = classrooms.filter((c) => c.instructorId === session.userId).map((c) => c.classId)
     removeChildren(children.filter((c) => owned.includes(c.classId)).map((c) => c.childId))
     classrooms = classrooms.filter((c) => c.instructorId !== session.userId)

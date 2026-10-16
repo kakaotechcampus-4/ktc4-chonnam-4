@@ -9,9 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
-/**
- * 강사의 민감 조회 기록. 조회에 성공했을 때만 강사 ID·대상 종류·대상 ID 한 줄이 남고, 아동 이름은 남지 않는다. 막힌 조회(남의 아동·없는 아동)는 남기지 않는다.
- */
+/** 강사의 민감 조회 기록. 성공한 조회와 막힌 조회(남의 아동·없는 아동) 모두 강사 ID·대상 종류·대상 ID·결과 한 줄이 남고, 아동 이름은 남지 않는다. */
 @LocalProfileIntegrationTest
 @ExtendWith(OutputCaptureExtension.class)
 class SensitiveReadLogIntegrationTest {
@@ -32,12 +30,13 @@ class SensitiveReadLogIntegrationTest {
                         "SENSITIVE_READ instructorId="
                                 + owner.userId()
                                 + " target=CHILD targetId="
-                                + childId)
+                                + childId
+                                + " outcome=ALLOWED")
                 .doesNotContain(name);
     }
 
     @Test
-    void blockedReadsLeaveNoLine(CapturedOutput output) {
+    void blockedReadsLeaveBlockedLineWithErrorCode(CapturedOutput output) {
         TestFixtures.Instructor owner = fixtures.signUpInstructor();
         TestFixtures.Instructor other = fixtures.signUpInstructor();
         UUID classId = fixtures.createClassroom(owner, TestFixtures.CLASSROOM_A1);
@@ -45,9 +44,28 @@ class SensitiveReadLogIntegrationTest {
 
         assertThat(fixtures.get(other, "/api/v1/children/{childId}", childId))
                 .hasStatus4xxClientError();
-        assertThat(fixtures.get(other, "/api/v1/children/{childId}", UUID.randomUUID()))
+        UUID missingId = UUID.randomUUID();
+        assertThat(fixtures.get(other, "/api/v1/children/{childId}", missingId))
                 .hasStatus4xxClientError();
 
-        assertThat(output.getOut()).doesNotContain("SENSITIVE_READ instructorId=" + other.userId());
+        // 남의 아동과 없는 아동은 같은 줄이 된다. 서버가 남의 자원을 없는 자원처럼 숨기기 때문이다.
+        assertThat(output.getOut())
+                .contains(blockedChildLine(other, childId))
+                .contains(blockedChildLine(other, missingId))
+                .doesNotContain("남의 아동")
+                .doesNotContain(
+                        "SENSITIVE_READ instructorId="
+                                + other.userId()
+                                + " target=CHILD targetId="
+                                + childId
+                                + " outcome=ALLOWED");
+    }
+
+    private static String blockedChildLine(TestFixtures.Instructor instructor, UUID childId) {
+        return "SENSITIVE_READ instructorId="
+                + instructor.userId()
+                + " target=CHILD targetId="
+                + childId
+                + " outcome=BLOCKED status=404 code=CHILD_NOT_FOUND";
     }
 }

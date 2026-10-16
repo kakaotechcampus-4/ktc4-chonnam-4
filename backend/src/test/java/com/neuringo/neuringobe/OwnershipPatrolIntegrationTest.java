@@ -45,7 +45,7 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("POST /api/v1/auth/sessions", "공개: 로그인"),
                     Map.entry("GET /api/v1/auth/session", "자기 세션만 본다"),
                     Map.entry("DELETE /api/v1/auth/session", "자기 세션만 끝낸다"),
-                    Map.entry("DELETE /api/v1/users/me", "자기 계정만 탈퇴한다"),
+                    Map.entry("POST /api/v1/users/me/withdrawal", "자기 계정만 탈퇴한다"),
                     Map.entry("POST /api/v1/classrooms", "새 학급을 자기 소유로 만든다. 남의 ID 를 받지 않는다"),
                     Map.entry("POST /api/v1/child-access-sessions", "아동 입장(코드)"),
                     Map.entry("DELETE /api/v1/child-access-sessions/current", "아동 사용 종료"),

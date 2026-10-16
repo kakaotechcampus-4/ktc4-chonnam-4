@@ -29,8 +29,12 @@ public class ChildDetailController {
     @GetMapping("/api/v1/children/{childId}")
     public ApiResponse<ChildResponse> get(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID childId) {
-        ChildResponse child = childService.get(user.userId(), childId);
-        sensitiveReads.record(user.userId(), SensitiveReadLog.Target.CHILD, childId);
+        ChildResponse child =
+                sensitiveReads.read(
+                        user.userId(),
+                        SensitiveReadLog.Target.CHILD,
+                        childId,
+                        () -> childService.get(user.userId(), childId));
         return ApiResponse.of(child);
     }
 }

@@ -44,7 +44,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>공개 경로(가입·로그인·CSRF 토큰)는 틀린 토큰이 달려 있어도 열린다(PublicEndpoints 의 규칙).
  *   <li>"이용약관·개인정보 처리방침 각각 필수 동의, 버전·시각 저장": 둘 중 하나라도 빠지면 422 이고 계정이 생기지 않는다. 가입하면 서버가 정한 버전과 동의
  *       시각이 계정 행에 함께 저장된다.
- *   <li>"확인 없이 즉시 탈퇴, 같은 이메일 재가입은 새 ID": 탈퇴하면 그 강사의 모든 토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
+ *   <li>"즉시 탈퇴, 같은 이메일 재가입은 새 ID": 현재 비밀번호를 다시 확인한 뒤 바로 지운다(틀리면 403 이고 아무것도 지우지 않는다). 탈퇴하면 그 강사의 모든
+ *       토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
  * </ul>
  */
 @LocalProfileIntegrationTest
@@ -136,8 +137,7 @@ class AuthIntegrationTest {
         TestFixtures.Instructor instructor = fixtures.signUpInstructor();
         String otherTab = fixtures.login(instructor.email(), instructor.password());
 
-        MvcTestResult withdrawal =
-                send(mvc.delete().uri("/api/v1/users/me"), null, instructor.accessToken());
+        MvcTestResult withdrawal = withdraw(instructor.password(), instructor.accessToken());
 
         assertThat(withdrawal).hasStatus(HttpStatus.NO_CONTENT);
         assertUnauthorized(
@@ -155,6 +155,52 @@ class AuthIntegrationTest {
                 fixtures.signUp(
                         new TestFixtures.Credentials(instructor.email(), instructor.password()));
         assertThat(again).isNotEqualTo(instructor.userId());
+    }
+
+    /** 비밀번호가 틀리면 탈퇴하지 않는다. 401 이 아니라 403 이라 화면이 로그아웃시키지 않고, 세션도 그대로 쓸 수 있다. */
+    @Test
+    void withdrawalWithWrongPasswordKeepsAccountAndSession() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                withdraw("wrong-" + instructor.password(), instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("PASSWORD_MISMATCH");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
+        assertThat(withdraw(instructor.password(), instructor.accessToken()))
+                .hasStatus(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void withdrawalWithoutPasswordIsValidationError() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                send(
+                        mvc.post().uri("/api/v1/users/me/withdrawal"),
+                        "{\"password\":\"\"}",
+                        instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("VALIDATION_FAILED");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
     }
 
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */
@@ -447,6 +493,13 @@ class AuthIntegrationTest {
             request.contentType(MediaType.APPLICATION_JSON).content(json);
         }
         return (token == null ? request : TestFixtures.bearer(request, token)).exchange();
+    }
+
+    private MvcTestResult withdraw(String password, String token) {
+        return send(
+                mvc.post().uri("/api/v1/users/me/withdrawal"),
+                "{\"password\":\"" + password + "\"}",
+                token);
     }
 
     private static void assertUnauthorized(MvcTestResult result, String code) {

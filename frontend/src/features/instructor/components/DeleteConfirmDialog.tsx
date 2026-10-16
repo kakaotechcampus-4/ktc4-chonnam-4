@@ -6,6 +6,7 @@ import { dangerButtonClass, errorTextClass, inputClass, outlineButtonClass } fro
  * 영구 삭제 확인 창 (ADR 2026-10-04 D4). 무엇이 함께 지워지는지 description 으로 알린다.
  * confirmText 를 주면 그 이름을 똑같이 입력해야 삭제 버튼이 켜진다. 피해가 큰 학급 삭제에만 쓴다.
  * 삭제 중에는 닫히지 않고, 실패하면 창 안에 오류를 보인다. 회원 탈퇴처럼 버튼 글자가 다르면 actionLabel·pendingLabel 로 바꾼다.
+ * 비밀번호처럼 더 받을 입력은 children 으로 넣고, 그 입력이 채워지기 전에는 canConfirm 을 false 로 둔다.
  */
 function DeleteConfirmDialog({
   open,
@@ -13,6 +14,8 @@ function DeleteConfirmDialog({
   title,
   description,
   confirmText,
+  children,
+  canConfirm = true,
   actionLabel = '영구 삭제',
   pendingLabel = '삭제 중...',
   isPending,
@@ -24,6 +27,8 @@ function DeleteConfirmDialog({
   title: string
   description: ReactNode
   confirmText?: string
+  children?: ReactNode
+  canConfirm?: boolean
   actionLabel?: string
   pendingLabel?: string
   isPending: boolean
@@ -66,6 +71,8 @@ function DeleteConfirmDialog({
               </label>
             )}
 
+            {children}
+
             {error && (
               <p role="alert" className={errorTextClass}>
                 {error}
@@ -80,7 +87,7 @@ function DeleteConfirmDialog({
               <button
                 type="button"
                 className={dangerButtonClass}
-                disabled={!isConfirmed || isPending}
+                disabled={!isConfirmed || !canConfirm || isPending}
                 onClick={onConfirm}
               >
                 {isPending ? pendingLabel : actionLabel}

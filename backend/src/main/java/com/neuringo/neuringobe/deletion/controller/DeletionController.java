@@ -1,12 +1,16 @@
 package com.neuringo.neuringobe.deletion.controller;
 
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
+import com.neuringo.neuringobe.deletion.dto.WithdrawalRequest;
 import com.neuringo.neuringobe.deletion.service.DeletionService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,11 +34,16 @@ public class DeletionController {
         deletionService.deleteChild(user.userId(), childId);
     }
 
-    /** 강사 즉시 탈퇴. 재인증·확인 없이 계정과 소유 데이터를 모두 지운다. */
-    @DeleteMapping("/api/v1/users/me")
+    /**
+     * 강사 즉시 탈퇴. 현재 비밀번호를 다시 확인한 뒤 계정과 소유 데이터를 모두 지운다. 토큰이 새도 비밀번호 없이는 탈퇴할 수 없다. DELETE 본문은 중간 프록시가
+     * 버려도 표준 위반이 아니라, 비밀번호를 확실히 받으려고 POST 로 받는다.
+     */
+    @PostMapping("/api/v1/users/me/withdrawal")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void withdraw(@AuthenticationPrincipal AuthenticatedUser user) {
-        deletionService.deleteInstructor(user.userId());
+    public void withdraw(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody WithdrawalRequest request) {
+        deletionService.deleteInstructor(user.userId(), request.password());
     }
 
     @DeleteMapping("/api/v1/classrooms/{classId}")

@@ -40,8 +40,12 @@ public class ChildController {
     @GetMapping
     public ApiResponse<List<ChildResponse>> list(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID classId) {
-        List<ChildResponse> children = childService.list(user.userId(), classId);
-        sensitiveReads.record(user.userId(), SensitiveReadLog.Target.CLASSROOM_CHILDREN, classId);
+        List<ChildResponse> children =
+                sensitiveReads.read(
+                        user.userId(),
+                        SensitiveReadLog.Target.CLASSROOM_CHILDREN,
+                        classId,
+                        () -> childService.list(user.userId(), classId));
         return ApiResponse.of(children);
     }
 }

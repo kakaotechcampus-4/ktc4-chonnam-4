@@ -31,9 +31,11 @@ public class ActivityController {
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication) {
         List<ActivityResponse> activities =
-                service.list(childId, status, page, size, authentication);
-        sensitiveReads.recordIfInstructor(
-                authentication, SensitiveReadLog.Target.CHILD_ACTIVITIES, childId);
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.CHILD_ACTIVITIES,
+                        childId,
+                        () -> service.list(childId, status, page, size, authentication));
         return ApiResponse.of(activities);
     }
 }
