@@ -13,6 +13,10 @@ terraform {
       source  = "hashicorp/random"
       version = "= 3.9.1"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "= 2.7.1"
+    }
   }
 
   # bucket·key·region·use_lockfile 은 infra.yml 이 -backend-config 로 넘긴다(state 버킷 이름에 계정 ID 가 들어간다).
@@ -114,6 +118,15 @@ module "observability" {
   env          = var.env
   instance_id  = data.aws_instance.app.id
   alert_emails = var.alert_emails
+}
+
+# 안 쓰면 끄기(EventBridge → Lambda). GitHub 예약은 몇 시간씩 밀려서 AWS 안에서 판단한다.
+module "idle_off" {
+  source          = "../../modules/idle-off"
+  env             = var.env
+  instance_id     = data.aws_instance.app.id
+  distribution_id = module.edge.distribution_id
+  alert_topic_arn = module.observability.alert_topic_arn
 }
 
 module "cost" {

@@ -134,6 +134,8 @@ infra_dirs() { find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname
 infra_fmt() { require_docker && bash scripts/tf-run.sh infra fmt -check -recursive -diff; }
 # plan 이 자격증명으로 코드를 돌리기 전에 위험한 구성(provisioner·외부 모듈·외부 provider·비밀값 data)을 막는다.
 infra_policy() { node scripts/tf-plan-guard.mjs --config infra; }
+# 안 쓰면 끄기 Lambda 코드(가짜 AWS 클라이언트로). Lambda 런타임처럼 표준 라이브러리만 쓴다.
+idle_off_selftest() { python3 -B -m unittest discover -s infra/modules/idle-off/lambda -q; }
 # backend 없이 init 해서 자격증명 없이 돈다. provider 는 잠금 파일에 있는 것만 받는다. test 는 mock provider 라 AWS 를 부르지 않는다.
 infra_check() { # 디렉터리
   require_docker || return 1
@@ -209,6 +211,7 @@ infra() {
   local dir
   run "infra: terraform fmt" infra_fmt
   run "infra: 구성 검사(provisioner·외부 모듈·외부 provider·비밀값 data 금지)" infra_policy
+  run "infra: 안 쓰면 끄기 Lambda 자체 검사" idle_off_selftest
   while read -r dir; do
     run "infra: $dir (init·validate·test)" infra_check "$dir"
   done < <(infra_dirs)
