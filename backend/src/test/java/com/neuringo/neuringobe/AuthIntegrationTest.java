@@ -136,8 +136,7 @@ class AuthIntegrationTest {
         TestFixtures.Instructor instructor = fixtures.signUpInstructor();
         String otherTab = fixtures.login(instructor.email(), instructor.password());
 
-        MvcTestResult withdrawal =
-                send(mvc.delete().uri("/api/v1/users/me"), null, instructor.accessToken());
+        MvcTestResult withdrawal = withdraw(instructor.password(), instructor.accessToken());
 
         assertThat(withdrawal).hasStatus(HttpStatus.NO_CONTENT);
         assertUnauthorized(
@@ -155,6 +154,52 @@ class AuthIntegrationTest {
                 fixtures.signUp(
                         new TestFixtures.Credentials(instructor.email(), instructor.password()));
         assertThat(again).isNotEqualTo(instructor.userId());
+    }
+
+    /** 비밀번호가 틀리면 탈퇴하지 않는다. 401 이 아니라 403 이라 화면이 로그아웃시키지 않고, 세션도 그대로 쓸 수 있다. */
+    @Test
+    void withdrawalWithWrongPasswordKeepsAccountAndSession() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                withdraw("wrong-" + instructor.password(), instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("PASSWORD_MISMATCH");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
+        assertThat(withdraw(instructor.password(), instructor.accessToken()))
+                .hasStatus(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void withdrawalWithoutPasswordIsValidationError() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                send(
+                        mvc.post().uri("/api/v1/users/me/withdrawal"),
+                        "{\"password\":\"\"}",
+                        instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("VALIDATION_FAILED");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
     }
 
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */
@@ -447,6 +492,13 @@ class AuthIntegrationTest {
             request.contentType(MediaType.APPLICATION_JSON).content(json);
         }
         return (token == null ? request : TestFixtures.bearer(request, token)).exchange();
+    }
+
+    private MvcTestResult withdraw(String password, String token) {
+        return send(
+                mvc.post().uri("/api/v1/users/me/withdrawal"),
+                "{\"password\":\"" + password + "\"}",
+                token);
     }
 
     private static void assertUnauthorized(MvcTestResult result, String code) {

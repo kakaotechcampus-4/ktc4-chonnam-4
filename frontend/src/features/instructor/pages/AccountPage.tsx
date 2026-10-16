@@ -5,18 +5,20 @@ import { getCurrentUser, withdraw } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
-import { cardClass, dangerButtonClass } from '../components/styles'
+import { cardClass, dangerButtonClass, inputClass } from '../components/styles'
 import { cn } from '@/lib/utils'
 
 /**
  * 내 계정 정보와 회원 탈퇴. 시안이 없어 기존 강사 레이아웃·카드·버튼만 조립한 임시 화면이다.
  *
- * 탈퇴는 비밀번호를 다시 묻지 않는다. 대신 아동·학급 삭제와 같은 확인 창을 한 번 거쳐 실수로 누르는 일을 줄인다.
+ * 탈퇴는 아동·학급 삭제와 같은 확인 창을 거치고, 그 창에서 현재 비밀번호를 다시 받는다. 확인 창은 실수로 누르는 일을 막고,
+ * 비밀번호는 로그인이 남은 기기를 다른 사람이 쓸 때 탈퇴하지 못하게 막는다.
  */
 function AccountPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+  const [password, setPassword] = useState('')
 
   // 사이드바(InstructorLayout)와 같은 키라 이미 받은 값을 그대로 쓴다.
   const { data: user } = useQuery({
@@ -70,7 +72,10 @@ function AccountPage() {
         open={isWithdrawOpen}
         onOpenChange={(open) => {
           setIsWithdrawOpen(open)
-          if (!open) withdrawMutation.reset()
+          if (!open) {
+            withdrawMutation.reset()
+            setPassword('')
+          }
         }}
         title="정말 탈퇴할까요?"
         description={
@@ -87,8 +92,21 @@ function AccountPage() {
             ? describeError(withdrawMutation.error, '탈퇴하지 못했습니다. 잠시 후 다시 시도해 주세요.')
             : null
         }
-        onConfirm={() => withdrawMutation.mutate()}
-      />
+        canConfirm={password.length > 0}
+        onConfirm={() => withdrawMutation.mutate(password)}
+      >
+        <label className="flex flex-col gap-2 text-sm">
+          <span>확인을 위해 비밀번호를 입력해 주세요.</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={withdrawMutation.isPending}
+            autoComplete="current-password"
+            className={inputClass}
+          />
+        </label>
+      </DeleteConfirmDialog>
     </InstructorLayout>
   )
 }
