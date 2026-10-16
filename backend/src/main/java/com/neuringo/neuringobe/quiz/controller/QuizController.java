@@ -66,9 +66,12 @@ public class QuizController {
     @GetMapping("/api/v1/activity-quiz-items/{activityQuizId}/attempt")
     public ApiResponse<QuizAttemptResponse> getAttempt(
             @PathVariable UUID activityQuizId, Authentication authentication) {
-        QuizAttemptResponse attempt = attempts.get(activityQuizId, authentication);
-        sensitiveReads.recordIfInstructor(
-                authentication, SensitiveReadLog.Target.QUIZ_ATTEMPT, activityQuizId);
+        QuizAttemptResponse attempt =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.QUIZ_ATTEMPT,
+                        activityQuizId,
+                        () -> attempts.get(activityQuizId, authentication));
         return ApiResponse.of(attempt);
     }
 
@@ -98,9 +101,12 @@ public class QuizController {
     @GetMapping("/api/v1/activities/{activityId}/quiz-result")
     public ApiResponse<QuizResultResponse> result(
             @PathVariable UUID activityId, Authentication authentication) {
-        QuizResultResponse result = attempts.result(activityId, authentication);
-        sensitiveReads.recordIfInstructor(
-                authentication, SensitiveReadLog.Target.QUIZ_RESULT, activityId);
+        QuizResultResponse result =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.QUIZ_RESULT,
+                        activityId,
+                        () -> attempts.result(activityId, authentication));
         return ApiResponse.of(result);
     }
 }
