@@ -229,6 +229,36 @@ class SchemaConstraintIntegrationTest {
     }
 
     @Test
+    void onlyOneFirstCombinedPerChildWhateverItsStatus() {
+        UUID instructorId = insertInstructor();
+        UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
+        insertActivity(
+                childId, "FIRST_COMBINED", insertGoal(childId, instructorId), "COMPLETED", null);
+        UUID otherGoal = insertGoal(childId, instructorId);
+
+        assertThat(
+                        sqlStateOf(
+                                () ->
+                                        insertActivity(
+                                                childId,
+                                                "FIRST_COMBINED",
+                                                otherGoal,
+                                                "NOT_STARTED",
+                                                null)))
+                .isEqualTo(UNIQUE_VIOLATION);
+        UUID otherChild = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
+        assertThatCode(
+                        () ->
+                                insertActivity(
+                                        otherChild,
+                                        "FIRST_COMBINED",
+                                        insertGoal(otherChild, instructorId),
+                                        "NOT_STARTED",
+                                        null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void goalPresenceFollowsActivityType() {
         UUID instructorId = insertInstructor();
         UUID childId = insertChild(insertClassroom(instructorId, "ACTIVE"), "ACTIVE");
