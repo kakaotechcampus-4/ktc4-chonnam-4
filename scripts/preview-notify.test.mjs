@@ -58,7 +58,7 @@ test("미리보기가 뜨면 주소·자리·확인 결과를 알린다", () => 
   const text = compose(preview())
   assert.match(text, /^🟢 \*\*PR #65 미리보기가 떴습니다\*\*/)
   assert.match(text, /^> feat\\: 가입 동의 저장 · bji0319$/m)
-  assert.match(text, new RegExp(`^주소: <https://${DOMAIN}>$`, "m"))
+  assert.ok(text.split("\n").includes(`주소: <https://${DOMAIN}>`))
   assert.match(text, /커밋 `c3d12f3` · 자리 10\/14 02:05\(KST\)까지 · 화면 ✅ · API ✅ · 이 커밋 ✅/)
   assert.match(text, /\[실행 보고서\]\(<https:\/\/github\.com\/o\/r\/actions\/runs\/1>\)/)
 })
