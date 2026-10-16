@@ -129,8 +129,12 @@
   box-sizing: border-box;
 }
 
-/* 아동 화면은 태블릿 화면을 꽉 채운다. 위 1126px 고정·테두리(Vite 템플릿)는 강사 화면에만 남긴다. */
-#root:has(.child-scope) {
+/*
+ * 아동 화면은 태블릿 화면을, 강사 화면은 브라우저 너비를 꽉 채운다(와이어프레임은 1280px 전체를 쓴다).
+ * 위 1126px 고정·테두리는 Vite 템플릿 값이라 두 화면 모두에서 푼다.
+ */
+#root:has(.child-scope),
+#root:has(.instructor-scope) {
   width: 100%;
   border-inline: none;
 }
@@ -307,47 +311,102 @@ code {
 }
 /*
  * 강사 화면 전용 디자인 토큰 (인증 화면 포함).
- * Figma 원본 접근이 막혀 있어 시안 PNG에서 눈으로 추정한 값이다.
- * 인증: T-AUTH-01·02 / 앱 셸: T-HOME-01, T-CLS-01·02·03, T-NOTI-01
- * Figma에서 실제 값을 확인하면 이 블록만 교체한다.
+ * 값은 Figma 디자인 시스템의 Teacher 모드를 따른다: 01 Color 의 Semantic color modes, 02 Typography 의 Teacher type scale,
+ * Radius·Elevation, 06 강사 서비스 컴포넌트. 화면 배치(사이드바 폭, 헤더 높이, 여백)는 Lowfi Wireframe 의 강사 화면을 따른다.
  */
 .instructor-scope {
   --instructor-font-body: 'Pretendard Variable', var(--font-sans);
 
-  --instructor-bg: #f6f5f1;
-  --instructor-auth-bg: #f3f3f3;
-  --instructor-sidebar: #f3f1ec;
+  /* Background */
+  --instructor-bg: #f8f7fa; /* Subtle: 본문 바탕. 흰 카드가 그 위에 놓인다 */
+  --instructor-auth-bg: #f8f7fa;
+  --instructor-sidebar: #f8f7fa;
   --instructor-surface: #ffffff;
-  --instructor-surface-muted: #f5f3ee;
-  --instructor-border: #e4e1da;
-  --instructor-input-border: #d6d3cc;
+  --instructor-surface-muted: #f8f7fa; /* 표 머리줄, 인용 상자처럼 카드 안의 옅은 면 */
+  --instructor-disabled-bg: #f0eef3;
 
-  --instructor-nav-active: #e2dfd8;
-  --instructor-avatar: #dcd8d0;
+  /* Border */
+  --instructor-border: #dedce4;
+  --instructor-border-subtle: #f0eef3; /* 표 행 구분선, 카드 안 구분선 */
+  --instructor-input-border: #dedce4;
+  --instructor-border-strong: #c8c5d0; /* 보조 버튼 테두리, 빈 체크박스·라디오 */
+  --instructor-focus: #a99bf5;
 
-  --instructor-text: #262522;
-  --instructor-text-muted: #7c7870;
-  --instructor-text-disabled: #b3afa7;
+  /* 사이드바 선택 항목 */
+  --instructor-nav-active: #ede9fe;
+  --instructor-nav-active-fg: #35297a;
+  --instructor-nav-fg: #494552;
+  --instructor-avatar: #dedce4;
 
-  --instructor-primary: #2c2c2c;
+  /* Text */
+  --instructor-text: #252331;
+  --instructor-text-muted: #5e5969; /* Secondary */
+  /*
+   * 표 머리줄·도움말 글자. 디자인 시스템 부품 그림은 #777382 를 쓰지만 그 값은 Icon/Secondary 이고,
+   * 옅은 바탕(#f8f7fa) 위 12px 에서 대비가 4.3:1 로 모자라다. 글자에는 Text/Secondary 를 쓴다.
+   */
+  --instructor-text-subtle: #5e5969;
+  --instructor-icon-subtle: #777382; /* 돋보기·눈 같은 보조 아이콘 */
+  --instructor-text-disabled: #a6a2af;
+
+  /* Primary */
+  --instructor-primary: #6654d9;
+  --instructor-primary-hover: #5744c4;
+  --instructor-primary-pressed: #46369f;
   --instructor-primary-foreground: #ffffff;
-  --instructor-link: #2f6db5;
+  --instructor-primary-subtle: #f5f3ff; /* 선택된 메뉴 항목·끌어 놓기 영역 바탕 */
+  --instructor-link: #5744c4;
 
-  --instructor-success-bg: #e3f0e6;
-  --instructor-success-fg: #2e6b3f;
-  --instructor-neutral-bg: #ebe9e4;
-  --instructor-neutral-fg: #5b5852;
-  --instructor-danger-fg: #b3261e;
-  /* 진행 중·권장 배지(시안 T-LRN-03 "진행중", T-ACT-02 "권장")와 주의 안내 띠(T-LRN-04 재발급 경고) */
-  --instructor-info-bg: #e6eef8;
-  --instructor-info-fg: #2f5f96;
-  --instructor-warning-bg: #fbeee2;
-  --instructor-warning-fg: #9a5a1f;
+  /* Feedback: 배지·안내 띠. 상태는 색만으로 구분하지 않고 글자도 함께 보인다 */
+  --instructor-success-bg: #f6fbef;
+  --instructor-success-fg: #416326;
+  --instructor-neutral-bg: #f0eef3;
+  --instructor-neutral-fg: #494552;
+  --instructor-info-bg: #f1fbfd;
+  --instructor-info-fg: #206a7b;
+  --instructor-warning-bg: #fffbea;
+  --instructor-warning-fg: #764219;
+  --instructor-danger-bg: #fff2f2;
+  --instructor-danger-text: #822b2b; /* 오류 문구 */
+  --instructor-danger-fg: #bc3636; /* 삭제 버튼 바탕, 빨간 글씨 버튼 */
+  --instructor-danger-border: #d64c4c;
 
-  --instructor-radius-card: 12px;
+  /* Radius: 4 배지, 8 입력·버튼, 12 카드, 16 다이얼로그·큰 카드 */
+  --instructor-radius-badge: 4px;
   --instructor-radius-control: 8px;
+  --instructor-radius-card: 12px;
+  --instructor-radius-dialog: 16px;
+
+  /* Elevation: Teacher 는 얕고 선명하게, Level 0–2 만 쓴다 */
+  --instructor-shadow-1: 0 1px 3px rgba(16, 13, 24, 0.12);
+  --instructor-shadow-2: 0 4px 12px rgba(16, 13, 24, 0.16);
+
+  /*
+   * :root 글자 크기가 18px(Vite 템플릿)이라 Tailwind 의 rem 값이 1.125배로 커진다(text-sm 이 15.75px).
+   * 시안 px 값이 그대로 나오도록 강사 화면에서는 간격·글자 크기 변수를 px 로 고정한다. 아동 화면은 18px 기준 그대로 둔다.
+   */
+  --spacing: 4px;
+
+  /*
+   * Teacher type scale: 12/18, 14/20, 16/24, 20/28, 24/34, 28/38, 32/42.
+   * Tailwind 의 text-xs·sm·base·xl·2xl 을 이 단계로 쓴다. text-lg(18)·text-3xl(30) 은 단계에 없어 강사 화면에서 쓰지 않는다.
+   */
+  --text-xs: 12px;
+  --text-xs--line-height: calc(18 / 12);
+  --text-sm: 14px;
+  --text-sm--line-height: calc(20 / 14);
+  --text-base: 16px;
+  --text-base--line-height: calc(24 / 16);
+  --text-xl: 20px;
+  --text-xl--line-height: calc(28 / 20);
+  --text-2xl: 24px;
+  --text-2xl--line-height: calc(34 / 24);
 
   font-family: var(--instructor-font-body);
+  /* 크기 클래스가 없는 글자는 Body Small(14/20). :root 의 18px·자간 0.18px 을 강사 화면에서는 쓰지 않는다. */
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  letter-spacing: normal;
   color: var(--instructor-text);
   /* #root 의 Vite 템플릿 text-align: center 를 강사 화면에서만 되돌린다. */
   text-align: left;
