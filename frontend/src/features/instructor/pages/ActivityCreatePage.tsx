@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -590,6 +590,9 @@ function TargetStep({
 /**
  * 활동 유형 (시안의 활동 유형 화면). 시안의 카드 3개를 그대로 두고, "표정 퀴즈만" 카드 안에서 내 감정 / 상대 감정을 고른다.
  * 지금 고를 수 없는 카드는 이유와 함께 비활성으로 보인다.
+ *
+ * 카드 묶음은 기본 라디오 버튼처럼 움직인다. Tab 은 선택된 카드(없으면 고를 수 있는 첫 카드)에만 멈추고, 방향키로 고를 수 있는 카드 사이를 옮기며
+ * 바로 선택한다. 화면 낭독기 사용자는 라디오 묶음에서 방향키를 먼저 눌러 보기 때문이다.
  */
 function TypeStep({
   child,
@@ -609,12 +612,47 @@ function TypeStep({
   onNext: () => void
 }) {
   const isQuizSelected = selected === 'SELF_EMOTION_QUIZ' || selected === 'OTHER_EMOTION_QUIZ'
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([])
 
   if (activitiesError) {
     return <p className={errorTextClass}>{activitiesError.message}</p>
   }
   if (!availability) {
     return <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+  }
+
+  // 화면 순서대로. 역할극은 아직 열리지 않는다.
+  const cards = [
+    {
+      enabled: availability.firstCombined,
+      checked: selected === 'FIRST_COMBINED',
+      select: () => onSelect('FIRST_COMBINED'),
+    },
+    {
+      enabled: availability.quiz,
+      checked: isQuizSelected,
+      select: () => !isQuizSelected && onSelect('SELF_EMOTION_QUIZ'),
+    },
+    { enabled: false, checked: false, select: () => {} },
+  ]
+  const checkedIndex = cards.findIndex((card) => card.enabled && card.checked)
+  const tabStop = checkedIndex >= 0 ? checkedIndex : cards.findIndex((card) => card.enabled)
+
+  function moveSelection(e: KeyboardEvent<HTMLDivElement>) {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+    // 퀴즈 종류 라디오는 진짜 input 이라 브라우저가 방향키를 처리한다. 카드에서 누른 방향키만 여기서 다룬다.
+    const from = cardRefs.current.indexOf(e.target as HTMLDivElement)
+    if (step === undefined || from < 0) return
+    e.preventDefault()
+    // 고를 수 있는 카드가 하나뿐이면 한 바퀴 돌아 그 카드를 고른다(기본 라디오와 같다).
+    for (let i = 1; i <= cards.length; i += 1) {
+      const next = (from + step * i + cards.length) % cards.length
+      if (cards[next].enabled) {
+        cards[next].select()
+        cardRefs.current[next]?.focus()
+        return
+      }
+    }
   }
 
   return (
@@ -626,23 +664,31 @@ function TypeStep({
         </p>
       </div>
 
-      <div role="radiogroup" aria-label="활동 유형" className="grid gap-4 lg:grid-cols-3">
+      <div role="radiogroup" aria-label="활동 유형" onKeyDown={moveSelection} className="grid gap-4 lg:grid-cols-3">
         <TypeCard
+          radioRef={(el) => {
+            cardRefs.current[0] = el
+          }}
+          tabbable={tabStop === 0}
           title={ACTIVITY_TYPE_LABELS.FIRST_COMBINED}
           description="표정 퀴즈로 감정 인식을 확인한 뒤 같은 주제로 역할극을 이어갑니다."
           meta={['예상 소요 15~20분', '난이도·지원 수준 자동 산정']}
           badge={availability.firstCombined ? '권장' : undefined}
           disabledReason={availability.firstCombined ? undefined : '최초 활동은 아동마다 한 번이에요.'}
-          checked={selected === 'FIRST_COMBINED'}
-          onSelect={() => onSelect('FIRST_COMBINED')}
+          checked={cards[0].checked}
+          onSelect={cards[0].select}
         />
         <TypeCard
+          radioRef={(el) => {
+            cardRefs.current[1] = el
+          }}
+          tabbable={tabStop === 1}
           title="표정 퀴즈만"
           description="상황과 표정을 보고 감정을 고르는 문항만 배정합니다."
           meta={['예상 소요 10~15분', '10문항']}
           disabledReason={availability.quiz ? undefined : '최초 활동을 마치면 열려요.'}
-          checked={isQuizSelected}
-          onSelect={() => !isQuizSelected && onSelect('SELF_EMOTION_QUIZ')}
+          checked={cards[1].checked}
+          onSelect={cards[1].select}
         >
           {isQuizSelected && (
             <fieldset className="mt-4 flex flex-col gap-2 border-t border-[var(--instructor-border)] pt-4">
@@ -662,12 +708,16 @@ function TypeStep({
           )}
         </TypeCard>
         <TypeCard
+          radioRef={(el) => {
+            cardRefs.current[2] = el
+          }}
+          tabbable={tabStop === 2}
           title="역할극만"
           description="상황 시나리오로 대화를 주고받으며 공감 표현을 연습합니다."
           meta={['예상 소요 10~15분', '시나리오 승인 필요']}
           disabledReason="역할극은 준비 중이에요."
-          checked={false}
-          onSelect={() => {}}
+          checked={cards[2].checked}
+          onSelect={cards[2].select}
         />
       </div>
 
@@ -684,6 +734,8 @@ function TypeStep({
 }
 
 function TypeCard({
+  radioRef,
+  tabbable,
   title,
   description,
   meta,
@@ -693,6 +745,8 @@ function TypeCard({
   onSelect,
   children,
 }: {
+  radioRef: (el: HTMLDivElement | null) => void
+  tabbable: boolean
   title: string
   description: string
   meta: string[]
@@ -715,11 +769,12 @@ function TypeCard({
       )}
     >
       <div
+        ref={radioRef}
         role="radio"
         aria-checked={checked}
         aria-disabled={disabled}
         aria-label={title}
-        tabIndex={disabled ? -1 : 0}
+        tabIndex={tabbable ? 0 : -1}
         onClick={() => !disabled && onSelect()}
         onKeyDown={(e) => {
           if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
