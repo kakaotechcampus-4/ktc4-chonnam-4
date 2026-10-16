@@ -226,9 +226,9 @@ function ActivityCreatePage() {
         attemptRef.current.requestKey,
       )
     },
+    // 아동 캐시는 화면을 떠났어도 갱신한다(활동은 이미 배정됐다).
     onSuccess: (_activity, { target }) => {
       queryClient.invalidateQueries({ queryKey: ['children', target.childId] })
-      navigate(`/classrooms/${target.classId}/children/${target.childId}`)
     },
   })
 
@@ -241,6 +241,11 @@ function ActivityCreatePage() {
     assignMutation.mutate(
       { target: child, type: activityType, choice: needsGoal ? goal : null },
       {
+        // 아동 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 배정 중 사이드바·뒤로가기로
+        // 다른 화면에 간 뒤 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
+        onSuccess: (_activity, { target }) => {
+          navigate(`/classrooms/${target.classId}/children/${target.childId}`)
+        },
         onSettled: () => {
           isSubmittingRef.current = false
         },
