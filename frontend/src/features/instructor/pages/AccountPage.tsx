@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getCurrentUser, withdraw } from '../api'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getCurrentUser, listChildren, listClassrooms, withdraw } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
  *
  * 탈퇴는 아동·학급 삭제와 같은 확인 창을 거치고, 그 창에서 현재 비밀번호를 다시 받는다. 확인 창은 실수로 누르는 일을 막고,
  * 비밀번호는 로그인이 남은 기기를 다른 사람이 쓸 때 탈퇴하지 못하게 막는다.
+ * 아동 삭제 창처럼 함께 지워지는 학급 수·아동 수를 알린다. 다 세기 전이거나 세지 못하면 일반 안내를 보인다.
  */
 function AccountPage() {
   const navigate = useNavigate()
@@ -26,6 +27,25 @@ function AccountPage() {
     queryFn: getCurrentUser,
     staleTime: Infinity,
   })
+
+  // 확인 창을 열 때만 센다. 학급 목록·학급별 아동 목록은 다른 화면과 같은 키라 받아 둔 값이 있으면 그대로 쓴다.
+  const classroomsQuery = useQuery({
+    queryKey: ['classrooms'],
+    queryFn: listClassrooms,
+    enabled: isWithdrawOpen,
+  })
+  const childCount = useQueries({
+    queries: (classroomsQuery.data ?? []).map((classroom) => ({
+      queryKey: ['classrooms', classroom.classId, 'children'],
+      queryFn: () => listChildren(classroom.classId),
+      enabled: isWithdrawOpen,
+    })),
+    combine: (results) =>
+      results.every((result) => result.isSuccess)
+        ? results.reduce((sum, result) => sum + (result.data?.length ?? 0), 0)
+        : undefined,
+  })
+  const classroomCount = classroomsQuery.isSuccess ? classroomsQuery.data.length : undefined
 
   const withdrawMutation = useMutation({
     mutationFn: withdraw,
@@ -80,7 +100,7 @@ function AccountPage() {
         title="정말 탈퇴할까요?"
         description={
           <>
-            <p>계정과 모든 학급·아동·학습 기록이 바로 삭제돼요.</p>
+            <p>{describeOwned(classroomCount, childCount)}</p>
             <p>삭제하면 되돌릴 수 없어요.</p>
           </>
         }
@@ -109,6 +129,12 @@ function AccountPage() {
       </DeleteConfirmDialog>
     </InstructorLayout>
   )
+}
+
+function describeOwned(classroomCount: number | undefined, childCount: number | undefined): string {
+  if (classroomCount === undefined || childCount === undefined) return '계정과 모든 학급·아동·학습 기록이 바로 삭제돼요.'
+  if (classroomCount === 0) return '만든 학급은 없어요. 계정만 삭제돼요.'
+  return `학급 ${classroomCount}개, 아동 ${childCount}명과 그 아동들의 학습 기록이 계정과 함께 바로 삭제돼요.`
 }
 
 export { AccountPage }
