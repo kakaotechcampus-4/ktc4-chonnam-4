@@ -108,7 +108,7 @@ function SignupPage() {
 
   return (
     <AuthLayout title="강사 가입" description="기본 정보를 입력해 계정을 만드세요">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label htmlFor="signup-name" className={fieldLabelClass}>
           이름
           <input
@@ -132,8 +132,8 @@ function SignupPage() {
             className={inputClass}
           />
         </label>
-        <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-2 gap-2.5">
             <label htmlFor="signup-password" className={fieldLabelClass}>
               비밀번호
               <input
@@ -161,18 +161,18 @@ function SignupPage() {
           </div>
           <p
             id="signup-password-rule"
-            className={isPasswordTooShort ? 'text-xs text-[var(--instructor-danger-fg)]' : 'text-xs text-[var(--instructor-text-muted)]'}
+            className={isPasswordTooShort ? 'text-xs text-[var(--instructor-danger-text)]' : 'text-xs text-[var(--instructor-text-subtle)]'}
           >
             비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다.
           </p>
           {isPasswordMismatch && (
-            <p id="signup-password-mismatch" className="text-xs text-[var(--instructor-danger-fg)]">
+            <p id="signup-password-mismatch" className="text-xs text-[var(--instructor-danger-text)]">
               비밀번호가 서로 다릅니다.
             </p>
           )}
         </div>
 
-        <fieldset className="flex flex-col gap-3 border-t border-[var(--instructor-border)] pt-5">
+        <fieldset className="flex flex-col gap-2.5 border-t border-[var(--instructor-border-subtle)] pt-4">
           <legend className="sr-only">약관 동의</legend>
           <label className="flex items-center gap-2.5 text-sm font-semibold">
             <input
@@ -216,9 +216,9 @@ function SignupPage() {
         </button>
       </form>
 
-      <div className="mt-6 text-center text-sm text-[var(--instructor-text-muted)]">
+      <div className="mt-6 border-t border-[var(--instructor-border-subtle)] pt-4 text-center text-xs text-[var(--instructor-text-subtle)]">
         이미 계정이 있으신가요?{' '}
-        <Link to="/login" className="text-[var(--instructor-text)] underline underline-offset-2">
+        <Link to="/login" className="text-[var(--instructor-link)] underline underline-offset-2">
           로그인
         </Link>
       </div>

@@ -65,7 +65,7 @@ function LoginPage() {
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label htmlFor="login-email" className={fieldLabelClass}>
           이메일
           <input
@@ -78,8 +78,8 @@ function LoginPage() {
             className={inputClass}
           />
         </label>
-        <div className="flex flex-col gap-2">
-          <label htmlFor="login-password" className="text-sm font-semibold">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="login-password" className="text-sm">
             비밀번호
           </label>
           <div className="relative">
@@ -96,9 +96,9 @@ function LoginPage() {
               onClick={() => setIsPasswordVisible((visible) => !visible)}
               aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
               aria-pressed={isPasswordVisible}
-              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-text-muted)]"
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-icon-subtle)]"
             >
-              {isPasswordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {isPasswordVisible ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
             </button>
           </div>
           {/* 비밀번호 재설정은 S1 범위 밖이라 자리만 둔다. */}
@@ -124,18 +124,13 @@ function LoginPage() {
         </button>
       </form>
 
-      <div className="my-5 flex items-center gap-3 text-xs text-[var(--instructor-text-disabled)]">
-        <span className="h-px flex-1 bg-[var(--instructor-border)]" />
-        또는
-        <span className="h-px flex-1 bg-[var(--instructor-border)]" />
-      </div>
-      <button type="button" disabled className={cn(outlineButtonClass, 'w-full')}>
-        기관 SSO 로그인 (향후 제공)
+      <button type="button" disabled className={cn(outlineButtonClass, 'mt-1.5 w-full')}>
+        기관 계정으로 로그인 (향후 제공)
       </button>
 
-      <div className="mt-6 text-center text-sm text-[var(--instructor-text-muted)]">
+      <div className="mt-6 border-t border-[var(--instructor-border-subtle)] pt-4 text-center text-xs text-[var(--instructor-text-subtle)]">
         계정이 없으신가요?{' '}
-        <Link to="/signup" className="text-[var(--instructor-text)] underline underline-offset-2">
+        <Link to="/signup" className="text-[var(--instructor-link)] underline underline-offset-2">
           가입하기
         </Link>
       </div>

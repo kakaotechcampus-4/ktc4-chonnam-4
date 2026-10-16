@@ -3,13 +3,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { getCurrentUser, logout } from "../api"
 import { INSTRUCTOR_NAV_ITEMS, isNavActive } from "./instructorNav"
+import { focusRingClass } from "../components/styles"
 import { cn } from "@/lib/utils"
 
 /**
  * 학급·아동 관리 화면이 공유하는 레이아웃 셸 (왼쪽 사이드바 + 위쪽 제목 헤더).
  * features/child 의 ChildLayout 과 같은 규칙을 따른다 — 라우터는 평평하게 두고
  * 각 페이지가 이 셸을 직접 감싸므로, 라우트 구조와 레이아웃이 서로 얽히지 않는다.
- * 구조는 시안 T-HOME-01·T-CLS-01 을 따른다.
+ * 배치(사이드바 190px, 헤더 55px, 본문 여백 26·22px)는 와이어프레임 T-HOME-01·T-CLS-01 을,
+ * 메뉴 항목 모양(높이 40, 모서리 8, 선택 시 옅은 보라)은 디자인 시스템의 Side Navigation 을 따른다.
  *
  * actions: 헤더 오른쪽 버튼 자리, subheader: 헤더 바로 아래 흰 띠(탭 등) 자리.
  */
@@ -48,15 +50,18 @@ function InstructorLayout({
 
   return (
     <div className="instructor-scope flex min-h-svh bg-[var(--instructor-bg)]">
-      <aside className="flex w-[150px] shrink-0 flex-col border-r border-[var(--instructor-border)] bg-[var(--instructor-sidebar)] px-2.5 py-5">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="size-5 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
+      <aside className="flex w-[190px] shrink-0 flex-col border-r border-[var(--instructor-border)] bg-[var(--instructor-sidebar)] px-2.5 pt-4 pb-5">
+        <div className="mb-3 flex items-center gap-2 px-2 pt-0.5 pb-1.5">
+          <span className="size-6 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
           <span className="text-base font-bold">느링고</span>
         </div>
 
         <nav aria-label="강사 메뉴" className="flex flex-col gap-1">
           {INSTRUCTOR_NAV_ITEMS.map((item) => {
-            const itemClass = "rounded-[var(--instructor-radius-control)] px-2 py-2 text-sm"
+            const itemClass = cn(
+              "flex h-10 items-center rounded-[var(--instructor-radius-control)] px-3 text-sm",
+              focusRingClass
+            )
             if (!item.to) {
               return (
                 <span
@@ -77,7 +82,9 @@ function InstructorLayout({
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   itemClass,
-                  active ? "bg-[var(--instructor-nav-active)] font-semibold" : "hover:bg-[var(--instructor-nav-active)]/60"
+                  active
+                    ? "bg-[var(--instructor-nav-active)] font-semibold text-[var(--instructor-nav-active-fg)]"
+                    : "text-[var(--instructor-nav-fg)] hover:bg-[var(--instructor-primary-subtle)]"
                 )}
               >
                 {item.label}
@@ -86,16 +93,16 @@ function InstructorLayout({
           })}
         </nav>
 
-        <div className="mt-4 border-t border-[var(--instructor-border)] px-2 pt-4 text-xs text-[var(--instructor-text-muted)]">
+        <div className="mt-3 border-t border-[var(--instructor-border)] px-2 pt-3 text-xs text-[var(--instructor-text-subtle)]">
           <div className="flex items-center gap-2">
-            <span className="size-5 shrink-0 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
+            <span className="size-[22px] shrink-0 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
             <span className="break-keep">{userLabel}</span>
           </div>
           {/* 탈퇴는 되돌릴 수 없는 작업이라 로그아웃 옆에 두지 않고 계정 화면 안에 둔다. */}
           <Link
             to="/account"
             aria-current={isNavActive(pathname, "/account") ? "page" : undefined}
-            className="mt-3 block underline-offset-2 hover:underline"
+            className={cn("mt-3 block underline-offset-2 hover:underline", focusRingClass)}
           >
             계정
           </Link>
@@ -103,7 +110,7 @@ function InstructorLayout({
             type="button"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="mt-2 underline-offset-2 hover:underline disabled:opacity-50"
+            className={cn("mt-2 underline-offset-2 hover:underline disabled:opacity-50", focusRingClass)}
           >
             {logoutMutation.isPending ? "로그아웃 중..." : "로그아웃"}
           </button>
@@ -111,15 +118,15 @@ function InstructorLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-[var(--instructor-border)] bg-[var(--instructor-surface)] px-5">
-          <h1 className="text-base font-bold">{title}</h1>
+        <header className="flex min-h-[55px] items-center justify-between gap-4 border-b border-[var(--instructor-border)] bg-[var(--instructor-surface)] px-[26px]">
+          <h1 className="text-base font-semibold">{title}</h1>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </header>
         {subheader && (
-          <div className="border-b border-[var(--instructor-border)] bg-[var(--instructor-surface)] px-5">{subheader}</div>
+          <div className="border-b border-[var(--instructor-border)] bg-[var(--instructor-surface)] px-[26px]">{subheader}</div>
         )}
 
-        <main className="flex-1 px-5 py-5">{children}</main>
+        <main className="flex-1 px-[26px] py-[22px]">{children}</main>
       </div>
     </div>
   )
