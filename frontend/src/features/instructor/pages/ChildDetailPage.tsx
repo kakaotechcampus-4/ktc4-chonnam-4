@@ -7,7 +7,14 @@ import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import { PageTabs } from '../components/PageTabs'
-import { cardClass, dangerOutlineButtonClass, errorTextClass, primaryButtonClass } from '../components/styles'
+import {
+  dangerOutlineButtonClass,
+  errorTextClass,
+  primaryButtonClass,
+  tableClass,
+  tableHeadRowClass,
+  tableRowClass,
+} from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { formatDateTime } from '../lib/dateTime'
 import { cn } from '@/lib/utils'
@@ -81,13 +88,13 @@ function ChildDetailPage() {
             <button
               type="button"
               onClick={() => setIsDeleteOpen(true)}
-              className={cn(dangerOutlineButtonClass, 'h-9 px-4')}
+              className={cn(dangerOutlineButtonClass, 'h-8 px-3.5')}
             >
               아동 삭제
             </button>
             <Link
               to={`/activities/new?classId=${child.classId}&childId=${child.childId}`}
-              className={cn(primaryButtonClass, 'h-9 px-4')}
+              className={cn(primaryButtonClass, 'h-8 px-3.5')}
             >
               활동 만들기
             </Link>
@@ -106,12 +113,25 @@ function ChildDetailPage() {
         />
       }
     >
-      <Link
-        to={`/classrooms/${classId}?tab=children`}
-        className="mb-4 inline-block text-sm text-[var(--instructor-text-muted)] hover:underline"
-      >
-        ← 아동 목록
-      </Link>
+      <nav aria-label="현재 위치" className="mb-3.5 text-xs text-[var(--instructor-text-subtle)]">
+        <Link to="/classrooms" className="hover:underline">
+          학급 목록
+        </Link>
+        <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+          ›
+        </span>
+        <Link to={`/classrooms/${classId}?tab=children`} className="hover:underline">
+          {classroom && !isWrongClassroom ? classroom.name : '아동 목록'}
+        </Link>
+        {child && !isWrongClassroom && (
+          <>
+            <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+              ›
+            </span>
+            <span aria-current="page">{child.displayName}</span>
+          </>
+        )}
+      </nav>
 
       {childQuery.isLoading ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
@@ -132,44 +152,41 @@ function ChildDetailPage() {
           ) : activities?.length === 0 ? (
             <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정된 활동이 없습니다.</p>
           ) : (
-            <div className={cn(cardClass, 'overflow-hidden')}>
-              <table className="w-full text-sm">
-                <thead className="bg-[var(--instructor-surface-muted)] text-xs text-[var(--instructor-text-muted)]">
-                  <tr>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+            <div className={tableClass}>
+              <table className="w-full">
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th scope="col" className="px-5 py-2.5 font-normal">
                       학습 목표
                     </th>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    <th scope="col" className="px-5 py-2.5 font-normal">
                       상태
                     </th>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    <th scope="col" className="px-5 py-2.5 font-normal">
                       배정
                     </th>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    <th scope="col" className="px-5 py-2.5 font-normal">
                       완료
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {activities?.map((activity) => (
-                    <tr key={activity.activityId} className="border-t border-[var(--instructor-border)]">
-                      <td className="px-4 py-3.5">
-                        <Link
-                          to={`/activities/${activity.activityId}/report`}
-                          className="font-semibold hover:underline"
-                        >
+                    <tr key={activity.activityId} className={tableRowClass}>
+                      <td className="px-5 py-3">
+                        <Link to={`/activities/${activity.activityId}/report`} className="hover:underline">
                           {activity.goalId
                             ? (goalTitles.get(activity.goalId) ?? '학습 목표')
                             : ACTIVITY_TYPE_LABELS[activity.activityType]}
                         </Link>
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-5 py-3">
                         <ActivityStatusBadge status={activity.status} />
                       </td>
-                      <td className="px-4 py-3.5 text-[var(--instructor-text-muted)]">
+                      <td className="px-5 py-3 text-[var(--instructor-text-muted)]">
                         {formatDateTime(activity.assignedAt)}
                       </td>
-                      <td className="px-4 py-3.5 text-[var(--instructor-text-muted)]">
+                      <td className="px-5 py-3 text-[var(--instructor-text-muted)]">
                         {formatDateTime(activity.completedAt)}
                       </td>
                     </tr>

@@ -51,7 +51,7 @@ test("강사가 가입해 학급을 만들고 동명이인 두 명을 등록하�
   await expect(heading).toBeVisible()
   await expect(namesakes).toHaveCount(2)
 
-  await page.getByRole("link", { name: "← 학급 목록" }).click()
+  await page.getByRole("navigation", { name: "현재 위치" }).getByRole("link", { name: "학급 목록" }).click()
   await expect(page.getByRole("cell", { name: classroomName, exact: true })).toHaveCount(1)
   expect(posts).toEqual({ classrooms: 1, children: 2 })
 })

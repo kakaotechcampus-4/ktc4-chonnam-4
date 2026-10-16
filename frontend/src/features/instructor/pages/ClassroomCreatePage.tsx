@@ -18,6 +18,7 @@ import {
  * 학급 생성 화면 (시안 T-CLS-02).
  * 시안의 대상 연령·운영 기관·담당 강사·메모·보관 처리·아동 접근 기본값은 데이터 모델에 없거나(연령·메모)
  * 후속 범위(공동 강사, 학급 수정)라, API 가 받는 학급명만 입력받는다.
+ * 배치는 시안의 두 칸(왼쪽 기본 정보 1.4 : 오른쪽 1)을 따르고, 버튼은 시안처럼 오른쪽 칸 아래에 둔다.
  */
 function ClassroomCreatePage() {
   const [name, setName] = useState('')
@@ -58,9 +59,9 @@ function ClassroomCreatePage() {
 
   return (
     <InstructorLayout title="학급 생성">
-      <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-4">
-        <section className={cn(cardClass, 'flex flex-col gap-5 p-6')}>
-          <h2 className="text-base font-bold">기본 정보</h2>
+      <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
+        <section className={cn(cardClass, 'flex flex-col gap-4 px-[26px] py-6')}>
+          <h2 className="text-base font-semibold">기본 정보</h2>
           <label htmlFor="classroom-name" className={fieldLabelClass}>
             <span>
               학급명 <span className="text-[var(--instructor-danger-fg)]">*</span>
@@ -82,11 +83,11 @@ function ClassroomCreatePage() {
           )}
         </section>
 
-        <div className="flex justify-end gap-2">
-          <Link to="/classrooms" className={outlineButtonClass}>
+        <div className="flex gap-2.5 self-end">
+          <Link to="/classrooms" className={cn(outlineButtonClass, 'w-28')}>
             취소
           </Link>
-          <button type="submit" disabled={isSubmitDisabled} className={cn(primaryButtonClass, 'min-w-32')}>
+          <button type="submit" disabled={isSubmitDisabled} className={cn(primaryButtonClass, 'flex-1')}>
             {createMutation.isPending ? '저장 중...' : '저장'}
           </button>
         </div>

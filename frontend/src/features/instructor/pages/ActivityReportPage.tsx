@@ -20,6 +20,7 @@ const QUIZ_TAB = '표정 퀴즈'
 
 /**
  * 활동 리포트 (시안 T-RPT-02~08). S1 은 표정 퀴즈 탭만 연다(ADR 2026-10-03 D5).
+ * 배치는 시안 리포트(역할극 탭)의 두 칸(왼쪽 지표 1.5 : 오른쪽 설명 1)을 표정 퀴즈 탭에 그대로 쓴다.
  * 결과는 아동이 붙은 문항을 모두 마쳐야 생긴다. 그 전에는 서버가 409 QUIZ_NOT_COMPLETED 로 답하므로 "진행 중"으로 보인다.
  */
 function ActivityReportPage() {
@@ -85,12 +86,17 @@ function ActivityReportPage() {
       }
     >
       {child && (
-        <Link
-          to={`/classrooms/${child.classId}/children/${child.childId}`}
-          className="mb-4 inline-block text-sm text-[var(--instructor-text-muted)] hover:underline"
-        >
-          ← 활동 이력
-        </Link>
+        <nav aria-label="현재 위치" className="mb-3.5 text-xs text-[var(--instructor-text-subtle)]">
+          <Link to={`/classrooms/${child.classId}?tab=children`} className="hover:underline">
+            {classroomQuery.data?.name ?? '학급'}
+          </Link>
+          <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+            ›
+          </span>
+          <Link to={`/classrooms/${child.classId}/children/${child.childId}`} className="hover:underline">
+            {child.displayName} 활동 이력
+          </Link>
+        </nav>
       )}
 
       {activityQuery.isLoading ? (
@@ -102,7 +108,7 @@ function ActivityReportPage() {
       ) : (
         <section role="tabpanel" aria-label={QUIZ_TAB} className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold">
+            <h2 className="text-base font-semibold">
               {activity.goalId ? (goalQuery.data?.title ?? '학습 목표') : ACTIVITY_TYPE_LABELS[activity.activityType]}
             </h2>
             <ActivityStatusBadge status={activity.status} />
@@ -138,8 +144,8 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
     result.overallAccuracy === null ? '-' : `${Math.round(result.overallAccuracy * 100)}%`
 
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start gap-4">
+      <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
         <StatCard label="정답률" value={accuracy} />
         <StatCard
           label="정답 / 판정 문항"
@@ -157,8 +163,8 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
         />
       </div>
 
-      <div className={cn(cardClass, 'p-5 text-sm')}>
-        <h3 className="mb-2 font-semibold">첫 난이도</h3>
+      <div className={cn(cardClass, 'flex flex-col gap-3 p-5 text-sm leading-[1.7]')}>
+        <h3 className="font-semibold">첫 난이도</h3>
         {result.initialDifficultyUsed ? (
           <p>
             이 결과로 첫 역할극 난이도를 정했어요. 난이도 {result.scenarioLevel ?? '-'} · 지원 수준{' '}
@@ -173,16 +179,16 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
           </p>
         )}
       </div>
-    </>
+    </div>
   )
 }
 
 function StatCard({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className={cn(cardClass, 'p-5')}>
-      <p className="text-xs text-[var(--instructor-text-muted)]">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
-      {note && <p className="mt-1 text-xs text-[var(--instructor-text-muted)]">{note}</p>}
+    <div className={cn(cardClass, 'flex flex-col gap-2 px-5 py-4')}>
+      <p className="text-xs text-[var(--instructor-text-subtle)]">{label}</p>
+      <p className="text-xl font-bold">{value}</p>
+      {note && <p className="text-xs text-[var(--instructor-text-subtle)]">{note}</p>}
     </div>
   )
 }
