@@ -43,8 +43,10 @@ on:
 
 # PR 은 새 커밋이 오면 취소한다. apply·drift 는 도중에 취소하지 않는다. 같은 state 는 S3 잠금(use_lockfile)이 한 번에 하나만 쓰게 한다.
 # develop 밖에서 한 수동 실행은 자기 브랜치 그룹에 넣는다(기다리던 develop 실행을 밀어내지 않게).
+# allow-destroy 밖의 라벨(preview 등)은 아무것도 하지 않는 실행이라 따로 둔다 — 같은 그룹이면 돌던 plan 을 취소하고 자기는 건너뛰어
+# PR 에 plan 이 남지 않는다.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'schedule' && 'drift' || github.ref == 'refs/heads/develop' && 'apply' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.action == 'labeled' && github.event.label.name != 'allow-destroy' && format('label-{0}', github.run_id) || github.event_name == 'pull_request' && github.ref || github.event_name == 'schedule' && 'drift' || github.ref == 'refs/heads/develop' && 'apply' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

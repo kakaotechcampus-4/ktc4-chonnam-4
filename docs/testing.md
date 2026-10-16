@@ -217,7 +217,7 @@ Playwright 로 실제 백엔드(local 프로필)·PostgreSQL·프론트 빌드�
 
 - 실행: Dev server 를 켠 뒤 한국에 있는 PC 에서
   `cd frontend && DEPLOYED_BASE_URL=https://<테스트 주소> npm run test:deployed`
-  - 주소는 레포·PR·로그에 적지 않는다(디스코드 고정 메시지). 도는 동안은 요청이 가서 "안 쓰면 끄기"가 끄지 않는다.
+  - 주소는 레포·PR·로그에 적지 않는다(디스코드 #pr-주소 채널). 도는 동안은 요청이 가서 "안 쓰면 끄기"가 끄지 않는다.
   - 기본 E2E(`playwright.config.ts`)는 `e2e/deployed` 를 돌지 않는다. 설정은 `frontend/playwright.deployed.config.ts`(pc · 태블릿 세로 · 가로).
 - 파일
   - `e2e/deployed/edge.spec.ts`: http → https 301, `/api` 는 http 403, 화면 주소 POST 403, 화면·API·빌드 파일에 HSTS(1년 이상)·nosniff·X-Frame-Options·Referrer-Policy, 화면은 캐시 안 됨·`/assets` 는 캐시(`x-cache: Hit`)·br/gzip 압축, `/api` 는 늘 Miss, 없는 빌드 파일 404, 커밋 표시(`X-Neuringo-Release`, `EXPECTED_RELEASE` 로 비교), 로그인 없이 API 는 백엔드 401 JSON, 다른 출처 preflight 거부, CSRF 쿠키 HttpOnly·Secure
