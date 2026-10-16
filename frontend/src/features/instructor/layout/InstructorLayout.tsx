@@ -91,7 +91,7 @@ function InstructorLayout({
             <span className="size-5 shrink-0 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
             <span className="break-keep">{userLabel}</span>
           </div>
-          {/* 탈퇴는 확인 없이 바로 실행되므로 로그아웃 옆에 두지 않고 계정 화면 안에 둔다. */}
+          {/* 탈퇴는 되돌릴 수 없는 작업이라 로그아웃 옆에 두지 않고 계정 화면 안에 둔다. */}
           <Link
             to="/account"
             aria-current={isNavActive(pathname, "/account") ? "page" : undefined}
