@@ -35,7 +35,7 @@ function ChildWelcomePage() {
     <ChildLayout>
       <div className="grid flex-1 items-center gap-10 md:grid-cols-[1fr_1.4fr]">
         <section className="flex flex-col items-center gap-3 text-center">
-          <Character name="turtle" size="lg" />
+          <Character name="turtle" size="lg" mood="wave" />
           <p className="font-child-display font-extrabold text-3xl break-keep text-[var(--child-text)]">
             안녕, {withVocative(childName)}!
           </p>

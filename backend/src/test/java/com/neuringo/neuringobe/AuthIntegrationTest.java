@@ -42,9 +42,11 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>로그인 실패는 틀린 비밀번호·없는 이메일·제어 문자가 든 이메일 모두 같은 401 INVALID_CREDENTIALS 다(계정 존재 여부를 드러내지 않는다).
  *   <li>"로그인 실패 횟수 제한·잠금은 적용하지 않으며": 여러 번 틀린 뒤에도 맞는 비밀번호로 로그인된다.
  *   <li>공개 경로(가입·로그인·CSRF 토큰)는 틀린 토큰이 달려 있어도 열린다(PublicEndpoints 의 규칙).
+ *   <li>"이용약관·개인정보 처리방침 각각 필수 동의, 버전·시각 저장": 둘 중 하나라도 빠지면 422 이고 계정이 생기지 않는다. 가입하면 서버가 정한 버전과 동의
+ *       시각이 계정 행에 함께 저장된다.
+ *   <li>"즉시 탈퇴, 같은 이메일 재가입은 새 ID": 현재 비밀번호를 다시 확인한 뒤 바로 지운다(틀리면 403 이고 아무것도 지우지 않는다). 탈퇴하면 그 강사의 모든
+ *       토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
  * </ul>
- *
- * <p>약관 동의 기록(버전·시각)과 정지·탈퇴 계정의 로그인 차단은 S3-BAE-01 범위라 여기서 보지 않는다.
  */
 @LocalProfileIntegrationTest
 class AuthIntegrationTest {
@@ -81,21 +83,124 @@ class AuthIntegrationTest {
     }
 
     @Test
-    void operatorKeepsAccountAccessWithoutInstructorClassroomPermission() {
-        TestFixtures.Instructor operator = fixtures.signUpInstructor();
-        jdbcTemplate.update(
-                "UPDATE user_account SET role = 'OPERATOR' WHERE user_id = ?", operator.userId());
+    void signupStoresConsentVersionsWithTheAccount() {
+        TestFixtures.Credentials credentials = TestFixtures.newCredentials();
+        Instant before = Instant.now();
 
-        MvcTestResult account =
-                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), operator.accessToken())
-                        .exchange();
-        MvcTestResult classroom =
-                TestFixtures.bearer(mvc.get().uri("/api/v1/classrooms"), operator.accessToken())
-                        .exchange();
+        UUID userId = fixtures.signUp(credentials);
 
-        assertThat(account).hasStatusOk();
-        assertThat(classroom).hasStatus(HttpStatus.FORBIDDEN);
-        assertThat(classroom).bodyJson().extractingPath("$.error.code").isEqualTo("ACCESS_DENIED");
+        Map<String, Object> row =
+                jdbcTemplate.queryForMap(
+                        "SELECT terms_version, privacy_version, consented_at FROM user_account"
+                                + " WHERE user_id = ?",
+                        userId);
+        assertThat(row).containsEntry("terms_version", "v1").containsEntry("privacy_version", "v1");
+        assertThat(((Timestamp) row.get("consented_at")).toInstant())
+                .isBetween(before.minusSeconds(1), Instant.now());
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "\"privacyAgreed\":true",
+                "\"termsAgreed\":true",
+                "\"termsAgreed\":false,\"privacyAgreed\":true",
+                "\"termsAgreed\":true,\"privacyAgreed\":false",
+                "\"termsAgreed\":null,\"privacyAgreed\":true"
+            })
+    void signupWithoutBothConsentsIsRejectedAndSavesNothing(String consentFields) {
+        TestFixtures.Credentials credentials = TestFixtures.newCredentials();
+
+        MvcTestResult signup =
+                fixtures.postPublicJsonText(
+                        "/api/v1/users",
+                        "{\"email\":\""
+                                + credentials.email()
+                                + "\",\"password\":\""
+                                + credentials.password()
+                                + "\",\"name\":\"테스트 강사\","
+                                + consentFields
+                                + "}");
+
+        assertThat(signup).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(signup).bodyJson().extractingPath("$.error.code").isEqualTo("VALIDATION_FAILED");
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT count(*) FROM user_account WHERE email = ?",
+                                Long.class,
+                                credentials.email()))
+                .isZero();
+    }
+
+    @Test
+    void withdrawalEndsEverySessionAndSameEmailSignsUpAsNewAccount() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+        String otherTab = fixtures.login(instructor.email(), instructor.password());
+
+        MvcTestResult withdrawal = withdraw(instructor.password(), instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.NO_CONTENT);
+        assertUnauthorized(
+                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), instructor.accessToken())
+                        .exchange(),
+                "INVALID_TOKEN");
+        assertUnauthorized(
+                TestFixtures.bearer(mvc.get().uri("/api/v1/auth/session"), otherTab).exchange(),
+                "INVALID_TOKEN");
+        assertUnauthorized(
+                fixtures.loginRequest(instructor.email(), instructor.password()),
+                "INVALID_CREDENTIALS");
+
+        UUID again =
+                fixtures.signUp(
+                        new TestFixtures.Credentials(instructor.email(), instructor.password()));
+        assertThat(again).isNotEqualTo(instructor.userId());
+    }
+
+    /** 비밀번호가 틀리면 탈퇴하지 않는다. 401 이 아니라 403 이라 화면이 로그아웃시키지 않고, 세션도 그대로 쓸 수 있다. */
+    @Test
+    void withdrawalWithWrongPasswordKeepsAccountAndSession() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                withdraw("wrong-" + instructor.password(), instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("PASSWORD_MISMATCH");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
+        assertThat(withdraw(instructor.password(), instructor.accessToken()))
+                .hasStatus(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void withdrawalWithoutPasswordIsValidationError() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                send(
+                        mvc.post().uri("/api/v1/users/me/withdrawal"),
+                        "{\"password\":\"\"}",
+                        instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("VALIDATION_FAILED");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
     }
 
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */
@@ -216,7 +321,7 @@ class AuthIntegrationTest {
                                         + credentials.email()
                                         + "\",\"password\":\""
                                         + credentials.password()
-                                        + "\",\"name\":\"테스트 강사\"}")
+                                        + "\",\"name\":\"테스트 강사\",\"termsAgreed\":true,\"privacyAgreed\":true}")
                         .header(csrf.headerName(), csrf.token())
                         .cookie(csrf.cookies())
                         .header(HttpHeaders.AUTHORIZATION, stale)
@@ -388,6 +493,13 @@ class AuthIntegrationTest {
             request.contentType(MediaType.APPLICATION_JSON).content(json);
         }
         return (token == null ? request : TestFixtures.bearer(request, token)).exchange();
+    }
+
+    private MvcTestResult withdraw(String password, String token) {
+        return send(
+                mvc.post().uri("/api/v1/users/me/withdrawal"),
+                "{\"password\":\"" + password + "\"}",
+                token);
     }
 
     private static void assertUnauthorized(MvcTestResult result, String code) {

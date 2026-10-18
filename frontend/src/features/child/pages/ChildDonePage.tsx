@@ -32,7 +32,7 @@ function ChildDonePage() {
       <div className="flex flex-1 flex-col items-center justify-center">
         <div className="flex w-full max-w-lg flex-col items-center gap-5 rounded-[var(--child-radius-card)] bg-[var(--child-surface)]/95 px-8 py-10 text-center break-keep shadow-sm">
           <div className="flex items-end gap-3">
-            <Character name="turtle" size="md" />
+            <Character name="turtle" size="md" mood="happy" />
             <div
               role="img"
               aria-label="스탬프 1개"
@@ -40,7 +40,7 @@ function ChildDonePage() {
             >
               <Star className="size-12 fill-current" />
             </div>
-            <Character name="rabbit" size="md" />
+            <Character name="rabbit" size="md" mood="happy" />
           </div>
           <div className="flex flex-col gap-1">
             <p className="font-child-display font-extrabold text-3xl text-[var(--child-text)]">스탬프를 받았어요!</p>

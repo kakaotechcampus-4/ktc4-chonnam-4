@@ -39,8 +39,8 @@ run "same_origin_front_door" {
     error_message = "원본은 EC2 80번(HTTP)이다. 도메인·인증서가 없어서다"
   }
   assert {
-    condition     = one(aws_cloudfront_distribution.this.origin).custom_origin_config[0].origin_read_timeout == 60
-    error_message = "AI 한 턴을 기다린다(신청 없이 올릴 수 있는 최대 60초)"
+    condition     = one(aws_cloudfront_distribution.this.origin).custom_origin_config[0].origin_read_timeout == 120
+    error_message = "서버 한 턴(최대 60초)·nginx(110초)보다 길게 기다린다(신청 없이 둘 수 있는 최대 120초)"
   }
   assert {
     condition     = one(aws_cloudfront_distribution.this.default_cache_behavior).viewer_protocol_policy == "redirect-to-https"

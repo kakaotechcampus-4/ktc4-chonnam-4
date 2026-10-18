@@ -65,6 +65,9 @@ case "$1 $2" in
     sed -i 's/ running .*/ stopped None/' "$FAKE/ec2" ;;
   "ec2 describe-instance-attribute") echo "${FAKE_SHUTDOWN:-stop}" ;;
   "ssm describe-instance-information") echo Online ;;
+  "logs filter-log-events")
+    [ -f "$FAKE/logs.err" ] && { cat "$FAKE/logs.err" >&2; exit 254; }
+    cat "$FAKE/logs.json" ;;
 esac
 EOF
 # 가짜 ssm-run.sh. 서버에서 돌릴 스크립트 내용을 남기고, OS 끄기면 서버를 꺼진 것으로 바꾼다.
@@ -93,6 +96,10 @@ edge() { # on|off|status [주소]
   code=0
   out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" CF_DISTRIBUTION_ID=$DIST EDGE_POLL=0 \
     bash scripts/edge-toggle.sh "$@" 2>&1) || code=$?
+}
+idle_last() {
+  code=0
+  out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" bash scripts/idle-last.sh 2>&1) || code=$?
 }
 power() { # state|start|stop
   : >"$tmp/out"
@@ -214,6 +221,36 @@ new_case
 printf '%s stopped None\ni-0fedcba9876543210 running %s\n' "$INSTANCE" "$OLD_DNS" >"$tmp/fake/ec2"
 power start
 check "서버가 1대가 아니면 1 로 끝난다" same "$code" 1
+
+# ── 안 쓰면 끄기(Lambda) 마지막 판단 읽기 ───────────────────
+new_case
+# 순서가 섞여 와도 가장 늦은 판단을 고른다. JSON 이 아닌 줄(START·오류 추적)은 건너뛴다.
+cat >"$tmp/fake/logs.json" <<'EOF'
+[[1791692400000, "{\"result\": \"stopped\", \"reason\": \"자리가 비었고 | 마지막 사용 13:06 (KST) 뒤 33분\\n동안 안 썼다\"}\n"],
+ [1791691800000, "{\"result\": \"keep\", \"reason\": \"마지막 사용 13:06 (KST), 3분 전\"}"],
+ [1791692460000, "[ERROR] RuntimeError: result 없음"]]
+EOF
+idle_last
+check "로그를 읽으면 ok" has "$out" "IDLE_LOG=ok"
+check "가장 늦은 판단(끈 것)을 고른다" has "$out" "IDLE_RESULT=stopped"
+check "시각은 로그 시각(UTC)" has "$out" "IDLE_AT=2026-10-11T04:20:00Z"
+check "까닭에서 표를 깨는 | 와 줄바꿈을 지운다" has "$out" "IDLE_REASON=자리가 비었고 마지막 사용 13:06 (KST) 뒤 33분 동안 안 썼다"
+
+new_case
+echo '[]' >"$tmp/fake/logs.json"
+idle_last
+check "최근 판단이 없으면 none" has "$out" "IDLE_LOG=none"
+
+new_case
+echo "An error occurred (ResourceNotFoundException) when calling the FilterLogEvents operation: The specified log group does not exist." >"$tmp/fake/logs.err"
+idle_last
+check "로그 그룹이 없으면(apply 전) none · 실패로 끝나지 않는다" bash -c "grep -q 'IDLE_LOG=none' <<<\"\$0\" && [ \"\$1\" = 0 ]" "$out" "$code"
+
+new_case
+echo "An error occurred (AccessDeniedException) when calling the FilterLogEvents operation: arn:aws:sts::123456789012:assumed-role/ktc-github-deploy/x is not authorized" >"$tmp/fake/logs.err"
+idle_last
+check "권한이 없으면 unreadable · 실패로 끝나지 않는다" bash -c "grep -q 'IDLE_LOG=unreadable' <<<\"\$0\" && [ \"\$1\" = 0 ]" "$out" "$code"
+check "오류 원문(역할 ARN·계정 ID)을 찍지 않는다" no_leak
 
 if [ "$failures" -gt 0 ]; then
   echo "edge-toggle.sh · server-power.sh 자체 검사 실패: $failures 건" >&2

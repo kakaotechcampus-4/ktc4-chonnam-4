@@ -336,6 +336,8 @@ class NameInputBoundaryIntegrationTest {
             Map<String, Object> body = new HashMap<>(nameFields);
             body.put("email", credentials.email());
             body.put("password", credentials.password());
+            body.put("termsAgreed", true);
+            body.put("privacyAgreed", true);
             return fixtures.postPublicJsonText("/api/v1/users", ascii(body));
         }
 

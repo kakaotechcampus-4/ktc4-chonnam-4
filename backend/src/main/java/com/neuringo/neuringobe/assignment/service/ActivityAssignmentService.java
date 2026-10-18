@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.assignment.service;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
@@ -42,9 +43,9 @@ public class ActivityAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(ActivityAssignmentService.class);
 
-    // V6 의 제약 이름. 바꾸면 여기도 같이 바꾼다.
+    // V6·V10 의 제약 이름. 바꾸면 여기도 같이 바꾼다.
     private static final String IDEMPOTENCY_KEY_CONSTRAINT = "uq_activity_idempotency_key";
-    private static final String NOT_STARTED_GOAL_CONSTRAINT = "uq_activity_not_started_child_goal";
+    private static final String NOT_STARTED_TYPE_CONSTRAINT = "uq_activity_not_started_child_type";
 
     private final ActivityRepository activities;
     private final ChildRepository children;
@@ -85,7 +86,7 @@ public class ActivityAssignmentService {
                 throw new ApiException(
                         HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.");
             }
-            if (NOT_STARTED_GOAL_CONSTRAINT.equalsIgnoreCase(constraint)) {
+            if (NOT_STARTED_TYPE_CONSTRAINT.equalsIgnoreCase(constraint)) {
                 throw duplicateAssignment();
             }
             throw ex;
@@ -93,14 +94,18 @@ public class ActivityAssignmentService {
     }
 
     /**
-     * 같은 아동의 배정은 아동 행을 잠가 하나씩 처리한다. 그래서 같은 요청 키의 재전송과 같은 내용 목표의 중복 배정을 앞에서 확인해도 경합이 없다. 내용 기준 중복은 두
-     * 테이블에 걸쳐 DB 제약으로 걸 수 없어 이 잠금이 유일한 방어선이다. DB 의 UNIQUE(요청 키)·부분 UNIQUE(시작 전 아동·목표 ID)는 같은 목표 행이
-     * 두 번 배정되는 경우만 막는 마지막 장치다.
+     * 같은 아동의 배정은 아동 행을 잠가 하나씩 처리한다. 그래서 같은 요청 키의 재전송, 최초 결합 1회, 같은 독립 퀴즈의 중복 배정을 앞에서 확인해도 경합이 없다.
+     * 최초 결합 1회는 예전 활동이 남은 DB 에서 마이그레이션이 깨지지 않도록 인덱스를 두지 않아 이 잠금이 유일한 방어선이다. DB 의 UNIQUE(요청 키)·부분
+     * UNIQUE(시작 전 아동·독립 퀴즈 유형)는 마지막 장치다.
+     *
+     * <p>유형 규칙: 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에만 다른 유형을 배정한다. 최초 결합·역할극은 목표가 있어야 하고 독립 퀴즈는 없어야 한다. 역할극은
+     * 역할극 API 가 생기기 전까지 배정하지 않는다.
      *
      * <p>목표는 확인을 모두 통과한 뒤에 저장한다. 그 뒤에 실패해도 같은 트랜잭션이라 함께 롤백된다.
      */
     private Assignment assignOnce(
             CreateActivityRequest request, UUID requestKey, Authentication authentication) {
+        ActivityType type = request.type();
         access.requireInstructor(authentication, request.childId());
         Child child =
                 children.findByIdForUpdate(request.childId())
@@ -108,11 +113,26 @@ public class ActivityAssignmentService {
                                 () ->
                                         new ResourceNotFoundException(
                                                 "CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
-        LearningGoal goal = goalService.newGoal(request.childId(), request.goal(), authentication);
+        if (type.requiresGoal() && request.goal() == null) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_CONTENT, "GOAL_REQUIRED", "이 활동에는 학습 목표가 필요합니다.");
+        }
+        if (!type.requiresGoal() && request.goal() != null) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "GOAL_NOT_ALLOWED",
+                    "표정 퀴즈 활동에는 학습 목표를 붙이지 않습니다.");
+        }
+        LearningGoal goal =
+                request.goal() == null
+                        ? null
+                        : goalService.newGoal(request.childId(), request.goal(), authentication);
 
         Activity prior = activities.findByIdempotencyKey(requestKey).orElse(null);
         if (prior != null) {
-            if (!prior.getChildId().equals(request.childId()) || !sameContent(prior, goal)) {
+            if (!prior.getChildId().equals(request.childId())
+                    || prior.getActivityType() != type
+                    || !sameGoal(prior, goal)) {
                 throw new ApiException(
                         HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.");
             }
@@ -123,42 +143,63 @@ public class ActivityAssignmentService {
             throw new ApiException(
                     HttpStatus.CONFLICT, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.");
         }
-        // 같은 목표는 목표 ID 가 아니라 내용으로 판단한다. 배정할 때마다 목표를 새로 저장하므로, 강사가 같은 목표를 다시 고르면
-        // ID 는 달라도 content_hash 는 같다(ADR 2026-10-03 D6).
-        List<UUID> sameGoals =
-                goals.findByChildIdAndContentHash(request.childId(), goal.getContentHash()).stream()
-                        .map(LearningGoal::getGoalId)
-                        .toList();
-        if (activities.existsByChildIdAndGoalIdInAndStatus(
-                request.childId(), sameGoals, ActivityStatus.NOT_STARTED)) {
-            throw duplicateAssignment();
+        if (type == ActivityType.ROLEPLAY) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "ACTIVITY_TYPE_NOT_AVAILABLE",
+                    "역할극 활동은 아직 배정할 수 없습니다.");
+        }
+        if (type == ActivityType.FIRST_COMBINED) {
+            if (activities.existsByChildIdAndActivityType(
+                    request.childId(), ActivityType.FIRST_COMBINED)) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "FIRST_ACTIVITY_EXISTS",
+                        "최초 활동은 아동마다 한 번만 배정할 수 있습니다.");
+            }
+        } else {
+            if (!activities.existsByChildIdAndActivityTypeAndStatus(
+                    request.childId(), ActivityType.FIRST_COMBINED, ActivityStatus.COMPLETED)) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "FIRST_ACTIVITY_NOT_COMPLETED",
+                        "최초 활동을 마친 뒤에 배정할 수 있습니다.");
+            }
+            if (activities.existsByChildIdAndActivityTypeAndStatus(
+                    request.childId(), type, ActivityStatus.NOT_STARTED)) {
+                throw duplicateAssignment();
+            }
         }
 
-        List<QuizItem> picks = quizAssignment.pickInitialItems();
+        List<QuizItem> picks = quizAssignment.pickItems(type);
         if (picks.isEmpty()) {
             // 팀이 문항 풀을 채워야 하는 상황이다. 아동 정보는 남기지 않는다.
-            log.warn("배정할 승인 퀴즈 문항이 없어 활동을 만들지 않았습니다.");
+            log.warn("배정할 승인 퀴즈 문항이 모자라 활동을 만들지 않았습니다: activityType={}", type);
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "QUIZ_ITEMS_UNAVAILABLE",
-                    "배정할 수 있는 승인된 퀴즈 문항이 없습니다.");
+                    "배정할 수 있는 승인된 퀴즈 문항이 모자랍니다.");
         }
 
-        LearningGoal saved = goals.save(goal);
+        UUID goalId = goal == null ? null : goals.save(goal).getGoalId();
         Activity created =
                 activities.saveAndFlush(
                         new Activity(
                                 UUID.randomUUID(),
                                 request.childId(),
-                                saved.getGoalId(),
+                                type,
+                                goalId,
                                 requestKey,
                                 Instant.now()));
         quizAssignment.attach(created.getActivityId(), picks);
         return new Assignment(ActivityResponse.from(created), true);
     }
 
-    /** 같은 요청 키의 재전송인지. 처음 배정한 목표와 이번 요청의 목표 내용이 같아야 한다. */
-    private boolean sameContent(Activity prior, LearningGoal requested) {
+    /** 같은 요청 키의 재전송인지. 처음 배정한 목표와 이번 요청의 목표 내용이 같아야 한다. 독립 퀴즈는 둘 다 목표가 없다. */
+    private boolean sameGoal(Activity prior, LearningGoal requested) {
+        if (prior.getGoalId() == null || requested == null) {
+            return prior.getGoalId() == null && requested == null;
+        }
         return goals.findById(prior.getGoalId())
                 .map(LearningGoal::getContentHash)
                 .filter(requested.getContentHash()::equals)
@@ -179,7 +220,7 @@ public class ActivityAssignmentService {
 
     private static ApiException duplicateAssignment() {
         return new ApiException(
-                HttpStatus.CONFLICT, "DUPLICATE_ASSIGNMENT", "같은 목표로 시작하지 않은 활동이 이미 있습니다.");
+                HttpStatus.CONFLICT, "DUPLICATE_ASSIGNMENT", "같은 활동이 시작 전 상태로 이미 있습니다.");
     }
 
     /** 충돌한 DB 제약 이름. 제약 위반이 아니거나 이름을 모르면 null. */

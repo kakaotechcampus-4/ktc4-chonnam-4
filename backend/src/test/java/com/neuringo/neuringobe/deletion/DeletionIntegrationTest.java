@@ -36,9 +36,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -56,6 +58,7 @@ class DeletionIntegrationTest {
 
     private static final String OWNER = "teacher-deletion";
     private static final String OTHER = "other-teacher-deletion";
+    private static final String OWNER_PASSWORD = "owner-password-1";
 
     @Autowired private MockMvc mvc;
     @Autowired private UserAccountRepository users;
@@ -64,6 +67,7 @@ class DeletionIntegrationTest {
     @Autowired private ClassroomRepository classrooms;
     @Autowired private ChildRepository children;
     @Autowired private TransactionTemplate transactions;
+    @Autowired private PasswordEncoder passwordEncoder;
 
     @BeforeEach
     void setUp() {
@@ -165,6 +169,65 @@ class DeletionIntegrationTest {
         mvc.perform(delete("/api/v1/classrooms/{id}", UUID.randomUUID()).with(owner()).with(csrf()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("CLASSROOM_NOT_FOUND"));
+    }
+
+    /** 강사 탈퇴. 그 강사의 모든 학급·아동·학습 기록과 계정 행이 사라지고, 다른 강사의 데이터는 그대로다. */
+    @Test
+    void withdrawalDeletesEveryClassroomChildRecordAndTheAccount() throws Exception {
+        UUID firstClass = createClassroom("탈퇴 강사 첫 반");
+        UUID secondClass = createClassroom("탈퇴 강사 둘째 반");
+        UUID solved = createChild(firstClass, "기록 있는 아동");
+        solveWithHint(assign(solved), enter(solved));
+        UUID assigned = createChild(secondClass, "배정만 된 아동");
+        assign(assigned);
+        createClassroom("탈퇴 강사 빈 반");
+        UUID otherClass =
+                UUID.fromString(
+                        JsonPath.read(
+                                mvc.perform(
+                                                post("/api/v1/classrooms")
+                                                        .with(TestInstructors.instructor(OTHER))
+                                                        .with(csrf())
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .content("{\"name\":\"남을 강사의 반\"}"))
+                                        .andExpect(status().isOk())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString(),
+                                "$.data.classId"));
+        long quizItems = items.count();
+
+        mvc.perform(withdraw(OWNER_PASSWORD)).andExpect(status().isNoContent());
+
+        assertThat(rowsOf(solved)).allSatisfy((table, count) -> assertThat(count).isZero());
+        assertThat(rowsOf(assigned)).allSatisfy((table, count) -> assertThat(count).isZero());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from classroom where instructor_id = ?",
+                                Long.class,
+                                TestInstructors.id(OWNER)))
+                .isZero();
+        assertThat(users.existsById(TestInstructors.id(OWNER))).isFalse();
+        assertThat(classrooms.existsById(otherClass)).isTrue();
+        assertThat(users.existsById(TestInstructors.id(OTHER))).isTrue();
+        assertThat(items.count()).isEqualTo(quizItems);
+    }
+
+    /** 비밀번호가 틀린 탈퇴는 학급·아동·학습 기록과 계정을 하나도 지우지 않는다. */
+    @Test
+    void withdrawalWithWrongPasswordDeletesNothing() throws Exception {
+        UUID classId = createClassroom("남아야 하는 반");
+        UUID solved = createChild(classId, "기록이 남아야 하는 아동");
+        solveWithHint(assign(solved), enter(solved));
+        Map<String, Long> before = rowsOf(solved);
+
+        mvc.perform(withdraw("wrong-" + OWNER_PASSWORD))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("PASSWORD_MISMATCH"));
+
+        assertThat(rowsOf(solved)).isEqualTo(before);
+        assertThat(classrooms.existsById(classId)).isTrue();
+        assertThat(users.existsById(TestInstructors.id(OWNER))).isTrue();
     }
 
     /**
@@ -422,6 +485,19 @@ class DeletionIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+    }
+
+    /** 테스트 강사 계정에는 진짜 해시가 없어, 탈퇴 비밀번호 확인용으로 OWNER 의 비밀번호를 정해 둔다. */
+    private MockHttpServletRequestBuilder withdraw(String password) {
+        jdbc.update(
+                "UPDATE user_account SET password_hash = ? WHERE user_id = ?",
+                passwordEncoder.encode(OWNER_PASSWORD),
+                TestInstructors.id(OWNER));
+        return post("/api/v1/users/me/withdrawal")
+                .with(owner())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"" + password + "\"}");
     }
 
     private static RequestPostProcessor owner() {

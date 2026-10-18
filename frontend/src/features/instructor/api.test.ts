@@ -54,7 +54,13 @@ describe("instructor api 명세", () => {
       if (request.method === "POST") seen.push(request.headers.get("Authorization"))
     })
 
-    await signup({ email: "new-instructor@example.com", password: "password-1", name: "새 강사" })
+    await signup({
+      email: "new-instructor@example.com",
+      password: "password-1",
+      name: "새 강사",
+      termsAgreed: true,
+      privacyAgreed: true,
+    })
     await login("new-instructor@example.com", "password-1")
     server.events.removeAllListeners()
 
@@ -98,7 +104,13 @@ describe("instructor api 명세", () => {
 
   it("이미 가입된 이메일은 409 DUPLICATE_RESOURCE 로 읽는다", async () => {
     await expect(
-      signup({ email: `  ${instructors.a.email.toUpperCase()} `, password: "password-1", name: "같은 사람" }),
+      signup({
+        email: `  ${instructors.a.email.toUpperCase()} `,
+        password: "password-1",
+        name: "같은 사람",
+        termsAgreed: true,
+        privacyAgreed: true,
+      }),
     ).rejects.toMatchObject({ status: 409, code: "DUPLICATE_RESOURCE" })
   })
 

@@ -14,8 +14,8 @@ name: Dev server
 #     dev-off 라벨 붙이기   끄기(아래와 같다). 라벨은 바로 떼어 둔다
 #   Actions → Dev server → Run workflow — 할 일
 #     상태 보기 · 켜기 · 미리보기 끝내기 · 끄기
-#   저절로 — dev-server-idle.yml 이 20분마다 부른다(이 파일을 workflow_call 로)
-#     안 쓰면 끄기          서버가 켜져 있고, 미리보기 자리가 비었고, 60분 동안 테스트 주소 요청·배포가 없으면 끈다(끄기와 같은 순서)
+#   저절로 — AWS 안에서 10분마다(EventBridge → Lambda, infra/modules/idle-off. GitHub 예약은 몇 시간씩 밀려서 쓰지 않는다)
+#     안 쓰면 끄기          서버가 켜져 있고, 미리보기 자리가 비었고, 30분 동안 테스트 주소 요청·배포·GitHub 작업이 없으면 끈다(끄기와 같은 순서)
 #
 # PR 에서 돌 때는 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 돈다. 그래서 파이프라인을 바꾼 PR 도 머지 전에
 # 자기 버전으로 시험된다(2026-10-07 결정 — PR 실행에도 배포 역할을 준다. 포크 PR 은 GitHub 이 권한을 주지 않는다,
@@ -36,12 +36,6 @@ on:
           - 미리보기 끝내기
           - 끄기
         default: 상태 보기
-  # dev-server-idle.yml(20분마다)이 "안 쓰면 끄기"로 부른다. 실행 목록이 Dev server 를 덮지 않게 따로 둔다.
-  workflow_call:
-    inputs:
-      action:
-        type: string
-        required: true
   pull_request:
     types: [opened, reopened, ready_for_review, labeled, unlabeled, synchronize, closed]
 
@@ -83,7 +77,6 @@ jobs:
       end_preview: ${{ steps.what.outputs.end_preview }}
       end_only_pr: ${{ steps.what.outputs.end_only_pr }}
       quiet: ${{ steps.what.outputs.quiet }}
-      idle_only: ${{ steps.what.outputs.idle_only }}
 
     steps:
       - name: Decide what to do
@@ -112,10 +105,10 @@ jobs:
           [[ "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "저장소 변수 AWS_ACCOUNT_ID(12자리)가 없다(관리자가 한 번 등록한다)."
           [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}(\[bot\])?$ ]] || fail "누른 사람 아이디 모양이 틀렸다."
           develop_sha() { gh api "repos/$REPO/commits/develop" --jq .sha; }
-          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha="" auto=false idle_only=false
+          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha="" auto=false
           steps=()
 
-          # 버튼(workflow_dispatch)이나 다른 워크플로(workflow_call)가 할 일을 정해 부르면 그것을 따른다(부른 쪽 이벤트가 PR 이어도).
+          # 버튼(workflow_dispatch)으로 할 일을 정해 부르면 그것을 따른다.
           if [ -z "$ACTION" ] && [ "$EVENT" = pull_request ]; then
             [ "$HEAD_REPO" = "$REPO" ] ||
               skip "포크에서 온 PR 이라 미리보기를 하지 않는다(자격증명이 있는 서버에서 돌기 때문). 브랜치를 이 레포에 올려 PR 을 다시 연다."
@@ -214,10 +207,6 @@ jobs:
                 gh api -X DELETE "repos/$REPO/issues/$PR/labels/dev-off" >/dev/null 2>&1 || true
               fi
               steps=("다른 사람 미리보기가 자리를 쓰는 중이면 멈춤" "대문(CloudFront) 닫기 → 다 닫힌 것을 다시 읽어 확인" "배포·백업이 끝나길 기다린 뒤 서버 끄기") ;;
-            "안 쓰면 끄기")
-              power_off=true idle_only=true
-              steps=("서버가 꺼져 있으면 할 일 없음" "미리보기 자리를 누가 쓰는 중이거나, 60분 안에 테스트 주소 요청·배포가 있었으면 그대로 둠" \
-                "아니면 끄기와 같다: 대문(CloudFront) 닫기 → 확인 → 서버 끄기") ;;
             *) fail "모르는 작업: $task" ;;
           esac
           [ -z "$sha" ] || [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "배포할 커밋을 정하지 못했다."
@@ -230,7 +219,6 @@ jobs:
           out end_preview "$end_preview"
           out end_only_pr "$end_only_pr"
           out quiet "$quiet"
-          out idle_only "$idle_only"
           {
             echo "## Dev server — $task"
             echo
@@ -382,7 +370,7 @@ jobs:
     if: needs.plan.outputs.power_off == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # 끄기는 배포가 아니다. 안 쓰면 끄기가 20분마다 돌아 배포 기록(Environments → dev)을 채우지 않게 기록을 만들지 않는다.
+    # 끄기는 배포가 아니다. 배포 기록(Environments → dev)을 채우지 않게 기록을 만들지 않는다.
     environment:
       name: dev
       deployment: false
@@ -391,7 +379,6 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      actions: read # 안 쓰면 끄기: 도는 중인 Dev server·Deploy 실행이 있나 본다
       id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
 
     steps:
@@ -413,24 +400,14 @@ jobs:
         run: bash scripts/infra-outputs.sh dev
 
       # 다른 사람이 미리보기로 테스트하는 중이면 끄지 않는다. 그 사람이 끝내거나 자리 시간이 지난 뒤 끈다.
-      # 안 쓰면 끄기(20분마다)는 자리가 비었고 60분 동안 테스트 주소 요청·배포가 없을 때만 끈다. 아니면 초록으로 그대로 둔다.
       - name: Nobody else is previewing?
         id: who
         env:
           ACTOR: ${{ github.actor }}
-          IDLE_ONLY: ${{ needs.plan.outputs.idle_only }}
-          IDLE_MINUTES: 60
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
         run: |
           state=$(GITHUB_OUTPUT=/dev/null bash scripts/server-power.sh state | sed -n 's/^SERVER_STATE=//p')
           if [ "$state" != running ]; then
-            if [ "$IDLE_ONLY" = true ]; then
-              echo "go=false" >>"$GITHUB_OUTPUT"
-              printf '### 할 일 없음\n\n서버가 꺼져 있다(%s).\n' "${state:-읽지 못함}" >>"$GITHUB_STEP_SUMMARY"
-            else
-              echo "go=true" >>"$GITHUB_OUTPUT"
-            fi
+            echo "go=true" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           remote="$RUNNER_TEMP/status.sh"
@@ -438,39 +415,6 @@ jobs:
           printf '#!/usr/bin/env bash\nf=/opt/neuringo/current/deploy/host/status.sh\n[ -f "$f" ] && bash "$f" || echo LEASE_ACTIVE=0\n' >"$remote"
           out=$(bash scripts/ssm-run.sh "$remote" "status") || true
           value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
-          kst() { TZ=Asia/Seoul date -d "$1" '+%H:%M' 2>/dev/null || echo "$1"; }
-          if [ "$IDLE_ONLY" = true ]; then
-            keep() { echo "go=false" >>"$GITHUB_OUTPUT"; printf '### 그대로 둔다\n\n%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; exit 0; }
-            # 켜기·미리보기·배포가 도는 중이면(빌드하는 몇 분 동안은 자리가 아직 없다) 끄지 않는다.
-            busy=0
-            for wf in dev-server.yml deploy.yml; do
-              for st in queued in_progress waiting; do
-                n=$(gh run list -R "$REPO" --workflow "$wf" --status "$st" --limit 20 --json databaseId --jq length 2>/dev/null) || n=0
-                busy=$((busy + ${n:-0}))
-              done
-            done
-            [ "$busy" -eq 0 ] || keep "Dev server·Deploy 실행이 ${busy}개 도는 중이다."
-            [ -n "$(value LEASE_ACTIVE)" ] || keep "서버 상태를 읽지 못했다. 20분 뒤 다시 본다."
-            [ "$(value LEASE_ACTIVE)" != 1 ] ||
-              keep "PR #$(value LEASE_PR) 미리보기를 $(value LEASE_BY) 님이 $(kst "$(value LEASE_UNTIL)") (KST) 까지 쓰는 중이다."
-            # 마지막 사용 = 서버를 켠 시각·마지막 배포(state/dev.release)·화면 컨테이너의 마지막 요청 중 가장 늦은 것.
-            last=0 last_at=""
-            for at in "$(value STATUS_BOOTED_AT)" "$(value STATUS_AT)" "$(value STATUS_LAST_REQUEST)"; do
-              [ -n "$at" ] || continue # date -d "" 는 오늘 0시가 된다
-              t=$(date -u -d "$at" +%s 2>/dev/null) || continue
-              if [ "$t" -gt "$last" ]; then last=$t last_at=$at; fi
-            done
-            idle=$((($(date +%s) - last) / 60))
-            [ "$last" -eq 0 ] || [ "$idle" -ge "$IDLE_MINUTES" ] ||
-              keep "마지막 사용 $(kst "$last_at") (KST), ${idle}분 전. ${IDLE_MINUTES}분 동안 안 쓰면 끈다."
-            echo "go=true" >>"$GITHUB_OUTPUT"
-            if [ "$last" -eq 0 ]; then
-              printf '### 끈다\n\n미리보기 자리가 비었고 마지막 사용 기록이 없다.\n' >>"$GITHUB_STEP_SUMMARY"
-            else
-              printf '### 끈다\n\n미리보기 자리가 비었고 마지막 사용 %s (KST) 뒤 %s분 동안 안 썼다.\n' "$(kst "$last_at")" "$idle" >>"$GITHUB_STEP_SUMMARY"
-            fi
-            exit 0
-          fi
           echo "go=true" >>"$GITHUB_OUTPUT"
           if [ "$(value LEASE_ACTIVE)" = 1 ] && [ "$(value LEASE_BY)" != "$ACTOR" ]; then
             until_kst=$(TZ=Asia/Seoul date -d "$(value LEASE_UNTIL)" '+%H:%M' 2>/dev/null || value LEASE_UNTIL)
@@ -521,8 +465,7 @@ jobs:
 
   status:
     needs: [plan, power_on, release, power_off]
-    # 안 쓰면 끄기(20분마다)는 끄기 잡의 보고서로 충분하다(매번 상태 표를 만들지 않는다).
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.task != 'none' && needs.plan.outputs.idle_only != 'true'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.task != 'none'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: dev
@@ -584,6 +527,22 @@ jobs:
             false:*) edge_line="🟡 닫는 중(퍼지는 중)" ;;
             *) edge_line="? 읽지 못함" ;;
           esac
+          # 안 쓰면 끄기(Lambda)의 마지막 판단(CloudWatch 로그, 최근 6시간). 읽지 못해도 이 줄만 비운다.
+          idle=$(bash scripts/idle-last.sh) || idle=""
+          case "$(value "$idle" IDLE_RESULT)" in
+            keep) idle_what="그대로 둠" ;;
+            stopped) idle_what="껐다" ;;
+            skip) idle_what="서버 꺼짐(할 일 없음)" ;;
+            closing) idle_what="끄는 중" ;;
+            abort) idle_what="그만둠(대문 다시 엶)" ;;
+            error) idle_what="❌ 실패(경보 메일)" ;;
+            *) idle_what="" ;;
+          esac
+          case "$(value "$idle" IDLE_LOG)" in
+            ok) idle_line="$(kst "$(value "$idle" IDLE_AT)") · $idle_what — $(value "$idle" IDLE_REASON)" ;;
+            none) idle_line="최근 6시간 기록 없음(Lambda 를 아직 apply 하지 않았거나 막 만들었다)" ;;
+            *) idle_line="읽지 못함(배포 역할의 CloudWatch 로그 읽기 권한)" ;;
+          esac
           release=$(value "$server" STATUS_RELEASE)
           mode=$(value "$server" STATUS_MODE)
           {
@@ -594,6 +553,7 @@ jobs:
             echo "|---|---|"
             echo "| 서버 | $server_line |"
             echo "| 대문(CloudFront) | $edge_line |"
+            echo "| 안 쓰면 끄기 마지막 판단(10분마다) | $idle_line |"
             if [ "$state" = running ]; then
               if [ "$mode" = preview ]; then
                 echo "| 올라간 것 | PR #$(value "$server" STATUS_PR) 미리보기 \`${release:0:7}\` · $(value "$server" STATUS_BY) · $(kst "$(value "$server" STATUS_AT)") |"
@@ -621,8 +581,8 @@ jobs:
             if [ "$state" != running ]; then
               echo "- PR 을 열면 저절로 뜬다. 이미 연 PR 은 **preview** 라벨을 붙이거나 Run workflow → **켜기**"
             elif [ "$mode" = preview ]; then
-              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기). 서버는 60분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기). 서버는 30분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
             else
-              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). 서버는 60분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). 서버는 30분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
             fi
           } >>"$GITHUB_STEP_SUMMARY"

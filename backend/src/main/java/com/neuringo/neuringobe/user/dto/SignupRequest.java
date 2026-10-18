@@ -5,6 +5,7 @@ import com.neuringo.neuringobe.common.validation.NoControlCharacters;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 
@@ -12,7 +13,10 @@ public record SignupRequest(
         @NotBlank @Email @Size(max = 254) @NoControlCharacters String email,
         @NotBlank @Size(min = 8, max = 72) String password,
         @NotBlank @Size(max = 100) @NameText String name,
-        @Size(max = 100) @NoControlCharacters String orgName) {
+        @Size(max = 100) @NoControlCharacters String orgName,
+        // 이용약관·개인정보 처리방침은 각각 필수 동의다. 버전은 서버가 정한다(ConsentProperties).
+        @NotNull @AssertTrue(message = "이용약관에 동의해야 가입할 수 있습니다.") Boolean termsAgreed,
+        @NotNull @AssertTrue(message = "개인정보 처리방침에 동의해야 가입할 수 있습니다.") Boolean privacyAgreed) {
 
     private static final int BCRYPT_MAX_BYTES = 72;
 

@@ -22,8 +22,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
- * 활동 배정(ADR 2026-10-03 D4). 서버가 목표를 저장하고 승인 문항을 골라 활동과 함께 한 번에 만들고, 같은 요청 키의 재전송과 같은 목표의 중복 배정을
- * 막는다. 배정이 실패하면 목표도 남지 않는다. V6 시드 문항이 있어 유형마다 승인 문항이 하나 이상 있다.
+ * 활동 배정. 서버가 목표를 저장하고 승인 문항을 골라 활동과 함께 한 번에 만들고, 같은 요청 키의 재전송과 최초 결합의 두 번째 배정을 막는다. 배정이 실패하면 목표도 남지
+ * 않는다. 시드 문항이 있어 유형마다 승인 문항이 하나 이상 있다. 유형별 규칙은 ActivityTypeAssignmentIntegrationTest 에서 본다.
  */
 @LocalProfileIntegrationTest
 class ActivityAssignmentIntegrationTest {
@@ -95,11 +95,11 @@ class ActivityAssignmentIntegrationTest {
         assertError(
                 assign(childId, GOAL, UUID.randomUUID()),
                 HttpStatus.CONFLICT,
-                "DUPLICATE_ASSIGNMENT");
+                "FIRST_ACTIVITY_EXISTS");
         assertError(
                 assign(childId, GOAL, UUID.randomUUID()),
                 HttpStatus.CONFLICT,
-                "DUPLICATE_ASSIGNMENT");
+                "FIRST_ACTIVITY_EXISTS");
 
         assertThat(goalIdsOf(childId)).hasSize(1);
     }
@@ -153,24 +153,18 @@ class ActivityAssignmentIntegrationTest {
     }
 
     @Test
-    void sameGoalContentIsNotAssignedTwiceWhileTheFirstHasNotStarted() {
-        assign(childId, GOAL, UUID.randomUUID());
+    void firstCombinedSentConcurrentlyForOneChildCreatesOnlyOne() throws Exception {
+        // 최초 결합 1회는 DB 인덱스 없이 아동 행 잠금만으로 지킨다. 목표·키가 모두 다른 요청이 한꺼번에 와도 하나만 생긴다.
+        List<MvcTestResult> results =
+                concurrently(i -> assign(childId, "동시 배정 목표 " + i, UUID.randomUUID()));
 
-        // 목표는 배정마다 새로 저장되지만 내용이 같으면 같은 목표다(ADR 2026-10-03 D6).
-        assertError(
-                assign(childId, GOAL, UUID.randomUUID()),
-                HttpStatus.CONFLICT,
-                "DUPLICATE_ASSIGNMENT");
+        List<Integer> statuses = results.stream().map(r -> r.getResponse().getStatus()).toList();
+        assertThat(statuses).filteredOn(status -> status == 201).hasSize(1);
+        assertThat(results)
+                .filteredOn(r -> r.getResponse().getStatus() != 201)
+                .allSatisfy(r -> assertError(r, HttpStatus.CONFLICT, "FIRST_ACTIVITY_EXISTS"));
         assertThat(activityIdsOf(childId)).hasSize(1);
-    }
-
-    @Test
-    void differentGoalContentCanBeAssignedAlongside() {
-        assign(childId, GOAL, UUID.randomUUID());
-
-        assertThat(assign(childId, "도움이 필요할 때 말로 요청한다", UUID.randomUUID()))
-                .hasStatus(HttpStatus.CREATED);
-        assertThat(activityIdsOf(childId)).hasSize(2);
+        assertThat(goalIdsOf(childId)).hasSize(1);
     }
 
     @Test
@@ -235,11 +229,8 @@ class ActivityAssignmentIntegrationTest {
                         Map.of("childId", childId),
                         UUID.randomUUID());
 
-        assertThat(result).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
-        assertThat(
-                        JsonPath.<List<String>>read(
-                                TestFixtures.body(result), "$.error.fieldErrors[*].field"))
-                .containsExactly("goal");
+        // 유형을 비우면 최초 결합이라 목표가 있어야 한다.
+        assertError(result, HttpStatus.UNPROCESSABLE_CONTENT, "GOAL_REQUIRED");
         assertThat(goalIdsOf(childId)).isEmpty();
     }
 

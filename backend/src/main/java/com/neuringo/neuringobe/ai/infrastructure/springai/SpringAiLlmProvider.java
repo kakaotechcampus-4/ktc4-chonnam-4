@@ -16,7 +16,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 public final class SpringAiLlmProvider implements LlmProvider {
@@ -62,11 +61,15 @@ public final class SpringAiLlmProvider implements LlmProvider {
         return convertResponse(request, startedAt, response);
     }
 
-    /** Spring AI 2 sets SDK retries when constructing the client, not from per-call options. */
+    /**
+     * Spring AI 2 sets SDK retries when constructing the client, not from per-call options. The
+     * ChatModel's default options do not carry that value either: auto-configuration leaves their
+     * maxRetries at the library default (3), so they cannot be used for this check. The client's
+     * setting ({@code spring.ai.openai.max-retries}) is checked at startup in
+     * AiProviderConfiguration.
+     */
     public void requireSingleAttempt() {
-        if (maxRetries != 0
-                || (chatModel instanceof OpenAiChatModel openAi
-                        && openAi.getOptions().getMaxRetries() != 0))
+        if (maxRetries != 0)
             throw new IllegalStateException(
                     "Budgeted LLM calls require SDK max retries to be zero");
     }

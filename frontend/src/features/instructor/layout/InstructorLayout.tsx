@@ -91,11 +91,19 @@ function InstructorLayout({
             <span className="size-5 shrink-0 rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
             <span className="break-keep">{userLabel}</span>
           </div>
+          {/* 탈퇴는 되돌릴 수 없는 작업이라 로그아웃 옆에 두지 않고 계정 화면 안에 둔다. */}
+          <Link
+            to="/account"
+            aria-current={isNavActive(pathname, "/account") ? "page" : undefined}
+            className="mt-3 block underline-offset-2 hover:underline"
+          >
+            계정
+          </Link>
           <button
             type="button"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="mt-3 underline-offset-2 hover:underline disabled:opacity-50"
+            className="mt-2 underline-offset-2 hover:underline disabled:opacity-50"
           >
             {logoutMutation.isPending ? "로그아웃 중..." : "로그아웃"}
           </button>

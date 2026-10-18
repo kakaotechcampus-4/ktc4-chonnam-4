@@ -5,14 +5,16 @@
 //   node scripts/tf-plan-guard.mjs --config infra   # 자격증명 없이 .tf 를 읽어 위험한 구성을 막는다(verify.sh infra)
 //
 // plan 에서 막는 것(docs/cd-architecture.md 7·8절):
-//   - 허용 목록 밖 리소스(NAT Gateway·ALB·EC2·RDS·IAM 등 — 비싸거나 운영진이 막아 둔 것)
+//   - 허용 목록 밖 리소스(NAT Gateway·ALB·EC2·RDS 등 — 비싸거나 운영진이 막아 둔 것)
+//   - IAM 역할은 Lambda 만 맡을 수 있고(운영진 경로 /ktc/ 금지), 정책에 전체(*)·IAM·서버 만들기·지우기·켜기 권한이 없어야 한다.
+//     Lambda 는 AWS 서비스(EventBridge 등) 하나만 부를 수 있고, 메모리 512 MB·900초 이하
 //   - 상태가 있는 리소스(버킷·ECR·배포·비밀값)와 공개 차단을 지우거나 다시 만들기 — 정말 지울 때만 TF_ALLOW_DESTROY=1
 //   - 보안 그룹 인바운드를 CIDR 로 여는 것(접두사 목록·보안 그룹 참조만 허용), 22번·모든 포트(ip_protocol -1)
 //   - 버킷 공개 차단을 하나라도 끄는 것, 누구에게나(Principal "*") 허용하는 버킷 정책
 //   - CloudFront 가장 비싼 요금 등급(PriceClass_All)
 // 구성(--config)에서 막는 것. plan 자체가 자격증명으로 코드를 돌리므로, plan 전에 자격증명 없는 검사 잡에서 본다:
 //   - provisioner, external·http 데이터 소스, null_resource·terraform_data(임의 명령·외부 호출)
-//   - 레포 밖 모듈(인터넷 주소·git), aws·random 밖 provider
+//   - 레포 밖 모듈(인터넷 주소·git), aws·random·archive(Lambda 코드 묶기, 로컬에서만 돈다) 밖 provider
 //   - data "aws_ssm_parameter"(읽은 비밀값이 state 에 평문으로 남는다)
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
@@ -25,10 +27,16 @@ export const ALLOWED_TYPES = new Set([
   "aws_cloudfront_distribution",
   "aws_cloudfront_function",
   "aws_cloudfront_origin_access_control",
+  "aws_cloudwatch_event_rule",
+  "aws_cloudwatch_event_target",
   "aws_cloudwatch_log_group",
   "aws_cloudwatch_metric_alarm",
   "aws_ecr_lifecycle_policy",
   "aws_ecr_repository",
+  "aws_iam_role",
+  "aws_iam_role_policy",
+  "aws_lambda_function",
+  "aws_lambda_permission",
   "aws_s3_bucket",
   "aws_s3_bucket_lifecycle_configuration",
   "aws_s3_bucket_ownership_controls",
@@ -80,6 +88,66 @@ function allowsEveryone(policy) {
   })
 }
 
+// IAM 정책 JSON 의 문장들. plan 때 정해지지 않았거나(문자열이 아님) 읽을 수 없으면 null.
+function policyStatements(policy) {
+  if (typeof policy !== "string") return null
+  try {
+    return [JSON.parse(policy).Statement ?? []].flat()
+  } catch {
+    return null
+  }
+}
+
+// 역할을 맡을 수 있는 쪽은 Lambda 하나뿐이다(사람·다른 계정·다른 서비스가 이 권한을 쓰지 못하게).
+const ROLE_SERVICES = new Set(["lambda.amazonaws.com"])
+// 팀 역할에 주지 않는 권한: 전체, IAM(권한 키우기)·역할 맡기·조직, 서버 만들기·지우기·켜기·설정 바꾸기(운영진 제한·비용).
+const FORBIDDEN_ACTION = /^(\*|[a-z0-9-]+:\*|iam:.*|sts:.*|organizations:.*|ec2:(RunInstances|TerminateInstances|StartInstances|ModifyInstanceAttribute))$/i
+
+function reviewIam(change, after, unknown, at, violations) {
+  if (change.type === "aws_iam_role") {
+    if (typeof after.path === "string" && after.path.startsWith("/ktc/")) violations.push(`${at}: 역할 경로 /ktc/ 는 운영진 것이다`)
+    const statements = policyStatements(after.assume_role_policy)
+    if (!statements) {
+      violations.push(`${at}: 역할을 맡을 수 있는 쪽이 plan 때 정해지지 않아 확인할 수 없다`)
+      return
+    }
+    for (const st of statements) {
+      if (st.Effect !== "Allow") continue
+      const principal = st.Principal ?? {}
+      const services = typeof principal === "object" ? [principal.Service ?? []].flat() : []
+      const onlyServices = typeof principal === "object" && Object.keys(principal).every((k) => k === "Service")
+      if (!onlyServices || services.length === 0 || services.some((s) => !ROLE_SERVICES.has(s))) {
+        violations.push(`${at}: Lambda 말고도 이 역할을 맡을 수 있다(${JSON.stringify(principal)})`)
+      }
+    }
+  }
+  if (change.type === "aws_iam_role_policy") {
+    const statements = policyStatements(after.policy)
+    if (!statements) {
+      violations.push(`${at}: 정책이 plan 때 정해지지 않아 확인할 수 없다`)
+      return
+    }
+    for (const st of statements) {
+      if (st.Effect !== "Allow") continue
+      if (st.NotAction || st.NotResource) violations.push(`${at}: NotAction·NotResource 는 쓰지 않는다(뜻밖에 넓어진다)`)
+      for (const action of [st.Action ?? []].flat()) {
+        if (FORBIDDEN_ACTION.test(action)) violations.push(`${at}: \`${action}\` 권한은 주지 않는다(전체·IAM·서버 만들기·지우기·켜기)`)
+      }
+    }
+  }
+  if (change.type === "aws_lambda_permission") {
+    if (!/^[a-z0-9-]+\.amazonaws\.com$/.test(after.principal ?? "")) {
+      violations.push(`${at}: AWS 서비스만 Lambda 를 부를 수 있다(지금 \`${after.principal}\`)`)
+    }
+    if (!after.source_arn && !unknown.source_arn) violations.push(`${at}: 부르는 쪽(source_arn)을 하나로 좁힌다`)
+    if (after.function_url_auth_type) violations.push(`${at}: Lambda 함수 URL 은 열지 않는다`)
+  }
+  if (change.type === "aws_lambda_function") {
+    if ((after.memory_size ?? 128) > 512) violations.push(`${at}: Lambda 메모리는 512 MB 이하(비용)`)
+    if ((after.timeout ?? 3) > 900) violations.push(`${at}: Lambda 제한 시간은 900초 이하`)
+  }
+}
+
 // 마크다운 표 칸. 역슬래시를 먼저, 그다음 | 를 이스케이프한다.
 const cell = (text) => String(text).replace(/\\/g, "\\\\").replace(/\|/g, "\\|")
 
@@ -124,6 +192,7 @@ export function review(plan, { allowDestroy = false } = {}) {
       if (change.type === "aws_cloudfront_distribution" && after.price_class === "PriceClass_All") {
         violations.push(`${at}: CloudFront 가장 비싼 요금 등급(PriceClass_All)`)
       }
+      reviewIam(change, after, unknown, at, violations)
     }
     if (actions.includes("delete") && (PROTECTED_TYPES.has(change.type) || isSecretParameter(change))) {
       destroyed.push({ address: change.address, what })
@@ -156,16 +225,16 @@ export function summary({ rows, violations, destroyed = [], allowDestroy = false
     lines.push("#### ⛔ 가드에 걸렸다", "")
     for (const v of violations) lines.push(`- ${v}`)
   } else if (allowDestroy) {
-    lines.push("가드 통과(허용 목록·보안 그룹·공개 차단·요금 등급). allow_destroy 가 켜져 삭제 보호는 껐다.")
+    lines.push("가드 통과(허용 목록·보안 그룹·공개 차단·요금 등급·IAM 범위). allow_destroy 가 켜져 삭제 보호는 껐다.")
   } else {
-    lines.push("가드 통과(허용 목록·삭제 보호·보안 그룹·공개 차단·요금 등급).")
+    lines.push("가드 통과(허용 목록·삭제 보호·보안 그룹·공개 차단·요금 등급·IAM 범위).")
   }
   return lines.join("\n")
 }
 
 // ── 구성 검사(--config) ─────────────────────────────────────────
-const ALLOWED_PROVIDERS = new Set(["aws", "random"])
-const ALLOWED_PROVIDER_SOURCES = new Set(["hashicorp/aws", "hashicorp/random"])
+const ALLOWED_PROVIDERS = new Set(["aws", "random", "archive"])
+const ALLOWED_PROVIDER_SOURCES = new Set(["hashicorp/aws", "hashicorp/random", "hashicorp/archive"])
 
 // 줄 맨 앞의 주석과 /* */ 주석만 지운다(문자열 안의 // 를 지워 검사를 피하지 않게 줄 끝 주석은 둔다).
 const stripComments = (text) =>
@@ -192,7 +261,7 @@ export function reviewConfig(files) {
         }
         const provider = line.match(/^\s*provider\s+"([^"]+)"/)
         if (provider && !ALLOWED_PROVIDERS.has(provider[1])) {
-          violations.push(`${at}: provider \`${provider[1]}\` 는 쓰지 않는다(aws·random 만)`)
+          violations.push(`${at}: provider \`${provider[1]}\` 는 쓰지 않는다(aws·random·archive 만)`)
         }
         // 한 줄짜리 블록(module "x" { source = "…" })도 있어 줄 어디에 있든 찾는다.
         for (const [, value] of line.matchAll(/\bsource\s*=\s*"([^"]+)"/g)) {
@@ -200,7 +269,7 @@ export function reviewConfig(files) {
           const address = value.replace(/^registry\.terraform\.io\//, "")
           if (/^[a-z0-9-]+\/[a-z0-9-]+$/.test(address)) {
             if (!ALLOWED_PROVIDER_SOURCES.has(address)) {
-              violations.push(`${at}: provider \`${address}\` 는 쓰지 않는다(hashicorp/aws·hashicorp/random 만)`)
+              violations.push(`${at}: provider \`${address}\` 는 쓰지 않는다(hashicorp/aws·hashicorp/random·hashicorp/archive 만)`)
             }
           } else {
             violations.push(`${at}: 레포 밖 모듈은 쓰지 않는다(리뷰 뒤에 바뀔 수 있다). infra/modules/ 아래에 둔다`)
