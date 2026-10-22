@@ -12,6 +12,7 @@ import {
   primaryButtonClass,
 } from '../components/styles'
 import { Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 // 다른 화면이 로그인 화면으로 보낼 때 넘기는 값.
 // from: 보호 화면에서 튕겨 온 경로(로그인 뒤 돌아갈 곳), notice·email: 가입 직후 자동 로그인이 실패했을 때의 안내.
@@ -117,7 +118,7 @@ function LoginPage() {
         )}
 
         <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
-          {loginMutation.isPending ? '로그인 중...' : '로그인'}
+          <ButtonLabel pending={loginMutation.isPending} label="로그인" pendingLabel="로그인 중..." />
         </button>
       </form>
 

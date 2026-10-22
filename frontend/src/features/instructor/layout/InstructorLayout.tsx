@@ -5,6 +5,7 @@ import { getCurrentUser } from "../api"
 import { INSTRUCTOR_NAV_ITEMS, isNavActive } from "./instructorNav"
 import { useLogout } from "./useLogout"
 import { MaterialIcon } from "../components/MaterialIcon"
+import { ButtonLabel } from "../components/ButtonLabel"
 import { focusRingClass } from "../components/styles"
 import { cn } from "@/lib/utils"
 
@@ -106,7 +107,7 @@ function InstructorLayout({
             disabled={logoutMutation.isPending}
             className={cn("mt-3 underline-offset-2 hover:underline disabled:opacity-50", focusRingClass)}
           >
-            {logoutMutation.isPending ? "로그아웃 중..." : "로그아웃"}
+            <ButtonLabel pending={logoutMutation.isPending} label="로그아웃" pendingLabel="로그아웃 중..." />
           </button>
         </div>
       </aside>

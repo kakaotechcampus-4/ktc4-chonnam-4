@@ -38,6 +38,7 @@ import {
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 type StepKey = 'target' | 'type' | 'goal' | 'confirm'
 
@@ -501,7 +502,7 @@ function ActivityCreatePage() {
               disabled={assignMutation.isPending}
               className={primaryButtonClass}
             >
-              {assignMutation.isPending ? '배정 중...' : '배정하기'}
+              <ButtonLabel pending={assignMutation.isPending} label="배정하기" pendingLabel="배정 중..." />
             </button>
           </div>
         </div>

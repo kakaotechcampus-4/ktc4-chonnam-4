@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { AlertDialog } from 'radix-ui'
 import { dangerButtonClass, inputClass, outlineButtonClass } from './styles'
 import { Notice } from './Feedback'
+import { ButtonLabel } from './ButtonLabel'
 
 /**
  * 영구 삭제 확인 창 (ADR 2026-10-04 D4). 무엇이 함께 지워지는지 description 으로 알린다.
@@ -92,7 +93,7 @@ function DeleteConfirmDialog({
                 disabled={!isConfirmed || !canConfirm || isPending}
                 onClick={onConfirm}
               >
-                {isPending ? pendingLabel : actionLabel}
+                <ButtonLabel pending={isPending} label={actionLabel} pendingLabel={pendingLabel} />
               </button>
             </div>
           </AlertDialog.Content>

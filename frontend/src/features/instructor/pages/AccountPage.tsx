@@ -5,6 +5,7 @@ import { getCurrentUser, listChildren, listClassrooms, withdraw } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
+import { ButtonLabel } from '../components/ButtonLabel'
 import { useLogout } from '../layout/useLogout'
 import {
   cardClass,
@@ -110,7 +111,7 @@ function AccountPage() {
               disabled={logoutMutation.isPending}
               className={outlineButtonClass}
             >
-              {logoutMutation.isPending ? '로그아웃 중...' : '로그아웃'}
+              <ButtonLabel pending={logoutMutation.isPending} label="로그아웃" pendingLabel="로그아웃 중..." />
             </button>
           </section>
 

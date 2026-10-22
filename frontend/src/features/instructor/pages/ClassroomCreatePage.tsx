@@ -14,6 +14,7 @@ import {
   primaryButtonClass,
 } from '../components/styles'
 import { Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 /**
  * 학급 생성 화면 (시안 T-CLS-02).
@@ -163,7 +164,7 @@ function ClassroomCreatePage() {
               취소
             </Link>
             <button type="submit" disabled={isSubmitDisabled} className={cn(primaryButtonClass, 'flex-1')}>
-              {createMutation.isPending ? '저장 중...' : '저장'}
+              <ButtonLabel pending={createMutation.isPending} label="저장" pendingLabel="저장 중..." />
             </button>
           </div>
         </div>

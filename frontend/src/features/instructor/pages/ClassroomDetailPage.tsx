@@ -22,6 +22,7 @@ import {
 } from '../components/styles'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 type DetailTab = 'overview' | 'children'
 
@@ -266,7 +267,7 @@ function ClassroomDetailPage() {
               className={cn(inputClass, 'w-[246px]')}
             />
             <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
-              {createChildMutation.isPending ? '등록 중...' : '아동 등록'}
+              <ButtonLabel pending={createChildMutation.isPending} label="아동 등록" pendingLabel="등록 중..." />
             </button>
           </form>
 

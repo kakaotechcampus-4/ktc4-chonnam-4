@@ -5,6 +5,7 @@ import { ApiError, hasAccessToken, login, signup } from '../api'
 import { AuthLayout } from '../layout/AuthLayout'
 import { fieldLabelClass, inputClass, primaryButtonClass } from '../components/styles'
 import { FieldError, Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 // 백엔드 가입 규칙(SignupRequest)과 맞춘다. 서버가 최종 검증하고, 여기서는 바로 알 수 있는 실수만 막는다.
 const PASSWORD_MIN_LENGTH = 8
@@ -209,7 +210,7 @@ function SignupPage() {
         )}
 
         <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
-          {signupMutation.isPending ? '가입 중...' : '가입하기'}
+          <ButtonLabel pending={signupMutation.isPending} label="가입하기" pendingLabel="가입 중..." />
         </button>
       </form>
 
