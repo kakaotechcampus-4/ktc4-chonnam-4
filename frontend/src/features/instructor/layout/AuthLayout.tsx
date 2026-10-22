@@ -26,10 +26,10 @@ function AuthLayout({
 
   return (
     <div className="instructor-scope flex min-h-svh items-center justify-center bg-[var(--instructor-auth-bg)] px-6 py-12">
-      <main className={cn(cardClass, 'w-full max-w-[470px] px-9 pt-9 pb-8')}>
-        <div className="mb-5 flex items-center gap-2.5">
+      <main className={cn(cardClass, 'w-full max-w-[470px] px-10 pt-10 pb-8')}>
+        <div className="mb-5 flex items-center gap-3">
           <span className="size-[30px] rounded-full bg-[var(--instructor-avatar)]" aria-hidden />
-          <span className="text-xl font-bold">느링고 강사</span>
+          <span className="text-xl font-semibold">느링고 강사</span>
         </div>
 
         <nav aria-label="로그인·가입" className="flex border-b border-[var(--instructor-border)]">

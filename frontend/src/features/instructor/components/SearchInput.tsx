@@ -1,8 +1,8 @@
-import { Search } from 'lucide-react'
+import { MaterialIcon } from './MaterialIcon'
 import { cn } from '@/lib/utils'
 
 /**
- * 필터 막대의 검색칸(디자인 시스템 Filter Bar 의 Search). 높이 34, 앞에 돋보기 아이콘.
+ * 필터 막대의 검색칸(디자인 시스템 Filter Bar 의 Search). 높이 34, 앞에 돋보기 아이콘(18px, 왼쪽 11·글자와 8 간격).
  * 이름은 보이지 않는 label 로 준다. 아이콘은 꾸밈이라 화면 낭독기가 읽지 않는다.
  */
 function SearchInput({
@@ -25,8 +25,8 @@ function SearchInput({
       <label htmlFor={id} className="sr-only">
         {label}
       </label>
-      <Search
-        aria-hidden
+      <MaterialIcon
+        name="search"
         className="pointer-events-none absolute top-1/2 left-2.5 size-[18px] -translate-y-1/2 text-[var(--instructor-icon-subtle)]"
       />
       <input

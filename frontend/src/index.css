@@ -318,7 +318,7 @@ code {
   --instructor-font-body: 'Pretendard Variable', var(--font-sans);
 
   /* Background */
-  --instructor-bg: #f8f7fa; /* Subtle: 본문 바탕. 흰 카드가 그 위에 놓인다 */
+  --instructor-bg: #ffffff; /* Background/Canvas: 본문 바탕. 디자인 시스템 레이아웃 예시처럼 흰 바탕에 테두리 카드를 둔다 */
   --instructor-auth-bg: #f8f7fa;
   --instructor-sidebar: #f8f7fa;
   --instructor-surface: #ffffff;
@@ -360,12 +360,15 @@ code {
   /* Feedback: 배지·안내 띠. 상태는 색만으로 구분하지 않고 글자도 함께 보인다 */
   --instructor-success-bg: #f6fbef;
   --instructor-success-fg: #416326;
+  --instructor-success-icon: #6fa637;
   --instructor-neutral-bg: #f0eef3;
   --instructor-neutral-fg: #494552;
   --instructor-info-bg: #f1fbfd;
   --instructor-info-fg: #206a7b;
+  --instructor-info-icon: #2aa5bf;
   --instructor-warning-bg: #fffbea;
   --instructor-warning-fg: #764219;
+  --instructor-warning-icon: #d58c13;
   --instructor-danger-bg: #fff2f2;
   --instructor-danger-text: #822b2b; /* 오류 문구 */
   --instructor-danger-fg: #bc3636; /* 삭제 버튼 바탕, 빨간 글씨 버튼 */
@@ -410,4 +413,121 @@ code {
   color: var(--instructor-text);
   /* #root 의 Vite 템플릿 text-align: center 를 강사 화면에서만 되돌린다. */
   text-align: left;
+}
+
+/*
+ * 강사 화면의 선택 컨트롤. 값은 디자인 시스템 05 공통 컴포넌트의 "Select · Checkbox · Radio · Switch"(Teacher) 와
+ * "Progress" 를 원본 CSS 그대로 옮겼다. 원본은 내용 20px 에 테두리를 더하는 방식(content-box)이라
+ * 바깥 크기가 상태마다 다르다: 체크박스 빈 칸 22·체크 20, 라디오 빈 칸 22·선택 32.
+ * 기본 input 을 그대로 두고 모양만 바꾸므로 키보드·화면 낭독기 동작은 브라우저 기본과 같다.
+ * utilities 보다 낮은 components 층에 두어, 화면에서 여백 등을 클래스로 덧붙일 수 있다.
+ */
+@layer components {
+  .instructor-scope input[type="checkbox"],
+  .instructor-scope input[type="radio"] {
+    appearance: none;
+    box-sizing: content-box;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1px solid var(--instructor-border-strong);
+    background: var(--instructor-surface) center / 16px 16px no-repeat;
+    cursor: pointer;
+  }
+  .instructor-scope input[type="checkbox"] {
+    border-radius: var(--instructor-radius-badge);
+  }
+  .instructor-scope input[type="checkbox"]:checked {
+    border: 0;
+    background-color: var(--instructor-primary);
+    /* Material Symbols Rounded "check" 16px, 흰색 (MaterialIcon.tsx 와 같은 경로) */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960' fill='%23fff'%3E%3Cpath d='m378-332 363-363q9-9 21.5-9t21.5 9q9 9 9 21.5t-9 21.5L399-267q-9 9-21 9t-21-9L175-449q-9-9-8.5-21.5T176-492q9-9 21.5-9t21.5 9l159 160Z'/%3E%3C/svg%3E");
+  }
+  .instructor-scope input[type="radio"] {
+    border-radius: 9999px;
+  }
+  .instructor-scope input[type="radio"]:checked {
+    border: 6px solid var(--instructor-primary);
+  }
+  .instructor-scope input[type="checkbox"]:focus-visible,
+  .instructor-scope input[type="radio"]:focus-visible {
+    outline: 3px solid var(--instructor-focus);
+    outline-offset: 2px;
+  }
+  .instructor-scope input[type="checkbox"]:disabled,
+  .instructor-scope input[type="radio"]:disabled {
+    cursor: not-allowed;
+    border-color: var(--instructor-border);
+    background-color: var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="checkbox"]:checked:disabled {
+    background-color: var(--instructor-text-disabled);
+  }
+  .instructor-scope input[type="radio"]:checked:disabled {
+    border-color: var(--instructor-text-disabled);
+  }
+
+  /* Select: 입력칸과 같은 42px 상자에 Material Symbols Rounded "expand_more"(파일 이름 keyboard_arrow_down) 20px(Icon/Secondary #777382)를 오른쪽 13px 에 둔다. */
+  .instructor-scope select {
+    appearance: none;
+    padding-right: 41px;
+    background: var(--instructor-surface)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960' fill='%23777382'%3E%3Cpath d='M469-358q-5-2-10-7L261-563q-9-9-8.5-21.5T262-606q9-9 21.5-9t21.5 9l175 176 176-176q9-9 21-8.5t21 9.5q9 9 9 21.5t-9 21.5L501-365q-5 5-10 7t-11 2q-6 0-11-2Z'/%3E%3C/svg%3E")
+      right 13px center / 20px 20px no-repeat;
+  }
+
+  /*
+   * 슬라이더: 디자인 시스템에 슬라이더 부품이 없어 트랙은 Progress(높이 6, 바탕 #f0eef3, 채움 Primary, 끝 둥글게),
+   * 손잡이는 와이어프레임(24px 흰 원, 2px 테두리)에 Primary 색을 입혔다. 채운 길이는 --fill(0~100%)로 받는다.
+   */
+  .instructor-scope input[type="range"] {
+    appearance: none;
+    height: 24px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .instructor-scope input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: linear-gradient(var(--range-fill, var(--instructor-primary)) 0 0) 0 / var(--fill, 0%) 100% no-repeat,
+      var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--range-fill, var(--instructor-primary));
+  }
+  .instructor-scope input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    box-sizing: border-box;
+    width: 24px;
+    height: 24px;
+    margin-top: -9px;
+    border: 2px solid var(--range-fill, var(--instructor-primary));
+    border-radius: 9999px;
+    background: var(--instructor-surface);
+  }
+  .instructor-scope input[type="range"]::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--range-fill, var(--instructor-primary));
+    border-radius: 9999px;
+    background: var(--instructor-surface);
+  }
+  .instructor-scope input[type="range"]:focus-visible {
+    outline: 3px solid var(--instructor-focus);
+    outline-offset: 2px;
+  }
+  .instructor-scope input[type="range"]:disabled {
+    --range-fill: var(--instructor-text-disabled);
+    cursor: not-allowed;
+  }
 }
