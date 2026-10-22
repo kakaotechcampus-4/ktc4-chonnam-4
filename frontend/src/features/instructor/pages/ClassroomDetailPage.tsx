@@ -9,7 +9,6 @@ import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import {
   cardClass,
   dangerOutlineButtonClass,
-  errorTextClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -22,6 +21,7 @@ import {
   tableRowClass,
 } from '../components/styles'
 import { cn } from '@/lib/utils'
+import { Notice } from '../components/Feedback'
 
 type DetailTab = 'overview' | 'children'
 
@@ -176,13 +176,13 @@ function ClassroomDetailPage() {
         </div>
       }
     >
-      <nav aria-label="현재 위치" className="mb-3.5 text-xs text-[var(--instructor-text-subtle)]">
+      <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
         <Link to="/classrooms" className="hover:underline">
           학급 목록
         </Link>
         {classroom && (
           <>
-            <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+            <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
               ›
             </span>
             <span aria-current="page">{classroom.name}</span>
@@ -193,28 +193,28 @@ function ClassroomDetailPage() {
       {isClassroomLoading ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
       ) : isClassroomError ? (
-        <p className={errorTextClass}>
+        <Notice tone="error">
           {classroomError instanceof Error
             ? classroomError.message
             : '학급 정보를 불러오지 못했습니다.'}
-        </p>
+        </Notice>
       ) : tab === 'overview' ? (
         <section role="tabpanel" aria-label="개요" className="flex flex-col gap-4">
-          <dl className="flex gap-3.5">
+          <dl className="flex gap-4">
             <div className={cn(cardClass, 'flex flex-1 flex-col gap-2 p-5')}>
               <dt className="text-xs text-[var(--instructor-text-subtle)]">아동 수</dt>
-              <dd className="text-2xl font-bold">{children ? children.length : '—'}</dd>
+              <dd className="text-2xl font-semibold">{children ? children.length : '—'}</dd>
             </div>
             {PENDING_STATS.map((label) => (
               <div key={label} className={cn(cardClass, 'flex flex-1 flex-col gap-2 p-5')}>
                 <dt className="text-xs text-[var(--instructor-text-subtle)]">{label}</dt>
-                <dd className="text-2xl font-bold text-[var(--instructor-text-disabled)]">—</dd>
+                <dd className="text-2xl font-semibold text-[var(--instructor-text-disabled)]">—</dd>
               </div>
             ))}
           </dl>
 
           <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-4">
-            <section aria-labelledby="recent-heading" className={cn(cardClass, 'flex flex-col gap-3.5 p-5')}>
+            <section aria-labelledby="recent-heading" className={cn(cardClass, 'flex flex-col gap-4 p-5')}>
               <h2 id="recent-heading" className="text-sm font-semibold">
                 최근 학습 요약
               </h2>
@@ -224,14 +224,14 @@ function ClassroomDetailPage() {
             </section>
 
             <div className="flex flex-col gap-4">
-              <section aria-labelledby="activity-stats-heading" className={cn(cardClass, 'flex flex-col gap-3.5 p-5')}>
+              <section aria-labelledby="activity-stats-heading" className={cn(cardClass, 'flex flex-col gap-4 p-5')}>
                 <h2 id="activity-stats-heading" className="text-sm font-semibold">
                   활동 현황
                 </h2>
                 <p className="text-sm text-[var(--instructor-text-subtle)]">유형별 완료 현황은 준비 중이에요.</p>
               </section>
 
-              <section aria-labelledby="quick-heading" className={cn(cardClass, 'flex flex-1 flex-col gap-2.5 p-5')}>
+              <section aria-labelledby="quick-heading" className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')}>
                 <div className="mb-1 flex items-center justify-between">
                   <h2 id="quick-heading" className="text-sm font-semibold">
                     바로 하기
@@ -271,17 +271,17 @@ function ClassroomDetailPage() {
           </form>
 
           {createChildMutation.isError && (
-            <p role="alert" className={errorTextClass}>
+            <Notice tone="error" role="alert">
               {describeError(createChildMutation.error, '아동 등록에 실패했습니다.')}
-            </p>
+            </Notice>
           )}
 
           {isChildrenLoading ? (
             <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
           ) : isChildrenError ? (
-            <p className={errorTextClass}>
+            <Notice tone="error">
               {childrenError instanceof Error ? childrenError.message : '아동 목록을 불러오지 못했습니다.'}
-            </p>
+            </Notice>
           ) : children?.length === 0 ? (
             <p className="text-sm text-[var(--instructor-text-muted)]">아직 등록된 아동이 없습니다.</p>
           ) : (
@@ -289,10 +289,10 @@ function ClassroomDetailPage() {
               <table className="w-full">
                 <thead>
                   <tr className={tableHeadRowClass}>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       이름
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       상태
                     </th>
                   </tr>
@@ -300,12 +300,12 @@ function ClassroomDetailPage() {
                 <tbody>
                   {children?.map((child) => (
                     <tr key={child.childId} className={tableRowClass}>
-                      <td className="px-5 py-3">
+                      <td className="px-2 py-3">
                         <Link to={`/classrooms/${classId}/children/${child.childId}`} className="hover:underline">
                           {child.displayName}
                         </Link>
                       </td>
-                      <td className="px-5 py-3 text-[var(--instructor-text-muted)]">
+                      <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
                         {CHILD_STATUS_LABELS[child.status]}
                       </td>
                     </tr>

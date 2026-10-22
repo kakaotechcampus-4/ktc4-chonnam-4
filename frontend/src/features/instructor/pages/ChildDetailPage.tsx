@@ -9,7 +9,6 @@ import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import { PageTabs } from '../components/PageTabs'
 import {
   dangerOutlineButtonClass,
-  errorTextClass,
   primaryButtonClass,
   tableClass,
   tableHeadRowClass,
@@ -18,6 +17,7 @@ import {
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { formatDateTime } from '../lib/dateTime'
 import { cn } from '@/lib/utils'
+import { Notice } from '../components/Feedback'
 
 const HISTORY_TAB = '활동 이력'
 
@@ -113,11 +113,11 @@ function ChildDetailPage() {
         />
       }
     >
-      <nav aria-label="현재 위치" className="mb-3.5 text-xs text-[var(--instructor-text-subtle)]">
+      <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
         <Link to="/classrooms" className="hover:underline">
           학급 목록
         </Link>
-        <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+        <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
           ›
         </span>
         <Link to={`/classrooms/${classId}?tab=children`} className="hover:underline">
@@ -125,7 +125,7 @@ function ChildDetailPage() {
         </Link>
         {child && !isWrongClassroom && (
           <>
-            <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+            <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
               ›
             </span>
             <span aria-current="page">{child.displayName}</span>
@@ -136,19 +136,19 @@ function ChildDetailPage() {
       {childQuery.isLoading ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
       ) : childQuery.isError || isWrongClassroom ? (
-        <p className={errorTextClass}>
+        <Notice tone="error">
           {childQuery.error instanceof Error ? childQuery.error.message : '아동을 찾을 수 없습니다.'}
-        </p>
+        </Notice>
       ) : (
         <section role="tabpanel" aria-label={HISTORY_TAB}>
           {activitiesQuery.isLoading ? (
             <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
           ) : activitiesQuery.isError ? (
-            <p className={errorTextClass}>
+            <Notice tone="error">
               {activitiesQuery.error instanceof Error
                 ? activitiesQuery.error.message
                 : '활동 이력을 불러오지 못했습니다.'}
-            </p>
+            </Notice>
           ) : activities?.length === 0 ? (
             <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정된 활동이 없습니다.</p>
           ) : (
@@ -156,16 +156,16 @@ function ChildDetailPage() {
               <table className="w-full">
                 <thead>
                   <tr className={tableHeadRowClass}>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       학습 목표
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       상태
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       배정
                     </th>
-                    <th scope="col" className="px-5 py-2.5 font-normal">
+                    <th scope="col" className="px-2 py-2.5 font-normal">
                       완료
                     </th>
                   </tr>
@@ -173,20 +173,20 @@ function ChildDetailPage() {
                 <tbody>
                   {activities?.map((activity) => (
                     <tr key={activity.activityId} className={tableRowClass}>
-                      <td className="px-5 py-3">
+                      <td className="px-2 py-3">
                         <Link to={`/activities/${activity.activityId}/report`} className="hover:underline">
                           {activity.goalId
                             ? (goalTitles.get(activity.goalId) ?? '학습 목표')
                             : ACTIVITY_TYPE_LABELS[activity.activityType]}
                         </Link>
                       </td>
-                      <td className="px-5 py-3">
+                      <td className="px-2 py-3">
                         <ActivityStatusBadge status={activity.status} />
                       </td>
-                      <td className="px-5 py-3 text-[var(--instructor-text-muted)]">
+                      <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
                         {formatDateTime(activity.assignedAt)}
                       </td>
-                      <td className="px-5 py-3 text-[var(--instructor-text-muted)]">
+                      <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
                         {formatDateTime(activity.completedAt)}
                       </td>
                     </tr>

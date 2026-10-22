@@ -6,7 +6,6 @@ import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
 import { SearchInput } from '../components/SearchInput'
 import {
-  errorTextClass,
   filterButtonClass,
   primaryButtonClass,
   tableClass,
@@ -14,6 +13,7 @@ import {
   tableRowClass,
 } from '../components/styles'
 import { cn } from '@/lib/utils'
+import { Notice } from '../components/Feedback'
 
 type StatusFilter = 'ALL' | ClassroomStatus
 
@@ -52,7 +52,7 @@ function ClassroomListPage() {
 
   return (
     <InstructorLayout title="학급 목록">
-      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <div role="group" aria-label="학급 상태" className="flex gap-2">
           {STATUS_FILTERS.map((filter) => (
             <button
@@ -82,9 +82,9 @@ function ClassroomListPage() {
       {isLoading ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
       ) : isListError ? (
-        <p className={errorTextClass}>
+        <Notice tone="error">
           {listError instanceof Error ? listError.message : '학급 목록을 불러오지 못했습니다.'}
-        </p>
+        </Notice>
       ) : classrooms?.length === 0 ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">
           아직 학급이 없습니다. 학급 생성으로 첫 학급을 만들어 보세요.
@@ -95,23 +95,23 @@ function ClassroomListPage() {
             <table className="w-full">
               <thead>
                 <tr className={tableHeadRowClass}>
-                  <th scope="col" className="px-5 py-2.5 font-normal">
+                  <th scope="col" className="px-2 py-2.5 font-normal">
                     학급명
                   </th>
                   {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
-                    <th key={column} scope="col" className="px-5 py-2.5 font-normal">
+                    <th key={column} scope="col" className="px-2 py-2.5 font-normal">
                       {column}
                     </th>
                   ))}
-                  <th scope="col" className="px-5 py-2.5 font-normal">
+                  <th scope="col" className="px-2 py-2.5 font-normal">
                     상태
                   </th>
                   {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
-                    <th key={column} scope="col" className="px-5 py-2.5 font-normal">
+                    <th key={column} scope="col" className="px-2 py-2.5 font-normal">
                       {column}
                     </th>
                   ))}
-                  <th scope="col" className="px-5 py-2.5">
+                  <th scope="col" className="px-2 py-2.5">
                     <span className="sr-only">상세</span>
                   </th>
                 </tr>
@@ -122,26 +122,24 @@ function ClassroomListPage() {
                   return (
                     <tr
                       key={classroom.classId}
-                      className={cn(
-                        tableRowClass,
-                        isArchived ? 'text-[var(--instructor-text-disabled)]' : 'text-[var(--instructor-text-muted)]'
-                      )}
+                      // 보관은 누를 수 없다는 뜻이 아니라 상태라서, 이름을 비활성 색이 아닌 보조 글자색으로 낮춘다(배지가 상태를 알린다).
+                      className={cn(tableRowClass, 'text-[var(--instructor-text-muted)]')}
                     >
-                      <td className={cn('px-5 py-3', !isArchived && 'text-[var(--instructor-text)]')}>{classroom.name}</td>
+                      <td className={cn('px-2 py-3', !isArchived && 'text-[var(--instructor-text)]')}>{classroom.name}</td>
                       {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
-                        <td key={column} className="px-5 py-3 text-[var(--instructor-text-disabled)]">
+                        <td key={column} className="px-2 py-3 text-[var(--instructor-text-disabled)]">
                           —
                         </td>
                       ))}
-                      <td className="px-5 py-3">
+                      <td className="px-2 py-3">
                         <ClassroomStatusBadge status={classroom.status} />
                       </td>
                       {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
-                        <td key={column} className="px-5 py-3 text-[var(--instructor-text-disabled)]">
+                        <td key={column} className="px-2 py-3 text-[var(--instructor-text-disabled)]">
                           —
                         </td>
                       ))}
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-2 py-3 text-right">
                         <Link
                           to={`/classrooms/${classroom.classId}`}
                           className="text-[var(--instructor-link)] hover:underline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--instructor-focus)]"
@@ -161,7 +159,7 @@ function ClassroomListPage() {
               </p>
             )}
           </div>
-          <div className="mt-3.5 text-xs text-[var(--instructor-text-subtle)]">보관된 학급의 기록은 조회만 가능합니다.</div>
+          <div className="mt-4 text-xs text-[var(--instructor-text-subtle)]">보관된 학급의 기록은 조회만 가능합니다.</div>
         </>
       )}
     </InstructorLayout>

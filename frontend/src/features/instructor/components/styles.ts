@@ -35,9 +35,6 @@ const filterButtonClass = `inline-flex h-[34px] shrink-0 items-center rounded-[v
 const cardClass =
   "rounded-[var(--instructor-radius-card)] border border-[var(--instructor-border)] bg-[var(--instructor-surface)] shadow-[var(--instructor-shadow-1)]"
 
-// 오류 문구. 입력칸 아래·확인 창 안에 쓴다.
-const errorTextClass = "text-xs text-[var(--instructor-danger-text)]"
-
 // 상태 배지(진행 중·완료 등). 디자인 시스템 Badge: 높이 22, 안쪽 10, 모서리 4. 색과 함께 글자로 상태를 알린다.
 const badgeClass =
   "inline-flex h-[22px] items-center rounded-[var(--instructor-radius-badge)] px-2.5 text-xs whitespace-nowrap"
@@ -60,7 +57,6 @@ export {
   cardClass,
   dangerButtonClass,
   dangerOutlineButtonClass,
-  errorTextClass,
   fieldLabelClass,
   filterButtonClass,
   focusRingClass,

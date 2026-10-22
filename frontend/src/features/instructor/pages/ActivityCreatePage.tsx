@@ -16,12 +16,17 @@ import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { WizardStepper, type WizardStep } from '../components/WizardStepper'
 import {
+  badgeClass,
   cardClass,
-  errorTextClass,
   fieldLabelClass,
+  filterButtonClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
+  tabBaseClass,
+  tabIdleClass,
+  tabSelectedClass,
+  tableHeadRowClass,
 } from '../components/styles'
 import {
   GOAL_CATEGORIES,
@@ -32,6 +37,7 @@ import {
 } from '../lib/goalPresets'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
+import { Notice } from '../components/Feedback'
 
 type StepKey = 'target' | 'type' | 'goal' | 'confirm'
 
@@ -280,6 +286,8 @@ function ActivityCreatePage() {
         </span>
       }
       subheader={<WizardStepper steps={steps} current={step} />}
+      headerTools={false}
+      fill
     >
       {step === 'target' && (
         <TargetStep
@@ -311,7 +319,7 @@ function ActivityCreatePage() {
 
       {step === 'goal' && (
         <div className="flex flex-col gap-4">
-          <div role="tablist" aria-label="학습 목표 입력 방식" className={cn(cardClass, 'flex px-2')}>
+          <div role="tablist" aria-label="학습 목표 입력 방식" className="flex gap-1 border-b border-[var(--instructor-border)]">
             {(
               [
                 ['preset', '목표 목록에서 선택'],
@@ -324,20 +332,17 @@ function ActivityCreatePage() {
                 role="tab"
                 aria-selected={goalTab === key}
                 onClick={() => setGoalTab(key)}
-                className={cn(
-                  'relative -mb-px border-b-2 px-4 py-3 text-sm',
-                  goalTab === key
-                    ? 'border-[var(--instructor-primary)] font-semibold'
-                    : 'border-transparent text-[var(--instructor-text-muted)]'
-                )}
+                className={cn(tabBaseClass, goalTab === key ? tabSelectedClass : tabIdleClass)}
               >
                 {label}
               </button>
             ))}
           </div>
 
+          {/* 시안 T-ACT-03: 왼쪽은 목표 고르기, 오른쪽은 작은 목표 미리보기와 이동 버튼 */}
+          <div className="grid flex-1 grid-cols-2 gap-4">
           {goalTab === 'preset' ? (
-            <section className={cn(cardClass, 'flex flex-col gap-4 p-6')} aria-label="목표 목록">
+            <section className={cn(cardClass, 'flex flex-col gap-4 p-5')} aria-label="목표 목록">
               <div className="flex gap-2">
                 {GOAL_CATEGORIES.map((category) => (
                   <button
@@ -349,24 +354,19 @@ function ActivityCreatePage() {
                       setCategoryFilter(category)
                       setPresetId(null)
                     }}
-                    className={cn(
-                      'rounded-full border px-4 py-1.5 text-sm',
-                      categoryFilter === category
-                        ? 'border-[var(--instructor-primary)] bg-[var(--instructor-primary)] text-[var(--instructor-primary-foreground)]'
-                        : 'border-[var(--instructor-input-border)]'
-                    )}
+                    className={filterButtonClass}
                   >
                     {GOAL_CATEGORY_LABELS[category]}
                   </button>
                 ))}
               </div>
-              <fieldset className="flex flex-col">
+              <fieldset className="flex flex-1 flex-col rounded-[var(--instructor-radius-control)] border border-[var(--instructor-border)]">
                 <legend className="sr-only">학습 목표</legend>
                 {GOAL_PRESETS.filter((p) => p.category === categoryFilter).map((p) => (
                   <label
                     key={p.id}
                     className={cn(
-                      'flex cursor-pointer items-start gap-3 border-b border-[var(--instructor-border)] px-3 py-3.5 last:border-b-0',
+                      'flex cursor-pointer items-start gap-3 border-b border-[var(--instructor-border-subtle)] px-4 py-4',
                       presetId === p.id && 'bg-[var(--instructor-surface-muted)]'
                     )}
                   >
@@ -375,10 +375,9 @@ function ActivityCreatePage() {
                       name="goal-preset"
                       checked={presetId === p.id}
                       onChange={() => setPresetId(p.id)}
-                      className="mt-1"
                     />
                     <span>
-                      <span className="block text-sm font-semibold">{p.title}</span>
+                      <span className={cn('block text-sm', presetId === p.id && 'font-semibold')}>{p.title}</span>
                       <span className="block text-xs text-[var(--instructor-text-muted)]">
                         {GOAL_CATEGORY_LABELS[p.category]} · 권장 {p.recommendedLevel}
                       </span>
@@ -389,7 +388,7 @@ function ActivityCreatePage() {
               <p className="text-xs text-[var(--instructor-text-muted)]">목표는 활동당 1개만 선택합니다.</p>
             </section>
           ) : (
-            <section className={cn(cardClass, 'flex max-w-xl flex-col gap-5 p-6')} aria-label="직접 입력">
+            <section className={cn(cardClass, 'flex flex-col gap-5 p-5')} aria-label="직접 입력">
               <label className={fieldLabelClass}>
                 학습 목표
                 <input
@@ -418,13 +417,30 @@ function ActivityCreatePage() {
             </section>
           )}
 
-          <div className="flex justify-between">
-            <button type="button" onClick={() => moveTo('type')} className={outlineButtonClass}>
-              이전
-            </button>
-            <button type="button" disabled={!goal} onClick={() => moveTo('confirm')} className={primaryButtonClass}>
-              다음 · 확인
-            </button>
+            <div className="flex flex-col gap-3">
+              <section className={cn(cardClass, 'flex flex-1 flex-col gap-1 p-5')} aria-labelledby="sub-goal-heading">
+                <h2 id="sub-goal-heading" className="text-sm font-semibold">
+                  작은 목표 미리보기
+                </h2>
+                <p className="text-xs text-[var(--instructor-text-muted)]">선택한 목표에서 자동 분해됩니다.</p>
+                <p className="mt-3 rounded-[var(--instructor-radius-control)] bg-[var(--instructor-surface-muted)] px-4 py-3 text-sm text-[var(--instructor-text-muted)]">
+                  작은 목표 분해는 준비 중이에요.
+                </p>
+              </section>
+              <div className="flex gap-2.5">
+                <button type="button" onClick={() => moveTo('type')} className={outlineButtonClass}>
+                  이전
+                </button>
+                <button
+                  type="button"
+                  disabled={!goal}
+                  onClick={() => moveTo('confirm')}
+                  className={cn(primaryButtonClass, 'flex-1')}
+                >
+                  다음 · 확인
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -465,9 +481,9 @@ function ActivityCreatePage() {
           </section>
 
           {assignMutation.isError && (
-            <p role="alert" className={errorTextClass}>
+            <Notice tone="error" role="alert">
               {assignErrorMessage}
-            </p>
+            </Notice>
           )}
 
           <div className="flex justify-between">
@@ -523,16 +539,15 @@ function TargetStep({
   const activeChildren = childrenList?.filter((c) => c.status === 'ACTIVE')
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <section className={cn(cardClass, 'flex flex-col gap-5 p-6')} aria-label="대상 범위">
-        <h2 className="text-base font-bold">대상 범위</h2>
-        <p className="rounded-[var(--instructor-radius-control)] border border-[var(--instructor-primary)] px-4 py-3 text-sm">
-          <span className="block font-semibold">특정 아동 선택</span>
-          <span className="block text-xs text-[var(--instructor-text-muted)]">
-            아동 한 명에게 활동을 배정합니다.
-          </span>
-        </p>
-        <label className={fieldLabelClass}>
+    <div className="grid grid-cols-2 gap-4">
+      <section className={cn(cardClass, 'flex flex-col gap-4 p-5')} aria-label="대상 범위">
+        <h2 className="text-sm font-semibold">대상 범위</h2>
+        {/* 시안의 "학급 전체" 배정은 아직 없어 비활성으로 두고, 지금 되는 "특정 아동 선택"을 고른 상태로 보인다. */}
+        <div role="radiogroup" aria-label="대상 범위" className="flex flex-col gap-3">
+          <ScopeOption title="학급 전체" description="학급 아동 모두에게 같은 활동을 배정합니다. 준비 중이에요." />
+          <ScopeOption title="특정 아동 선택" description="아동 한 명에게 활동을 배정합니다." selected />
+        </div>
+        <label className={cn(fieldLabelClass, 'pt-2')}>
           학급
           <select value={classId ?? ''} onChange={(e) => onSelectClassroom(e.target.value)} className={inputClass}>
             <option value="">학급을 고르세요</option>
@@ -543,27 +558,36 @@ function TargetStep({
             ))}
           </select>
         </label>
-        {classroomsError && <p className={errorTextClass}>{classroomsError.message}</p>}
+        {classroomsError && <Notice tone="error">{classroomsError.message}</Notice>}
       </section>
 
-      <section className={cn(cardClass, 'flex flex-col gap-4 p-6')} aria-label="대상 리스트">
-        <h2 className="text-base font-bold">대상 리스트</h2>
+      <section className={cn(cardClass, 'flex flex-col gap-4 p-5')} aria-label="대상 리스트">
+        <h2 className="text-sm font-semibold">대상 리스트</h2>
         {!classId ? (
           <p className="text-sm text-[var(--instructor-text-muted)]">학급을 먼저 골라 주세요.</p>
         ) : isChildrenLoading ? (
           <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
         ) : childrenError ? (
-          <p className={errorTextClass}>{childrenError.message}</p>
+          <Notice tone="error">{childrenError.message}</Notice>
         ) : activeChildren?.length === 0 ? (
           <p className="text-sm text-[var(--instructor-text-muted)]">이 학급에 참여 중인 아동이 없습니다.</p>
         ) : (
-          <fieldset className="flex flex-col">
+          // 시안의 난이도·지원·최근 활동 열은 아동별 값이 아직 없어 학급 목록의 빈 열처럼 "—" 로 둔다.
+          <fieldset className="flex-1 overflow-hidden rounded-[var(--instructor-radius-control)] border border-[var(--instructor-border)]">
             <legend className="sr-only">아동</legend>
+            <div className={cn(tableHeadRowClass, TARGET_COLUMNS, 'py-3')} aria-hidden>
+              <span />
+              <span>아동</span>
+              <span>난이도</span>
+              <span>지원</span>
+              <span>최근 활동</span>
+            </div>
             {activeChildren?.map((c) => (
               <label
                 key={c.childId}
                 className={cn(
-                  'flex cursor-pointer items-center gap-3 border-b border-[var(--instructor-border)] px-3 py-3 text-sm last:border-b-0',
+                  TARGET_COLUMNS,
+                  'cursor-pointer border-b border-[var(--instructor-border-subtle)] py-3 text-sm',
                   childId === c.childId && 'bg-[var(--instructor-surface-muted)]'
                 )}
               >
@@ -572,22 +596,67 @@ function TargetStep({
                   name="target-child"
                   checked={childId === c.childId}
                   onChange={() => onSelectChild(c.childId)}
+                  className="mx-auto"
                 />
-                {c.displayName}
+                <span className="break-keep">{c.displayName}</span>
+                <span aria-hidden className="text-[var(--instructor-text-muted)]">—</span>
+                <span aria-hidden className="text-[var(--instructor-text-muted)]">—</span>
+                <span aria-hidden className="text-[var(--instructor-text-muted)]">—</span>
               </label>
             ))}
           </fieldset>
         )}
 
-        <div className="mt-auto flex items-center justify-end gap-2 pt-2">
-          <button type="button" onClick={onCancel} className={outlineButtonClass}>
-            취소
-          </button>
-          <button type="button" disabled={!childId} onClick={onNext} className={primaryButtonClass}>
-            다음 · 활동 유형 선택
-          </button>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+          <span className="text-xs text-[var(--instructor-text-muted)]">선택 {childId ? 1 : 0}명</span>
+          <div className="flex gap-2.5">
+            <button type="button" onClick={onCancel} className={outlineButtonClass}>
+              취소
+            </button>
+            <button type="button" disabled={!childId} onClick={onNext} className={primaryButtonClass}>
+              다음 · 활동 유형 선택
+            </button>
+          </div>
         </div>
       </section>
+    </div>
+  )
+}
+
+// 대상 리스트의 열: 고르기 · 아동 · 난이도 · 지원 · 최근 활동
+const TARGET_COLUMNS = 'grid grid-cols-[40px_minmax(0,1fr)_64px_64px_88px] items-center px-1'
+
+/**
+ * 대상 범위 선택지. 지금은 고를 수 있는 범위가 하나라 고르는 동작은 없고, 선택된 것과 준비 중(비활성)인 것을 라디오로 알린다.
+ * 비활성 선택지는 aria-disabled 로 표시해 화면 낭독기가 "선택할 수 없음"으로 읽는다.
+ */
+function ScopeOption({ title, description, selected = false }: { title: string; description: string; selected?: boolean }) {
+  return (
+    <div
+      role="radio"
+      aria-checked={selected}
+      aria-disabled={!selected}
+      className={cn(
+        'flex items-center gap-3 rounded-[var(--instructor-radius-control)] border px-4 py-4',
+        selected
+          ? 'border-2 border-[var(--instructor-primary)]'
+          : 'border-[var(--instructor-border)] text-[var(--instructor-text-disabled)]'
+      )}
+    >
+      {/* 라디오 모양은 index.css 의 디자인 시스템 Radio 와 같은 값(내용 20px, 빈 칸 테두리 1·선택 6)이다. */}
+      <span
+        aria-hidden
+        className={cn(
+          'box-content size-5 shrink-0 rounded-full',
+          selected
+            ? 'border-[6px] border-[var(--instructor-primary)]'
+            : 'border border-[var(--instructor-border)] bg-[var(--instructor-disabled-bg)]'
+        )}
+      />
+      <span>
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className={cn('block text-xs', selected && 'text-[var(--instructor-text-muted)]')}>{description}</span>
+      </span>
     </div>
   )
 }
@@ -620,7 +689,7 @@ function TypeStep({
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
 
   if (activitiesError) {
-    return <p className={errorTextClass}>{activitiesError.message}</p>
+    return <Notice tone="error">{activitiesError.message}</Notice>
   }
   if (!availability) {
     return <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
@@ -663,7 +732,7 @@ function TypeStep({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-lg font-bold">어떤 활동을 만들까요?</h2>
+        <h2 className="text-xl font-semibold">어떤 활동을 만들까요?</h2>
         <p className="mt-1 text-sm text-[var(--instructor-text-muted)]">
           {child.displayName} · {typeGuide(availability)}
         </p>
@@ -726,7 +795,7 @@ function TypeStep({
         />
       </div>
 
-      <div className="flex justify-between">
+      <div className="mt-auto flex justify-between">
         <button type="button" onClick={onBack} className={outlineButtonClass}>
           이전
         </button>
@@ -789,16 +858,30 @@ function TypeCard({
         }}
         className={cn('flex flex-1 flex-col text-left', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}
       >
+        {/* 시안의 그림 자리(40px, 모서리 8). 그림이 아직 없어 빈 칸으로 두고, 고를 수 없는 카드는 점선으로 그린다. */}
         <div className="flex items-start justify-between">
-          <span className="text-base font-bold">{title}</span>
+          <span
+            aria-hidden
+            className={cn(
+              'box-content size-10 rounded-[var(--instructor-radius-control)]',
+              disabled
+                ? 'border border-dashed border-[var(--instructor-border-strong)] bg-[var(--instructor-disabled-bg)]'
+                : 'bg-[var(--instructor-avatar)]'
+            )}
+          />
           {badge && (
-            <span className="rounded-full bg-[var(--instructor-surface-muted)] px-2.5 py-0.5 text-xs font-semibold">
+            <span className={cn(badgeClass, 'bg-[var(--instructor-info-bg)] text-[var(--instructor-info-fg)]')}>
               {badge}
             </span>
           )}
         </div>
-        <p className="mt-2 text-sm">{description}</p>
-        <p className="mt-4 text-xs text-[var(--instructor-text-muted)]">{meta.join(' · ')}</p>
+        <span className="mt-4 text-base font-semibold">{title}</span>
+        <p className={cn('mt-2 text-sm', !disabled && 'text-[var(--instructor-text-muted)]')}>{description}</p>
+        <ul className={cn('mt-2 text-xs leading-5', !disabled && 'text-[var(--instructor-text-muted)]')}>
+          {meta.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
         {disabledReason && <p className="mt-2 text-xs font-semibold">{disabledReason}</p>}
       </div>
       {children}

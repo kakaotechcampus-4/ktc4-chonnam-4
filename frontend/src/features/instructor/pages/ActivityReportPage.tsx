@@ -12,9 +12,10 @@ import {
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { PageTabs } from '../components/PageTabs'
-import { cardClass, errorTextClass } from '../components/styles'
+import { cardClass } from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
+import { Notice } from '../components/Feedback'
 
 const QUIZ_TAB = '표정 퀴즈'
 
@@ -86,11 +87,11 @@ function ActivityReportPage() {
       }
     >
       {child && (
-        <nav aria-label="현재 위치" className="mb-3.5 text-xs text-[var(--instructor-text-subtle)]">
+        <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
           <Link to={`/classrooms/${child.classId}?tab=children`} className="hover:underline">
             {classroomQuery.data?.name ?? '학급'}
           </Link>
-          <span aria-hidden className="mx-1.5 text-[var(--instructor-border-strong)]">
+          <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
             ›
           </span>
           <Link to={`/classrooms/${child.classId}/children/${child.childId}`} className="hover:underline">
@@ -102,9 +103,9 @@ function ActivityReportPage() {
       {activityQuery.isLoading ? (
         <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
       ) : activityQuery.isError || !activity ? (
-        <p className={errorTextClass}>
+        <Notice tone="error">
           {activityQuery.error instanceof Error ? activityQuery.error.message : '활동을 찾을 수 없습니다.'}
-        </p>
+        </Notice>
       ) : (
         <section role="tabpanel" aria-label={QUIZ_TAB} className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
@@ -125,9 +126,9 @@ function ActivityReportPage() {
               퀴즈를 진행 중이에요. 아동이 모든 문항을 마치면 결과가 보입니다.
             </p>
           ) : resultQuery.isError || !resultQuery.data ? (
-            <p className={errorTextClass}>
+            <Notice tone="error">
               {resultQuery.error instanceof Error ? resultQuery.error.message : '결과를 불러오지 못했습니다.'}
-            </p>
+            </Notice>
           ) : (
             <QuizResultView result={resultQuery.data} quizItemCount={quizItemCount} />
           )}
@@ -145,7 +146,7 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
 
   return (
     <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start gap-4">
-      <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard label="정답률" value={accuracy} />
         <StatCard
           label="정답 / 판정 문항"
@@ -187,7 +188,7 @@ function StatCard({ label, value, note }: { label: string; value: string; note?:
   return (
     <div className={cn(cardClass, 'flex flex-col gap-2 px-5 py-4')}>
       <p className="text-xs text-[var(--instructor-text-subtle)]">{label}</p>
-      <p className="text-xl font-bold">{value}</p>
+      <p className="text-xl font-semibold">{value}</p>
       {note && <p className="text-xs text-[var(--instructor-text-subtle)]">{note}</p>}
     </div>
   )

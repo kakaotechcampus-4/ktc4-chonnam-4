@@ -2,16 +2,16 @@ import { useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { hasAccessToken, login } from '../api'
-import { Eye, EyeOff } from 'lucide-react'
+import { MaterialIcon } from '../components/MaterialIcon'
 import { AuthLayout } from '../layout/AuthLayout'
 import { cn } from '@/lib/utils'
 import {
-  errorTextClass,
   fieldLabelClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
 } from '../components/styles'
+import { Notice } from '../components/Feedback'
 
 // 다른 화면이 로그인 화면으로 보낼 때 넘기는 값.
 // from: 보호 화면에서 튕겨 온 경로(로그인 뒤 돌아갈 곳), notice·email: 가입 직후 자동 로그인이 실패했을 때의 안내.
@@ -57,12 +57,9 @@ function LoginPage() {
   return (
     <AuthLayout title="로그인" description="강사 · 기관 계정으로 로그인하세요">
       {notice && (
-        <p
-          role="status"
-          className="mb-5 rounded-[var(--instructor-radius-control)] bg-[var(--instructor-surface-muted)] px-3 py-2 text-sm"
-        >
+        <Notice tone="info" role="status" className="mb-5">
           {notice}
-        </p>
+        </Notice>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -78,7 +75,7 @@ function LoginPage() {
             className={inputClass}
           />
         </label>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <label htmlFor="login-password" className="text-sm">
             비밀번호
           </label>
@@ -89,7 +86,7 @@ function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={cn(inputClass, 'pr-11')}
+              className={cn(inputClass, 'pr-12')}
             />
             <button
               type="button"
@@ -98,7 +95,7 @@ function LoginPage() {
               aria-pressed={isPasswordVisible}
               className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-icon-subtle)]"
             >
-              {isPasswordVisible ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+              <MaterialIcon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="size-5" />
             </button>
           </div>
           {/* 비밀번호 재설정은 S1 범위 밖이라 자리만 둔다. */}
@@ -112,11 +109,11 @@ function LoginPage() {
         </div>
 
         {loginMutation.isError && (
-          <p role="alert" className={errorTextClass}>
+          <Notice tone="error" role="alert">
             {loginMutation.error instanceof Error
               ? loginMutation.error.message
               : '로그인에 실패했습니다.'}
-          </p>
+          </Notice>
         )}
 
         <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
@@ -124,7 +121,7 @@ function LoginPage() {
         </button>
       </form>
 
-      <button type="button" disabled className={cn(outlineButtonClass, 'mt-1.5 w-full')}>
+      <button type="button" disabled className={cn(outlineButtonClass, 'mt-2 w-full')}>
         기관 계정으로 로그인 (향후 제공)
       </button>
 
