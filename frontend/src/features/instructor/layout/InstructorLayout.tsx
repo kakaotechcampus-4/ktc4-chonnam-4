@@ -6,7 +6,7 @@ import { INSTRUCTOR_NAV_ITEMS, isNavActive } from "./instructorNav"
 import { useLogout } from "./useLogout"
 import { MaterialIcon } from "../components/MaterialIcon"
 import { ButtonLabel } from "../components/ButtonLabel"
-import { focusRingClass } from "../components/styles"
+import { focusRingClass, hitAreaClass } from "../components/styles"
 import { cn } from "@/lib/utils"
 
 /**
@@ -105,7 +105,7 @@ function InstructorLayout({
             type="button"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className={cn("mt-3 underline-offset-2 hover:underline disabled:opacity-50", focusRingClass)}
+            className={cn("relative mt-3 underline-offset-2 hover:underline disabled:opacity-50", hitAreaClass, focusRingClass)}
           >
             <ButtonLabel pending={logoutMutation.isPending} label="로그아웃" pendingLabel="로그아웃 중..." />
           </button>
@@ -125,7 +125,7 @@ function InstructorLayout({
                     disabled
                     aria-label="알림 (준비 중)"
                     title="준비 중인 기능입니다"
-                    className="flex size-[26px] items-center justify-center rounded-full border border-[var(--instructor-border-strong)] text-[var(--instructor-icon-subtle)] disabled:cursor-not-allowed"
+                    className={cn("relative flex size-[26px] items-center justify-center rounded-full border border-[var(--instructor-border-strong)] text-[var(--instructor-icon-subtle)] disabled:cursor-not-allowed", hitAreaClass)}
                   >
                     <MaterialIcon name="notifications" className="size-4" />
                   </button>

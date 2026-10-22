@@ -7,6 +7,7 @@ import { AuthLayout } from '../layout/AuthLayout'
 import { cn } from '@/lib/utils'
 import {
   fieldLabelClass,
+  hitAreaClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -94,7 +95,7 @@ function LoginPage() {
               onClick={() => setIsPasswordVisible((visible) => !visible)}
               aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
               aria-pressed={isPasswordVisible}
-              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-icon-subtle)]"
+              className={cn('absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-icon-subtle)]', hitAreaClass)}
             >
               <MaterialIcon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="size-5" />
             </button>

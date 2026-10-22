@@ -9,6 +9,7 @@ import {
   cardClass,
   fieldLabelClass,
   helperTextClass,
+  hitAreaClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -110,7 +111,7 @@ function ClassroomCreatePage() {
               <button
                 type="button"
                 disabled
-                className="inline-flex h-[34px] items-center rounded-full border border-dashed border-[var(--instructor-border-strong)] px-3 text-sm text-[var(--instructor-text-disabled)] disabled:cursor-not-allowed"
+                className={cn('relative inline-flex h-[34px] items-center rounded-full border border-dashed border-[var(--instructor-border-strong)] px-3 text-sm text-[var(--instructor-text-disabled)] disabled:cursor-not-allowed', hitAreaClass)}
               >
                 + 강사 추가
               </button>
