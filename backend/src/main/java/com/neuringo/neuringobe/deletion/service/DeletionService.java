@@ -11,6 +11,7 @@ import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
+import com.neuringo.neuringobe.learningrecord.repository.LearningRecordRepository;
 import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
@@ -41,6 +42,7 @@ public class DeletionService {
     private final ChildAccessCodeRepository accessCodes;
     private final LearningGoalRepository goals;
     private final ActivityRepository activities;
+    private final LearningRecordRepository learningRecords;
     private final QuizDeletionService quizzes;
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
@@ -55,6 +57,7 @@ public class DeletionService {
             ChildAccessCodeRepository accessCodes,
             LearningGoalRepository goals,
             ActivityRepository activities,
+            LearningRecordRepository learningRecords,
             QuizDeletionService quizzes,
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns,
@@ -67,6 +70,7 @@ public class DeletionService {
         this.accessCodes = accessCodes;
         this.goals = goals;
         this.activities = activities;
+        this.learningRecords = learningRecords;
         this.quizzes = quizzes;
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
@@ -152,6 +156,7 @@ public class DeletionService {
         // TX.
         roleplayTurns.deleteByChildIds(childIds);
         roleplaySessions.deleteByChildIds(childIds);
+        learningRecords.deleteByChildIds(childIds);
         activities.deleteByChildIds(childIds);
         goals.deleteByChildIds(childIds);
         accessCodes.deleteByChildIds(childIds);

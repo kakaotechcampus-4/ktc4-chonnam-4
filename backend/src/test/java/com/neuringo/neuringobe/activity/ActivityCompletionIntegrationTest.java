@@ -1,8 +1,11 @@
 package com.neuringo.neuringobe.activity;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -18,12 +21,23 @@ import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.domain.Classroom;
 import com.neuringo.neuringobe.classroom.domain.ClassroomStatus;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
+import com.neuringo.neuringobe.learningrecord.repository.LearningRecordRepository;
+import com.neuringo.neuringobe.quiz.domain.ActivityQuiz;
+import com.neuringo.neuringobe.quiz.domain.Emotion;
+import com.neuringo.neuringobe.quiz.domain.QuizItem;
+import com.neuringo.neuringobe.quiz.domain.QuizType;
 import com.neuringo.neuringobe.quiz.repository.ActivityQuizRepository;
 import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +49,10 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** 화면은 status 전용 조회로 활동 상태를 읽는다. 본인 아동과 담당 강사만 보고, 그 밖에는 활동이 없는 것과 같은 오류로 숨긴다. */
+/**
+ * 활동 완료는 서버가 정한다. 독립 퀴즈는 마지막 문항이 확정될 때 완료·스탬프·학습 기록이 한 번만 생기고, 화면은 status 전용 조회로 결과를 읽는다. 최초 결합은 뒤에
+ * 역할극이 남아 있어 퀴즈만으로는 완료되지 않는다.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -53,6 +70,7 @@ class ActivityCompletionIntegrationTest {
     @Autowired private QuizItemRepository items;
     @Autowired private ActivityQuizRepository assignments;
     @Autowired private ActivityRepository activities;
+    @Autowired private LearningRecordRepository records;
 
     private UUID classroomId;
     private UUID childId;
@@ -68,6 +86,85 @@ class ActivityCompletionIntegrationTest {
                         classroomId, TestInstructors.id(TEACHER), "완료반", ClassroomStatus.ACTIVE));
         childId = newChild();
         childSession = enter(childId);
+    }
+
+    @Test
+    void independentQuizCompletesOnceWhenLastItemIsFinalized() throws Exception {
+        UUID activityId = createActivity(ActivityType.OTHER_EMOTION_QUIZ);
+        UUID first = assign(activityId, 1);
+        UUID second = assign(activityId, 2);
+
+        answer(first, "슬픔", null);
+        expectStatus(activityId, childSession, ActivityStatus.IN_PROGRESS);
+        assertThat(records.existsByActivityId(activityId)).isFalse();
+
+        answer(second, "슬픔", null);
+        expectStatus(activityId, childSession, ActivityStatus.COMPLETED);
+        Activity completed = activities.findById(activityId).orElseThrow();
+        assertThat(completed.getCompletedAt()).isNotNull();
+        assertThat(completed.getRewardIssuedAt()).isEqualTo(completed.getCompletedAt());
+        assertThat(records.countByActivityId(activityId)).isOne();
+
+        // 응답을 잃어 같은 확정 요청을 다시 보내도 스탬프와 기록은 늘지 않는다.
+        mvc.perform(attempt(second, "{\"firstResponse\":\"슬픔\"}")).andExpect(status().isOk());
+        Activity resent = activities.findById(activityId).orElseThrow();
+        assertThat(resent.getRewardIssuedAt()).isEqualTo(completed.getRewardIssuedAt());
+        assertThat(records.countByActivityId(activityId)).isOne();
+    }
+
+    @Test
+    void zeroAccuracyStillCompletesWithTheSameStamp() throws Exception {
+        UUID activityId = createActivity(ActivityType.SELF_EMOTION_QUIZ);
+        UUID only = assign(activityId, 1);
+
+        answer(only, "기쁨", "기쁨");
+
+        expectStatus(activityId, childSession, ActivityStatus.COMPLETED);
+        assertThat(activities.findById(activityId).orElseThrow().getRewardIssuedAt()).isNotNull();
+        assertThat(records.countByActivityId(activityId)).isOne();
+    }
+
+    @Test
+    void firstCombinedQuizDoesNotCompleteTheActivity() throws Exception {
+        UUID activityId = createActivity(ActivityType.FIRST_COMBINED);
+        UUID only = assign(activityId, 1);
+
+        answer(only, "슬픔", null);
+
+        expectStatus(activityId, childSession, ActivityStatus.IN_PROGRESS);
+        Activity activity = activities.findById(activityId).orElseThrow();
+        assertThat(activity.getCompletedAt()).isNull();
+        assertThat(activity.getRewardIssuedAt()).isNull();
+        assertThat(records.existsByActivityId(activityId)).isFalse();
+    }
+
+    @Test
+    void concurrentLastAnswersCompleteOnlyOnce() throws Exception {
+        UUID activityId = createActivity(ActivityType.OTHER_EMOTION_QUIZ);
+        List<UUID> assigned = List.of(assign(activityId, 1), assign(activityId, 2));
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var workers = Executors.newFixedThreadPool(assigned.size())) {
+            List<Future<Integer>> results = new ArrayList<>();
+            for (UUID id : assigned) {
+                Callable<Integer> task =
+                        () -> {
+                            start.await();
+                            return mvc.perform(attempt(id, "{\"firstResponse\":\"슬픔\"}"))
+                                    .andReturn()
+                                    .getResponse()
+                                    .getStatus();
+                        };
+                results.add(workers.submit(task));
+            }
+            start.countDown();
+            for (Future<Integer> result : results) {
+                assertThat(result.get()).isEqualTo(201);
+            }
+        }
+
+        expectStatus(activityId, childSession, ActivityStatus.COMPLETED);
+        assertThat(records.countByActivityId(activityId)).isOne();
     }
 
     @Test
@@ -94,6 +191,43 @@ class ActivityCompletionIntegrationTest {
         mvc.perform(get("/api/v1/activities/{id}/status", UUID.randomUUID()).session(childSession))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("ACTIVITY_NOT_FOUND"));
+    }
+
+    @Test
+    void deletingTheChildRemovesTheLearningRecord() throws Exception {
+        UUID activityId = createActivity(ActivityType.OTHER_EMOTION_QUIZ);
+        answer(assign(activityId, 1), "슬픔", null);
+        assertThat(records.existsByActivityId(activityId)).isTrue();
+
+        mvc.perform(
+                        delete("/api/v1/children/{id}", childId)
+                                .with(TestInstructors.instructor(TEACHER))
+                                .with(csrf()))
+                .andExpect(status().isNoContent());
+
+        assertThat(records.existsByActivityId(activityId)).isFalse();
+        assertThat(activities.existsById(activityId)).isFalse();
+    }
+
+    private void answer(UUID assignmentId, String first, String finalResponse) throws Exception {
+        String body =
+                finalResponse == null
+                        ? "{\"firstResponse\":\"" + first + "\"}"
+                        : "{\"firstResponse\":\""
+                                + first
+                                + "\",\"finalResponse\":\""
+                                + finalResponse
+                                + "\"}";
+        mvc.perform(attempt(assignmentId, body)).andExpect(status().isCreated());
+    }
+
+    private org.springframework.test.web.servlet.RequestBuilder attempt(
+            UUID assignmentId, String body) {
+        return put("/api/v1/activity-quiz-items/{id}/attempt", assignmentId)
+                .session(childSession)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body);
     }
 
     private void expectStatus(UUID activityId, MockHttpSession session, ActivityStatus expected)
@@ -165,5 +299,26 @@ class ActivityCompletionIntegrationTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private UUID assign(UUID activityId, int order) {
+        UUID itemId = UUID.randomUUID();
+        items.save(
+                new QuizItem(
+                        itemId,
+                        QuizType.OTHER_EMOTION_SITUATION,
+                        Emotion.SADNESS,
+                        "어떤 감정일까요?",
+                        null,
+                        List.of("기쁨", "슬픔"),
+                        "슬픔",
+                        List.of("슬픔"),
+                        List.of(
+                                new QuizItem.HintSpec("OBSERVABLE_FACE_CUE", "얼굴을 살펴봐요."),
+                                new QuizItem.HintSpec("CHOICE_REDUCTION", "둘 중 골라봐요.")),
+                        1));
+        UUID id = UUID.randomUUID();
+        assignments.save(new ActivityQuiz(id, activityId, itemId, 1, order));
+        return id;
     }
 }
