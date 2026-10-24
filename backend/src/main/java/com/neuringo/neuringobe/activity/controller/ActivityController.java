@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.activity.controller;
 
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
+import com.neuringo.neuringobe.activity.dto.ActivityStatusResponse;
 import com.neuringo.neuringobe.activity.service.ActivityService;
 import com.neuringo.neuringobe.auth.security.SensitiveReadLog;
 import com.neuringo.neuringobe.common.ApiResponse;
@@ -37,5 +38,17 @@ public class ActivityController {
                         childId,
                         () -> service.list(childId, status, page, size, authentication));
         return ApiResponse.of(activities);
+    }
+
+    @GetMapping("/api/v1/activities/{activityId}/status")
+    public ApiResponse<ActivityStatusResponse> status(
+            @PathVariable UUID activityId, Authentication authentication) {
+        ActivityStatusResponse status =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.ACTIVITY,
+                        activityId,
+                        () -> service.status(activityId, authentication));
+        return ApiResponse.of(status);
     }
 }

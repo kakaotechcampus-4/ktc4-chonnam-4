@@ -77,6 +77,7 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-result",
                             "ACTIVITY_NOT_FOUND"),
+                    Map.entry("GET /api/v1/activities/{activityId}/status", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
@@ -247,6 +248,10 @@ class OwnershipPatrolIntegrationTest {
                 get(
                         "GET /api/v1/activities/{activityId}/quiz-result",
                         "/api/v1/activities/%s/quiz-result",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/activities/{activityId}/status",
+                        "/api/v1/activities/%s/status",
                         Owned::activityId),
                 get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",

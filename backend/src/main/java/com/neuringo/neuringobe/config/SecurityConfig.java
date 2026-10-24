@@ -102,6 +102,7 @@ public class SecurityConfig {
                                                 "/api/v1/children/*/activities",
                                                 "/api/v1/activities/*/quiz-items",
                                                 "/api/v1/activities/*/quiz-result",
+                                                "/api/v1/activities/*/status",
                                                 "/api/v1/activity-quiz-items/*/attempt")
                                         .hasAnyRole("CHILD", "INSTRUCTOR")
                                         .requestMatchers(
