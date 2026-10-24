@@ -81,3 +81,4 @@ echo "EDGE_API=$api"
 echo "EDGE_PAGE=$page"
 echo "EDGE_RELEASE=${served:-없음}"
 echo "EDGE_RELEASE_MATCH=$match"
+# (시험 PR 용 한 줄 — AWS 콘솔 스크린샷을 찍으려고 미리보기를 띄운다. 머지하지 않는다)
