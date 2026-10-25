@@ -203,15 +203,15 @@ if [ -n "$instance_role" ]; then
   fi
 fi
 # 22번(SSH)은 열지 않는다(OIDC + SSM). 인터넷 전체(0.0.0.0/0·::/0)에 열린 규칙도 없어야 한다(80 은 CloudFront 접두사 목록만).
-# shellcheck disable=SC2016 # JMESPath 숫자 리터럴(백틱)이다
+# 아래 백틱은 셸 명령 치환이 아니라 JMESPath 리터럴이라 작은따옴표가 맞다.
+# shellcheck disable=SC2016
+ssh_query='length(SecurityGroupRules[?IsEgress==`false` && (IpProtocol==`"-1"` || (FromPort<=`22` && ToPort>=`22`))])'
+# shellcheck disable=SC2016
+open_query='length(SecurityGroupRules[?IsEgress==`false` && (CidrIpv4==`"0.0.0.0/0"` || CidrIpv6==`"::/0"`)])'
 if groups=$(value ec2 describe-instances --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId') && [ -n "$groups" ]; then
   filter="Name=group-id,Values=$(tr '\t' ',' <<<"$groups")"
-  # shellcheck disable=SC2016
-  if ssh_rules=$(value ec2 describe-security-group-rules --filters "$filter" \
-    --query 'length(SecurityGroupRules[?IsEgress==`false` && (IpProtocol==`"-1"` || (FromPort<=`22` && ToPort>=`22`))])') &&
-    # shellcheck disable=SC2016
-    open_rules=$(value ec2 describe-security-group-rules --filters "$filter" \
-      --query 'length(SecurityGroupRules[?IsEgress==`false` && (CidrIpv4==`"0.0.0.0/0"` || CidrIpv6==`"::/0"`)])'); then
+  if ssh_rules=$(value ec2 describe-security-group-rules --filters "$filter" --query "$ssh_query") &&
+    open_rules=$(value ec2 describe-security-group-rules --filters "$filter" --query "$open_query"); then
     if [ "$ssh_rules" = 0 ]; then say "| 22번(SSH) 인바운드 | 없음 |"; else say "| 22번(SSH) 인바운드 | ⚠️ ${ssh_rules}개 — 배포는 SSM 이라 필요 없다. 운영진 안내대로 닫는다 |"; fi
     if [ "$open_rules" = 0 ]; then say "| 인터넷 전체에 열린 인바운드 | 없음 |"; else say "| 인터넷 전체에 열린 인바운드 | ⚠️ ${open_rules}개 — CloudFront 를 거치지 않는 길이다 |"; fi
   else
