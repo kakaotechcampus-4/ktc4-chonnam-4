@@ -1,6 +1,7 @@
 # Dev server 안 쓰면 끄기: EventBridge(10분마다) → Lambda(lambda/idle_off.py).
 # GitHub Actions 예약은 이 레포에서 몇 시간씩 밀리거나 건너뛰어(2026-10-11: 20분마다가 1시간 동안 0번) AWS 안으로 옮겼다.
 # 판단·순서는 lambda/idle_off.py 머리말. 끄는 순서는 dev-server.yml 의 끄기와 같다(대문 닫기 → 확인 → 잠금 → 서버 중지).
+# always_on_until 을 넣으면 그 시각까지는 끄지 않는다(24시간 모드). 대문(CloudFront)을 서버 주소에 맞추는 일은 모드와 상관없이 한다.
 #
 # 권한은 이 서버 하나·이 배포 하나로 좁힌다(서버 켜기·지우기, IAM, 다른 리소스는 없다). 역할 경로는 /neuringo/(운영진 /ktc/ 는 쓰지 않는다).
 # 비용: Lambda·EventBridge 는 무료 사용량 안(한 달 약 4,300번 · 대부분 1초 안에 끝남). 로그는 14일만 둔다.
@@ -49,6 +50,17 @@ variable "idle_minutes" {
   validation {
     condition     = var.idle_minutes >= 20 && var.idle_minutes <= 720
     error_message = "20~720분 사이로 정한다(너무 짧으면 빌드 중에 꺼질 수 있다)."
+  }
+}
+
+variable "always_on_until" {
+  description = "24시간 모드: 이 시각(RFC 3339, 예 2026-11-20T23:59:00+09:00)까지는 안 쓰여도 끄지 않는다. 빈 값이면 idle_minutes 대로 끈다"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.always_on_until == "" || can(formatdate("YYYY", var.always_on_until))
+    error_message = "RFC 3339 시각(예 2026-11-20T23:59:00+09:00) 또는 빈 값으로 쓴다."
   }
 }
 
@@ -166,6 +178,7 @@ resource "aws_lambda_function" "this" {
       INSTANCE_ID     = var.instance_id
       DISTRIBUTION_ID = var.distribution_id
       IDLE_MINUTES    = tostring(var.idle_minutes)
+      ALWAYS_ON_UNTIL = var.always_on_until
     }
   }
 

@@ -54,6 +54,19 @@ variable "alert_emails" {
   sensitive   = true
 }
 
+variable "always_on_until" {
+  description = "24시간 모드 끝 시각(RFC 3339). 그때까지 안 쓰면 끄기가 서버를 끄지 않는다. 빈 값이면 30분 안 쓰면 끈다. 팀이 정한다"
+  type        = string
+  # 2026-10-25 팀 결정: 사용자 테스트·시연 기간에 서버를 켜 둔다. 운영진 제공 기간(~11/20) 끝까지. 비용 약 1.6 USD/일
+  default = "2026-11-20T23:59:00+09:00"
+}
+
+variable "origin_secret_version" {
+  description = "올리면 원본 비밀 헤더 값을 새로 만든다(apply 뒤 Deploy force — infra/README.md)"
+  type        = number
+  default     = 1
+}
+
 variable "enable_anomaly_detection" {
   description = "Cost Anomaly Detection(⚑4 권한 확인 뒤 켠다)"
   type        = bool
@@ -95,6 +108,14 @@ resource "random_id" "suffix" {
   byte_length = 3
 }
 
+# 원본 비밀 헤더 값(CloudFront → 서버). 배포 설정에 들어가 state 에 남는다. plan 출력에는 sensitive 로 가린다.
+resource "random_id" "origin_secret" {
+  byte_length = 24
+  keepers = {
+    version = var.origin_secret_version
+  }
+}
+
 module "registry" {
   source = "../../modules/registry"
 }
@@ -111,6 +132,7 @@ module "edge" {
   env                         = var.env
   origin_domain               = data.aws_instance.app.public_dns
   instance_security_group_ids = tolist(data.aws_instance.app.vpc_security_group_ids)
+  origin_secret               = sensitive(random_id.origin_secret.hex)
 }
 
 module "observability" {
@@ -127,6 +149,7 @@ module "idle_off" {
   instance_id     = data.aws_instance.app.id
   distribution_id = module.edge.distribution_id
   alert_topic_arn = module.observability.alert_topic_arn
+  always_on_until = var.always_on_until
 }
 
 module "cost" {
@@ -146,6 +169,8 @@ module "config" {
   backup_bucket              = module.storage.bucket
   db_password_version        = var.db_password_version
   hmac_secret_version        = var.hmac_secret_version
+  origin_secret              = sensitive(random_id.origin_secret.hex)
+  origin_secret_version      = var.origin_secret_version
 }
 
 output "cloudfront_domain" {

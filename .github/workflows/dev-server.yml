@@ -364,6 +364,8 @@ jobs:
       quiet: ${{ needs.plan.outputs.quiet == 'true' }}
       # 대문을 막 열었으면 퍼질 때까지(최대 5분) 기다리며 확인한다.
       edge_wait: ${{ needs.power_on.outputs.was_off == 'true' && 300 || 60 }}
+      # PR 을 열거나 push 해서 저절로 돈 미리보기(quiet)는 테스트 주소를 쓰는 중이면 15분까지 기다리고 그래도 쓰면 미룬다.
+      wait_idle: ${{ needs.plan.outputs.quiet == 'true' && 15 || 0 }}
 
   power_off:
     needs: plan

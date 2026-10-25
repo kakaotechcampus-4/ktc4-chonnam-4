@@ -105,6 +105,8 @@ bash scripts/verify.sh infra
 2. 켜기: Dev server → **켜기**(또는 바로 PR 미리보기 올리기). 서버를 켜고 → 새 주소를 CloudFront 원본에 넣고 연다 → develop 최신으로 맞춘다.
 3. 콘솔에서 껐다면: 서버가 꺼질 때 경보 메일이 온다. Dev server 의 켜기나 끄기를 바로 돌린다.
 
+**24시간 모드**: `live/dev` 의 `always_on_until`(RFC 3339) 시각까지는 안 쓰면 끄기(Lambda)가 서버를 끄지 않는다. 기본값은 팀이 정한 끝(2026-11-20 23:59 KST). 끝내려면 빈 값(`""`)으로 바꾸는 PR → Infra apply. 이 동안에도 Dev server → 끄기는 된다(Lambda 는 서버를 켜지 않는다). Lambda 는 모드와 상관없이 열린 대문의 원본을 지금 서버 주소로 고치고, 꺼진 서버를 가리키는 열린 대문을 닫는다.
+
 Terraform 은 CloudFront 의 켜짐(enabled)을 보지 않는다(`ignore_changes`). 원본 주소는 서버가 켜져 있을 때 Terraform 이 읽는 주소와 Dev server 가 넣은 주소가 같아 drift 가 나지 않는다.
 **구조**(동작·캐시·보안 헤더·나라 제한)를 바꿀 때만 이 폴더 → PR → Infra(승인)다.
 
@@ -121,6 +123,7 @@ Terraform 은 CloudFront 의 켜짐(enabled)을 보지 않는다(`ignore_changes
 ## 그 밖의 안전장치
 
 - 운영진 보안 그룹에 인터넷 전체에서 80번(또는 모든 포트)으로 들어오는 규칙이 있으면 plan 이 멈춘다. 서버(web)가 CloudFront 없이 평문으로 열리기 때문이다. 팀원이 연 규칙인지 확인해 지운다.
+- **원본 비밀 헤더**(`origin_secret_version`, Parameter Store `edge/origin-secret`, CloudFront → 서버): 남의 CloudFront 로 서버에 닿는 길을 막는다. 처음 넣을 때·값을 바꿀 때: PR → apply → 몇 분 뒤 Actions → Deploy → Run workflow(`force` 체크). apply 로 CloudFront 가 새 값을 보내기 시작하고 서버가 다시 뜰 때까지(값을 바꾼 경우) 테스트 주소가 403 이다. 쓰지 않는 시간에 한다.
 - CloudFront 는 한국에서만 연다(`allowed_countries`). 사용자 테스트 주소는 공개 로그에 찍지 않는다. 콘솔(CloudFront)이나 Parameter Store `/neuringo/dev/infra/cloudfront-domain` 에서 보고 팀에만 알린다.
 
 ## state

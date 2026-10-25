@@ -9,12 +9,13 @@ variables {
   cloudfront_distribution_id = "E2FAKE"
   cloudfront_domain          = "d111111abcdef8.cloudfront.net"
   backup_bucket              = "neuringo-dev-backups-abc123"
+  origin_secret              = "notarealsecretnotarealsecretnotarealsecret"
 }
 
 run "names_match_scripts_and_secrets_are_write_only" {
   command = apply
 
-  # scripts/infra-outputs.sh 가 읽는 네 개와 deploy/host/params.txt 의 필수값 다섯 개
+  # scripts/infra-outputs.sh 가 읽는 네 개와 deploy/host/params.txt 의 필수값 다섯 개·원본 비밀 헤더
   assert {
     condition = output.parameter_names == sort([
       "/neuringo/dev/infra/ecr-repository-url",
@@ -25,16 +26,17 @@ run "names_match_scripts_and_secrets_are_write_only" {
       "/neuringo/dev/db/username",
       "/neuringo/dev/db/password",
       "/neuringo/dev/child-access/hmac-secret",
+      "/neuringo/dev/edge/origin-secret",
     ])
     error_message = "Parameter Store 이름이 scripts/infra-outputs.sh·deploy/host/params.txt 와 맞아야 한다"
   }
   assert {
-    condition     = alltrue([for p in [aws_ssm_parameter.db_password, aws_ssm_parameter.child_access_hmac_secret] : p.type == "SecureString"])
+    condition     = alltrue([for p in [aws_ssm_parameter.db_password, aws_ssm_parameter.child_access_hmac_secret, aws_ssm_parameter.origin_secret] : p.type == "SecureString"])
     error_message = "비밀값은 SecureString 이다"
   }
   # value_wo_version 은 쓰기 전용(value_wo)일 때만 쓴다. (가짜 provider 는 value 같은 계산 속성에 아무 값이나 채워서 그쪽은 보지 않는다)
   assert {
-    condition     = aws_ssm_parameter.db_password.value_wo_version == 1 && aws_ssm_parameter.child_access_hmac_secret.value_wo_version == 1
+    condition     = aws_ssm_parameter.db_password.value_wo_version == 1 && aws_ssm_parameter.child_access_hmac_secret.value_wo_version == 1 && aws_ssm_parameter.origin_secret.value_wo_version == 1
     error_message = "비밀값은 쓰기 전용(value_wo)으로만 넣어 plan·state 에 남기지 않는다"
   }
   assert {

@@ -4,6 +4,8 @@
 # - develop: 성공하면 기록하고 옛 이미지를 정리한다 / 같은 커밋이면 건너뛴다 / 실패하면 직전 상태로 되돌린다
 # - preview: 미리보기 DB·계정을 새로 만들고 자리를 잡는다 / 다른 PR 은 거절한다 / 실패·끝내기는 미리보기 전 develop 으로
 # - 출력(SSM → Actions 로그, 공개)에 비밀값·계정 ID·앱 로그·버킷 이름·테스트 주소가 나오지 않는다
+# - 원본 비밀 헤더: 값이 있으면 화면 설정 조각·compose.origin.yml 을 붙이고 상태 확인도 그 헤더로 / 없으면 끈다 / .env 에 넣지 않는다
+# - status.sh: 사람이 앱을 쓴 마지막 시각(STATUS_LAST_USE)은 상태 확인·403 을 세지 않는다
 #   bash scripts/test-host-deploy.sh   (verify.sh workflows 에 포함)
 set -euo pipefail
 
@@ -37,6 +39,7 @@ REGISTRY=123456789012.dkr.ecr.ap-northeast-2.amazonaws.com
 REPO=$REGISTRY/neuringo/backend
 PASSWORD='pw-s3cr3t-value'
 HMAC=hmac-0123456789abcdef0123456789abcdef
+ORIGIN=0123456789abcdefOriginSecret0123456789abcdefXYZ
 BUCKET=neuringo-dev-backups-fake
 DOMAIN=d1abcdefghijkl.cloudfront.net
 
@@ -51,10 +54,14 @@ if [ "$1" = compose ]; then
   shift
   env_file=""
   compose_file=""
+  origin=0
   while [ "$#" -gt 0 ]; do
     case $1 in
       --env-file) env_file=$2; shift 2 ;;
-      -f) compose_file=$2; shift 2 ;;
+      -f) # 첫 -f 가 본 파일(compose.origin.yml 은 덧붙임)
+        [ -n "$compose_file" ] || compose_file=$2
+        [[ "$2" == *compose.origin.yml ]] && origin=1
+        shift 2 ;;
       -p) shift 2 ;;
       *) break ;;
     esac
@@ -79,6 +86,8 @@ if [ "$1" = compose ]; then
       if [ "${FAKE_UP_FAIL:-0}" = 1 ]; then echo "Error response from daemon"; exit 1; fi
       env_get APP_IMAGE >"$FAKE/running"
       cp "$env_file" "$FAKE/running.env"
+      # 원본 비밀 헤더: compose.origin.yml 을 붙여 띄우면 그때의 설정 조각을 화면이 읽는다(아래 가짜 curl 이 본다).
+      if [ "$origin" = 1 ]; then cp "$ORIGIN_CONF_DIR/verify.conf" "$FAKE/origin_conf"; else rm -f "$FAKE/origin_conf"; fi
       if grep -q '^  web:' "$compose_file"; then
         env_get WEB_IMAGE >"$FAKE/running_web"
         rm -f "$FAKE/noweb"
@@ -125,6 +134,12 @@ case "$1 $2" in
     exit 0 ;;
   "ps -q") [[ "$*" == *service=web* ]] && [ -f "$FAKE/running_web" ] && echo web-container-id; exit 0 ;;
   "logs --tail") echo "2026-10-08T05:06:07.123456789Z 10.0.0.9 - - [08/Oct/2026] \"GET /children?name=김하늘 HTTP/1.1\" 200" ;;
+  "logs --since")
+    # 사람이 쓴 API 요청(05:01) 뒤에 상태 확인(csrf·화면)과 403(원본 헤더 없음)만 왔다
+    echo "2026-10-08T05:01:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"POST /api/v1/roleplay/turns HTTP/1.1\" 200 12"
+    echo "2026-10-08T05:03:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"GET /api/v1/csrf HTTP/1.1\" 200 40"
+    echo "2026-10-08T05:04:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"GET /api/v1/children HTTP/1.1\" 403 0"
+    echo "2026-10-08T05:06:07.123456789Z 10.0.0.9 - - [08/Oct/2026] \"GET / HTTP/1.1\" 200 500" ;;
   "run -d") echo restore-container-id ;;
   "ps -aq") [ "${FAKE_STALE:-0}" = 1 ] && echo stale-restore-id; exit 0 ;;
   "rm -f") echo "${*: -1}" >>"$FAKE/restore_removed" ;;
@@ -167,7 +182,7 @@ EOF
 cat >"$tmp/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 url=${*: -1}
-fail=0 headers=0 code_out=0
+fail=0 headers=0 code_out=0 prev="" sent=""
 for a in "$@"; do
   case $a in
     -D) headers=1 ;;
@@ -175,6 +190,8 @@ for a in "$@"; do
     --*) ;;
     -*f*) fail=1 ;;
   esac
+  [ "$prev" = -H ] && [[ "$a" == @* ]] && sent=$(sed -n 's/^X-Origin-Verify: //p' "${a#@}")
+  prev=$a
 done
 backend=$(cat "$FAKE/running" 2>/dev/null || true)
 web=$(cat "$FAKE/running_web" 2>/dev/null || true)
@@ -188,6 +205,11 @@ case $url in
   */api/v1/csrf) if [ "$api_ok" = 1 ]; then code=200; else code=502; fi ;;
   *) if [ -n "$web" ]; then code=200; else code=000; fi ;;
 esac
+# 화면이 원본 비밀 헤더를 확인하면(compose.origin.yml 로 떴으면) -H @파일 의 헤더가 그 값과 같아야 한다. 아니면 403.
+if [ -n "$web" ] && [ -f "$FAKE/origin_conf" ]; then
+  want=$(sed -n 's/.*!= "\([A-Za-z0-9]*\)".*/\1/p' "$FAKE/origin_conf")
+  [ "$sent" = "$want" ] || code=403
+fi
 [ "$code" = 000 ] && { [ "$code_out" = 1 ] && printf 000; exit 7; }
 if [ "$headers" = 1 ]; then
   printf 'HTTP/1.1 %s\r\n' "$code"
@@ -430,6 +452,8 @@ check "상태: 미리보기 중이라고 알려 준다" has "$out" "STATUS_MODE=
 check "상태: 자리 주인" has "$out" "LEASE_PR=41"
 check "상태: 컨테이너" has "$out" "web:running"
 check "상태: 화면에 마지막 요청이 온 시각(안 쓰면 끄기가 본다)" has "$out" "STATUS_LAST_REQUEST=2026-10-08T05:06:07Z"
+check "상태: 사람이 마지막으로 쓴 API 요청(상태 확인·403 은 빼고, 자동 배포가 본다)" has "$out" "STATUS_LAST_USE=2026-10-08T05:01:00Z"
+check "상태: 원본 비밀 헤더 값이 없으면 확인하지 않는다고 알린다" has "$out" "STATUS_ORIGIN_CHECK=off"
 check "상태: 서버를 켠 시각" has "$out" "STATUS_BOOTED_AT=20"
 check "상태: 서버에서 CloudFront 로 API 를 불러 본다" has "$out" "EDGE_API=200"
 check "상태: 화면 헤더의 커밋이 지금 것과 같다" has "$out" "EDGE_RELEASE_MATCH=yes"
@@ -581,6 +605,48 @@ rm -f "$tmp/home/backups/daily"/*.dump
 restore
 check "백업이 없으면 1 로 끝난다" same "$code" 1
 
+# ── 원본 비밀 헤더(우리 CloudFront 를 거친 요청만) ─────────────────
+new_case
+export FAKE_GOOD_TAGS="aaaaaaa bbbbbbb"
+deploy aaaaaaa
+check "값이 없으면 확인하지 않고 배포한다" bash -c "[ '$code' = 0 ] && grep -q DEPLOY_ORIGIN_CHECK=off <<<\"\$0\"" "$out"
+printf '/neuringo/dev/edge/origin-secret\t%s\n' "$ORIGIN" >>"$tmp/fake/params"
+rm -f "$tmp/fake/docker.calls"
+FORCE=1 deploy aaaaaaa
+check "값이 생기면 확인을 켜고 배포한다(상태 확인도 그 헤더로 통과)" bash -c "[ '$code' = 0 ] && grep -q DEPLOY_ORIGIN_CHECK=on <<<\"\$0\"" "$out"
+check "화면 설정 조각: 헤더가 비밀값과 다르면 403" \
+  bash -c "grep -qF 'if (\$http_x_origin_verify != \"$ORIGIN\") {' '$tmp/home/state/nginx-origin/verify.conf' && grep -q 'return 403;' '$tmp/home/state/nginx-origin/verify.conf'"
+check "compose.origin.yml 을 덧붙여 화면에 붙인다" file_has "$tmp/fake/docker.calls" "compose.origin.yml"
+check "값이 새로 생기면 화면을 다시 띄운다(nginx 는 뜰 때만 읽는다)" file_has "$tmp/fake/docker.calls" "--force-recreate web"
+check "원본 비밀 헤더는 .env(앱 컨테이너)에 넣지 않는다" file_lacks "$tmp/home/state/dev.env" "$ORIGIN"
+check "출력에 원본 비밀 헤더 값이 없다" lacks "$out" "$ORIGIN"
+if [ "$(uname -s)" = Linux ]; then
+  check "설정 조각은 nginx(uid 101)가 읽게 755/644" \
+    same "$(stat -c %a "$tmp/home/state/nginx-origin")/$(stat -c %a "$tmp/home/state/nginx-origin/verify.conf")" 755/644
+  check "상태 확인용 헤더 파일은 600" same "$(stat -c %a "$tmp/home/state/origin-header")" 600
+fi
+status
+check "상태: 원본 비밀 헤더를 확인한다고 알린다" has "$out" "STATUS_ORIGIN_CHECK=on"
+check "상태 출력에 원본 비밀 헤더 값이 없다" lacks "$out" "$ORIGIN"
+rm -f "$tmp/fake/docker.calls"
+deploy bbbbbbb
+check "값이 그대로면 새 커밋을 배포할 때 화면을 따로 다시 띄우지 않는다" \
+  bash -c "[ '$code' = 0 ] && ! grep -q -- '--force-recreate' '$tmp/fake/docker.calls'"
+sed -i "s/\t$ORIGIN\$/\t${ORIGIN}Z/" "$tmp/fake/params"
+rm -f "$tmp/fake/docker.calls"
+FORCE=1 deploy bbbbbbb
+check "값을 바꾸면 새 값으로 화면을 다시 띄운다" \
+  bash -c "[ '$code' = 0 ] && grep -qF '\"${ORIGIN}Z\"' '$tmp/home/state/nginx-origin/verify.conf' && grep -q -- '--force-recreate web' '$tmp/fake/docker.calls'"
+sed -i '/edge\/origin-secret/d' "$tmp/fake/params"
+FORCE=1 deploy bbbbbbb
+check "값을 지우면 확인을 끄고 배포한다" bash -c "[ '$code' = 0 ] && grep -q DEPLOY_ORIGIN_CHECK=off <<<\"\$0\"" "$out"
+check "그때 설정 조각·헤더 파일을 지운다" bash -c "[ ! -e '$tmp/home/state/nginx-origin' ] && [ ! -e '$tmp/home/state/origin-header' ]"
+check "그때 화면은 확인 없이 뜬다" test ! -f "$tmp/fake/origin_conf"
+printf '/neuringo/dev/edge/origin-secret\tshort"; return 200; #\n' >>"$tmp/fake/params"
+FORCE=1 deploy bbbbbbb
+check "값 모양이 틀리면(nginx 설정에 그대로 들어간다) 바꾸지 않고 멈춘다" \
+  bash -c "[ '$code' != 0 ] && grep -q '모양이 틀렸다' <<<\"\$0\" && [ ! -e '$tmp/home/state/nginx-origin' ]" "$out"
+
 # ── release-bundle.sh: 묶음 → 서버 스크립트 → deploy.sh 를 한 번에 돌린다(release.yml 이 SSM 으로 보내는 것과 같다) ──
 new_case
 export FAKE_GOOD_TAGS="fffffff 4141414"
@@ -597,6 +663,7 @@ remote_run
 check "배포 묶음 스크립트로 배포가 성공한다" same "$code" 0
 check "묶음을 releases/<SHA> 에 푼다" test -f "$tmp/home/releases/$SHA/deploy/host/deploy.sh"
 check "current 가 새 묶음을 가리킨다" test -f "$tmp/home/current/deploy/host/status.sh"
+check "묶음에 원본 비밀 헤더 덧붙임 파일도 들어 있다" test -f "$tmp/home/releases/$SHA/deploy/compose.origin.yml"
 check "묶음 스크립트 출력에도 비밀값·계정 ID 가 없다" no_leak
 
 IMAGE="$REPO:4141414" WEB_IMAGE="$REPO:web-4141414" RELEASE=4141414 MODE=preview PREVIEW_PR=41 PREVIEW_BY=alice-kim \
