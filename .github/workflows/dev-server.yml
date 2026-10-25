@@ -547,6 +547,12 @@ jobs:
           esac
           release=$(value "$server" STATUS_RELEASE)
           mode=$(value "$server" STATUS_MODE)
+          # 24시간 모드(always_on_until)면 Lambda 가 끄지 않는다. 마지막 판단의 까닭으로 안다.
+          if [[ "$(value "$idle" IDLE_REASON)" == *"24시간 모드"* ]]; then
+            off_hint="24시간 모드라 안 써도 꺼지지 않는다(끝 시각은 위 판단 줄)"
+          else
+            off_hint="서버는 30분 동안 안 쓰면 저절로 꺼진다"
+          fi
           {
             echo
             echo "## 지금 상태"
@@ -583,8 +589,8 @@ jobs:
             if [ "$state" != running ]; then
               echo "- PR 을 열면 저절로 뜬다. 이미 연 PR 은 **preview** 라벨을 붙이거나 Run workflow → **켜기**"
             elif [ "$mode" = preview ]; then
-              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기). 서버는 30분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+              echo "- 다 봤으면 그 PR 에서 **preview** 라벨을 떼기(미리보기 끝내기). $off_hint(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
             else
-              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). 서버는 30분 동안 안 쓰면 저절로 꺼진다(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
+              echo "- PR 을 머지 전에 보려면 그 PR 에 **preview** 라벨(새 PR 은 저절로). $off_hint(바로 끄려면 Run workflow → **끄기** 또는 PR 에 **dev-off** 라벨)"
             fi
           } >>"$GITHUB_STEP_SUMMARY"

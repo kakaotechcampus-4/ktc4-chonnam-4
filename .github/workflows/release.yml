@@ -476,7 +476,10 @@ jobs:
             echo "| 화면 \`/\` | $(mark "$(value EDGE_PAGE)" 200) |"
             echo "| 화면이 이 커밋인가(\`X-Neuringo-Release\`) | $(mark "$(value EDGE_RELEASE_MATCH)" yes) |"
             # 원본 비밀 헤더를 확인하는데 위 API 가 200 이면 CloudFront 가 맞는 헤더를 붙이고 있다(403 이면 값이 서로 다르다).
-            [ -z "$(value STATUS_ORIGIN_CHECK)" ] || echo "| 원본 비밀 헤더 확인(서버 안) | $(mark "$(value STATUS_ORIGIN_CHECK)" on) |"
+            case $(value STATUS_ORIGIN_CHECK) in
+              on) echo "| 원본 비밀 헤더 확인(서버 안) | ✅ on |" ;;
+              off) echo "| 원본 비밀 헤더 확인(서버 안) | ⚠️ off — Parameter Store 값이 없어 확인하지 않는다(Infra 적용 전) |" ;;
+            esac
             echo
             echo "주소는 디스코드 고정 메시지에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
           } >>"$GITHUB_STEP_SUMMARY"
