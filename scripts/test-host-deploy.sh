@@ -454,6 +454,7 @@ check "상태: 컨테이너" has "$out" "web:running"
 check "상태: 화면에 마지막 요청이 온 시각(안 쓰면 끄기가 본다)" has "$out" "STATUS_LAST_REQUEST=2026-10-08T05:06:07Z"
 check "상태: 사람이 마지막으로 쓴 API 요청(상태 확인·403 은 빼고, 자동 배포가 본다)" has "$out" "STATUS_LAST_USE=2026-10-08T05:01:00Z"
 check "상태: 원본 비밀 헤더 값이 없으면 확인하지 않는다고 알린다" has "$out" "STATUS_ORIGIN_CHECK=off"
+check "상태: 그때는 직접 요청 점검도 하지 않는다" lacks "$out" "STATUS_ORIGIN_NO_HEADER="
 check "상태: 서버를 켠 시각" has "$out" "STATUS_BOOTED_AT=20"
 check "상태: 서버에서 CloudFront 로 API 를 불러 본다" has "$out" "EDGE_API=200"
 check "상태: 화면 헤더의 커밋이 지금 것과 같다" has "$out" "EDGE_RELEASE_MATCH=yes"
@@ -627,6 +628,8 @@ if [ "$(uname -s)" = Linux ]; then
 fi
 status
 check "상태: 원본 비밀 헤더를 확인한다고 알린다" has "$out" "STATUS_ORIGIN_CHECK=on"
+check "상태: 서버 안에서 헤더 없이 부르면 403" has "$out" "STATUS_ORIGIN_NO_HEADER=403"
+check "상태: 서버 안에서 헤더를 붙이면 200" has "$out" "STATUS_ORIGIN_WITH_HEADER=200"
 check "상태 출력에 원본 비밀 헤더 값이 없다" lacks "$out" "$ORIGIN"
 rm -f "$tmp/fake/docker.calls"
 deploy bbbbbbb
