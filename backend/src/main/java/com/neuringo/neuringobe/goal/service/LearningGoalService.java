@@ -1,23 +1,19 @@
 package com.neuringo.neuringobe.goal.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
+import com.neuringo.neuringobe.common.ApiErrorResponse;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.domain.LearningGoal;
 import com.neuringo.neuringobe.goal.dto.CreateLearningGoalRequest;
+import com.neuringo.neuringobe.goal.dto.GoalCharacter;
 import com.neuringo.neuringobe.goal.dto.LearningGoalResponse;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -30,8 +26,6 @@ public class LearningGoalService {
     private final LearningGoalRepository goals;
     private final ChildRepository children;
     private final ChildAccessScope access;
-    private final ObjectMapper mapper =
-            new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     public LearningGoalService(
             LearningGoalRepository goals, ChildRepository children, ChildAccessScope access) {
@@ -49,15 +43,21 @@ public class LearningGoalService {
             UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
         access.requireInstructor(authentication, childId);
         children.findByIdForUpdate(childId).orElseThrow(() -> childNotFound());
-        return LearningGoalResponse.from(goals.save(newGoal(childId, request, authentication)));
+        return LearningGoalResponse.from(goals.save(newGoal(childId, request, "", authentication)));
     }
 
     /**
-     * 저장하지 않은 새 목표. 조건을 확인하고 정규화해 content_hash 까지 채운다. 활동 배정은 이 해시로 중복을 먼저 확인한 뒤 활동과 같은 트랜잭션에서
-     * 저장한다. 아동 권한 확인과 아동 행 잠금은 부르는 쪽이 먼저 한다.
+     * 저장하지 않은 새 목표. 조건을 정리·검사해 content_hash 까지 채운다(규칙은 {@link GoalConditions}). 활동 배정은 이 해시로 중복을 먼저
+     * 확인한 뒤 활동과 같은 트랜잭션에서 저장한다. 아동 권한 확인과 아동 행 잠금은 부르는 쪽이 먼저 한다.
+     *
+     * <p>조건이 잘못되면 422 INVALID_GOAL_CONDITIONS 이고, fieldErrors 의 필드 경로에 {@code fieldPrefix} 를 붙인다.
+     * 활동 배정처럼 목표가 요청 안의 {@code goal} 에 있으면 요청 검증 오류(goal.title)와 같게 {@code "goal."} 을 넘긴다.
      */
     public LearningGoal newGoal(
-            UUID childId, CreateLearningGoalRequest request, Authentication authentication) {
+            UUID childId,
+            CreateLearningGoalRequest request,
+            String fieldPrefix,
+            Authentication authentication) {
         if (request.parentGoalId() != null) {
             LearningGoal parent =
                     goals.findById(request.parentGoalId()).orElseThrow(() -> notFound());
@@ -65,31 +65,38 @@ public class LearningGoalService {
                 throw notFound();
             }
         }
-        String title = request.title().trim();
-        List<Map<String, Object>> characters = emptyIfNull(request.characters());
+        List<GoalCharacter> characters = emptyIfNull(request.characters());
         List<String> required = emptyIfNull(request.requiredElements());
         List<String> forbidden = emptyIfNull(request.forbiddenExpressions());
-        String situation = trimOrNull(request.situationType());
-        String category = trimOrNull(request.category());
-        if (required.stream().anyMatch(value -> value == null || value.isBlank())
-                || forbidden.stream().anyMatch(value -> value == null || value.isBlank())) {
+        List<ApiErrorResponse.FieldError> violations =
+                GoalConditions.violations(characters, required, forbidden, fieldPrefix);
+        if (!violations.isEmpty()) {
             throw new ApiException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
                     "INVALID_GOAL_CONDITIONS",
-                    "목표 조건이 올바르지 않습니다.");
+                    "목표 조건이 올바르지 않습니다.",
+                    violations);
         }
+        GoalConditions.Normalized goal =
+                GoalConditions.normalize(
+                        request.title(),
+                        request.situationType(),
+                        request.category(),
+                        characters,
+                        required,
+                        forbidden);
         return new LearningGoal(
                 UUID.randomUUID(),
                 childId,
                 ((AuthenticatedUser) authentication.getPrincipal()).userId(),
                 request.parentGoalId(),
-                title,
-                situation,
-                category,
-                characters,
-                required,
-                forbidden,
-                contentHash(title, situation, category, characters, required, forbidden),
+                goal.title(),
+                goal.situationType(),
+                goal.category(),
+                goal.characters(),
+                goal.requiredElements(),
+                goal.forbiddenExpressions(),
+                GoalConditions.contentHash(goal),
                 Instant.now());
     }
 
@@ -106,40 +113,9 @@ public class LearningGoalService {
         return LearningGoalResponse.from(goal);
     }
 
-    private <T> List<T> emptyIfNull(List<T> values) {
-        if (values == null) {
-            return List.of();
-        }
-        if (values.contains(null)) {
-            throw new ApiException(
-                    HttpStatus.UNPROCESSABLE_CONTENT,
-                    "INVALID_GOAL_CONDITIONS",
-                    "목표 조건이 올바르지 않습니다.");
-        }
-        return List.copyOf(values);
-    }
-
-    private static String trimOrNull(String value) {
-        return value == null ? null : value.trim();
-    }
-
-    private String contentHash(
-            String title,
-            String situation,
-            String category,
-            List<Map<String, Object>> characters,
-            List<String> required,
-            List<String> forbidden) {
-        try {
-            byte[] canonical =
-                    mapper.writeValueAsBytes(
-                            new HashInput(
-                                    title, situation, category, characters, required, forbidden));
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(canonical);
-            return HexFormat.of().formatHex(digest);
-        } catch (JsonProcessingException | NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("목표 해시 계산에 실패했습니다.", ex);
-        }
+    /** 목록 안의 null 은 {@link GoalConditions#violations} 가 위치와 함께 알린다. */
+    private static <T> List<T> emptyIfNull(List<T> values) {
+        return values == null ? List.of() : new ArrayList<>(values);
     }
 
     private ResourceNotFoundException notFound() {
@@ -149,12 +125,4 @@ public class LearningGoalService {
     private ResourceNotFoundException childNotFound() {
         return new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다.");
     }
-
-    private record HashInput(
-            String title,
-            String situationType,
-            String category,
-            List<Map<String, Object>> characters,
-            List<String> requiredElements,
-            List<String> forbiddenExpressions) {}
 }
