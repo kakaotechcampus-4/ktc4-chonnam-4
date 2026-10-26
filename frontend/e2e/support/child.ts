@@ -1,22 +1,74 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, request, type APIRequestContext, type Page } from "@playwright/test"
+import { marker, newInstructor } from "./instructor.js"
 
-// 아동 화면 E2E 공통 단계. 코드 검증은 아직 화면 쪽 mock(src/features/child/api.ts)이라 1234 가 입장 코드다.
-// 실제 API(S1-JIN-01)가 붙으면 강사 화면에서 코드를 발급받아 넣도록 바꾼다.
+// 아동 화면 E2E 공통 단계. 입장·사용 종료는 실제 API(API-IAM-08·09)다. 강사 화면에는 아직 코드 발급 화면이 없어서
+// (아동 상세의 "접근 코드 · QR" 탭은 후속 범위) 강사 API 로 가입 → 학급 → 아동 → 코드 발급을 한 뒤 그 코드로 입장한다.
+// 활동·퀴즈·역할극은 아직 화면 쪽 mock(src/features/child/api.ts)이라 아래 MOCK_ACTIVITY 로 연다.
 
-export const MOCK_ACCESS_CODE = "1234"
-export const MOCK_CHILD_NAME = "서연"
 export const MOCK_ACTIVITY = "mock-activity-1"
 
-/** 코드 입력 화면에서 숫자 버튼으로 코드를 넣고 입장한다. 입장하면 인사 화면(/child/hello)으로 간다. */
-export async function enterChild(page: Page, code = MOCK_ACCESS_CODE) {
+/** 화면이 부르는 이름. 아동 이름의 마지막 덩어리다(성을 빼고 이름만 부른다, src/features/child/lib/childName.ts). */
+export const CHILD_GIVEN_NAME = "서연"
+
+// playwright.config.ts 와 같은 고정 주소. 프론트는 VITE_API_BASE_URL 없이 빌드되어 이 주소를 부른다.
+const API_ORIGIN = "http://localhost:8080"
+
+export type E2EChild = { name: string; accessCode: string }
+
+async function csrfHeaders(api: APIRequestContext): Promise<Record<string, string>> {
+  const res = await api.get("/api/v1/csrf")
+  expect(res.status(), "CSRF 토큰 조회").toBe(200)
+  const { data } = (await res.json()) as { data: { headerName: string; token: string } }
+  return { [data.headerName]: data.token }
+}
+
+async function post<T>(api: APIRequestContext, path: string, body: unknown, headers: Record<string, string> = {}) {
+  const res = await api.post(path, { data: body, headers: { ...(await csrfHeaders(api)), ...headers } })
+  expect(res.ok(), `POST ${path} → ${res.status()}`).toBe(true)
+  return ((await res.json()) as { data: T }).data
+}
+
+/**
+ * 강사 API 로 아동을 등록하고 입장 코드를 발급한다. 브라우저와 쿠키가 섞이지 않게 따로 만든 요청 컨텍스트를 쓴다.
+ * 아동 이름에는 이번 실행의 표시(marker)를 넣는다. scripts/e2e.sh 가 백엔드·DB 로그에서 찾아 개인정보가 새는지 본다.
+ * 띄어 쓴 이름의 마지막 덩어리(CHILD_GIVEN_NAME)만 불러서 화면에는 "서연아", "서연이의 활동"으로 보인다.
+ */
+export async function issueChildCode(): Promise<E2EChild> {
+  const api = await request.newContext({ baseURL: API_ORIGIN })
+  try {
+    const instructor = newInstructor()
+    await post(api, "/api/v1/users", { ...instructor, termsAgreed: true, privacyAgreed: true })
+    const { accessToken } = await post<{ accessToken: string }>(api, "/api/v1/auth/sessions", {
+      email: instructor.email,
+      password: instructor.password,
+    })
+    const auth = { Authorization: `Bearer ${accessToken}` }
+
+    const { classId } = await post<{ classId: string }>(api, "/api/v1/classrooms", { name: `아동 E2E 학급 ${marker}` }, auth)
+    const name = `하늘 ${marker} ${CHILD_GIVEN_NAME}`
+    const { childId } = await post<{ childId: string }>(api, `/api/v1/classrooms/${classId}/children`, { displayName: name }, auth)
+    const { accessCode } = await post<{ accessCode: string }>(api, `/api/v1/children/${childId}/access-codes`, undefined, {
+      ...auth,
+      "Idempotency-Key": crypto.randomUUID(),
+    })
+    return { name, accessCode }
+  } finally {
+    await api.dispose()
+  }
+}
+
+/** 새 아동의 코드를 발급받아 코드 입력 화면에서 숫자 버튼으로 입장한다. 입장하면 인사 화면(/child/hello)으로 간다. */
+export async function enterChild(page: Page): Promise<E2EChild> {
+  const child = await issueChildCode()
   await page.goto("/child")
   await expect(page.getByText("입장 코드를 입력해줘!")).toBeVisible()
-  for (const digit of code) {
+  for (const digit of child.accessCode) {
     await page.getByRole("button", { name: digit, exact: true }).click()
   }
   await page.getByRole("button", { name: "입장하기" }).click()
   await expect(page).toHaveURL(/\/child\/hello$/)
-  await expect(page.getByText(`안녕, ${MOCK_CHILD_NAME}아!`)).toBeVisible()
+  await expect(page.getByText(`안녕, ${CHILD_GIVEN_NAME}아!`)).toBeVisible()
+  return child
 }
 
 /**
