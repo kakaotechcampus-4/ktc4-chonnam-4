@@ -47,6 +47,54 @@ class ScenarioPromptFactoryTest {
     }
 
     @Test
+    void teacherInputTakesStoredLearningGoalValuesAsIs() {
+        Map<String, Object> friend = new LinkedHashMap<>();
+        friend.put("id", "FRIEND");
+        friend.put("role", "같은 반 친구");
+        friend.put("note", null);
+        ScenarioGenerationInput.TeacherInput teacher =
+                new ScenarioGenerationInput.TeacherInput(
+                        "친구의 감정을 이해하고 공감하기",
+                        "친구 마음에 공감하기",
+                        "PLAYGROUND",
+                        List.of(friend),
+                        null,
+                        null);
+
+        JsonNode message =
+                JSON.readTree(
+                                factory.generation(
+                                                trace(),
+                                                attempts(),
+                                                1,
+                                                new ScenarioGenerationInput(
+                                                        teacher,
+                                                        ScenarioGenerationInput.Difficulty.of("L1"),
+                                                        null))
+                                        .request()
+                                        .userPrompt())
+                        .path("teacher_input");
+
+        assertThat(message.path("category").asString()).isEqualTo("친구 마음에 공감하기");
+        assertThat(message.path("situation_type").asString()).isEqualTo("PLAYGROUND");
+        JsonNode character = message.path("characters").get(0);
+        assertThat(character.path("id").asString()).isEqualTo("FRIEND");
+        assertThat(character.path("role").asString()).isEqualTo("같은 반 친구");
+    }
+
+    @Test
+    void teacherInputRejectsEmptyCharacter() {
+        List<Map<String, Object>> characters = new ArrayList<>();
+        characters.add(Map.of());
+
+        assertThatThrownBy(
+                        () ->
+                                new ScenarioGenerationInput.TeacherInput(
+                                        "목표", null, null, characters, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void promptNeverCarriesTraceIdentifiers() {
         AiTraceContext trace = trace();
         String user = factory.generation(trace, attempts(), 1, input("L1")).request().userPrompt();
@@ -276,7 +324,7 @@ class ScenarioPromptFactoryTest {
                 "친구의 감정을 이해하고 공감하기",
                 "EMOTION_RECOGNITION",
                 "놀이터",
-                List.of("같은 반 친구"),
+                List.of(Map.of("id", "FRIEND", "role", "같은 반 친구")),
                 List.of("친구의 표정을 보는 장면"),
                 List.of("싸움"));
     }

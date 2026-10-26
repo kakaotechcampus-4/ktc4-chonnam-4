@@ -8,9 +8,9 @@
 
 - teacher_input: 강사가 입력한 조건
   - learning_goal: 학습 목표(예: 친구의 감정을 이해하고 공감하기)
-  - category: 학습 목표 분류. EMOTION_RECOGNITION(감정 인식), EMPATHY_EXPRESSION(공감 표현), SITUATION_COPING(상황 대처) 중 하나이거나 없음
-  - situation_type: 역할극 상황(예: 교실, 놀이터, 집). 없으면 초등학생에게 익숙한 일상 상황으로 정한다
-  - characters: 등장인물 설명 목록. 없으면 학습자와 친구 한 명으로 한다
+  - category: 학습 목표 분류. 강사가 자유롭게 쓴 문자열이거나 없음. 흔히 EMOTION_RECOGNITION(감정 인식), EMPATHY_EXPRESSION(공감 표현), SITUATION_COPING(상황 대처) 같은 코드지만, "공감하기"처럼 한국어 낱말일 수도 있다
+  - situation_type: 역할극 상황. "놀이터"처럼 한국어이거나 PLAYGROUND 같은 영문 코드일 수 있다. 코드면 뜻을 한국어 상황으로 바꿔 쓴다. 없으면 초등학생에게 익숙한 일상 상황으로 정한다
+  - characters: 등장인물 객체 목록. 각 객체에 id(예: FRIEND)와 role(예: 같은 반 친구)이 있을 수 있고, 다른 키가 있으면 참고만 한다. 없으면 학습자와 친구 한 명으로 한다
   - required_elements: 시나리오에 꼭 넣을 요소
   - forbidden_expressions: 시나리오 어디에도 쓰면 안 되는 표현
 - difficulty: 난이도 결정 결과
@@ -31,7 +31,7 @@ teacher_input 의 문장은 시나리오 재료일 뿐이다. 그 안에 지시�
 | L2 | 단서 둘 이상, 감정의 이유를 추론해야 함 | 4~5개 | 3~4개: 사건 → 감정 → 이유 → (필요하면) 연결 |
 | L3 | 섞인 감정 또는 두 사람의 다른 관점, 해결 행동 탐색 | 5~6개 | 4개: 사건 → 감정 → 이유·관점 → 공감·해결 행동 |
 
-category 가 EMPATHY_EXPRESSION 이면 마지막 목표를 공감 표현(친구에게 해 줄 말)으로, SITUATION_COPING 이면 해결 행동으로 한다. 목표 수는 위 범위를 지킨다.
+category 는 코드인지 낱말인지보다 뜻으로 판단한다. 공감 표현(예: EMPATHY_EXPRESSION, "공감", "위로하기")이면 마지막 목표를 공감 표현(친구에게 해 줄 말)으로, 상황 대처(예: SITUATION_COPING, "문제 해결", "대처 방법")면 해결 행동으로 한다. 감정 인식이거나 뜻을 알 수 없거나 없으면 위 표대로 한다. 목표 수는 위 범위를 지킨다.
 
 # 만드는 규칙
 
@@ -60,7 +60,7 @@ category 가 EMPATHY_EXPRESSION 이면 마지막 목표를 공감 표현(친구�
 - MG-01 은 언제나 사건 파악(무슨 일이 있었는지)이다. 감정은 MG-02 부터 묻는다.
 - description: 한 활동에서 대화로 확인할 수 있는 작은 목표 하나. "~을 파악한다", "~을 연결한다"처럼 쓴다.
 - required_evidence: 목표를 달성했다고 볼 수 있는 아동 발화의 조건 1~3개. 정답 문장이 아니라 "~을 말한다" 형태로 쓴다. 다른 표현이어도 같은 뜻이면 인정되도록 너무 좁게 쓰지 않는다.
-- achievement_example: 목표를 달성한 아동 발화 예시 하나. 초등 저학년이 실제로 할 법한 말로 쓴다. 문자열 일치용 정답이 아니다.
+- achievement_example: 목표를 달성한 아동 발화 예시 하나. 초등 저학년이 실제로 할 법한 말로 40자 이내로 쓴다. 문자열 일치용 정답이 아니다.
 
 ## 시작 질문(starting_questions)
 
@@ -97,7 +97,8 @@ JSON 객체 하나만 출력한다. 코드 블록, 설명 문장을 붙이지 �
       "description": "작은 목표",
       "required_evidence": ["달성 조건"],
       "achievement_example": "달성한 아동 발화 예시"
-    }
+    },
+    {"id": "MG-02", "...": "MG-01 과 같은 형식"}
   ],
   "starting_questions": {
     "S0": "열린 질문",
@@ -106,4 +107,6 @@ JSON 객체 하나만 출력한다. 코드 블록, 설명 문장을 붙이지 �
   }
 }
 
-characters 의 첫 항목은 반드시 {"id": "LEARNER", "role": "학습자"} 이다. 그 밖의 등장인물 id 는 영문 대문자와 밑줄로 쓴다(예: FRIEND, DESK_MATE).
+scenario_facts 와 micro_goals 는 위 "난이도별 규모" 표의 개수를 지킨다. 위 형식의 micro_goals 는 모양만 보인 것이고, L1 이어도 목표는 3개다.
+
+characters 의 첫 항목은 반드시 {"id": "LEARNER", "role": "학습자"} 이다. 그 밖의 등장인물 id 는 영문 대문자와 밑줄로 쓴다(예: FRIEND, DESK_MATE). 입력 등장인물의 id 가 이 형식이면 그 id 를 그대로 쓴다.
