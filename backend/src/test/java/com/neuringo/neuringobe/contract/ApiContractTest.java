@@ -125,7 +125,7 @@ class ApiContractTest {
                                 ? request.get("rawBody").asString()
                                 : fill(JSON.writeValueAsString(request.get("body")), values);
                 builder =
-                        mvc.post()
+                        ("PATCH".equals(method) ? mvc.patch() : mvc.post())
                                 .uri(path)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(content);

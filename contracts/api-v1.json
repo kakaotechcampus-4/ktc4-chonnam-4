@@ -477,6 +477,63 @@
       }
     },
     {
+      "name": "학급 이름 수정은 200 과 바뀐 학급",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/classrooms/{classId}",
+        "body": { "name": "새싹반" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "classId": "{classId}", "instructorId": "{instructorId}", "name": "새싹반", "status": "ACTIVE" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "공백뿐인 학급 이름으로 수정은 422 VALIDATION_FAILED(name)",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/classrooms/{classId}",
+        "body": { "name": "   " }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/classrooms/{classId}",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "name", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 학급 이름 수정은 404 CLASSROOM_NOT_FOUND",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/classrooms/{otherClassId}",
+        "body": { "name": "새싹반" }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
       "name": "깨진 JSON 본문은 400 INVALID_REQUEST",
       "request": { "method": "POST", "path": "/api/v1/classrooms", "rawBody": "{\"name\":" },
       "response": {
@@ -512,6 +569,63 @@
     {
       "name": "다른 강사의 아동 조회는 404 CHILD_NOT_FOUND",
       "request": { "method": "GET", "path": "/api/v1/children/{otherChildId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/children/{otherChildId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "아동 이름 수정은 200 과 바뀐 아동",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/children/{childId}",
+        "body": { "displayName": "이바다" }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": { "childId": "{childId}", "classId": "{classId}", "displayName": "이바다", "status": "ACTIVE" },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "빈 아동 이름으로 수정은 422 VALIDATION_FAILED(displayName)",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/children/{childId}",
+        "body": { "displayName": "" }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "VALIDATION_FAILED",
+            "message": "요청 값이 올바르지 않습니다.",
+            "path": "/api/v1/children/{childId}",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "displayName", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사의 아동 이름 수정은 404 CHILD_NOT_FOUND",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/children/{otherChildId}",
+        "body": { "displayName": "이바다" }
+      },
       "response": {
         "status": 404,
         "body": {

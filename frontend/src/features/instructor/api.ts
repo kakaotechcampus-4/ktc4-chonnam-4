@@ -240,7 +240,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -341,6 +341,11 @@ export function getClassroom(classId: string): Promise<Classroom> {
   return readRequest<Classroom>(`/classrooms/${classId}`)
 }
 
+/** 학급명만 고친다. */
+export function updateClassroom(classId: string, name: string): Promise<Classroom> {
+  return writeRequest<Classroom>('PATCH', `/classrooms/${classId}`, { name })
+}
+
 /** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
 export function deleteClassroom(classId: string): Promise<void> {
   return writeRequest<void>('DELETE', `/classrooms/${classId}`)
@@ -352,6 +357,11 @@ export function listChildren(classId: string): Promise<Child[]> {
 
 export function getChild(childId: string): Promise<Child> {
   return readRequest<Child>(`/children/${childId}`)
+}
+
+/** 아동 이름만 고친다. 학급은 옮기지 않는다. */
+export function updateChild(childId: string, displayName: string): Promise<Child> {
+  return writeRequest<Child>('PATCH', `/children/${childId}`, { displayName })
 }
 
 /** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
