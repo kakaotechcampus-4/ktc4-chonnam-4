@@ -177,6 +177,10 @@ function pickItems(activityType: ActivityType): PoolItem[] {
 
 type StoredActivity = Activity & { idempotencyKey: string | null }
 
+// 아동 접근 코드(API-IAM-08). valid 는 아동 A1-1(김하늘)의 코드, expired 는 24시간이 지난 코드다. 그 밖의 4자리는 틀린 코드다.
+// 앞자리 0이 문자열로 유지되는지 보려고 0으로 시작하는 값을 쓴다.
+export const childAccessCodes = { valid: "0427", expired: "0999" }
+
 // 만든 학급·아동·계정·세션·목표·활동은 다음 요청에 반영된다(실제 서버처럼). 테스트가 끝나면 setup 이 resetMswData() 로 픽스처만 남긴다.
 let accounts: TestInstructor[] = []
 let sessions = new Map<string, string>()
@@ -188,8 +192,11 @@ let activityQuizzes: AssignedQuizItem[] = []
 let quizResults = new Map<string, QuizResult>()
 // 비워 두면 승인 문항이 없는 서버처럼 배정이 422 QUIZ_ITEMS_UNAVAILABLE 이다.
 let quizPool = FULL_POOL
+// 브라우저의 아동 세션 쿠키(JSESSIONID). 입장하면 그 아동 ID, 사용 종료하면 null 이다.
+let childSession: string | null = null
 
 export function resetMswData() {
+  childSession = null
   accounts = [instructors.a, instructors.b]
   sessions = new Map([
     [instructors.a.accessToken, instructors.a.userId],
@@ -202,6 +209,11 @@ export function resetMswData() {
   activityQuizzes = []
   quizResults = new Map()
   quizPool = FULL_POOL
+}
+
+/** 아동이 이미 입장해 서버에 아동 세션이 있는 상태로 만든다(사용 종료 요청이 204 가 된다). */
+export function startChildSession(childId: string = fixtures.childA1_1.childId) {
+  childSession = childId
 }
 
 /** 승인 문항이 없는 서버로 바꾼다. 배정이 422 QUIZ_ITEMS_UNAVAILABLE 이 된다. */
@@ -463,6 +475,36 @@ function normalizeEmail(email: string) {
 
 export const handlers = [
   http.get("*/api/v1/csrf", () => HttpResponse.json(envelope(CSRF))),
+
+  // 아동 입장(API-IAM-08): 공개 + CSRF. 다른 코드로 들어오면 이전 아동 세션을 바꾼다.
+  http.post("*/api/v1/child-access-sessions", async ({ request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const path = new URL(request.url).pathname
+    const body = await readJson(request)
+    if (!body) return invalidRequest(path)
+    if (typeof body.accessCode !== "string" || !/^\d{4}$/.test(body.accessCode)) {
+      return validationFailed(path, [{ field: "accessCode", message: "숫자 4자리여야 합니다" }])
+    }
+    if (body.accessCode === childAccessCodes.expired) {
+      return apiError(401, "ACCESS_CODE_EXPIRED", "입장 코드가 만료되었습니다.", path)
+    }
+    if (body.accessCode !== childAccessCodes.valid) {
+      return apiError(401, "INVALID_ACCESS_CODE", "입장 코드가 올바르지 않습니다.", path)
+    }
+    const { childId, displayName } = fixtures.childA1_1
+    childSession = childId
+    return HttpResponse.json(envelope({ childId, displayName }), { status: 201 })
+  }),
+
+  // 아동 사용 종료(API-IAM-09): 아동 세션 + CSRF. 세션이 없으면 서버처럼 401 이다.
+  http.delete("*/api/v1/child-access-sessions/current", ({ request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    if (childSession === null) {
+      return apiError(401, "AUTHENTICATION_REQUIRED", "아동 입장이 필요합니다.", new URL(request.url).pathname)
+    }
+    childSession = null
+    return new HttpResponse(null, { status: 204 })
+  }),
 
   http.post("*/api/v1/users", async ({ request }) => {
     if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })

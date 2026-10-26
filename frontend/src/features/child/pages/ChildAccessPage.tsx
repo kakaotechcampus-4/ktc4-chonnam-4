@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from "react"
+import { useEffect, useRef, useState, type ComponentProps } from "react"
 import { useNavigate } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import { Delete } from "lucide-react"
@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { ExpiredState, NetworkState, StateDialog } from "../components/state"
-import { ChildApiError, verifyAccessCode } from "../api"
+import { ErrorState, ExpiredState, NetworkState, StateDialog } from "../components/state"
+import { ACCESS_CODE_EXPIRED, ChildApiError, INVALID_ACCESS_CODE, NETWORK_ERROR, verifyAccessCode } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 const CODE_LENGTH = 4
@@ -21,6 +21,8 @@ function ChildAccessPage() {
   const navigate = useNavigate()
   const startSession = useChildSessionStore((state) => state.startSession)
   const [code, setCode] = useState("")
+  // 화면이 다시 그려져 버튼이 잠기기 전에 빠르게 두 번 눌러도 입장 요청은 한 번만 보낸다.
+  const isSending = useRef(false)
 
   const verifyMutation = useMutation({
     mutationFn: verifyAccessCode,
@@ -29,18 +31,28 @@ function ChildAccessPage() {
       navigate("/child/hello", { replace: true })
     },
     onError: (error) => {
-      // 틀린 코드만 비워 다시 누르게 한다. 네트워크 오류는 같은 코드로 재시도한다.
-      if (error instanceof ChildApiError && error.code === "ACCESS_CODE_INVALID") {
+      // 성공하면 이 화면을 떠나므로 실패했을 때만 다시 보낼 수 있게 푼다.
+      isSending.current = false
+      // 틀린 코드만 비워 다시 누르게 한다. 연결 끊김·서버 오류는 같은 코드로 다시 보낸다.
+      if (isApiError(error, INVALID_ACCESS_CODE)) {
         setCode("")
       }
     },
   })
 
+  const enter = (value: string) => {
+    if (isSending.current) return
+    isSending.current = true
+    verifyMutation.mutate(value)
+  }
+
   const isPending = verifyMutation.isPending
   const error = verifyMutation.error
-  const isInvalid = error instanceof ChildApiError && error.code === "ACCESS_CODE_INVALID"
-  const isExpired = error instanceof ChildApiError && error.code === "ACCESS_CODE_EXPIRED"
-  const isNetworkError = error !== null && !(error instanceof ChildApiError)
+  const isInvalid = isApiError(error, INVALID_ACCESS_CODE)
+  const isExpired = isApiError(error, ACCESS_CODE_EXPIRED)
+  const isNetworkError = isApiError(error, NETWORK_ERROR)
+  // CSRF 거부·서버 오류 등은 아이 잘못이 아니므로 "틀린 코드"로 보여 주지 않는다 (API-IAM-08).
+  const isOtherError = error !== null && !isInvalid && !isExpired && !isNetworkError
   const canSubmit = code.length === CODE_LENGTH && !isPending
 
   const pressDigit = (digit: string) => {
@@ -56,7 +68,7 @@ function ChildAccessPage() {
   }
 
   const submit = () => {
-    if (canSubmit) verifyMutation.mutate(code)
+    if (canSubmit) enter(code)
   }
 
   const restart = () => {
@@ -68,7 +80,7 @@ function ChildAccessPage() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // 오류 모달이 떠 있는 동안에는 뒤 화면 입력을 받지 않는다.
-      if (isExpired || isNetworkError) return
+      if (isExpired || isNetworkError || isOtherError) return
       if (/^[0-9]$/.test(event.key)) pressDigit(event.key)
       else if (event.key === "Backspace") pressBackspace()
       // 포커스된 키패드 버튼에서 Enter를 누르면 버튼 클릭이 따로 처리되므로 입장 요청은 보내지 않는다.
@@ -149,10 +161,17 @@ function ChildAccessPage() {
         <ExpiredState onRetry={restart} />
       </StateDialog>
       <StateDialog open={isNetworkError}>
-        <NetworkState onRetry={() => verifyMutation.mutate(code)} />
+        <NetworkState onRetry={() => enter(code)} />
+      </StateDialog>
+      <StateDialog open={isOtherError}>
+        <ErrorState onRetry={() => enter(code)} />
       </StateDialog>
     </div>
   )
+}
+
+function isApiError(error: Error | null, code: string) {
+  return error instanceof ChildApiError && error.code === code
 }
 
 function KeypadButton({ className, ...props }: ComponentProps<"button">) {
