@@ -179,6 +179,20 @@ public class TestFixtures {
         return bearer(jsonPost(uri, json), as.accessToken()).exchange();
     }
 
+    /** {@link #postJson} 과 같은 방식으로 PATCH 한다. */
+    public MvcTestResult patchJson(Instructor as, String uri, Object body) {
+        CsrfCredentials csrf = fetchCsrf();
+        return bearer(
+                        mvc.patch()
+                                .uri(uri)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(JSON.writeValueAsString(body))
+                                .header(csrf.headerName(), csrf.token())
+                                .cookie(csrf.cookies()),
+                        as.accessToken())
+                .exchange();
+    }
+
     /** {@link #postJson} 에 Idempotency-Key 를 더한다. 재전송 방지 키를 받는 생성 API(활동 배정 등)에 쓴다. */
     public MvcTestResult postJsonWithKey(Instructor as, String uri, Object body, UUID key) {
         return bearer(jsonPost(uri, JSON.writeValueAsString(body)), as.accessToken())

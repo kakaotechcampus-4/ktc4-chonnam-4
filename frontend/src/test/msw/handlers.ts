@@ -554,6 +554,25 @@ export const handlers = [
     return HttpResponse.json(envelope(classroom))
   }),
 
+  // 서버처럼 본문 검증(422)이 소유권 확인(404)보다 먼저다. 픽스처 객체는 고치지 않고 바꾼 사본으로 갈아 끼운다.
+  http.patch("*/api/v1/classrooms/:classId", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const classId = String(params.classId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(classId)) return invalidRequest(path)
+    const body = await readJson(request)
+    if (!body) return invalidRequest(path)
+    const violations = nameViolations(body.name)
+    if (violations.length > 0) return validationFailed(path, violations.map((message) => ({ field: "name", message })))
+    const classroom = ownedClassroom(classId, session)
+    if (!classroom) return classroomNotFound(classId, path)
+    const renamed: Classroom = { ...classroom, name: String(body.name) }
+    classrooms = classrooms.map((c) => (c.classId === classId ? renamed : c))
+    return HttpResponse.json(envelope(renamed))
+  }),
+
   http.delete("*/api/v1/classrooms/:classId", ({ params, request }) => {
     if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
     const session = authenticate(request)
@@ -629,6 +648,26 @@ export const handlers = [
     const child = ownedChild(childId, session)
     if (!child) return childNotFound(path)
     return HttpResponse.json(envelope(child))
+  }),
+
+  http.patch("*/api/v1/children/:childId", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const childId = String(params.childId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+    const body = await readJson(request)
+    if (!body) return invalidRequest(path)
+    const violations = nameViolations(body.displayName)
+    if (violations.length > 0) {
+      return validationFailed(path, violations.map((message) => ({ field: "displayName", message })))
+    }
+    const child = ownedChild(childId, session)
+    if (!child) return childNotFound(path)
+    const renamed: Child = { ...child, displayName: String(body.displayName) }
+    children = children.map((c) => (c.childId === childId ? renamed : c))
+    return HttpResponse.json(envelope(renamed))
   }),
 
   http.delete("*/api/v1/children/:childId", ({ params, request }) => {

@@ -127,18 +127,19 @@ function ClassroomDetailPage() {
       actions={
         <div className="flex gap-2">
           {classroom && (
-            <button
-              type="button"
-              onClick={() => setIsDeleteOpen(true)}
-              className={cn(dangerOutlineButtonClass, compactButtonClass)}
-            >
-              학급 삭제
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setIsDeleteOpen(true)}
+                className={cn(dangerOutlineButtonClass, compactButtonClass)}
+              >
+                학급 삭제
+              </button>
+              <Link to={`/classrooms/${classId}/edit`} className={cn(outlineButtonClass, compactButtonClass)}>
+                학급 수정
+              </Link>
+            </>
           )}
-          {/* 학급 수정은 S4-BAE-01 범위라 자리만 둔다. */}
-          <button type="button" disabled title="준비 중인 기능입니다" className={cn(outlineButtonClass, compactButtonClass)}>
-            학급 수정
-          </button>
         </div>
       }
       subheader={

@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.classroom.controller;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.classroom.dto.ClassroomResponse;
 import com.neuringo.neuringobe.classroom.dto.CreateClassroomRequest;
+import com.neuringo.neuringobe.classroom.dto.UpdateClassroomRequest;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ApiResponse;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,5 +45,13 @@ public class ClassroomController {
     public ApiResponse<ClassroomResponse> get(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID classId) {
         return ApiResponse.of(classroomService.get(user.userId(), classId));
+    }
+
+    @PatchMapping("/{classId}")
+    public ApiResponse<ClassroomResponse> rename(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID classId,
+            @RequestBody @Valid UpdateClassroomRequest request) {
+        return ApiResponse.of(classroomService.rename(user.userId(), classId, request));
     }
 }

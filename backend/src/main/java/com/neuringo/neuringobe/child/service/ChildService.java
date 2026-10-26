@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.dto.ChildResponse;
 import com.neuringo.neuringobe.child.dto.CreateChildRequest;
+import com.neuringo.neuringobe.child.dto.UpdateChildRequest;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
@@ -47,7 +48,29 @@ public class ChildService {
                 .findById(childId)
                 .filter(child -> classroomService.isOwnedBy(instructorId, child.getClassId()))
                 .map(ChildResponse::from)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
+                .orElseThrow(ChildService::notFound);
+    }
+
+    /**
+     * 아동 삭제·배정과 같은 아동 행 잠금을 잡고 고친다. 삭제가 먼저 끝났으면 404 다. 다른 강사의 아동도 {@link #get} 과 같은 404 다. 이름만 고치고
+     * 학급은 옮기지 않는다.
+     */
+    @Transactional
+    public ChildResponse rename(UUID instructorId, UUID childId, UpdateChildRequest request) {
+        Child child =
+                childRepository
+                        .findByIdForUpdate(childId)
+                        .filter(
+                                found ->
+                                        classroomService.isOwnedBy(
+                                                instructorId, found.getClassId()))
+                        .orElseThrow(ChildService::notFound);
+        child.rename(request.displayName());
+
+        return ChildResponse.from(child);
+    }
+
+    private static ResourceNotFoundException notFound() {
+        return new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다.");
     }
 }

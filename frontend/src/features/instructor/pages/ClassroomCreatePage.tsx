@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createClassroom, getCurrentUser } from '../api'
+import { createClassroom, getClassroom, getCurrentUser, updateClassroom, type Classroom } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { cn } from '@/lib/utils'
@@ -19,22 +19,76 @@ import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
 
 /**
- * 학급 생성 화면 (시안 T-CLS-02).
+ * 학급 생성·수정 화면 (시안 T-CLS-02). 생성과 수정은 같은 시안이라 같은 폼을 쓴다.
  * 배치는 시안의 두 칸(왼쪽 기본 정보 1.4 : 오른쪽 1, 화면 아래까지)을 따르고, 버튼은 시안처럼 오른쪽 칸 아래에 둔다.
  * API 가 받는 것은 학급명뿐이다. 운영 기관(내 계정의 소속)과 담당 강사(나)는 있는 값을 보여 주기만 하고,
  * 데이터 모델에 없거나(대상 연령·메모) 후속 범위인 것(공동 강사, 보관 처리, 아동 접근 방식)은 시안 자리에 비활성으로 둔다.
  */
 function ClassroomCreatePage() {
-  const [name, setName] = useState('')
+  return (
+    <ClassroomForm
+      title="학급 생성"
+      initialName=""
+      cancelTo="/classrooms"
+      save={createClassroom}
+      failureMessage="학급 생성에 실패했습니다."
+    />
+  )
+}
+
+/** 학급명만 고친다. 시안의 다른 칸은 생성 화면과 같이 비활성 자리로 둔다. */
+function ClassroomEditPage() {
+  const { classId } = useParams<{ classId: string }>()
+  const classroomQuery = useQuery({
+    queryKey: ['classrooms', classId],
+    queryFn: () => getClassroom(classId!),
+    enabled: !!classId,
+  })
+
+  if (classroomQuery.isLoading) {
+    return (
+      <InstructorLayout title="학급 수정">
+        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+      </InstructorLayout>
+    )
+  }
+  if (!classroomQuery.data) {
+    return (
+      <InstructorLayout title="학급 수정">
+        <Notice tone="error">{describeError(classroomQuery.error, '학급을 찾을 수 없습니다.')}</Notice>
+      </InstructorLayout>
+    )
+  }
+  return (
+    <ClassroomForm
+      title="학급 수정"
+      initialName={classroomQuery.data.name}
+      cancelTo={`/classrooms/${classId}`}
+      save={(name) => updateClassroom(classId!, name)}
+      failureMessage="학급 수정에 실패했습니다."
+    />
+  )
+}
+
+type ClassroomFormProps = {
+  title: string
+  initialName: string
+  cancelTo: string
+  save: (name: string) => Promise<Classroom>
+  failureMessage: string
+}
+
+function ClassroomForm({ title, initialName, cancelTo, save, failureMessage }: ClassroomFormProps) {
+  const [name, setName] = useState(initialName)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   // 사이드바(InstructorLayout)와 같은 키라 이미 받은 값을 그대로 쓴다.
   const { data: user } = useQuery({ queryKey: ['auth', 'session'], queryFn: getCurrentUser, staleTime: Infinity })
 
-  // 목록 캐시는 화면을 떠났어도 갱신한다(학급은 이미 만들어졌다).
-  const createMutation = useMutation({
-    mutationFn: createClassroom,
+  // 목록·상세 캐시는 화면을 떠났어도 갱신한다(저장은 이미 끝났다).
+  const saveMutation = useMutation({
+    mutationFn: save,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classrooms'] })
     },
@@ -42,7 +96,8 @@ function ClassroomCreatePage() {
 
   const trimmedName = name.trim()
   // 요청 중 재클릭·Enter 로 같은 학급이 여러 번 생성되지 않게 막는다. 서버 중복 검증을 대신하지는 않는다.
-  const isSubmitDisabled = createMutation.isPending || trimmedName === ''
+  // 수정에서 이름이 그대로면 보낼 것이 없다.
+  const isSubmitDisabled = saveMutation.isPending || trimmedName === '' || trimmedName === initialName
   // isPending 은 다음 렌더부터 반영되어, 같은 순간 들어온 두 번째 제출은 통과할 수 있다. ref 로 즉시 잠근다.
   const isSubmittingRef = useRef(false)
 
@@ -52,7 +107,7 @@ function ClassroomCreatePage() {
       return
     }
     isSubmittingRef.current = true
-    createMutation.mutate(trimmedName, {
+    saveMutation.mutate(trimmedName, {
       // 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 저장 중 취소하고 다른 화면(또는 새 생성 화면)으로
       // 옮긴 뒤 이전 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
       onSuccess: (classroom) => {
@@ -65,7 +120,7 @@ function ClassroomCreatePage() {
   }
 
   return (
-    <InstructorLayout title="학급 생성" fill>
+    <InstructorLayout title={title} fill>
       <form onSubmit={handleSubmit} className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
         <section className={cn(cardClass, 'flex flex-col gap-4 px-6 py-6')} aria-labelledby="basic-heading">
           <h2 id="basic-heading" className="text-base font-semibold">
@@ -126,9 +181,9 @@ function ClassroomCreatePage() {
 
           <p className={helperTextClass}>대상 연령, 강사 추가, 메모는 준비 중이에요.</p>
 
-          {createMutation.isError && (
+          {saveMutation.isError && (
             <Notice tone="error" role="alert">
-              {describeError(createMutation.error, '학급 생성에 실패했습니다.')}
+              {describeError(saveMutation.error, failureMessage)}
             </Notice>
           )}
         </section>
@@ -162,11 +217,11 @@ function ClassroomCreatePage() {
           </section>
 
           <div className="flex gap-2.5">
-            <Link to="/classrooms" className={cn(outlineButtonClass, 'w-28')}>
+            <Link to={cancelTo} className={cn(outlineButtonClass, 'w-28')}>
               취소
             </Link>
             <button type="submit" disabled={isSubmitDisabled} className={cn(primaryButtonClass, 'flex-1')}>
-              <ButtonLabel pending={createMutation.isPending} label="저장" pendingLabel="저장 중..." />
+              <ButtonLabel pending={saveMutation.isPending} label="저장" pendingLabel="저장 중..." />
             </button>
           </div>
         </div>
@@ -175,4 +230,4 @@ function ClassroomCreatePage() {
   )
 }
 
-export { ClassroomCreatePage }
+export { ClassroomCreatePage, ClassroomEditPage }
