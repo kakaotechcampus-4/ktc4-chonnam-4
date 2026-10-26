@@ -696,6 +696,86 @@
       }
     },
     {
+      "name": "역할극 추가 조건은 앞뒤·안쪽 공백을 정리해 저장한다",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/children/{childId}/learning-goals",
+        "body": {
+          "title": " 친구  위로하기 ",
+          "situationType": "쉬는 시간에   친구가 그림을 망쳐 속상해하고 있다. ",
+          "characters": [{ "name": " 다온", "relation": "같은 반  친구" }],
+          "requiredElements": ["위로 표현  1회"],
+          "forbiddenExpressions": [" 울지 마"]
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "data": {
+            "goalId": "<uuid>",
+            "childId": "{childId}",
+            "instructorId": "{instructorId}",
+            "parentGoalId": null,
+            "title": "친구 위로하기",
+            "situationType": "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.",
+            "category": null,
+            "characters": [{ "name": "다온", "relation": "같은 반 친구" }],
+            "requiredElements": ["위로 표현 1회"],
+            "forbiddenExpressions": ["울지 마"],
+            "contentHash": "<string>",
+            "createdAt": "<string>"
+          },
+          "meta": { "traceId": "<uuid>" }
+        }
+      }
+    },
+    {
+      "name": "피할 표현이 필수 요소 안에 있으면 422 INVALID_GOAL_CONDITIONS(forbiddenExpressions[1])",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/children/{childId}/learning-goals",
+        "body": { "title": "친구 위로하기", "requiredElements": ["위로 표현 1회"], "forbiddenExpressions": ["울지 마", "위 로"] }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "INVALID_GOAL_CONDITIONS",
+            "message": "목표 조건이 올바르지 않습니다.",
+            "path": "/api/v1/children/{childId}/learning-goals",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "forbiddenExpressions[1]", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
+      "name": "활동 배정의 목표 조건이 모순이면 422 INVALID_GOAL_CONDITIONS(goal.forbiddenExpressions[0])",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/activities",
+        "headers": { "Idempotency-Key": "{requestKey}" },
+        "body": {
+          "childId": "{childId}",
+          "goal": { "title": "친구 위로하기", "requiredElements": ["위로 표현 1회"], "forbiddenExpressions": ["위로"] }
+        }
+      },
+      "response": {
+        "status": 422,
+        "body": {
+          "error": {
+            "status": 422,
+            "code": "INVALID_GOAL_CONDITIONS",
+            "message": "목표 조건이 올바르지 않습니다.",
+            "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": [{ "field": "goal.forbiddenExpressions[0]", "message": "<string>" }]
+          }
+        }
+      }
+    },
+    {
       "name": "Idempotency-Key 없는 활동 배정은 400 INVALID_REQUEST",
       "request": {
         "method": "POST",

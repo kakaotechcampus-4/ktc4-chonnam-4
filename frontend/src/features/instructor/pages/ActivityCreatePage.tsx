@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -20,6 +20,9 @@ import {
   cardClass,
   fieldLabelClass,
   filterButtonClass,
+  focusRingClass,
+  helperTextClass,
+  hitAreaClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -37,18 +40,28 @@ import {
   type GoalCategory,
 } from '../lib/goalPresets'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
+import {
+  CHARACTER_NAME_MAX,
+  REQUIRED_ELEMENT_PRESETS,
+  RELATION_OPTIONS,
+  SITUATION_MAX,
+  contradictingForbidden,
+  type GoalCharacter,
+} from '../lib/goalConditions'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
+import { MaterialIcon } from '../components/MaterialIcon'
 
-type StepKey = 'target' | 'type' | 'goal' | 'confirm'
+type StepKey = 'target' | 'type' | 'goal' | 'conditions' | 'confirm'
 
-// 동작하는 단계만 둔다. 시안의 추가 조건·난이도 결과 단계는 역할극이 생기면 이 배열에 끼운다.
-// 독립 퀴즈는 학습 목표가 없어 목표 단계를 건너뛴다.
+// 동작하는 단계만 둔다. 시안의 난이도 결과 단계는 난이도 산정이 생기면 이 배열에 끼운다.
+// 독립 퀴즈는 학습 목표도 역할극도 없어 목표·추가 조건 단계를 건너뛴다.
 const ALL_STEPS: WizardStep<StepKey>[] = [
   { key: 'target', label: '대상' },
   { key: 'type', label: '유형' },
   { key: 'goal', label: '목표' },
+  { key: 'conditions', label: '추가 조건' },
   { key: 'confirm', label: '확인 · 배정' },
 ]
 
@@ -56,6 +69,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   target: '활동 만들기 — 대상 선택',
   type: '활동 유형 선택',
   goal: '학습 목표 설정',
+  conditions: '역할극 추가 조건',
   confirm: '확인 · 배정',
 }
 
@@ -121,19 +135,40 @@ type GoalTab = 'preset' | 'custom'
 
 type GoalChoice = { title: string; category: GoalCategory | null }
 
+/** 역할극 추가 조건. 모두 선택이고, 비운 항목은 보내지 않는다(생성 쪽 기본값). */
+type Conditions = {
+  situation: string
+  characters: GoalCharacter[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+}
+
+const EMPTY_CONDITIONS: Conditions = { situation: '', characters: [], requiredElements: [], forbiddenExpressions: [] }
+
+/** 배정 요청에 실을 조건. 빈 항목은 빼서, 조건을 하나도 고르지 않은 목표는 예전과 같은 요청이 된다. */
+function conditionsPayload({ situation, characters, requiredElements, forbiddenExpressions }: Conditions) {
+  return {
+    ...(situation.trim() ? { situationType: situation.trim() } : {}),
+    ...(characters.length > 0 ? { characters } : {}),
+    ...(requiredElements.length > 0 ? { requiredElements } : {}),
+    ...(forbiddenExpressions.length > 0 ? { forbiddenExpressions } : {}),
+  }
+}
+
 const ASSIGN_ERROR_MESSAGES: Record<string, string> = {
   DUPLICATE_ASSIGNMENT: '이 아동에게 같은 활동이 아직 시작하지 않은 채로 있어요. 활동 이력에서 확인해 주세요.',
   FIRST_ACTIVITY_EXISTS: '이 아동은 이미 최초 활동을 배정받았어요. 활동 이력에서 확인해 주세요.',
   FIRST_ACTIVITY_NOT_COMPLETED: '최초 활동을 마친 뒤에 배정할 수 있어요.',
   QUIZ_ITEMS_UNAVAILABLE: '배정할 수 있는 승인된 퀴즈 문항이 모자라요. 운영 담당자에게 문항 등록을 요청해 주세요.',
+  INVALID_GOAL_CONDITIONS: '피할 표현이 필수 요소와 겹쳐요. 이전 단계에서 추가 조건을 고쳐 주세요.',
 }
 
 /**
  * 활동 만들기 (시안의 활동 만들기 화면을 줄인 마법사).
- * 대상 아동 한 명 → 활동 유형 → 학습 목표(최초 결합만) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
+ * 대상 아동 한 명 → 활동 유형 → 학습 목표·역할극 추가 조건(최초 결합만) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
  *
  * 단계·학급·아동·유형은 주소(?step=&classId=&childId=&type=)에 두어 새로고침해도 남는다. 아동 상세의 "활동 만들기"는
- * 대상을 채워 연다. 목표 입력은 화면 상태라 새로고침하면 목표 단계부터 다시 한다.
+ * 대상을 채워 연다. 목표·조건 입력은 화면 상태라 새로고침하면 목표 단계부터 다시 한다.
  */
 function ActivityCreatePage() {
   const navigate = useNavigate()
@@ -148,6 +183,7 @@ function ActivityCreatePage() {
   const [presetId, setPresetId] = useState<string | null>(null)
   const [customTitle, setCustomTitle] = useState('')
   const [customCategory, setCustomCategory] = useState<GoalCategory | null>(null)
+  const [conditions, setConditions] = useState<Conditions>(EMPTY_CONDITIONS)
   // 이 화면에서 이 아동에게 보낸 배정의 유형. 응답을 못 받았을 때 다시 보낼 수 있게 남긴다.
   const [sent, setSent] = useState<{ childId: string; type: ActivityType } | null>(null)
 
@@ -167,7 +203,10 @@ function ActivityCreatePage() {
   const availability = activitiesQuery.data ? typeAvailability(activitiesQuery.data) : null
   const activityType = resolveType(requestedType, availability, sent?.childId === childId ? sent.type : null)
   const needsGoal = activityType === 'FIRST_COMBINED'
-  const steps = activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal')
+  const steps =
+    activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal' && s.key !== 'conditions')
+  // 저장 전에 화면에서 먼저 막는다. 서버도 같은 규칙으로 거절한다.
+  const contradictions = contradictingForbidden(conditions.requiredElements, conditions.forbiddenExpressions)
 
   const preset = GOAL_PRESETS.find((p) => p.id === presetId)
   const goal: GoalChoice | null =
@@ -185,9 +224,11 @@ function ActivityCreatePage() {
   if (child && requestedStep !== null && requestedStep !== 'target') {
     if (!activityType) {
       step = 'type'
-    } else if (requestedStep === 'confirm' && (!needsGoal || goal)) {
+    } else if (requestedStep === 'confirm' && (!needsGoal || (goal && contradictions.length === 0))) {
       step = 'confirm'
-    } else if (needsGoal && (requestedStep === 'goal' || requestedStep === 'confirm')) {
+    } else if (needsGoal && goal && (requestedStep === 'conditions' || requestedStep === 'confirm')) {
+      step = 'conditions'
+    } else if (needsGoal && (requestedStep === 'goal' || requestedStep === 'conditions' || requestedStep === 'confirm')) {
       step = 'goal'
     } else {
       step = 'type'
@@ -218,19 +259,35 @@ function ActivityCreatePage() {
 
   // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 목표와 활동을 하나만 남긴다(ADR D4).
   // 대상·유형·목표가 바뀌면 다른 배정이므로 새 키를 쓴다.
-  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}` : ''}`
+  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${JSON.stringify(conditions)}` : ''}`
   const attemptRef = useRef<{ submission: string; requestKey: string } | null>(null)
   const isSubmittingRef = useRef(false)
 
   const assignMutation = useMutation({
-    mutationFn: ({ target, type, choice }: { target: Child; type: ActivityType; choice: GoalChoice | null }) => {
+    mutationFn: ({
+      target,
+      type,
+      choice,
+      extra,
+    }: {
+      target: Child
+      type: ActivityType
+      choice: GoalChoice | null
+      extra: Conditions
+    }) => {
       if (attemptRef.current?.submission !== submission) {
         attemptRef.current = { submission, requestKey: crypto.randomUUID() }
       }
       return createActivity(
         target.childId,
         type,
-        choice ? { title: choice.title, ...(choice.category ? { category: choice.category } : {}) } : null,
+        choice
+          ? {
+              title: choice.title,
+              ...(choice.category ? { category: choice.category } : {}),
+              ...conditionsPayload(extra),
+            }
+          : null,
         attemptRef.current.requestKey,
       )
     },
@@ -241,13 +298,13 @@ function ActivityCreatePage() {
   })
 
   function handleAssign() {
-    if (!child || !activityType || (needsGoal && !goal) || isSubmittingRef.current) {
+    if (!child || !activityType || (needsGoal && (!goal || contradictions.length > 0)) || isSubmittingRef.current) {
       return
     }
     isSubmittingRef.current = true
     setSent({ childId: child.childId, type: activityType })
     assignMutation.mutate(
-      { target: child, type: activityType, choice: needsGoal ? goal : null },
+      { target: child, type: activityType, choice: needsGoal ? goal : null, extra: conditions },
       {
         // 아동 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 배정 중 사이드바·뒤로가기로
         // 다른 화면에 간 뒤 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
@@ -436,15 +493,25 @@ function ActivityCreatePage() {
                 <button
                   type="button"
                   disabled={!goal}
-                  onClick={() => moveTo('confirm')}
+                  onClick={() => moveTo('conditions')}
                   className={cn(primaryButtonClass, 'flex-1')}
                 >
-                  다음 · 확인
+                  다음 · 추가 조건
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {step === 'conditions' && (
+        <ConditionsStep
+          value={conditions}
+          onChange={setConditions}
+          contradictions={contradictions}
+          onBack={() => moveTo('goal')}
+          onNext={() => moveTo('confirm')}
+        />
       )}
 
       {step === 'confirm' && child && activityType && (
@@ -470,6 +537,7 @@ function ActivityCreatePage() {
                       </span>
                     )}
                   </dd>
+                  <ConditionsSummary conditions={conditions} />
                 </>
               )}
               <dt className="text-[var(--instructor-text-muted)]">활동</dt>
@@ -491,7 +559,7 @@ function ActivityCreatePage() {
           <div className="flex justify-between">
             <button
               type="button"
-              onClick={() => moveTo(needsGoal ? 'goal' : 'type')}
+              onClick={() => moveTo(needsGoal ? 'conditions' : 'type')}
               disabled={assignMutation.isPending}
               className={outlineButtonClass}
             >
@@ -510,6 +578,303 @@ function ActivityCreatePage() {
       )}
     </InstructorLayout>
   )
+}
+
+/**
+ * 역할극 추가 조건 (시안 T-ACT-04). 왼쪽은 상황·등장인물·관계, 오른쪽은 피할 표현·필수 요소다. 모두 선택 입력이다.
+ * 관계는 인물에 붙는다. 인물 칩을 고른 뒤 관계 버튼을 누르면 그 인물의 관계가 된다(같은 버튼을 다시 누르면 지운다).
+ * 피할 표현이 필수 요소 안에 들어 있으면 그 칩에 "필수 요소와 겹침"을 붙이고 다음으로 가지 못하게 한다.
+ */
+function ConditionsStep({
+  value,
+  onChange,
+  contradictions,
+  onBack,
+  onNext,
+}: {
+  value: Conditions
+  onChange: (next: Conditions) => void
+  contradictions: number[]
+  onBack: () => void
+  onNext: () => void
+}) {
+  const [selectedName, setSelectedName] = useState<string | null>(null)
+  const selected = value.characters.find((c) => c.name === selectedName) ?? null
+
+  function addCharacter(name: string) {
+    if (!value.characters.some((c) => c.name === name)) {
+      onChange({ ...value, characters: [...value.characters, { name }] })
+    }
+    setSelectedName(name)
+  }
+
+  function removeCharacter(name: string) {
+    onChange({ ...value, characters: value.characters.filter((c) => c.name !== name) })
+    if (selectedName === name) setSelectedName(null)
+  }
+
+  function toggleRelation(relation: string) {
+    if (!selected) return
+    onChange({
+      ...value,
+      characters: value.characters.map((c) => {
+        if (c.name !== selected.name) return c
+        return c.relation === relation ? { name: c.name } : { name: c.name, relation }
+      }),
+    })
+  }
+
+  function toggleRequired(element: string) {
+    const chosen = value.requiredElements.includes(element)
+    // 보기 순서대로 보낸다. 고른 순서가 달라도 같은 목표다.
+    const next = REQUIRED_ELEMENT_PRESETS.filter((e) => (e === element ? !chosen : value.requiredElements.includes(e)))
+    onChange({ ...value, requiredElements: next })
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid flex-1 grid-cols-2 gap-4">
+        <div className="flex flex-col gap-4">
+          <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-labelledby="situation-heading">
+            <h2 id="situation-heading" className="text-sm font-semibold">
+              1. 상황
+            </h2>
+            <textarea
+              aria-labelledby="situation-heading"
+              value={value.situation}
+              onChange={(e) => onChange({ ...value, situation: e.target.value })}
+              maxLength={SITUATION_MAX}
+              rows={3}
+              placeholder="예: 쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다."
+              className={cn(inputClass, 'h-[90px] resize-none py-3')}
+            />
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-labelledby="characters-heading">
+            <h2 id="characters-heading" className="text-sm font-semibold">
+              2. 등장인물
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {value.characters.map((c) => (
+                <Chip
+                  key={c.name}
+                  label={c.relation ? `${c.relation} ${c.name}` : c.name}
+                  pressed={c.name === selectedName}
+                  onSelect={() => setSelectedName(c.name)}
+                  onRemove={() => removeCharacter(c.name)}
+                  removeLabel={`${c.name} 빼기`}
+                />
+              ))}
+              <ChipAdder label="인물 이름" buttonLabel="인물 추가" maxLength={CHARACTER_NAME_MAX} onAdd={addCharacter} />
+            </div>
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="relation-heading">
+            <h2 id="relation-heading" className="text-sm font-semibold">
+              3. 관계
+            </h2>
+            <p className={helperTextClass}>
+              {selected ? `${selected.name}은(는) 아이에게 어떤 사람인가요?` : '등장인물을 고르면 관계를 정할 수 있어요.'}
+            </p>
+            <div role="group" aria-labelledby="relation-heading" className="flex flex-wrap gap-2">
+              {RELATION_OPTIONS.map((relation) => (
+                <button
+                  key={relation}
+                  type="button"
+                  disabled={!selected}
+                  aria-pressed={selected?.relation === relation}
+                  onClick={() => toggleRelation(relation)}
+                  className={cn(filterButtonClass, 'disabled:cursor-not-allowed disabled:text-[var(--instructor-text-disabled)]')}
+                >
+                  {relation}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="forbidden-heading">
+            <h2 id="forbidden-heading" className="text-sm font-semibold">
+              4. 피할 표현
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {value.forbiddenExpressions.map((expression, index) => (
+                <Chip
+                  key={expression}
+                  label={expression}
+                  tone="danger"
+                  conflict={contradictions.includes(index)}
+                  onRemove={() =>
+                    onChange({
+                      ...value,
+                      forbiddenExpressions: value.forbiddenExpressions.filter((e) => e !== expression),
+                    })
+                  }
+                  removeLabel={`${expression} 빼기`}
+                />
+              ))}
+              <ChipAdder
+                label="피할 표현"
+                buttonLabel="추가"
+                onAdd={(expression) =>
+                  !value.forbiddenExpressions.includes(expression) &&
+                  onChange({ ...value, forbiddenExpressions: [...value.forbiddenExpressions, expression] })
+                }
+              />
+            </div>
+            <p className={helperTextClass}>시나리오 생성 시 금지 목록으로 전달됩니다.</p>
+            {contradictions.length > 0 && (
+              <Notice tone="error" role="alert">
+                필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없어요. 겹친 표현을 빼거나 필수 요소를 바꿔 주세요.
+              </Notice>
+            )}
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="required-heading">
+            <h2 id="required-heading" className="text-sm font-semibold">
+              5. 필수 요소
+            </h2>
+            <fieldset className="flex flex-col gap-3">
+              <legend className="sr-only">필수 요소</legend>
+              {REQUIRED_ELEMENT_PRESETS.map((element) => (
+                <label key={element} className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={value.requiredElements.includes(element)}
+                    onChange={() => toggleRequired(element)}
+                  />
+                  {element}
+                </label>
+              ))}
+            </fieldset>
+          </section>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <button type="button" onClick={onBack} className={outlineButtonClass}>
+          이전
+        </button>
+        <div className="flex items-center gap-4">
+          <span className={helperTextClass}>입력하지 않은 항목은 기본값으로 처리됩니다</span>
+          <button type="button" disabled={contradictions.length > 0} onClick={onNext} className={primaryButtonClass}>
+            다음 · 확인
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 칩. 고를 수 있으면(onSelect) 누름 버튼이 되고, 빼기 버튼은 따로 둔다. 겹친 피할 표현은 색과 함께 글자로 알린다. */
+function Chip({
+  label,
+  pressed,
+  onSelect,
+  onRemove,
+  removeLabel,
+  tone = 'neutral',
+  conflict = false,
+}: {
+  label: string
+  pressed?: boolean
+  onSelect?: () => void
+  onRemove: () => void
+  removeLabel: string
+  tone?: 'neutral' | 'danger'
+  conflict?: boolean
+}) {
+  const text = conflict ? `${label} · 필수 요소와 겹침` : label
+  return (
+    <span
+      className={cn(
+        'inline-flex h-[34px] items-center gap-1 rounded-full pr-1.5 pl-3 text-sm',
+        tone === 'danger'
+          ? 'bg-[var(--instructor-danger-bg)] text-[var(--instructor-danger-text)]'
+          : 'bg-[var(--instructor-surface-muted)]',
+        pressed && 'outline-2 outline-[var(--instructor-primary)]',
+        conflict && 'border-2 border-[var(--instructor-danger-fg)] font-semibold'
+      )}
+    >
+      {onSelect ? (
+        <button type="button" aria-pressed={pressed} onClick={onSelect} className={cn('rounded-full', focusRingClass)}>
+          {text}
+        </button>
+      ) : (
+        <span>{text}</span>
+      )}
+      <button
+        type="button"
+        aria-label={removeLabel}
+        onClick={onRemove}
+        className={cn('relative inline-flex size-6 items-center justify-center rounded-full', hitAreaClass, focusRingClass)}
+      >
+        <MaterialIcon name="close" className="size-4" />
+      </button>
+    </span>
+  )
+}
+
+/** 칩 추가 입력. Enter 나 버튼으로 넣고, 앞뒤·안쪽 여러 칸 공백은 서버처럼 정리한다. 빈 값은 넣지 않는다. */
+function ChipAdder({
+  label,
+  buttonLabel,
+  maxLength,
+  onAdd,
+}: {
+  label: string
+  buttonLabel: string
+  maxLength?: number
+  onAdd: (value: string) => void
+}) {
+  const [draft, setDraft] = useState('')
+
+  function add() {
+    const value = draft.trim().replace(/\s+/g, ' ')
+    if (!value) return
+    onAdd(value)
+    setDraft('')
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input
+        aria-label={label}
+        value={draft}
+        maxLength={maxLength}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          // 한글 조합 중 Enter 는 조합 확정이라 넣지 않는다.
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            add()
+          }
+        }}
+        className={cn(inputClass, 'h-[34px] w-36 text-sm')}
+      />
+      <button type="button" onClick={add} disabled={!draft.trim()} className={cn(outlineButtonClass, 'h-[34px] border-dashed px-3')}>
+        + {buttonLabel}
+      </button>
+    </span>
+  )
+}
+
+/** 확인 단계에 보일 추가 조건. 입력한 것만 보인다. */
+function ConditionsSummary({ conditions }: { conditions: Conditions }) {
+  const rows: [string, string][] = []
+  if (conditions.situation.trim()) rows.push(['상황', conditions.situation.trim()])
+  if (conditions.characters.length > 0) {
+    rows.push(['등장인물', conditions.characters.map((c) => (c.relation ? `${c.name}(${c.relation})` : c.name)).join(', ')])
+  }
+  if (conditions.requiredElements.length > 0) rows.push(['필수 요소', conditions.requiredElements.join(', ')])
+  if (conditions.forbiddenExpressions.length > 0) rows.push(['피할 표현', conditions.forbiddenExpressions.join(', ')])
+  return rows.map(([term, detail]) => (
+    <Fragment key={term}>
+      <dt className="text-[var(--instructor-text-muted)]">{term}</dt>
+      <dd>{detail}</dd>
+    </Fragment>
+  ))
 }
 
 function TargetStep({
