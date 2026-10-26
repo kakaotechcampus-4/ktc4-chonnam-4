@@ -5,7 +5,7 @@ import { router } from "@/router"
 import { enterAsChild, renderRoutes } from "@/test/render"
 import * as api from "./api"
 
-// S2-YOON-01 아동 화면 오류·로딩·재입력 점검 (VS-003·006·010).
+// S2-YOON-01 아동 화면 오류·로딩·재입력 점검, S3-YOON-01 상태 규칙 통일 확인 (VS-003·006·010).
 // 아동 API는 아직 화면 쪽 mock(api.ts)이라 항상 성공한다. 그래서 mock 함수를 감싸 일부러 실패시키거나 응답을 붙잡아 두고,
 // 화면이 오류 모달·로딩 표시·재입력을 제대로 보여 주는지 본다.
 // - 기술 오류는 오답이 아니므로 같은 요청을 그대로 다시 보낸다(퀴즈 VS-006, 역할극 턴 VS-011, 완료·스탬프 VS-013).
@@ -125,6 +125,8 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
   })
 
   it.each([
+    ["인사", "/child/hello", api.getMyActivities, "활동을 불러오지 못했어요", "시작할래요!"],
+    ["활동 소개", `/child/activities/${QUIZ_ACTIVITY}`, api.getMyActivities, "활동을 불러오지 못했어요", "친구 마음 알아보기"],
     ["내 활동", "/child/activities", api.getMyActivities, "활동을 불러오지 못했어요", "친구 마음 알아보기"],
     ["표정 퀴즈", `/child/quiz/${QUIZ_ACTIVITY}`, api.getQuizQuestions, "퀴즈를 불러오지 못했어요", "1/3 문항"],
     ["역할극", `/child/roleplay/${QUIZ_ACTIVITY}`, api.getRoleplayScenario, "역할극을 불러오지 못했어요", "놀이터에서"],
@@ -138,6 +140,37 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
 
     expect(await screen.findByText(ready)).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+})
+
+describe("코드 입력 화면은 만료·연결 끊김을 따로 알린다", () => {
+  it("만료된 코드면 만료 모달이 뜨고, 다시 입력하기를 누르면 칸을 비운다", async () => {
+    const { user } = renderRoutes(router.routes, "/child")
+
+    await pressCode(user, "9999")
+    await user.click(screen.getByRole("button", { name: "입장하기" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("코드 사용 기간이 끝났어요")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "다시 입력하기" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("group", { name: "입력한 숫자 0개" })).toBeInTheDocument()
+  })
+
+  it("연결이 끊기면 연결 모달이 뜨고, 다시 시도하면 같은 코드로 입장한다", async () => {
+    vi.mocked(api.verifyAccessCode).mockRejectedValueOnce(networkError())
+    const { user } = renderRoutes(router.routes, "/child")
+
+    await pressCode(user, "1234")
+    await user.click(screen.getByRole("button", { name: "입장하기" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("연결이 잠깐 끊겼어요")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "다시 시도하기" }))
+
+    expect(await screen.findByText("안녕, 서연아!")).toBeInTheDocument()
+    expect(vi.mocked(api.verifyAccessCode).mock.calls.map(([code]) => code)).toEqual(["1234", "1234"])
   })
 })
 
@@ -195,7 +228,7 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
     expect(screen.queryByText("생각하고 있어요…")).not.toBeInTheDocument()
   })
 
-  it("활동 완료를 처리하는 동안 '다음으로' 버튼을 막는다", async () => {
+  it("활동 완료를 처리하는 동안 '스탬프를 준비하고 있어요'를 보여 주고 버튼을 막는다", async () => {
     const pending = deferred<api.ActivityCompletion>()
     vi.mocked(api.completeActivity).mockReturnValueOnce(pending.promise)
     const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
@@ -203,7 +236,7 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
     await finishRoleplay(user)
     await user.click(await screen.findByRole("button", { name: "다음으로" }))
 
-    expect(screen.getByLabelText("처리 중").closest("button")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "스탬프를 준비하고 있어요…" })).toBeDisabled()
     pending.resolve({ activityId: QUIZ_ACTIVITY, stampGranted: true })
     expect(await screen.findByText("스탬프를 받았어요!")).toBeInTheDocument()
   })
