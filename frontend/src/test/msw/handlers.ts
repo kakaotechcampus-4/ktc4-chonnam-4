@@ -11,6 +11,7 @@ import type {
   QuizType,
   User,
 } from "@/features/instructor/api"
+import { contradictingForbidden, type GoalCharacter } from "@/features/instructor/lib/goalConditions"
 
 // 백엔드 API 명세(ApiResponse·ApiErrorResponse, /api/v1 경로)을 흉내 내는 기본 핸들러.
 // 테스트 하나에서만 다르게 응답하려면 server.use(...) 로 덮어쓴다. 끝나면 setup 이 되돌린다.
@@ -230,7 +231,13 @@ export function seedActivity({
 }): StoredActivity {
   let goalId: string | null = null
   if (activityType === "FIRST_COMBINED" || activityType === "ROLEPLAY") {
-    const goal = newGoal(childId, instructors.a.userId, { title: goalTitle ?? "학습 목표", category })
+    const goal = newGoal(childId, instructors.a.userId, {
+      title: goalTitle ?? "학습 목표",
+      category,
+      characters: [],
+      requiredElements: [],
+      forbiddenExpressions: [],
+    })
     goals = [...goals, goal]
     goalId = goal.goalId
   }
@@ -249,7 +256,24 @@ export function storedGoals(childId: string): LearningGoal[] {
   return goals.filter((g) => g.childId === childId)
 }
 
-type GoalInput = { title: string; category?: string; parentGoalId?: string | null }
+type GoalInput = {
+  title: string
+  category?: string
+  parentGoalId?: string | null
+  situationType?: string
+  characters: GoalCharacter[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+}
+
+// 서버 GoalConditions 처럼 앞뒤·안쪽 여러 칸 공백을 정리하고 같은 값은 한 번만 남긴다(입력 순서 유지).
+function tidy(value: string) {
+  return value.trim().replace(/\s+/g, " ")
+}
+
+function distinct(values: string[]) {
+  return [...new Set(values.map(tidy))]
+}
 
 function newGoal(childId: string, instructorId: string, input: GoalInput): LearningGoal {
   return {
@@ -257,24 +281,56 @@ function newGoal(childId: string, instructorId: string, input: GoalInput): Learn
     childId,
     instructorId,
     parentGoalId: input.parentGoalId ?? null,
-    title: input.title.trim(),
-    situationType: null,
+    title: tidy(input.title),
+    situationType: input.situationType ? tidy(input.situationType) || null : null,
     category: input.category?.trim() || null,
-    characters: [],
-    requiredElements: [],
-    forbiddenExpressions: [],
-    // 서버는 정규화한 조건의 SHA-256 이다. 가짜 서버는 같은 내용이면 같은 값이면 충분하다.
-    contentHash: `${input.title.trim()}|${input.category?.trim() ?? ""}`,
+    characters: input.characters.map((c) => (c.relation?.trim() ? { name: tidy(c.name), relation: tidy(c.relation) } : { name: tidy(c.name) })),
+    requiredElements: distinct(input.requiredElements),
+    forbiddenExpressions: distinct(input.forbiddenExpressions),
+    // 서버는 정규화한 조건(목록은 정렬)의 SHA-256 이다. 가짜 서버는 같은 내용이면 같은 값이면 충분하다.
+    contentHash: JSON.stringify([
+      tidy(input.title),
+      input.category?.trim() ?? "",
+      input.situationType ? tidy(input.situationType) : "",
+      distinct(input.requiredElements).sort(),
+      distinct(input.forbiddenExpressions).sort(),
+      input.characters.map((c) => `${tidy(c.name)}|${c.relation ? tidy(c.relation) : ""}`).sort(),
+    ]),
     createdAt: new Date().toISOString(),
   }
 }
 
-/** CreateLearningGoalRequest 검사: @NotBlank @Size(max = 200) title. prefix 는 배정 요청 안의 goal 처럼 감싼 경우의 필드 앞부분이다. */
+/**
+ * CreateLearningGoalRequest 검사: @NotBlank @Size(max = 200) title, @Size(max = 200) situationType, 등장인물 이름 @NotBlank.
+ * prefix 는 배정 요청 안의 goal 처럼 감싼 경우의 필드 앞부분이다.
+ */
 function goalFieldErrors(body: Record<string, unknown>, prefix = ""): FieldError[] {
   const title = body.title
   if (typeof title !== "string" || !title.trim()) return [{ field: `${prefix}title`, message: "공백일 수 없습니다" }]
   if (title.length > 200) return [{ field: `${prefix}title`, message: "크기가 0에서 200 사이여야 합니다" }]
+  if (typeof body.situationType === "string" && body.situationType.length > 200) {
+    return [{ field: `${prefix}situationType`, message: "크기가 0에서 200 사이여야 합니다" }]
+  }
+  const characters = Array.isArray(body.characters) ? (body.characters as Partial<GoalCharacter>[]) : []
+  const unnamed = characters.findIndex((c) => typeof c?.name !== "string" || !c.name.trim())
+  if (unnamed >= 0) return [{ field: `${prefix}characters[${unnamed}].name`, message: "공백일 수 없습니다" }]
   return []
+}
+
+/** 서버 GoalConditions 의 모순 검사(422 INVALID_GOAL_CONDITIONS). 요청 검증(422 VALIDATION_FAILED)을 통과한 뒤에 본다. */
+function goalConditionErrors(input: GoalInput, prefix = ""): FieldError[] {
+  return contradictingForbidden(input.requiredElements, input.forbiddenExpressions).map((index) => ({
+    field: `${prefix}forbiddenExpressions[${index}]`,
+    message: "필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없습니다.",
+  }))
+}
+
+function invalidGoalConditions(path: string, fieldErrors: FieldError[]) {
+  return apiError(422, "INVALID_GOAL_CONDITIONS", "목표 조건이 올바르지 않습니다.", path, fieldErrors)
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
 function goalInput(body: Record<string, unknown>): GoalInput {
@@ -282,6 +338,10 @@ function goalInput(body: Record<string, unknown>): GoalInput {
     title: String(body.title),
     category: typeof body.category === "string" ? body.category : undefined,
     parentGoalId: typeof body.parentGoalId === "string" ? body.parentGoalId : null,
+    situationType: typeof body.situationType === "string" ? body.situationType : undefined,
+    characters: Array.isArray(body.characters) ? (body.characters as GoalCharacter[]) : [],
+    requiredElements: stringList(body.requiredElements),
+    forbiddenExpressions: stringList(body.forbiddenExpressions),
   }
 }
 
@@ -704,7 +764,10 @@ export const handlers = [
     const errors = goalFieldErrors(body)
     if (errors.length > 0) return validationFailed(path, errors)
     if (!ownedChild(childId, session)) return childNotFound(path)
-    const goal = newGoal(childId, session.userId, goalInput(body))
+    const input = goalInput(body)
+    const conditionErrors = goalConditionErrors(input)
+    if (conditionErrors.length > 0) return invalidGoalConditions(path, conditionErrors)
+    const goal = newGoal(childId, session.userId, input)
     goals = [...goals, goal]
     return HttpResponse.json(envelope(goal), { status: 201 })
   }),
@@ -771,6 +834,9 @@ export const handlers = [
     if (input?.parentGoalId && !goals.some((g) => g.goalId === input.parentGoalId && g.childId === childId)) {
       return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
     }
+    // 서버처럼 이전 목표 확인 뒤에 조건을 본다.
+    const conditionErrors = input ? goalConditionErrors(input, "goal.") : []
+    if (conditionErrors.length > 0) return invalidGoalConditions(path, conditionErrors)
     // 아직 저장하지 않는다. 확인을 모두 통과한 뒤에 저장해야 실패한 배정이 목표를 남기지 않는다.
     const goal = input ? newGoal(childId, session.userId, input) : null
     const prior = activities.find((a) => a.idempotencyKey === key)

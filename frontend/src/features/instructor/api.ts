@@ -1,4 +1,5 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from './auth/tokenStorage'
+import type { GoalCharacter } from './lib/goalConditions'
 
 // 배포 빌드는 같은 출처의 /api/v1 을 넘긴다(frontend/Dockerfile 의 VITE_API_BASE_URL). 없으면 로컬·E2E 처럼 localhost:8080
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1'
@@ -392,6 +393,11 @@ export type LearningGoal = {
 export type LearningGoalInput = {
   title: string
   category?: string
+  // 역할극 추가 조건(시안 T-ACT-04). 모두 선택이다. 상황은 장면 설명 문장이다.
+  situationType?: string
+  characters?: GoalCharacter[]
+  requiredElements?: string[]
+  forbiddenExpressions?: string[]
 }
 
 export function listLearningGoals(childId: string): Promise<LearningGoal[]> {
