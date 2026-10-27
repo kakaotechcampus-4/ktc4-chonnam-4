@@ -401,10 +401,26 @@ describe("역할극 추가 조건 단계", () => {
     await user.type(screen.getByLabelText("피할 표현"), "위 로{Enter}")
 
     expect(screen.getByText("위 로 · 필수 요소·등장인물과 겹침")).toBeInTheDocument()
-    expect(screen.getByRole("alert")).toHaveTextContent("필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없어요")
+    expect(screen.getByRole("alert")).toHaveTextContent("필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없어요")
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
 
     await user.click(screen.getByRole("button", { name: "위 로 빼기" }))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeEnabled()
+  })
+
+  it("피할 표현이 등장인물 역할 안에 들어 있어도 그 칩에 알리고, 빼야 다음으로 갈 수 있다", async () => {
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+
+    await user.type(screen.getByLabelText("인물 역할"), "넘어진 친구{Enter}")
+    await user.type(screen.getByLabelText("피할 표현"), "넘어진{Enter}")
+
+    expect(screen.getByText("넘어진 · 필수 요소·등장인물과 겹침")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("필수 요소·등장인물을 바꿔 주세요")
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "넘어진 빼기" }))
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeEnabled()
   })
