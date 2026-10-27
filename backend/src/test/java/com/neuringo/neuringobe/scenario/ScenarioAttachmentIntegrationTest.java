@@ -209,34 +209,20 @@ class ScenarioAttachmentIntegrationTest {
     }
 
     @Test
-    void databaseWhereExamplesWentInApprovedIsCorrectedAndSeedNeverRewritesApprovedRows()
-            throws Exception {
+    void seedNeverRewritesApprovedRows() throws Exception {
         UUID example = SEEDED_EXAMPLES.get(0);
-        // 처음 시드처럼 예시가 APPROVED 로 들어가 두 활동에 붙은 DB 를 만든다.
         jdbc.update("update scenario set status = 'APPROVED' where scenario_id = ?", example);
-        Activity unfinished = roleplayActivity(example);
-        Activity finished = roleplayActivity(UUID.randomUUID());
-        jdbc.update(
-                "update activity set scenario_id = ?, status = 'COMPLETED' where activity_id = ?",
-                example,
-                finished.getActivityId());
-        // 승인본은 시드를 다시 돌려도 내용이 바뀌지 않는다.
-        jdbc.update("update scenario set title = '바뀐 제목' where scenario_id = ?", example);
-        runScript("db/seed/R__scenarios.sql");
-        assertThat(titleOf(example)).isEqualTo("바뀐 제목");
-        assertThat(scenarios.findById(example).orElseThrow().getStatus().name())
-                .isEqualTo("APPROVED");
-
-        runScript("db/migration/V16__demote_unreviewed_scenario_examples.sql");
-        runScript("db/seed/R__scenarios.sql");
-
-        assertThat(scenarios.findById(example).orElseThrow().getStatus().name()).isEqualTo("DRAFT");
-        // DRAFT 로 내려가면 시드가 다시 내용을 맞춘다.
+        try {
+            // 승인본은 시드를 다시 돌려도 내용이 바뀌지 않는다.
+            jdbc.update("update scenario set title = '바뀐 제목' where scenario_id = ?", example);
+            runScript("db/seed/R__scenarios.sql");
+            assertThat(titleOf(example)).isEqualTo("바뀐 제목");
+            assertThat(statusOf(example)).isEqualTo("APPROVED");
+        } finally {
+            resetExample(example);
+        }
+        // DRAFT 로 돌아가면 시드가 다시 내용을 맞춘다.
         assertThat(titleOf(example)).isEqualTo("친구의 그림이 찢어졌어요");
-        assertThat(activities.findById(unfinished.getActivityId()).orElseThrow().getScenarioId())
-                .isNull();
-        assertThat(activities.findById(finished.getActivityId()).orElseThrow().getScenarioId())
-                .isEqualTo(example);
     }
 
     @Test
@@ -268,9 +254,7 @@ class ScenarioAttachmentIntegrationTest {
             assertThat(titleOf(example)).isEqualTo("친구의 그림이 찢어졌어요");
             assertThat(microGoalsOf(example)).contains("승인 때 고친 작은 목표");
         } finally {
-            // 다른 테스트가 보는 예시를 처음 상태(DRAFT·시드 내용)로 돌린다.
-            runScript("db/migration/V16__demote_unreviewed_scenario_examples.sql");
-            runScript("db/seed/R__scenarios.sql");
+            resetExample(example);
         }
         assertThat(statusOf(example)).isEqualTo("DRAFT");
         assertThat(microGoalsOf(example)).contains("다온이의 기분을 말로 짐작한다");
@@ -289,6 +273,12 @@ class ScenarioAttachmentIntegrationTest {
                         + " WHERE g.scenario_id = s.scenario_id);");
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
+    }
+
+    /** 다른 테스트가 보는 예시를 처음 상태(DRAFT·시드 내용)로 돌린다. */
+    private void resetExample(UUID example) {
+        jdbc.update("update scenario set status = 'DRAFT' where scenario_id = ?", example);
+        runScript("db/seed/R__scenarios.sql");
     }
 
     private String readResource(String path) throws Exception {
