@@ -739,7 +739,7 @@ function ConditionsStep({
             <p className={helperTextClass}>시나리오 생성 시 금지 목록으로 전달됩니다.</p>
             {contradictions.length > 0 && (
               <Notice tone="error" role="alert">
-                필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없어요. 겹친 표현을 빼거나 필수 요소를 바꿔 주세요.
+                필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없어요. 겹친 표현을 빼거나 필수 요소·등장인물을 바꿔 주세요.
               </Notice>
             )}
           </section>
