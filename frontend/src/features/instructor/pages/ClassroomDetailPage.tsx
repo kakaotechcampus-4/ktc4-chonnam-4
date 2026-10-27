@@ -160,7 +160,7 @@ function ClassroomDetailPage() {
             className={cn(tabBaseClass, tab === 'children' ? tabSelectedClass : tabIdleClass)}
           >
             아동 목록
-            {children && <span className="ml-1 font-normal text-[var(--instructor-text-disabled)]">{children.length}</span>}
+            {children && <span className="ml-1 font-normal text-[var(--instructor-text-muted)]">{children.length}</span>}
           </button>
           {PENDING_TABS.map((label) => (
             <span

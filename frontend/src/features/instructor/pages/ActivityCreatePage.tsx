@@ -539,8 +539,9 @@ function TargetStep({
   // 배정은 참여 중인 아동에게만 한다.
   const activeChildren = childrenList?.filter((c) => c.status === 'ACTIVE')
 
+  // 1280px 보다 좁으면 두 패널을 세로로 쌓는다. 2열로 두면 대상 리스트의 아동 이름 칸이 줄어 카드 밖으로 넘친다.
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <section className={cn(cardClass, 'flex flex-col gap-4 p-5')} aria-label="대상 범위">
         <h2 className="text-sm font-semibold">대상 범위</h2>
         {/* 시안의 "학급 전체" 배정은 아직 없어 비활성으로 두고, 지금 되는 "특정 아동 선택"을 고른 상태로 보인다. */}
@@ -624,8 +625,8 @@ function TargetStep({
   )
 }
 
-// 대상 리스트의 열: 고르기 · 아동 · 난이도 · 지원 · 최근 활동
-const TARGET_COLUMNS = 'grid grid-cols-[40px_minmax(0,1fr)_64px_64px_88px] items-center px-1'
+// 대상 리스트의 열: 고르기 · 아동 · 난이도 · 지원 · 최근 활동. 아동 이름 칸은 아무리 좁아도 96px 은 남긴다.
+const TARGET_COLUMNS = 'grid grid-cols-[40px_minmax(96px,1fr)_64px_64px_88px] items-center px-1'
 
 /**
  * 대상 범위 선택지. 지금은 고를 수 있는 범위가 하나라 고르는 동작은 없고, 선택된 것과 준비 중(비활성)인 것을 라디오로 알린다.
