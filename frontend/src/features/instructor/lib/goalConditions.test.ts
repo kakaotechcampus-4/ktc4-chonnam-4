@@ -11,6 +11,10 @@ describe("contradictingForbidden", () => {
     expect(contradictingForbidden(["감정을 확인하는 질문 1회", "위로 표현 1회"], ["괜찮아", "울지 마"])).toEqual([])
   })
 
+  it("등장인물 role 안에 들어 있는 피할 표현도 돌려준다", () => {
+    expect(contradictingForbidden([], ["괜찮아", "넘어 진"], ["넘어진 친구"])).toEqual([1])
+  })
+
   it("필수 요소가 없으면 아무것도 걸리지 않는다", () => {
     expect(contradictingForbidden([], ["위로"])).toEqual([])
   })
