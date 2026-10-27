@@ -1,6 +1,6 @@
 -- 역할극 시나리오. 버전 없이 바꾸면 새 시나리오를 만들고, 고친 판이 승인되면 원본은 RETIRED 가 된다.
--- 학급·강사에 묶지 않는 공용 자료라 class_id·만든 사람 칸이 없다. 승인 기록은 시나리오가 아니라 활동에 남긴다.
--- 팀이 미리 넣는 시나리오(db/seed)는 목표 해시 없이 APPROVED 로 들어가고, 첫 활동은 난이도만 맞춰 그중에서 고른다.
+-- 학급·강사에 묶지 않는 공용 자료라 class_id·만든 사람 칸이 없다. 누가 언제 승인했는지 남길 칸은 승인 화면을 만들 때 정한다.
+-- 팀이 미리 넣는 시나리오(db/seed)는 목표 해시 없이 DRAFT 로 들어가 팀 검토 뒤 APPROVED 로 올라가고, 첫 활동은 난이도만 맞춰 승인본 중에서 고른다.
 CREATE TABLE scenario (
     scenario_id UUID PRIMARY KEY,
     status VARCHAR(20) NOT NULL CHECK (status IN ('DRAFT', 'APPROVED', 'RETIRED')),
