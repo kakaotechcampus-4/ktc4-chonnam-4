@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 아동 한 명 조회·이름 수정(정본 05 `GET·PATCH /children/{childId}`). 학급 경로 아래의 {@link ChildController} 와 경로
- * 뿌리가 달라 따로 둔다. 정본 응답의 accessCodeExpiresAt·removalPolicy 는 그 기능이 생길 때 붙인다.
+ * 아동 한 명 조회·이름 수정(팀 API 문서 05 `GET·PATCH /children/{childId}`). 학급 경로 아래의 {@link ChildController} 와
+ * 경로 뿌리가 달라 따로 둔다. 문서 응답의 accessCodeExpiresAt·removalPolicy 는 그 기능이 생길 때 붙인다.
  */
 @RestController
 public class ChildDetailController {

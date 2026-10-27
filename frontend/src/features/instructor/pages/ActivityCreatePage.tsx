@@ -54,7 +54,8 @@ import { MaterialIcon } from '../components/MaterialIcon'
 
 type StepKey = 'target' | 'type' | 'goal' | 'conditions' | 'confirm'
 
-// 동작하는 단계만 둔다. 시안의 난이도 결과 단계는 난이도 산정이 생기면 이 배열에 끼운다.
+// 동작하는 단계만 둔다. 시안의 난이도 결과 단계는 보여 줄 값이 생기면 이 배열에 끼운다.
+// 난이도는 아이가 첫 퀴즈를 마친 뒤 서버가 정해서, 배정하는 지금은 보여 줄 값이 없다.
 // 독립 퀴즈는 학습 목표도 역할극도 없어 목표·추가 조건 단계를 건너뛴다.
 const ALL_STEPS: WizardStep<StepKey>[] = [
   { key: 'target', label: '대상' },
