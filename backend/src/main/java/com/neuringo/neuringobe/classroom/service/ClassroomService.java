@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.classroom.domain.Classroom;
 import com.neuringo.neuringobe.classroom.domain.ClassroomStatus;
 import com.neuringo.neuringobe.classroom.dto.ClassroomResponse;
 import com.neuringo.neuringobe.classroom.dto.CreateClassroomRequest;
+import com.neuringo.neuringobe.classroom.dto.UpdateClassroomRequest;
 import com.neuringo.neuringobe.classroom.repository.ClassroomRepository;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import java.util.List;
@@ -43,6 +44,19 @@ public class ClassroomService {
                 classroomRepository
                         .findByClassIdAndInstructorId(classId, instructorId)
                         .orElseThrow(() -> notFound(classId));
+
+        return ClassroomResponse.from(classroom);
+    }
+
+    /** 학급 삭제와 같은 행 잠금을 잡고 고친다. 삭제가 먼저 끝났으면 404 다. */
+    @Transactional
+    public ClassroomResponse rename(
+            UUID instructorId, UUID classId, UpdateClassroomRequest request) {
+        Classroom classroom =
+                classroomRepository
+                        .findOwnedForUpdate(classId, instructorId)
+                        .orElseThrow(() -> notFound(classId));
+        classroom.rename(request.name());
 
         return ClassroomResponse.from(classroom);
     }

@@ -2,8 +2,9 @@ import { createBrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ClassroomListPage } from './features/instructor/pages/ClassroomListPage'
 import { ClassroomDetailPage } from './features/instructor/pages/ClassroomDetailPage'
-import { ClassroomCreatePage } from './features/instructor/pages/ClassroomCreatePage'
+import { ClassroomCreatePage, ClassroomEditPage } from './features/instructor/pages/ClassroomCreatePage'
 import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
+import { ChildEditPage } from './features/instructor/pages/ChildEditPage'
 import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
 import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
 import { AccountPage } from './features/instructor/pages/AccountPage'
@@ -49,10 +50,26 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/classrooms/:classId/edit',
+    element: (
+      <RequireInstructorAuth>
+        <ClassroomEditPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
     path: '/classrooms/:classId/children/:childId',
     element: (
       <RequireInstructorAuth>
         <ChildDetailPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/classrooms/:classId/children/:childId/edit',
+    element: (
+      <RequireInstructorAuth>
+        <ChildEditPage />
       </RequireInstructorAuth>
     ),
   },

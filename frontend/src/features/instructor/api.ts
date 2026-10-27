@@ -1,4 +1,5 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from './auth/tokenStorage'
+import type { GoalCharacter } from './lib/goalConditions'
 
 // 배포 빌드는 같은 출처의 /api/v1 을 넘긴다(frontend/Dockerfile 의 VITE_API_BASE_URL). 없으면 로컬·E2E 처럼 localhost:8080
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1'
@@ -240,7 +241,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -341,6 +342,11 @@ export function getClassroom(classId: string): Promise<Classroom> {
   return readRequest<Classroom>(`/classrooms/${classId}`)
 }
 
+/** 학급명만 고친다. */
+export function updateClassroom(classId: string, name: string): Promise<Classroom> {
+  return writeRequest<Classroom>('PATCH', `/classrooms/${classId}`, { name })
+}
+
 /** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
 export function deleteClassroom(classId: string): Promise<void> {
   return writeRequest<void>('DELETE', `/classrooms/${classId}`)
@@ -352,6 +358,11 @@ export function listChildren(classId: string): Promise<Child[]> {
 
 export function getChild(childId: string): Promise<Child> {
   return readRequest<Child>(`/children/${childId}`)
+}
+
+/** 아동 이름만 고친다. 학급은 옮기지 않는다. */
+export function updateChild(childId: string, displayName: string): Promise<Child> {
+  return writeRequest<Child>('PATCH', `/children/${childId}`, { displayName })
 }
 
 /** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
@@ -382,6 +393,11 @@ export type LearningGoal = {
 export type LearningGoalInput = {
   title: string
   category?: string
+  // 역할극 추가 조건(시안 T-ACT-04). 모두 선택이다. 상황은 장면 설명 문장이다.
+  situationType?: string
+  characters?: GoalCharacter[]
+  requiredElements?: string[]
+  forbiddenExpressions?: string[]
 }
 
 export function listLearningGoals(childId: string): Promise<LearningGoal[]> {

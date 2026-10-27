@@ -2,13 +2,13 @@ import { screen, within } from "@testing-library/react"
 import axe from "axe-core"
 import { getResponse, http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
+import { apiError, emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import { ActivityCreatePage } from "./ActivityCreatePage"
 import { ChildDetailPage } from "./ChildDetailPage"
 
-// 활동 만들기 마법사. 대상 아동 한 명 → 활동 유형 → 학습 목표(최초 결합만) → 확인 후 배정.
+// 활동 만들기 마법사. 대상 아동 한 명 → 활동 유형 → 학습 목표·역할극 추가 조건(최초 결합만) → 확인 후 배정.
 // 강사는 퀴즈 문항을 고르지 않는다. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈가 열린다.
 // 응답을 못 받아 다시 눌러도 활동·목표가 하나만 남는지(같은 요청 키·저장한 목표 재사용)도 본다.
 
@@ -47,6 +47,9 @@ describe("활동 만들기 화면", () => {
     expect(await screen.findByRole("heading", { name: "학습 목표 설정" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "공감 표현" }))
     await user.click(screen.getByRole("radio", { name: /친구가 속상할 때 위로하는 말을 한다/ }))
+    await user.click(screen.getByRole("button", { name: "다음 · 추가 조건" }))
+    // 추가 조건은 모두 선택이라 비운 채로 넘어갈 수 있다.
+    expect(await screen.findByRole("heading", { name: "역할극 추가 조건" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
 
     const summary = await screen.findByRole("region", { name: "배정 내용" })
@@ -74,11 +77,12 @@ describe("활동 만들기 화면", () => {
     await user.click(next)
     await user.click(await screen.findByRole("button", { name: "다음 · 학습 목표 설정" }))
     await user.click(await screen.findByRole("tab", { name: "직접 입력" }))
-    const confirm = screen.getByRole("button", { name: "다음 · 확인" })
-    expect(confirm).toBeDisabled()
+    const toConditions = screen.getByRole("button", { name: "다음 · 추가 조건" })
+    expect(toConditions).toBeDisabled()
     await user.type(screen.getByLabelText("학습 목표"), "  친구에게 먼저 인사한다  ")
     await user.selectOptions(screen.getByLabelText("분류 (선택)"), "SITUATION_COPING")
-    await user.click(confirm)
+    await user.click(toConditions)
+    await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
 
     const summary = await screen.findByRole("region", { name: "배정 내용" })
     expect(within(summary).getByText("친구에게 먼저 인사한다")).toBeInTheDocument()
@@ -165,8 +169,9 @@ describe("활동 만들기 화면", () => {
 
     await user.click(await screen.findByRole("radio", { name: "표정 퀴즈만" }))
     await user.click(screen.getByRole("radio", { name: "상대 감정 알기" }))
-    // 독립 퀴즈는 목표 단계를 건너뛴다.
+    // 독립 퀴즈는 목표·추가 조건 단계를 건너뛴다.
     expect(within(screen.getByRole("list", { name: "진행 단계" })).queryByText("목표")).not.toBeInTheDocument()
+    expect(within(screen.getByRole("list", { name: "진행 단계" })).queryByText("추가 조건")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
 
     const summary = await screen.findByRole("region", { name: "배정 내용" })
@@ -296,7 +301,7 @@ describe("활동 만들기 화면", () => {
     await user.click(await screen.findByRole("button", { name: "다음 · 학습 목표 설정" }))
     await user.click(await screen.findByRole("button", { name: "공감 표현" }))
     await user.click(screen.getByRole("radio", { name: /친구가 속상할 때 위로하는 말을 한다/ }))
-    const confirm = screen.getByRole("button", { name: "다음 · 확인" })
+    const confirm = screen.getByRole("button", { name: "다음 · 추가 조건" })
     expect(confirm).toBeEnabled()
 
     await user.click(screen.getByRole("button", { name: "감정 인식" }))
@@ -316,20 +321,161 @@ describe("활동 만들기 화면", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("배정할 수 있는 승인된 퀴즈 문항이 모자라요")
 
     await user.click(screen.getByRole("button", { name: "이전" }))
+    await user.click(await screen.findByRole("button", { name: "이전" }))
     await user.click(await screen.findByRole("button", { name: "공감 표현" }))
     await user.click(screen.getByRole("radio", { name: /친구가 속상할 때 위로하는 말을 한다/ }))
-    await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
+    await user.click(screen.getByRole("button", { name: "다음 · 추가 조건" }))
+    await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
 
     await screen.findByRole("region", { name: "배정 내용" })
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 })
 
+describe("역할극 추가 조건 단계", () => {
+  beforeEach(() => signIn())
+
+  it("입력한 조건이 확인 단계에 보이고, 정리된 채로 배정 요청에 실려 목표에 저장된다", async () => {
+    let sentGoal: Record<string, unknown> | null = null
+    server.events.on("request:start", async ({ request }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
+        sentGoal = ((await request.clone().json()) as { goal: Record<string, unknown> }).goal
+      }
+    })
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+
+    await user.type(screen.getByRole("textbox", { name: "1. 상황" }), "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.")
+    await user.type(screen.getByLabelText("인물 역할"), "  넘어진  친구 {Enter}")
+    await user.type(screen.getByLabelText("인물 역할"), "짝꿍{Enter}")
+    await user.click(screen.getByRole("button", { name: "넘어진 친구" }))
+    await user.click(screen.getByRole("button", { name: "같은 반 친구" }))
+    await user.click(screen.getByRole("checkbox", { name: "위로 표현 1회" }))
+    await user.click(screen.getByRole("checkbox", { name: "감정을 확인하는 질문 1회" }))
+    await user.type(screen.getByLabelText("피할 표현"), "울지 마")
+    await user.click(screen.getByRole("button", { name: "+ 추가" }))
+    expect(screen.getByRole("button", { name: "넘어진 친구(같은 반 친구)" })).toHaveAttribute("aria-pressed", "true")
+    await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
+
+    const summary = await screen.findByRole("region", { name: "배정 내용" })
+    expect(within(summary).getByText("쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.")).toBeInTheDocument()
+    expect(within(summary).getByText("넘어진 친구(같은 반 친구), 짝꿍")).toBeInTheDocument()
+    // 고른 순서와 상관없이 보기 순서로 보낸다.
+    expect(within(summary).getByText("감정을 확인하는 질문 1회, 위로 표현 1회")).toBeInTheDocument()
+    expect(within(summary).getByText("울지 마")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
+    expect(sentGoal).toMatchObject({
+      situationType: "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.",
+      characters: [
+        { id: "FRIEND", role: "넘어진 친구" },
+        { id: "OTHER", role: "짝꿍" },
+      ],
+      requiredElements: ["감정을 확인하는 질문 1회", "위로 표현 1회"],
+      forbiddenExpressions: ["울지 마"],
+    })
+    expect(storedGoals(CHILD.childId)[0]).toMatchObject({ situationType: "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다." })
+  })
+
+  it("조건을 비워 두면 목표에 조건을 싣지 않는다", async () => {
+    let sentGoal: Record<string, unknown> | null = null
+    server.events.on("request:start", async ({ request }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
+        sentGoal = ((await request.clone().json()) as { goal: Record<string, unknown> }).goal
+      }
+    })
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await goToConfirm(user)
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
+    expect(Object.keys(sentGoal ?? {})).toEqual(["title", "category"])
+  })
+
+  it("피할 표현이 필수 요소 안에 들어 있으면 그 칩에 알리고, 빼야 다음으로 갈 수 있다", async () => {
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+
+    await user.click(screen.getByRole("checkbox", { name: "위로 표현 1회" }))
+    await user.type(screen.getByLabelText("피할 표현"), "위 로{Enter}")
+
+    expect(screen.getByText("위 로 · 필수 요소·등장인물과 겹침")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없어요")
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "위 로 빼기" }))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeEnabled()
+  })
+
+  it("피할 표현이 등장인물 역할 안에 들어 있어도 그 칩에 알리고, 빼야 다음으로 갈 수 있다", async () => {
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+
+    await user.type(screen.getByLabelText("인물 역할"), "넘어진 친구{Enter}")
+    await user.type(screen.getByLabelText("피할 표현"), "넘어진{Enter}")
+
+    expect(screen.getByText("넘어진 · 필수 요소·등장인물과 겹침")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("필수 요소·등장인물을 바꿔 주세요")
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "넘어진 빼기" }))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeEnabled()
+  })
+
+  it("서버가 조건을 거절하면 확인 단계에서 추가 조건을 고치라고 알린다", async () => {
+    server.use(
+      http.post("*/api/v1/activities", () =>
+        apiError(422, "INVALID_GOAL_CONDITIONS", "목표 조건이 올바르지 않습니다.", "/api/v1/activities", [
+          { field: "goal.forbiddenExpressions[0]", message: "필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없습니다." },
+        ]),
+      ),
+    )
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await goToConfirm(user)
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("이전 단계에서 추가 조건을 고쳐 주세요")
+  })
+
+  it("새로고침으로 목표 입력이 사라지면 추가 조건 단계 대신 목표 단계를 연다", async () => {
+    renderWizard(`?step=conditions&classId=${A1}&childId=${CHILD.childId}`)
+
+    expect(await screen.findByRole("heading", { name: "학습 목표 설정" })).toBeInTheDocument()
+  })
+
+  it("추가 조건 단계에 접근성 위반이 없다", async () => {
+    const { user, container } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+    await user.type(screen.getByLabelText("인물 역할"), "넘어진 친구{Enter}")
+    await user.type(screen.getByLabelText("피할 표현"), "울지 마{Enter}")
+
+    const results = await axe.run(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    })
+    expect(results.violations.map((v) => v.id)).toEqual([])
+  })
+})
+
+async function goToConditions(user: ReturnType<typeof renderWizard>["user"]) {
+  await screen.findByRole("radio", { name: "김하늘", checked: true })
+  await user.click(screen.getByRole("button", { name: "다음 · 활동 유형 선택" }))
+  await user.click(await screen.findByRole("button", { name: "다음 · 학습 목표 설정" }))
+  await user.click(await screen.findByRole("radio", { name: /표정에서 기쁨·슬픔·화남을 구분한다/ }))
+  await user.click(screen.getByRole("button", { name: "다음 · 추가 조건" }))
+  await screen.findByRole("heading", { name: "역할극 추가 조건" })
+}
+
 async function goToConfirm(user: ReturnType<typeof renderWizard>["user"]) {
   await screen.findByRole("radio", { name: "김하늘", checked: true })
   await user.click(screen.getByRole("button", { name: "다음 · 활동 유형 선택" }))
   await user.click(await screen.findByRole("button", { name: "다음 · 학습 목표 설정" }))
   await user.click(await screen.findByRole("radio", { name: /표정에서 기쁨·슬픔·화남을 구분한다/ }))
-  await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
+  await user.click(screen.getByRole("button", { name: "다음 · 추가 조건" }))
+  await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
   await screen.findByRole("region", { name: "배정 내용" })
 }

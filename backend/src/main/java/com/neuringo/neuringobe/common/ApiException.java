@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.common;
 
+import java.util.List;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -10,11 +11,22 @@ public class ApiException extends RuntimeException {
 
     private final HttpStatus status;
     private final String code;
+    private final List<ApiErrorResponse.FieldError> fieldErrors;
 
     public ApiException(HttpStatus status, String code, String message) {
+        this(status, code, message, List.of());
+    }
+
+    /** 입력의 어느 칸이 문제인지 화면에 알려야 할 때. 필드 메시지도 문구를 통제한 값만 담는다. */
+    public ApiException(
+            HttpStatus status,
+            String code,
+            String message,
+            List<ApiErrorResponse.FieldError> fieldErrors) {
         super(message);
         this.status = status;
         this.code = code;
+        this.fieldErrors = List.copyOf(fieldErrors);
     }
 
     public HttpStatus getStatus() {
@@ -23,5 +35,9 @@ public class ApiException extends RuntimeException {
 
     public String getCode() {
         return code;
+    }
+
+    public List<ApiErrorResponse.FieldError> getFieldErrors() {
+        return fieldErrors;
     }
 }

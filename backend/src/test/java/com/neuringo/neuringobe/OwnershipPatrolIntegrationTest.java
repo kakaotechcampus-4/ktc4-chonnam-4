@@ -60,10 +60,12 @@ class OwnershipPatrolIntegrationTest {
     private static final Map<String, String> CHECKED =
             Map.ofEntries(
                     Map.entry("GET /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
+                    Map.entry("PATCH /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("DELETE /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
                     Map.entry("POST /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
+                    Map.entry("PATCH /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
                     Map.entry("DELETE /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
                     Map.entry("POST /api/v1/children/{childId}/access-codes", "CHILD_NOT_FOUND"),
                     Map.entry("GET /api/v1/children/{childId}/activities", "CHILD_NOT_FOUND"),
@@ -190,6 +192,11 @@ class OwnershipPatrolIntegrationTest {
     static Stream<Arguments> requests() {
         return Stream.of(
                 get("GET /api/v1/classrooms/{classId}", "/api/v1/classrooms/%s", Owned::classId),
+                patch(
+                        "PATCH /api/v1/classrooms/{classId}",
+                        "/api/v1/classrooms/%s",
+                        Owned::classId,
+                        "{\"name\":\"바꾼 학급\"}"),
                 delete(
                         "DELETE /api/v1/classrooms/{classId}",
                         "/api/v1/classrooms/%s",
@@ -204,6 +211,11 @@ class OwnershipPatrolIntegrationTest {
                         Owned::classId,
                         "{\"displayName\":\"끼어든 아동\"}"),
                 get("GET /api/v1/children/{childId}", "/api/v1/children/%s", Owned::childId),
+                patch(
+                        "PATCH /api/v1/children/{childId}",
+                        "/api/v1/children/%s",
+                        Owned::childId,
+                        "{\"displayName\":\"바꾼 아동\"}"),
                 delete("DELETE /api/v1/children/{childId}", "/api/v1/children/%s", Owned::childId),
                 post(
                         "POST /api/v1/children/{childId}/access-codes",
@@ -276,6 +288,14 @@ class OwnershipPatrolIntegrationTest {
                 endpoint,
                 (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
                         (t, ids) -> t.send(t.mvc.post().uri(uri.formatted(id.apply(ids))), json));
+    }
+
+    private static Arguments patch(
+            String endpoint, String uri, java.util.function.Function<Owned, UUID> id, String json) {
+        return Arguments.of(
+                endpoint,
+                (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                        (t, ids) -> t.send(t.mvc.patch().uri(uri.formatted(id.apply(ids))), json));
     }
 
     /** 강사 B 로 변경 요청을 보낸다. 프론트처럼 CSRF 쿠키·헤더와 재전송 방지 키를 싣는다. */

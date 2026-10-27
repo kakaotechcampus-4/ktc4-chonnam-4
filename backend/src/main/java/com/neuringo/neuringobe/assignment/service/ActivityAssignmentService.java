@@ -126,7 +126,8 @@ public class ActivityAssignmentService {
         LearningGoal goal =
                 request.goal() == null
                         ? null
-                        : goalService.newGoal(request.childId(), request.goal(), authentication);
+                        : goalService.newGoal(
+                                request.childId(), request.goal(), "goal.", authentication);
 
         Activity prior = activities.findByIdempotencyKey(requestKey).orElse(null);
         if (prior != null) {
