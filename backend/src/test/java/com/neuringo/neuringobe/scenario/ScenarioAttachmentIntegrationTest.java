@@ -33,15 +33,18 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -55,8 +58,12 @@ import org.springframework.test.web.servlet.MvcResult;
         properties =
                 "neuringo.child-access.hmac-secret=test-only-hmac-secret-that-is-at-least-32-bytes-long")
 class ScenarioAttachmentIntegrationTest {
-    // 미리 넣는 시드(R__scenarios.sql)의 L3 예시.
-    private static final UUID SEEDED_L3 = UUID.fromString("5ce00000-0000-4000-8000-000000000003");
+    // 미리 넣는 시드(R__scenarios.sql)의 검토 전 예시. DRAFT 라 아이에게 붙지 않는다.
+    private static final List<UUID> SEEDED_EXAMPLES =
+            List.of(
+                    UUID.fromString("5ce00000-0000-4000-8000-000000000001"),
+                    UUID.fromString("5ce00000-0000-4000-8000-000000000002"),
+                    UUID.fromString("5ce00000-0000-4000-8000-000000000003"));
 
     @Autowired private MockMvc mvc;
     @Autowired private ClassroomRepository classrooms;
@@ -67,6 +74,7 @@ class ScenarioAttachmentIntegrationTest {
     @Autowired private ActivityRepository activities;
     @Autowired private ScenarioRepository scenarios;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private DataSource dataSource;
 
     private UUID childId;
     private MockHttpSession childSession;
@@ -107,6 +115,7 @@ class ScenarioAttachmentIntegrationTest {
 
     @Test
     void attachesApprovedScenarioOfDecidedLevelWhenFirstQuizEnds() throws Exception {
+        insertScenario(UUID.randomUUID(), "APPROVED", "L3", "2000-01-01T00:00:00Z");
         UUID activityId = createFirstCombined();
         answerOneItem(activityId, true);
 
@@ -119,14 +128,15 @@ class ScenarioAttachmentIntegrationTest {
 
     @Test
     void skipsDraftRetiredOtherLevelAndScenariosTheChildAlreadyHad() throws Exception {
-        // 먼저 넣은 순서로 고르므로, 아래 셋은 모두 시드보다 앞서 있어 걸러지지 않으면 골라진다.
-        insertScenario(UUID.randomUUID(), "DRAFT", "L3", "2000-01-01T00:00:00Z");
-        insertScenario(UUID.randomUUID(), "RETIRED", "L3", "2000-01-01T00:00:00Z");
-        insertScenario(UUID.randomUUID(), "APPROVED", "L2", "2000-01-01T00:00:00Z");
-        UUID fresh = UUID.randomUUID();
-        insertScenario(fresh, "APPROVED", "L3", "2030-01-01T00:00:00Z");
-        // 이 아동은 시드 L3 로 역할극을 이미 했다.
-        Activity done = roleplayActivity(SEEDED_L3);
+        // 먼저 넣은 순서로 고르므로, 아래 넷은 모두 맨 앞에 있어 걸러지지 않으면 골라진다.
+        insertScenario(UUID.randomUUID(), "DRAFT", "L3", "1990-01-01T00:00:00Z");
+        insertScenario(UUID.randomUUID(), "RETIRED", "L3", "1990-01-01T00:00:00Z");
+        insertScenario(UUID.randomUUID(), "APPROVED", "L2", "1990-01-01T00:00:00Z");
+        UUID had = UUID.randomUUID();
+        insertScenario(had, "APPROVED", "L3", "1990-01-01T00:00:00Z");
+        insertScenario(UUID.randomUUID(), "APPROVED", "L3", "2030-01-01T00:00:00Z");
+        // 이 아동은 had 로 역할극을 이미 했다.
+        Activity done = roleplayActivity(had);
         jdbc.update(
                 "update activity set status = 'COMPLETED' where activity_id = ?",
                 done.getActivityId());
@@ -135,7 +145,7 @@ class ScenarioAttachmentIntegrationTest {
         answerOneItem(activityId, true);
 
         UUID attached = activities.findById(activityId).orElseThrow().getScenarioId();
-        assertThat(attached).isNotEqualTo(SEEDED_L3);
+        assertThat(attached).isNotEqualTo(had);
         assertThat(scenarios.findById(attached).orElseThrow().getStatus().name())
                 .isEqualTo("APPROVED");
         assertThat(scenarios.findById(attached).orElseThrow().getScenarioLevel()).isEqualTo("L3");
@@ -143,6 +153,7 @@ class ScenarioAttachmentIntegrationTest {
 
     @Test
     void readingQuizResultRetriesWhenNothingWasAttached() throws Exception {
+        insertScenario(UUID.randomUUID(), "APPROVED", "L1", "2000-01-01T00:00:00Z");
         UUID activityId = createFirstCombined();
         answerOneItem(activityId, false);
         // 퀴즈를 마칠 때 붙이기가 실패한 상황을 만든다.
@@ -159,6 +170,7 @@ class ScenarioAttachmentIntegrationTest {
 
     @Test
     void readingResultAgainDoesNotSwapAttachedScenario() throws Exception {
+        insertScenario(UUID.randomUUID(), "APPROVED", "L3", "2000-01-01T00:00:00Z");
         UUID activityId = createFirstCombined();
         answerOneItem(activityId, true);
         UUID first = activities.findById(activityId).orElseThrow().getScenarioId();
@@ -171,10 +183,70 @@ class ScenarioAttachmentIntegrationTest {
 
     @Test
     void databaseKeepsOneUnfinishedActivityPerChildAndScenario() throws Exception {
-        roleplayActivity(SEEDED_L3);
+        UUID scenarioId = UUID.randomUUID();
+        insertScenario(scenarioId, "APPROVED", "L3", "2000-01-01T00:00:00Z");
+        roleplayActivity(scenarioId);
 
-        assertThatThrownBy(() -> roleplayActivity(SEEDED_L3))
+        assertThatThrownBy(() -> roleplayActivity(scenarioId))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void unreviewedSeedExamplesAreDraftAndNeverAttached() throws Exception {
+        assertThat(SEEDED_EXAMPLES)
+                .allSatisfy(
+                        id ->
+                                assertThat(scenarios.findById(id).orElseThrow().getStatus().name())
+                                        .isEqualTo("DRAFT"));
+
+        UUID activityId = createFirstCombined();
+        answerOneItem(activityId, false);
+
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
+                .isNotIn(SEEDED_EXAMPLES);
+    }
+
+    @Test
+    void databaseWhereExamplesWentInApprovedIsCorrectedAndSeedNeverRewritesApprovedRows()
+            throws Exception {
+        UUID example = SEEDED_EXAMPLES.get(0);
+        // 처음 시드처럼 예시가 APPROVED 로 들어가 두 활동에 붙은 DB 를 만든다.
+        jdbc.update("update scenario set status = 'APPROVED' where scenario_id = ?", example);
+        Activity unfinished = roleplayActivity(example);
+        Activity finished = roleplayActivity(UUID.randomUUID());
+        jdbc.update(
+                "update activity set scenario_id = ?, status = 'COMPLETED' where activity_id = ?",
+                example,
+                finished.getActivityId());
+        // 승인본은 시드를 다시 돌려도 내용이 바뀌지 않는다.
+        jdbc.update("update scenario set title = '바뀐 제목' where scenario_id = ?", example);
+        runScript("db/seed/R__scenarios.sql");
+        assertThat(titleOf(example)).isEqualTo("바뀐 제목");
+        assertThat(scenarios.findById(example).orElseThrow().getStatus().name())
+                .isEqualTo("APPROVED");
+
+        runScript("db/migration/V16__demote_unreviewed_scenario_examples.sql");
+        runScript("db/seed/R__scenarios.sql");
+
+        assertThat(scenarios.findById(example).orElseThrow().getStatus().name()).isEqualTo("DRAFT");
+        // DRAFT 로 내려가면 시드가 다시 내용을 맞춘다.
+        assertThat(titleOf(example)).isEqualTo("친구의 그림이 찢어졌어요");
+        assertThat(activities.findById(unfinished.getActivityId()).orElseThrow().getScenarioId())
+                .isNull();
+        assertThat(activities.findById(finished.getActivityId()).orElseThrow().getScenarioId())
+                .isEqualTo(example);
+    }
+
+    private void runScript(String path) {
+        ResourceDatabasePopulator populator =
+                new ResourceDatabasePopulator(new ClassPathResource(path));
+        populator.setSqlScriptEncoding("UTF-8");
+        populator.execute(dataSource);
+    }
+
+    private String titleOf(UUID scenarioId) {
+        return jdbc.queryForObject(
+                "select title from scenario where scenario_id = ?", String.class, scenarioId);
     }
 
     private UUID createGoal() throws Exception {
