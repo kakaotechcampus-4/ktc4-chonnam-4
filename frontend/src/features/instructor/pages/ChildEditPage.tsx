@@ -13,6 +13,7 @@ import {
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
+  selectClass,
 } from '../components/styles'
 import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
@@ -124,13 +125,13 @@ function ChildEditForm({ child, classroomName }: { child: Child; classroomName: 
           <div className="grid grid-cols-2 gap-4">
             <label className={fieldLabelClass}>
               학급
-              <select disabled value="current" className={inputClass}>
+              <select disabled value="current" className={selectClass}>
                 <option value="current">{classroomName ?? '현재 학급'}</option>
               </select>
             </label>
             <label className={fieldLabelClass}>
               연령
-              <select disabled defaultValue="" className={inputClass}>
+              <select disabled defaultValue="" className={selectClass}>
                 <option value="">선택</option>
               </select>
             </label>
@@ -138,7 +139,7 @@ function ChildEditForm({ child, classroomName }: { child: Child; classroomName: 
 
           <label className={fieldLabelClass}>
             접근 방식
-            <select disabled defaultValue="code" className={inputClass}>
+            <select disabled defaultValue="code" className={selectClass}>
               <option value="code">접근 코드</option>
             </select>
           </label>
