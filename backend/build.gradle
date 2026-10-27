@@ -123,6 +123,18 @@ tasks.register('scenarioEval', JavaExec) {
     loadEnvLocal(it)
 }
 
+// 시나리오를 만들고 아동 역할로 AI 와 대화해 본다(docs/roleplay-chat.md). 예: ./gradlew -q --console=plain roleplayChat
+tasks.register('roleplayChat', JavaExec) {
+    group = 'verification'
+    description = '시나리오를 만든 뒤 아동 역할로 한 턴씩 입력해 AI 응답과 판단을 본다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.RoleplayChatMain'
+    workingDir = projectDir
+    standardInput = System.in
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
 spotless {
     java {
         target 'src/*/java/**/*.java'
