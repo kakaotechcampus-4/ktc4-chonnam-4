@@ -4,10 +4,10 @@
 
 ## 1. 현재 계약·조건부·설계·미제공
 
-[목차](./README.md)의 구현28개는 현재 Controller 형식입니다. 조건부 음성1개는 서버 활성화/운영 연결 확인이 필요합니다. 설계26개는 미구현 제안이고 미제공2개(문항 풀 조회)는 호출 함수가 없습니다.
+[목차](./README.md)의 구현29개는 현재 Controller 형식입니다. 조건부 음성1개는 서버 활성화/운영 연결 확인이 필요합니다. 설계25개는 미구현 제안이고 미제공2개(문항 풀 조회)는 호출 함수가 없습니다.
 
-- endpoints.ts: 구현28개+조건부1개. `allowConditional` 기본 false.
-- draft-endpoints.ts: 설계26개. `allowDrafts` 기본 false.
+- endpoints.ts: 구현29개+조건부1개. `allowConditional` 기본 false.
+- draft-endpoints.ts: 설계25개. `allowDrafts` 기본 false.
 - 두 설정은 독립입니다. `allowDrafts:true`로 현재 음성 API를 열 수 없습니다. 코드 존재가 배포/정책/제품 Done을 뜻하지 않습니다.
 
 ## 2. 파일·초기화

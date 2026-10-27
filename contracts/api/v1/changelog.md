@@ -1,5 +1,13 @@
 # API v1 변경 이력
 
+## 2026-10-27 — 활동 완료를 서버가 처리, 상태 조회 구현 (PR #76)
+
+| API | 변경 | 호환성 영향 |
+|---|---|---|
+| ACT-04 | 설계 → 구현, 함수를 endpoints.ts로 이동. 없는 활동·다른 아동·담당 아닌 강사는 모두 404 ACTIVITY_NOT_FOUND. 강사 조회는 민감 조회 기록 | allowDrafts 없이 호출 가능. 응답 `{ status }`는 설계와 같음 |
+| QUIZ-04 | 독립 퀴즈 마지막 문항 FINALIZED 때 활동 COMPLETED, 스탬프·학습 기록 한 번 | 응답 모양 그대로. FE가 따로 보내는 완료 요청 없음 |
+| ACT-02/03 | completedAt·rewardIssuedAt이 독립 퀴즈 완료 때 채워짐 | 필드 모양 그대로 |
+
 ## 2026-10-22 — develop 63e4314 반영
 
 기준 커밋: [`63e43144c92449ec5670390a6b99d20d2b2580a5`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5). 기존 2026-10-06/c644dc2 명세에서 현재 코드의 HTTP 계약으로 갱신했습니다. 이 변경은 로컬 v1 문서/연동 예제만 수정하며 GitHub 푸시·서버·DB·제품 정책 승인을 수행하지 않습니다.

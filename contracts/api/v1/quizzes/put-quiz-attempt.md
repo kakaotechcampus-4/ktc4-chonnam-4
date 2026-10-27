@@ -20,6 +20,7 @@
 - 최초 firstResponse/카메라값은 유지. 힌트후 finalResponse만추가. 동일확정응답은기존결과.
 - SELF_EMOTION_SITUATION만 카메라판정/모델전송. 첫NOT_ANALYZABLE을 즉시확정하지말고 최대2회재촬영후기술제외.
 - Body재전송으로동일응답보장; 현재Header멱등키없음. 원본영상전송없음.
+- 독립 퀴즈(나의 감정·친구 감정)는 마지막 문항이 FINALIZED되는 요청 안에서 활동이 COMPLETED가 되고 스탬프 지급 시각과 학습 기록이 한 번만 남는다. 응답 모양은 그대로이고, 완료 여부는 [API-ACT-04](../activities/get-activity-status.md)로 확인한다. 최초 결합은 퀴즈만으로 완료되지 않는다.
 
 ## 3. 요청
 

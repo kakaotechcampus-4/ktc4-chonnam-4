@@ -97,25 +97,6 @@ export function getLearningGoalLineage(
   });
 }
 
-export interface GetActivityStatusArgs {
-  activityId: T.UUID;
-  auth: "instructor" | "child";
-}
-
-export function getActivityStatus(
-  api: ApiClient,
-  args: GetActivityStatusArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftActivityStatusData>> {
-  return api.request<T.DraftActivityStatusData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/status", {
-    method: "GET",
-    auth: args.auth,
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
 export interface PrepareScenarioArgs {
   body: T.DraftScenarioBody;
   idempotencyKey: T.UUID;

@@ -5,7 +5,7 @@
 
 ## 현재 제공 범위
 
-57개 API ID 중 **구현28개 · 조건부 구현1개 · 설계26개 · 미제공2개**입니다. 현재 코드의 존재/형식과 배포 활성화·제품 인수 완료는 구분합니다.
+57개 API ID 중 **구현29개 · 조건부 구현1개 · 설계25개 · 미제공2개**입니다. 현재 코드의 존재/형식과 배포 활성화·제품 인수 완료는 구분합니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -79,7 +79,7 @@
 | [API-ACT-01 · 활동·목표 원자 생성 및 문항 배정](./activities/create-activity.md) | POST | `/api/v1/activities` | 구현 | createActivity |
 | [API-ACT-02 · 아동 배정 활동 목록 조회](./activities/list-child-activities.md) | GET | `/api/v1/children/{childId}/activities` | 구현 | listChildActivities |
 | [API-ACT-03 · 활동 상세 조회](./activities/get-activity.md) | GET | `/api/v1/activities/{activityId}` | 구현 | getActivity |
-| [API-ACT-04 · 활동 완료 status 전용 조회](./activities/get-activity-status.md) | GET | `/api/v1/activities/{activityId}/status` | 설계 | getActivityStatus |
+| [API-ACT-04 · 활동 완료 status 전용 조회](./activities/get-activity-status.md) | GET | `/api/v1/activities/{activityId}/status` | 구현 | getActivityStatus |
 ### 표정·퀴즈
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
