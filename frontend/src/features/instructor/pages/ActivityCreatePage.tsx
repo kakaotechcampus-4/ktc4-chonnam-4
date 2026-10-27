@@ -23,6 +23,7 @@ import {
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
+  selectClass,
   tabBaseClass,
   tabIdleClass,
   tabSelectedClass,
@@ -405,7 +406,7 @@ function ActivityCreatePage() {
                 <select
                   value={customCategory ?? ''}
                   onChange={(e) => setCustomCategory(isGoalCategory(e.target.value) ? e.target.value : null)}
-                  className={inputClass}
+                  className={selectClass}
                 >
                   <option value="">선택 안 함</option>
                   {GOAL_CATEGORIES.map((category) => (
@@ -551,7 +552,7 @@ function TargetStep({
         </div>
         <label className={cn(fieldLabelClass, 'pt-2')}>
           학급
-          <select value={classId ?? ''} onChange={(e) => onSelectClassroom(e.target.value)} className={inputClass}>
+          <select value={classId ?? ''} onChange={(e) => onSelectClassroom(e.target.value)} className={selectClass}>
             <option value="">학급을 고르세요</option>
             {classrooms?.map((c) => (
               <option key={c.classId} value={c.classId}>

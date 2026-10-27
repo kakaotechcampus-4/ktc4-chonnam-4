@@ -13,6 +13,7 @@ import {
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
+  selectClass,
 } from '../components/styles'
 import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
@@ -87,7 +88,7 @@ function ClassroomCreatePage() {
           <div className="grid grid-cols-2 gap-4">
             <label className={fieldLabelClass}>
               대상 연령
-              <select disabled defaultValue="" className={inputClass}>
+              <select disabled defaultValue="" className={selectClass}>
                 <option value="">선택</option>
               </select>
             </label>

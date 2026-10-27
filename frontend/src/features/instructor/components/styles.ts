@@ -16,6 +16,10 @@ const focusRingClass =
 const inputClass =
   "h-[42px] w-full rounded-[var(--instructor-radius-control)] border border-[var(--instructor-input-border)] bg-[var(--instructor-surface)] px-3 text-base text-[var(--instructor-text)] placeholder:text-[var(--instructor-text-disabled)] focus-visible:border-[var(--instructor-focus)] focus-visible:outline-none disabled:bg-[var(--instructor-disabled-bg)] disabled:text-[var(--instructor-text-disabled)]"
 
+// 셀렉트는 오른쪽에 화살표(index.css 의 select 규칙)가 있어 글자 자리를 41px 비운다. index.css 의 padding-right 는
+// components 층이라 inputClass 의 px-3(utilities 층)에 덮이므로 여기서 다시 준다.
+const selectClass = `${inputClass} pr-[41px]`
+
 const fieldLabelClass = "flex flex-col gap-1.5 text-sm text-[var(--instructor-text)]"
 
 // 입력칸 아래 도움말
@@ -71,6 +75,7 @@ export {
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
+  selectClass,
   tableClass,
   tableHeadRowClass,
   tableRowClass,
