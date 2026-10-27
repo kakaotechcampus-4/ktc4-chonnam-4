@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Keyboard, Loader2, Mic } from "lucide-react"
+import { Keyboard, Mic } from "lucide-react"
 import themeparkBackgroundUrl from "@/assets/child/themepark-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
@@ -90,9 +90,9 @@ function RoleplayWrapUpView({
             “{lastReply}” 라고 스스로 말했어요
           </p>
         ) : null}
-        {/* 완료 요청 중에는 다시 누르지 못하게 하고 로딩 아이콘만 보여준다. */}
+        {/* 완료 요청 중에는 다시 누르지 못하게 하고, 다른 버튼처럼 글자로 진행 중임을 알린다. */}
         <ChildButton className="h-16 w-full text-xl" onClick={onNext} disabled={isPending}>
-          {isPending ? <Loader2 className="size-6 animate-spin" aria-label="처리 중" /> : "다음으로"}
+          {isPending ? "스탬프를 준비하고 있어요…" : "다음으로"}
         </ChildButton>
       </div>
     </div>

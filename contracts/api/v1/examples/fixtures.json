@@ -1,0 +1,2227 @@
+[
+  {
+    "id": "API-IAM-01",
+    "fn": "getCsrf",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/csrf",
+    "args": {},
+    "response": {
+      "data": {
+        "headerName": "X-XSRF-TOKEN",
+        "token": "example-csrf-token"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "public",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-02",
+    "fn": "signup",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/users",
+    "args": {
+      "body": {
+        "email": "teacher@example.test",
+        "password": "example-password",
+        "name": "테스트 강사",
+        "termsAgreed": true,
+        "privacyAgreed": true
+      }
+    },
+    "response": {
+      "data": {
+        "userId": "20000000-0000-4000-8000-000000000001",
+        "role": "INSTRUCTOR",
+        "email": "teacher@example.test",
+        "name": "테스트 강사",
+        "orgName": null,
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "public",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-03",
+    "fn": "login",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/auth/sessions",
+    "args": {
+      "body": {
+        "email": "teacher@example.test",
+        "password": "example-password"
+      }
+    },
+    "response": {
+      "data": {
+        "accessToken": "example-opaque-token",
+        "expiresAt": "2026-10-06T15:00:00Z",
+        "user": {
+          "userId": "20000000-0000-4000-8000-000000000001",
+          "role": "INSTRUCTOR",
+          "email": "teacher@example.test",
+          "name": "테스트 강사",
+          "orgName": null,
+          "status": "ACTIVE"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "public",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-04",
+    "fn": "getInstructorSession",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/auth/session",
+    "args": {},
+    "response": {
+      "data": {
+        "user": {
+          "userId": "20000000-0000-4000-8000-000000000001",
+          "role": "INSTRUCTOR",
+          "email": "teacher@example.test",
+          "name": "테스트 강사",
+          "orgName": null,
+          "status": "ACTIVE"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-05",
+    "fn": "logoutInstructor",
+    "draft": false,
+    "method": "DELETE",
+    "route": "/api/v1/auth/session",
+    "args": {},
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-06",
+    "fn": "withdrawInstructor",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/users/me/withdrawal",
+    "args": {
+      "body": {
+        "password": "example-password"
+      }
+    },
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-07",
+    "fn": "issueChildCode",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/children/{childId}/access-codes",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "accessCode": "0427",
+        "expiresAt": "2026-10-07T12:00:00+09:00"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-08",
+    "fn": "enterChild",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/child-access-sessions",
+    "args": {
+      "body": {
+        "accessCode": "0427"
+      }
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "displayName": "테스트 아동"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": false,
+    "mode": "public",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-09",
+    "fn": "exitChild",
+    "draft": false,
+    "method": "DELETE",
+    "route": "/api/v1/child-access-sessions/current",
+    "args": {},
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-IAM-10",
+    "fn": "getChildSession",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/child-access-sessions/current",
+    "args": {},
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "displayName": "테스트 아동"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-01",
+    "fn": "createClassroom",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/classrooms",
+    "args": {
+      "body": {
+        "name": "테스트 학급"
+      }
+    },
+    "response": {
+      "data": {
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "name": "테스트 학급",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-02",
+    "fn": "listClassrooms",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/classrooms",
+    "args": {},
+    "response": {
+      "data": [
+        {
+          "classId": "11000000-0000-4000-8000-000000000001",
+          "instructorId": "20000000-0000-4000-8000-000000000001",
+          "name": "테스트 학급",
+          "status": "ACTIVE"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-03",
+    "fn": "getClassroom",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/classrooms/{classId}",
+    "args": {
+      "classId": "11000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "name": "테스트 학급",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-04",
+    "fn": "updateClassroom",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/classrooms/{classId}",
+    "args": {
+      "classId": "11000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "테스트 학급"
+      }
+    },
+    "response": {
+      "data": {
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "name": "테스트 학급",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-05",
+    "fn": "deleteClassroom",
+    "draft": false,
+    "method": "DELETE",
+    "route": "/api/v1/classrooms/{classId}",
+    "args": {
+      "classId": "11000000-0000-4000-8000-000000000001"
+    },
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-06",
+    "fn": "createChild",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/classrooms/{classId}/children",
+    "args": {
+      "classId": "11000000-0000-4000-8000-000000000001",
+      "body": {
+        "displayName": "테스트 아동"
+      }
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "displayName": "테스트 아동",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-07",
+    "fn": "listChildren",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/classrooms/{classId}/children",
+    "args": {
+      "classId": "11000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "classId": "11000000-0000-4000-8000-000000000001",
+          "displayName": "테스트 아동",
+          "status": "ACTIVE"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-08",
+    "fn": "getChild",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/children/{childId}",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "displayName": "테스트 아동",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-09",
+    "fn": "updateChild",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/children/{childId}",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "body": {
+        "displayName": "테스트 아동"
+      }
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "classId": "11000000-0000-4000-8000-000000000001",
+        "displayName": "테스트 아동",
+        "status": "ACTIVE"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-CLS-10",
+    "fn": "deleteChild",
+    "draft": false,
+    "method": "DELETE",
+    "route": "/api/v1/children/{childId}",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001"
+    },
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-GOAL-01",
+    "fn": "createLearningGoal",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/children/{childId}/learning-goals",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "body": {
+        "title": "감정을 이해하고 공감하기",
+        "situationType": "PLAYGROUND",
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "requiredElements": [
+          "넘어진 친구의 마음 살피기"
+        ],
+        "forbiddenExpressions": [
+          "친구를 비난하는 표현"
+        ],
+        "parentGoalId": null
+      }
+    },
+    "response": {
+      "data": {
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "parentGoalId": null,
+        "title": "감정을 이해하고 공감하기",
+        "situationType": "PLAYGROUND",
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "requiredElements": [
+          "넘어진 친구의 마음 살피기"
+        ],
+        "forbiddenExpressions": [
+          "친구를 비난하는 표현"
+        ],
+        "contentHash": "example-content-hash",
+        "createdAt": "2026-10-06T03:00:00Z",
+        "category": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-GOAL-02",
+    "fn": "listLearningGoals",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/children/{childId}/learning-goals",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "instructorId": "20000000-0000-4000-8000-000000000001",
+          "parentGoalId": null,
+          "title": "감정을 이해하고 공감하기",
+          "situationType": "PLAYGROUND",
+          "characters": [
+            {
+              "id": "FRIEND",
+              "role": "친구"
+            }
+          ],
+          "requiredElements": [
+            "넘어진 친구의 마음 살피기"
+          ],
+          "forbiddenExpressions": [
+            "친구를 비난하는 표현"
+          ],
+          "contentHash": "example-content-hash",
+          "createdAt": "2026-10-06T03:00:00Z",
+          "category": null
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-GOAL-03",
+    "fn": "getLearningGoal",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/learning-goals/{goalId}",
+    "args": {
+      "goalId": "30000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "parentGoalId": null,
+        "title": "감정을 이해하고 공감하기",
+        "situationType": "PLAYGROUND",
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "requiredElements": [
+          "넘어진 친구의 마음 살피기"
+        ],
+        "forbiddenExpressions": [
+          "친구를 비난하는 표현"
+        ],
+        "contentHash": "example-content-hash",
+        "createdAt": "2026-10-06T03:00:00Z",
+        "category": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-GOAL-04",
+    "fn": "updateLearningGoal",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/learning-goals/{goalId}",
+    "args": {
+      "goalId": "30000000-0000-4000-8000-000000000001",
+      "body": {
+        "title": "감정과 이유를 연결해 말하기"
+      }
+    },
+    "response": {
+      "data": {
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "instructorId": "20000000-0000-4000-8000-000000000001",
+        "parentGoalId": null,
+        "title": "감정을 이해하고 공감하기",
+        "situationType": "PLAYGROUND",
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "requiredElements": [
+          "넘어진 친구의 마음 살피기"
+        ],
+        "forbiddenExpressions": [
+          "친구를 비난하는 표현"
+        ],
+        "contentHash": "example-content-hash",
+        "createdAt": "2026-10-06T03:00:00Z",
+        "category": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-GOAL-05",
+    "fn": "getLearningGoalLineage",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/learning-goals/{goalId}/lineage",
+    "args": {
+      "goalId": "30000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "instructorId": "20000000-0000-4000-8000-000000000001",
+          "parentGoalId": null,
+          "title": "감정을 이해하고 공감하기",
+          "situationType": "PLAYGROUND",
+          "characters": [
+            {
+              "id": "FRIEND",
+              "role": "친구"
+            }
+          ],
+          "requiredElements": [
+            "넘어진 친구의 마음 살피기"
+          ],
+          "forbiddenExpressions": [
+            "친구를 비난하는 표현"
+          ],
+          "contentHash": "example-content-hash",
+          "createdAt": "2026-10-06T03:00:00Z",
+          "category": null
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-ACT-01",
+    "fn": "createActivity",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/activities",
+    "args": {
+      "body": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "activityType": "FIRST_COMBINED",
+        "goal": {
+          "title": "감정을 이해하고 공감하기",
+          "situationType": "PLAYGROUND",
+          "category": "EMOTION"
+        }
+      },
+      "idempotencyKey": "70000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "scenarioId": null,
+        "scenarioSource": null,
+        "initialSupportLevel": null,
+        "difficultyFallbackApplied": false,
+        "status": "NOT_STARTED",
+        "assignedAt": "2026-10-06T12:00:00+09:00",
+        "startedAt": null,
+        "completedAt": null,
+        "rewardIssuedAt": null,
+        "activityType": "FIRST_COMBINED"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      201,
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-ACT-02",
+    "fn": "listChildActivities",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/children/{childId}/activities",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "auth": "child",
+      "query": {
+        "page": 0,
+        "size": 20
+      }
+    },
+    "response": {
+      "data": [
+        {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "scenarioId": null,
+          "scenarioSource": null,
+          "initialSupportLevel": null,
+          "difficultyFallbackApplied": false,
+          "status": "NOT_STARTED",
+          "assignedAt": "2026-10-06T12:00:00+09:00",
+          "startedAt": null,
+          "completedAt": null,
+          "rewardIssuedAt": null,
+          "activityType": "FIRST_COMBINED"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-ACT-03",
+    "fn": "getActivity",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/activities/{activityId}",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "activity": {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "scenarioId": null,
+          "scenarioSource": null,
+          "initialSupportLevel": null,
+          "difficultyFallbackApplied": false,
+          "status": "NOT_STARTED",
+          "assignedAt": "2026-10-06T12:00:00+09:00",
+          "startedAt": null,
+          "completedAt": null,
+          "rewardIssuedAt": null,
+          "activityType": "FIRST_COMBINED"
+        },
+        "quizItems": [
+          {
+            "activityQuizId": "50000000-0000-4000-8000-000000000001",
+            "activityId": "40000000-0000-4000-8000-000000000001",
+            "itemId": "60000000-0000-4000-8000-000000000001",
+            "itemVersion": 1,
+            "questionOrder": 1,
+            "quizType": "SELF_EMOTION_SITUATION",
+            "questionText": "넘어진 친구를 보면 어떤 기분일까?",
+            "imageUrl": null,
+            "choices": [
+              "기쁨",
+              "슬픔",
+              "속상함"
+            ]
+          }
+        ],
+        "sessionSummary": null,
+        "learningRecord": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-ACT-04",
+    "fn": "getActivityStatus",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/activities/{activityId}/status",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": {
+        "status": "COMPLETED"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-QUIZ-01",
+    "fn": null,
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/quiz-items",
+    "args": {},
+    "response": null,
+    "status": null,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [],
+    "conditional": false,
+    "unavailable": true
+  },
+  {
+    "id": "API-QUIZ-02",
+    "fn": null,
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/quiz-items/{itemId}",
+    "args": {},
+    "response": null,
+    "status": null,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [],
+    "conditional": false,
+    "unavailable": true
+  },
+  {
+    "id": "API-QUIZ-03",
+    "fn": "listAssignedQuizItems",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/activities/{activityId}/quiz-items",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": [
+        {
+          "activityQuizId": "50000000-0000-4000-8000-000000000001",
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "itemId": "60000000-0000-4000-8000-000000000001",
+          "itemVersion": 1,
+          "questionOrder": 1,
+          "quizType": "SELF_EMOTION_SITUATION",
+          "questionText": "넘어진 친구를 보면 어떤 기분일까?",
+          "imageUrl": null,
+          "choices": [
+            "기쁨",
+            "슬픔",
+            "속상함"
+          ]
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-QUIZ-04",
+    "fn": "putQuizAttempt",
+    "draft": false,
+    "method": "PUT",
+    "route": "/api/v1/activity-quiz-items/{activityQuizId}/attempt",
+    "args": {
+      "activityQuizId": "50000000-0000-4000-8000-000000000001",
+      "body": {
+        "firstResponse": "속상함",
+        "expressionMatchResult": "MATCH",
+        "cameraModelVersion": "browser-model-v1",
+        "finalResponse": null,
+        "technicalFailureReason": null
+      }
+    },
+    "response": {
+      "data": {
+        "attemptId": "88000000-0000-4000-8000-000000000001",
+        "activityQuizId": "50000000-0000-4000-8000-000000000001",
+        "firstResponse": "속상함",
+        "firstResponseCorrect": true,
+        "expressionMatchResult": "MATCH",
+        "cameraModelVersion": "browser-model-v1",
+        "usedHintTypes": [],
+        "finalResponse": "속상함",
+        "resolvedAfterHint": false,
+        "itemCorrect": true,
+        "excludedFromScoring": false,
+        "status": "FINALIZED",
+        "respondedAt": "2026-10-06T12:05:00+09:00"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": false,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      201,
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-QUIZ-05",
+    "fn": "getQuizAttempt",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/activity-quiz-items/{activityQuizId}/attempt",
+    "args": {
+      "activityQuizId": "50000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": {
+        "attemptId": "88000000-0000-4000-8000-000000000001",
+        "activityQuizId": "50000000-0000-4000-8000-000000000001",
+        "firstResponse": "속상함",
+        "firstResponseCorrect": true,
+        "expressionMatchResult": "MATCH",
+        "cameraModelVersion": "browser-model-v1",
+        "usedHintTypes": [],
+        "finalResponse": "속상함",
+        "resolvedAfterHint": false,
+        "itemCorrect": true,
+        "excludedFromScoring": false,
+        "status": "FINALIZED",
+        "respondedAt": "2026-10-06T12:05:00+09:00"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-QUIZ-06",
+    "fn": "issueQuizHint",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/activity-quiz-items/{activityQuizId}/hints",
+    "args": {
+      "activityQuizId": "50000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "hintId": "70000000-0000-4000-8000-000000000001",
+        "hintOrder": 1,
+        "type": "SITUATION_CUE",
+        "text": "친구가 넘어져서 아플 수 있어요."
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-QUIZ-07",
+    "fn": "getQuizResult",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/activities/{activityId}/quiz-result",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": {
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "validQuestionCount": 3,
+        "correctQuestionCount": 2,
+        "overallAccuracy": 0.6666666666666666,
+        "totalHintCount": 1,
+        "resolvedAfterHintCount": 1,
+        "scenarioLevel": "L2",
+        "initialSupportLevel": "S1",
+        "difficultyFallbackApplied": false,
+        "initialDifficultyUsed": true,
+        "policyVersion": "example-policy-v1"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-01",
+    "fn": "prepareScenario",
+    "draft": true,
+    "method": "POST",
+    "route": "/api/v1/scenarios",
+    "args": {
+      "body": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "goalId": "30000000-0000-4000-8000-000000000001"
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "version": 1,
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "scenarioSource": "NEWLY_GENERATED",
+        "status": "DRAFT",
+        "scenarioLevel": "L1",
+        "title": "넘어져서 우는 친구",
+        "summary": "친구가 넘어져서 울고 있다.",
+        "scenarioFacts": [
+          "친구가 넘어졌다.",
+          "친구가 울고 있다."
+        ],
+        "prohibitedInferences": [
+          "일부러 넘어졌다고 단정하지 않는다."
+        ],
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "microGoals": [
+          {
+            "microGoalId": "81000000-0000-4000-8000-000000000001",
+            "description": "친구의 몸과 마음을 표현한다.",
+            "requiredEvidence": [
+              "상황에 맞는 감정을 표현함"
+            ]
+          }
+        ],
+        "openingPrompts": {
+          "S0": "친구는 어떤 기분일까?",
+          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      201,
+      202
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-02",
+    "fn": "listScenarios",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/scenarios",
+    "args": {
+      "query": {}
+    },
+    "response": {
+      "data": [
+        {
+          "scenarioId": "80000000-0000-4000-8000-000000000001",
+          "version": 1,
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "scenarioSource": "NEWLY_GENERATED",
+          "status": "DRAFT",
+          "scenarioLevel": "L1",
+          "title": "넘어져서 우는 친구",
+          "summary": "친구가 넘어져서 울고 있다.",
+          "scenarioFacts": [
+            "친구가 넘어졌다.",
+            "친구가 울고 있다."
+          ],
+          "prohibitedInferences": [
+            "일부러 넘어졌다고 단정하지 않는다."
+          ],
+          "characters": [
+            {
+              "id": "FRIEND",
+              "role": "친구"
+            }
+          ],
+          "microGoals": [
+            {
+              "microGoalId": "81000000-0000-4000-8000-000000000001",
+              "description": "친구의 몸과 마음을 표현한다.",
+              "requiredEvidence": [
+                "상황에 맞는 감정을 표현함"
+              ]
+            }
+          ],
+          "openingPrompts": {
+            "S0": "친구는 어떤 기분일까?",
+            "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
+          }
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-03",
+    "fn": "getScenario",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/scenarios/{scenarioId}",
+    "args": {
+      "scenarioId": "80000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "version": 1,
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "scenarioSource": "NEWLY_GENERATED",
+        "status": "DRAFT",
+        "scenarioLevel": "L1",
+        "title": "넘어져서 우는 친구",
+        "summary": "친구가 넘어져서 울고 있다.",
+        "scenarioFacts": [
+          "친구가 넘어졌다.",
+          "친구가 울고 있다."
+        ],
+        "prohibitedInferences": [
+          "일부러 넘어졌다고 단정하지 않는다."
+        ],
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "microGoals": [
+          {
+            "microGoalId": "81000000-0000-4000-8000-000000000001",
+            "description": "친구의 몸과 마음을 표현한다.",
+            "requiredEvidence": [
+              "상황에 맞는 감정을 표현함"
+            ]
+          }
+        ],
+        "openingPrompts": {
+          "S0": "친구는 어떤 기분일까?",
+          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-04",
+    "fn": "reviewScenario",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/scenarios/{scenarioId}",
+    "args": {
+      "scenarioId": "80000000-0000-4000-8000-000000000001",
+      "body": {
+        "version": 1,
+        "status": "APPROVED"
+      }
+    },
+    "response": {
+      "data": {
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "version": 1,
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "scenarioSource": "NEWLY_GENERATED",
+        "status": "DRAFT",
+        "scenarioLevel": "L1",
+        "title": "넘어져서 우는 친구",
+        "summary": "친구가 넘어져서 울고 있다.",
+        "scenarioFacts": [
+          "친구가 넘어졌다.",
+          "친구가 울고 있다."
+        ],
+        "prohibitedInferences": [
+          "일부러 넘어졌다고 단정하지 않는다."
+        ],
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "microGoals": [
+          {
+            "microGoalId": "81000000-0000-4000-8000-000000000001",
+            "description": "친구의 몸과 마음을 표현한다.",
+            "requiredEvidence": [
+              "상황에 맞는 감정을 표현함"
+            ]
+          }
+        ],
+        "openingPrompts": {
+          "S0": "친구는 어떤 기분일까?",
+          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-05",
+    "fn": "createScenarioVersion",
+    "draft": true,
+    "method": "POST",
+    "route": "/api/v1/scenarios/{scenarioId}/versions",
+    "args": {
+      "scenarioId": "80000000-0000-4000-8000-000000000001",
+      "body": {
+        "version": 1,
+        "title": "친구의 마음을 살피기"
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "version": 1,
+        "goalId": "30000000-0000-4000-8000-000000000001",
+        "scenarioSource": "NEWLY_GENERATED",
+        "status": "DRAFT",
+        "scenarioLevel": "L1",
+        "title": "넘어져서 우는 친구",
+        "summary": "친구가 넘어져서 울고 있다.",
+        "scenarioFacts": [
+          "친구가 넘어졌다.",
+          "친구가 울고 있다."
+        ],
+        "prohibitedInferences": [
+          "일부러 넘어졌다고 단정하지 않는다."
+        ],
+        "characters": [
+          {
+            "id": "FRIEND",
+            "role": "친구"
+          }
+        ],
+        "microGoals": [
+          {
+            "microGoalId": "81000000-0000-4000-8000-000000000001",
+            "description": "친구의 몸과 마음을 표현한다.",
+            "requiredEvidence": [
+              "상황에 맞는 감정을 표현함"
+            ]
+          }
+        ],
+        "openingPrompts": {
+          "S0": "친구는 어떤 기분일까?",
+          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-06",
+    "fn": "deleteScenario",
+    "draft": true,
+    "method": "DELETE",
+    "route": "/api/v1/scenarios/{scenarioId}",
+    "args": {
+      "scenarioId": "80000000-0000-4000-8000-000000000001"
+    },
+    "response": null,
+    "status": 204,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      204
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-SCN-07",
+    "fn": "listScenarioMicroGoals",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/scenarios/{scenarioId}/sub-goals",
+    "args": {
+      "scenarioId": "80000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "microGoalId": "81000000-0000-4000-8000-000000000001",
+          "description": "친구의 몸과 마음을 표현한다.",
+          "requiredEvidence": [
+            "상황에 맞는 감정을 표현함"
+          ]
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-01",
+    "fn": "startRoleplay",
+    "draft": true,
+    "method": "POST",
+    "route": "/api/v1/activities/{activityId}/roleplay-sessions",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "sessionId": "82000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "scenarioVersion": 1,
+        "status": "IN_PROGRESS",
+        "lastDeliveredTurnId": null,
+        "delivery": {
+          "messages": [
+            {
+              "messageId": "83000000-0000-4000-8000-000000000001",
+              "speakerRole": "DIALOGUE",
+              "purpose": "QUESTION",
+              "text": "친구는 어떤 기분일까?",
+              "speech": {
+                "available": false,
+                "url": null
+              }
+            }
+          ]
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 201,
+    "key": true,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      201
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-02",
+    "fn": "getRoleplaySession",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/roleplay-sessions/{sessionId}",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": {
+        "sessionId": "82000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "scenarioVersion": 1,
+        "status": "IN_PROGRESS",
+        "lastDeliveredTurnId": null,
+        "delivery": {
+          "messages": [
+            {
+              "messageId": "83000000-0000-4000-8000-000000000001",
+              "speakerRole": "DIALOGUE",
+              "purpose": "QUESTION",
+              "text": "친구는 어떤 기분일까?",
+              "speech": {
+                "available": false,
+                "url": null
+              }
+            }
+          ]
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-03",
+    "fn": "updateRoleplaySession",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/roleplay-sessions/{sessionId}",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001",
+      "body": {
+        "status": "PAUSED"
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "sessionId": "82000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "scenarioVersion": 1,
+        "status": "IN_PROGRESS",
+        "lastDeliveredTurnId": null,
+        "delivery": {
+          "messages": [
+            {
+              "messageId": "83000000-0000-4000-8000-000000000001",
+              "speakerRole": "DIALOGUE",
+              "purpose": "QUESTION",
+              "text": "친구는 어떤 기분일까?",
+              "speech": {
+                "available": false,
+                "url": null
+              }
+            }
+          ]
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": true,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-04",
+    "fn": "submitVoiceInput",
+    "draft": false,
+    "method": "POST",
+    "route": "/api/v1/roleplay-sessions/{sessionId}/voice-inputs",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001",
+      "body": {
+        "audio": "MOCK_AUDIO"
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "status": "DELIVERED",
+        "action": "NONE",
+        "messages": [
+          {
+            "text": "친구는 왜 그런 기분이 들었을까?",
+            "speech": {
+              "available": false,
+              "url": null
+            }
+          }
+        ],
+        "acceptedInput": "친구가 속상할 것 같아요.",
+        "checkpointVersion": 1,
+        "replayed": false
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": true,
+    "mode": "child",
+    "form": true,
+    "expectedStatuses": [
+      200,
+      202
+    ],
+    "conditional": true,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-05",
+    "fn": "submitTextInput",
+    "draft": true,
+    "method": "POST",
+    "route": "/api/v1/roleplay-sessions/{sessionId}/text-inputs",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001",
+      "body": {
+        "clientInputId": "84000000-0000-4000-8000-000000000001",
+        "text": "친구가 아프고 속상할 것 같아요."
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "inputId": "84000000-0000-4000-8000-000000000001",
+        "turnId": "85000000-0000-4000-8000-000000000001",
+        "status": "PROCESSING"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 202,
+    "key": true,
+    "mode": "child",
+    "form": false,
+    "expectedStatuses": [
+      202
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-06",
+    "fn": "getRoleplayTurn",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/turns/{turnId}",
+    "args": {
+      "turnId": "85000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": {
+        "turnId": "85000000-0000-4000-8000-000000000001",
+        "status": "DELIVERED",
+        "delivery": {
+          "messages": [
+            {
+              "messageId": "83000000-0000-4000-8000-000000000001",
+              "speakerRole": "DIALOGUE",
+              "purpose": "QUESTION",
+              "text": "친구는 어떤 기분일까?",
+              "speech": {
+                "available": false,
+                "url": null
+              }
+            }
+          ]
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-07",
+    "fn": "listRoleplayTurns",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/roleplay-sessions/{sessionId}/turns",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001",
+      "auth": "child"
+    },
+    "response": {
+      "data": [
+        {
+          "turnId": "85000000-0000-4000-8000-000000000001",
+          "status": "DELIVERED",
+          "delivery": {
+            "messages": [
+              {
+                "messageId": "83000000-0000-4000-8000-000000000001",
+                "speakerRole": "DIALOGUE",
+                "purpose": "QUESTION",
+                "text": "친구는 어떤 기분일까?",
+                "speech": {
+                  "available": false,
+                  "url": null
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "dual",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-08",
+    "fn": "listRoleplayGoalStatuses",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/roleplay-sessions/{sessionId}/goal-statuses",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "microGoalId": "81000000-0000-4000-8000-000000000001",
+          "observedEvidence": [
+            "상황 단서를 받은 뒤 감정을 표현함"
+          ],
+          "initialSupportLevel": "S1",
+          "currentSupportLevel": "S1",
+          "finalSupportLevel": "S1",
+          "turnsToAchievement": 2,
+          "promptCount": 1,
+          "answerRevealed": false,
+          "achievedWithoutAnswerReveal": true,
+          "excludedFromScoring": false
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-RPL-09",
+    "fn": "listSupportChanges",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/roleplay-sessions/{sessionId}/support-level-changes",
+    "args": {
+      "sessionId": "82000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-01",
+    "fn": "getLearningReport",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/activities/{activityId}/learning-record",
+    "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "recordId": "86000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "completedAt": "2026-10-06T12:10:00+09:00",
+        "summary": "친구의 상황과 감정을 연결해 설명했어요.",
+        "quiz": {
+          "validQuestionCount": 3,
+          "correctQuestionCount": 2,
+          "overallAccuracy": 0.6666666666666666,
+          "resolvedAfterHintCount": 1
+        },
+        "roleplay": {
+          "observations": [
+            "상황 단서를 받은 뒤 감정과 사건을 연결함"
+          ],
+          "effectiveSupport": [
+            "상황 단서"
+          ],
+          "technicalExclusions": []
+        },
+        "difficultyDecision": {
+          "decisionType": "INITIAL",
+          "scenarioLevel": "L2",
+          "policyVersion": "example-policy-v1"
+        }
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-02",
+    "fn": "listLearningReports",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/learning-records",
+    "args": {
+      "query": {
+        "childId": "10000000-0000-4000-8000-000000000001"
+      }
+    },
+    "response": {
+      "data": [
+        {
+          "recordId": "86000000-0000-4000-8000-000000000001",
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "completedAt": "2026-10-06T12:10:00+09:00",
+          "summary": "친구의 상황과 감정을 연결해 설명했어요.",
+          "quiz": {
+            "validQuestionCount": 3,
+            "correctQuestionCount": 2,
+            "overallAccuracy": 0.6666666666666666,
+            "resolvedAfterHintCount": 1
+          },
+          "roleplay": {
+            "observations": [
+              "상황 단서를 받은 뒤 감정과 사건을 연결함"
+            ],
+            "effectiveSupport": [
+              "상황 단서"
+            ],
+            "technicalExclusions": []
+          },
+          "difficultyDecision": {
+            "decisionType": "INITIAL",
+            "scenarioLevel": "L2",
+            "policyVersion": "example-policy-v1"
+          }
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-03",
+    "fn": "listRecommendations",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/learning-records/{recordId}/recommendations",
+    "args": {
+      "recordId": "86000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": [
+        {
+          "recommendationId": "87000000-0000-4000-8000-000000000001",
+          "recordId": "86000000-0000-4000-8000-000000000001",
+          "type": "EXAMPLE_EXTENSION",
+          "suggestedGoal": {
+            "title": "감정과 이유를 설명하기"
+          },
+          "reason": "상황 단서가 효과적이었어요.",
+          "evidence": [
+            "감정을 사건에 연결함"
+          ],
+          "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+          "decision": null,
+          "createdGoalId": null
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-04",
+    "fn": "getRecommendation",
+    "draft": true,
+    "method": "GET",
+    "route": "/api/v1/recommendations/{recommendationId}",
+    "args": {
+      "recommendationId": "87000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "recommendationId": "87000000-0000-4000-8000-000000000001",
+        "recordId": "86000000-0000-4000-8000-000000000001",
+        "type": "EXAMPLE_EXTENSION",
+        "suggestedGoal": {
+          "title": "감정과 이유를 설명하기"
+        },
+        "reason": "상황 단서가 효과적이었어요.",
+        "evidence": [
+          "감정을 사건에 연결함"
+        ],
+        "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+        "decision": null,
+        "createdGoalId": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-05",
+    "fn": "decideRecommendation",
+    "draft": true,
+    "method": "PATCH",
+    "route": "/api/v1/recommendations/{recommendationId}",
+    "args": {
+      "recommendationId": "87000000-0000-4000-8000-000000000001",
+      "body": {
+        "decision": "MODIFIED_ACCEPT",
+        "goal": {
+          "title": "친구의 마음을 설명하고 도움을 제안하기",
+          "requiredElements": [
+            "상황에 맞는 도움 한 가지"
+          ],
+          "forbiddenExpressions": []
+        },
+        "rejectionReason": null
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "recommendationId": "87000000-0000-4000-8000-000000000001",
+        "recordId": "86000000-0000-4000-8000-000000000001",
+        "type": "EXAMPLE_EXTENSION",
+        "suggestedGoal": {
+          "title": "감정과 이유를 설명하기"
+        },
+        "reason": "상황 단서가 효과적이었어요.",
+        "evidence": [
+          "감정을 사건에 연결함"
+        ],
+        "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+        "decision": null,
+        "createdGoalId": null
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  }
+]
