@@ -696,14 +696,14 @@
       }
     },
     {
-      "name": "역할극 추가 조건은 앞뒤·안쪽 공백을 정리해 저장한다",
+      "name": "역할극 추가 조건은 앞뒤·안쪽 공백을 정리하고 같은 등장인물은 하나만 저장한다",
       "request": {
         "method": "POST",
         "path": "/api/v1/children/{childId}/learning-goals",
         "body": {
           "title": " 친구  위로하기 ",
           "situationType": "쉬는 시간에   친구가 그림을 망쳐 속상해하고 있다. ",
-          "characters": [{ "name": " 다온", "relation": "같은 반  친구" }],
+          "characters": [{ "id": "FRIEND", "role": " 넘어진  친구" }, { "id": "FRIEND", "role": "넘어진 친구" }],
           "requiredElements": ["위로 표현  1회"],
           "forbiddenExpressions": [" 울지 마"]
         }
@@ -719,7 +719,7 @@
             "title": "친구 위로하기",
             "situationType": "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.",
             "category": null,
-            "characters": [{ "name": "다온", "relation": "같은 반 친구" }],
+            "characters": [{ "id": "FRIEND", "role": "넘어진 친구" }],
             "requiredElements": ["위로 표현 1회"],
             "forbiddenExpressions": ["울지 마"],
             "contentHash": "<string>",

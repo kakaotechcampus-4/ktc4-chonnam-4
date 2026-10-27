@@ -346,18 +346,20 @@ describe("역할극 추가 조건 단계", () => {
     await goToConditions(user)
 
     await user.type(screen.getByRole("textbox", { name: "1. 상황" }), "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.")
-    await user.type(screen.getByLabelText("인물 이름"), "  친구  다온 {Enter}")
+    await user.type(screen.getByLabelText("인물 역할"), "  넘어진  친구 {Enter}")
+    await user.type(screen.getByLabelText("인물 역할"), "짝꿍{Enter}")
+    await user.click(screen.getByRole("button", { name: "넘어진 친구" }))
     await user.click(screen.getByRole("button", { name: "같은 반 친구" }))
     await user.click(screen.getByRole("checkbox", { name: "위로 표현 1회" }))
     await user.click(screen.getByRole("checkbox", { name: "감정을 확인하는 질문 1회" }))
     await user.type(screen.getByLabelText("피할 표현"), "울지 마")
     await user.click(screen.getByRole("button", { name: "+ 추가" }))
-    expect(screen.getByRole("button", { name: "같은 반 친구 친구 다온" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "넘어진 친구(같은 반 친구)" })).toHaveAttribute("aria-pressed", "true")
     await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
 
     const summary = await screen.findByRole("region", { name: "배정 내용" })
     expect(within(summary).getByText("쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.")).toBeInTheDocument()
-    expect(within(summary).getByText("친구 다온(같은 반 친구)")).toBeInTheDocument()
+    expect(within(summary).getByText("넘어진 친구(같은 반 친구), 짝꿍")).toBeInTheDocument()
     // 고른 순서와 상관없이 보기 순서로 보낸다.
     expect(within(summary).getByText("감정을 확인하는 질문 1회, 위로 표현 1회")).toBeInTheDocument()
     expect(within(summary).getByText("울지 마")).toBeInTheDocument()
@@ -366,7 +368,10 @@ describe("역할극 추가 조건 단계", () => {
     await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
     expect(sentGoal).toMatchObject({
       situationType: "쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.",
-      characters: [{ name: "친구 다온", relation: "같은 반 친구" }],
+      characters: [
+        { id: "FRIEND", role: "넘어진 친구" },
+        { id: "OTHER", role: "짝꿍" },
+      ],
       requiredElements: ["감정을 확인하는 질문 1회", "위로 표현 1회"],
       forbiddenExpressions: ["울지 마"],
     })
@@ -395,7 +400,7 @@ describe("역할극 추가 조건 단계", () => {
     await user.click(screen.getByRole("checkbox", { name: "위로 표현 1회" }))
     await user.type(screen.getByLabelText("피할 표현"), "위 로{Enter}")
 
-    expect(screen.getByText("위 로 · 필수 요소와 겹침")).toBeInTheDocument()
+    expect(screen.getByText("위 로 · 필수 요소·등장인물과 겹침")).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없어요")
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
 
@@ -429,7 +434,7 @@ describe("역할극 추가 조건 단계", () => {
   it("추가 조건 단계에 접근성 위반이 없다", async () => {
     const { user, container } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
     await goToConditions(user)
-    await user.type(screen.getByLabelText("인물 이름"), "다온{Enter}")
+    await user.type(screen.getByLabelText("인물 역할"), "넘어진 친구{Enter}")
     await user.type(screen.getByLabelText("피할 표현"), "울지 마{Enter}")
 
     const results = await axe.run(container, {

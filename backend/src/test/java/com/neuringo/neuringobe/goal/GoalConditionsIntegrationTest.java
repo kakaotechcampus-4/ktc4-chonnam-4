@@ -146,8 +146,9 @@ class GoalConditionsIntegrationTest {
                                 "situationType", "쉬는 시간에   친구가 그림을 망쳐 속상해하고 있다. ",
                                 "characters",
                                         List.of(
-                                                Map.of("name", " 다온", "relation", "같은 반  친구"),
-                                                Map.of("name", "다온", "relation", "같은 반 친구")),
+                                                Map.of("id", "FRIEND", "role", " 넘어진  친구"),
+                                                Map.of("id", "FRIEND", "role", "넘어진 친구"),
+                                                Map.of("role", "짝꿍")),
                                 "requiredElements",
                                         List.of("위로 표현 1회", "감정을 확인하는 질문 1회", "위로 표현  1회"),
                                 "forbiddenExpressions", List.of("울지 마")));
@@ -159,7 +160,9 @@ class GoalConditionsIntegrationTest {
         assertThat(JsonPath.<String>read(stored, "$.data.situationType"))
                 .isEqualTo("쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다.");
         assertThat(JsonPath.<List<Map<String, Object>>>read(stored, "$.data.characters"))
-                .containsExactly(Map.of("name", "다온", "relation", "같은 반 친구"));
+                .containsExactly(
+                        Map.of("id", "FRIEND", "role", "넘어진 친구"),
+                        Map.of("id", "OTHER", "role", "짝꿍"));
         assertThat(JsonPath.<List<String>>read(stored, "$.data.requiredElements"))
                 .containsExactly("위로 표현 1회", "감정을 확인하는 질문 1회");
     }
@@ -181,18 +184,38 @@ class GoalConditionsIntegrationTest {
     }
 
     @Test
-    void requiresACharacterName() {
+    void requiresACharacterRoleAndAnIdInCodeForm() {
+        assertThat(saveGoal(Map.of("title", "등장인물", "characters", List.of(Map.of("id", "FRIEND")))))
+                .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                .bodyJson()
+                .extractingPath("$.error.fieldErrors[0].field")
+                .isEqualTo("characters[0].role");
         assertThat(
                         saveGoal(
                                 Map.of(
                                         "title",
                                         "등장인물",
                                         "characters",
-                                        List.of(Map.of("relation", "같은 반 친구")))))
+                                        List.of(Map.of("id", "friend", "role", "짝꿍")))))
                 .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
                 .bodyJson()
                 .extractingPath("$.error.fieldErrors[0].field")
-                .isEqualTo("characters[0].name");
+                .isEqualTo("characters[0].id");
+    }
+
+    @Test
+    void rejectsAForbiddenExpressionInsideACharacterRole() {
+        assertThat(
+                        saveGoal(
+                                Map.of(
+                                        "title", "친구 위로하기",
+                                        "characters",
+                                                List.of(Map.of("id", "FRIEND", "role", "넘어진 친구")),
+                                        "forbiddenExpressions", List.of("넘어진"))))
+                .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+                .bodyJson()
+                .extractingPath("$.error.fieldErrors[0].field")
+                .isEqualTo("forbiddenExpressions[0]");
     }
 
     private MvcTestResult saveGoal(Map<String, Object> body) {

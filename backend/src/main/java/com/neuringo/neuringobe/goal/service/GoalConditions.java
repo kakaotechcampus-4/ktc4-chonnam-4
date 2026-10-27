@@ -9,13 +9,16 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -24,8 +27,12 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>정리: 앞뒤 공백을 지우고 안쪽 여러 칸 공백을 한 칸으로 줄인다. 전각 공백·줄 바꿈 없는 공백 같은 유니코드 공백도 공백으로 본다. 목록은 같은 값을 한 번만
  *       남기고 입력 순서를 지킨다.
- *   <li>모순: 피할 표현이 필수 요소 안에 들어 있으면 그 피할 표현을 가리켜 거절한다. 시나리오 생성 결과 검사와 같이 띄어쓰기와 대소문자를 무시한다. 그 검사는 생성
- *       결과 전체에서 피할 표현을 찾으므로, 필수 요소에 들어간 피할 표현은 생성이 계속 실패하게 만든다.
+ *   <li>등장인물: {@code {id, role}} 로 저장한다. id 가 비면 {@code OTHER} 이고, 같은 id 가 둘 이상이면 {@code FRIEND_2}
+ *       처럼 번호를 붙인다. 시나리오 생성은 입력 id 를 그대로 쓰는데, 생성 결과 검사가 id 중복을 실패로 보기 때문이다. 번호는 role 글자 순서로 매겨 칩
+ *       순서와 상관없이 같은 id 가 된다.
+ *   <li>모순: 피할 표현이 필수 요소나 등장인물 role 안에 들어 있으면 그 피할 표현을 가리켜 거절한다. 시나리오 생성 결과 검사와 같이 띄어쓰기와 대소문자를
+ *       무시한다. 그 검사는 생성 결과 전체(등장인물 role 포함)에서 피할 표현을 찾으므로, 이런 조건은 생성이 계속 실패하게 만든다. 시나리오의 아이 자리인
+ *       {@code LEARNER} id 도 거절한다.
  *   <li>해시: 정리한 값으로 계산하되 목록은 정렬해 넣는다. 칩 순서만 다른 목표는 같은 목표다.
  * </ul>
  *
@@ -37,15 +44,15 @@ final class GoalConditions {
     private static final Pattern SPACES = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private static final ObjectMapper HASH_JSON =
             new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
-    private static final Comparator<Map<String, Object>> BY_NAME_THEN_RELATION =
-            Comparator.comparing((Map<String, Object> character) -> (String) character.get("name"))
-                    .thenComparing(
-                            character -> (String) character.get("relation"),
-                            Comparator.nullsFirst(Comparator.naturalOrder()));
+    private static final String OTHER = "OTHER";
+    private static final String LEARNER = "LEARNER";
+    private static final Comparator<Map<String, Object>> BY_ROLE_THEN_ID =
+            Comparator.comparing((Map<String, Object> character) -> (String) character.get("role"))
+                    .thenComparing(character -> (String) character.get("id"));
 
     private GoalConditions() {}
 
-    /** 정리한 목표 조건. 등장인물은 저장 모양({@code name}, 있으면 {@code relation})이다. */
+    /** 정리한 목표 조건. 등장인물은 저장 모양({@code id}, {@code role})이다. */
     record Normalized(
             String title,
             String situationType,
@@ -93,9 +100,15 @@ final class GoalConditions {
             String fieldPrefix) {
         List<FieldError> errors = new ArrayList<>();
         for (int i = 0; i < characters.size(); i++) {
-            if (characters.get(i) == null) {
+            GoalCharacter character = characters.get(i);
+            if (character == null) {
                 errors.add(
                         new FieldError(fieldPrefix + "characters[" + i + "]", "비어 있는 등장인물이 있습니다."));
+            } else if (LEARNER.equals(character.id())) {
+                errors.add(
+                        new FieldError(
+                                fieldPrefix + "characters[" + i + "].id",
+                                "LEARNER 는 역할극의 아이 자리라 등장인물로 둘 수 없습니다."));
             }
         }
         addBlankItems(errors, requiredElements, fieldPrefix + "requiredElements");
@@ -104,14 +117,16 @@ final class GoalConditions {
             return errors;
         }
 
-        List<String> required = requiredElements.stream().map(GoalConditions::compact).toList();
+        List<String> targets = new ArrayList<>();
+        requiredElements.forEach(element -> targets.add(compact(element)));
+        characters.forEach(character -> targets.add(compact(character.role())));
         for (int i = 0; i < forbiddenExpressions.size(); i++) {
             String forbidden = compact(forbiddenExpressions.get(i));
-            if (required.stream().anyMatch(element -> element.contains(forbidden))) {
+            if (targets.stream().anyMatch(target -> target.contains(forbidden))) {
                 errors.add(
                         new FieldError(
                                 fieldPrefix + "forbiddenExpressions[" + i + "]",
-                                "필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없습니다."));
+                                "필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없습니다."));
             }
         }
         return errors;
@@ -126,7 +141,8 @@ final class GoalConditions {
             List<String> requiredElements,
             List<String> forbiddenExpressions) {
         List<Map<String, Object>> storedCharacters =
-                characters.stream().map(GoalConditions::toStored).distinct().toList();
+                numberRepeatedIds(
+                        characters.stream().map(GoalConditions::toStored).distinct().toList());
         return new Normalized(
                 text(title),
                 blankToNull(text(situationType)),
@@ -138,7 +154,7 @@ final class GoalConditions {
 
     static String contentHash(Normalized goal) {
         List<Map<String, Object>> characters = new ArrayList<>(goal.characters());
-        characters.sort(BY_NAME_THEN_RELATION);
+        characters.sort(BY_ROLE_THEN_ID);
         HashInput input =
                 new HashInput(
                         goal.title(),
@@ -167,12 +183,51 @@ final class GoalConditions {
 
     private static Map<String, Object> toStored(GoalCharacter character) {
         Map<String, Object> stored = new LinkedHashMap<>();
-        stored.put("name", text(character.name()));
-        String relation = blankToNull(text(character.relation()));
-        if (relation != null) {
-            stored.put("relation", relation);
-        }
+        String id = blankToNull(text(character.id()));
+        stored.put("id", id == null ? OTHER : id);
+        stored.put("role", text(character.role()));
         return stored;
+    }
+
+    /**
+     * 같은 id 를 쓰는 등장인물 중 role 글자 순서로 첫 인물만 id 를 그대로 두고, 나머지는 쓰이지 않은 {@code _2}, {@code _3} 을 붙인다. 목록
+     * 순서는 그대로다.
+     */
+    private static List<Map<String, Object>> numberRepeatedIds(
+            List<Map<String, Object>> characters) {
+        Map<String, List<Map<String, Object>>> byId = new LinkedHashMap<>();
+        characters.forEach(
+                character ->
+                        byId.computeIfAbsent((String) character.get("id"), id -> new ArrayList<>())
+                                .add(character));
+        Set<String> taken = new HashSet<>(byId.keySet());
+        Map<Map<String, Object>, String> renamed = new IdentityHashMap<>();
+        byId.forEach(
+                (id, sameId) -> {
+                    List<Map<String, Object>> byRole = new ArrayList<>(sameId);
+                    byRole.sort(BY_ROLE_THEN_ID);
+                    int number = 2;
+                    for (Map<String, Object> character : byRole.subList(1, byRole.size())) {
+                        while (taken.contains(id + "_" + number)) {
+                            number++;
+                        }
+                        String numbered = id + "_" + number;
+                        taken.add(numbered);
+                        renamed.put(character, numbered);
+                    }
+                });
+        return characters.stream()
+                .map(
+                        character -> {
+                            String numbered = renamed.get(character);
+                            if (numbered == null) {
+                                return character;
+                            }
+                            Map<String, Object> copy = new LinkedHashMap<>(character);
+                            copy.put("id", numbered);
+                            return copy;
+                        })
+                .toList();
     }
 
     private static List<String> distinctTexts(List<String> values) {

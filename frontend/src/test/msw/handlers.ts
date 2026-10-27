@@ -11,7 +11,7 @@ import type {
   QuizType,
   User,
 } from "@/features/instructor/api"
-import { contradictingForbidden, type GoalCharacter } from "@/features/instructor/lib/goalConditions"
+import { contradictingForbidden, OTHER_CHARACTER_ID, type GoalCharacter } from "@/features/instructor/lib/goalConditions"
 
 // 백엔드 API 명세(ApiResponse·ApiErrorResponse, /api/v1 경로)을 흉내 내는 기본 핸들러.
 // 테스트 하나에서만 다르게 응답하려면 server.use(...) 로 덮어쓴다. 끝나면 setup 이 되돌린다.
@@ -275,7 +275,34 @@ function distinct(values: string[]) {
   return [...new Set(values.map(tidy))]
 }
 
+/** 서버 GoalConditions 의 등장인물 저장: 정리, 같은 {id, role} 은 하나만, 빈 id 는 OTHER, 같은 id 는 role 글자 순서로 _2, _3 을 붙인다. */
+function storedCharacters(characters: GoalCharacter[]): { id: string; role: string }[] {
+  const seen = new Set<string>()
+  const tidied = characters
+    .map((c) => ({ id: c.id?.trim() || OTHER_CHARACTER_ID, role: tidy(c.role) }))
+    .filter((c) => {
+      const key = `${c.id}|${c.role}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  const taken = new Set(tidied.map((c) => c.id))
+  const renamed = new Map<(typeof tidied)[number], string>()
+  for (const id of new Set(tidied.map((c) => c.id))) {
+    // 서버(Java String 비교)와 같게 UTF-16 코드 단위 순서로 정렬한다.
+    const sameId = tidied.filter((c) => c.id === id).sort((a, b) => (a.role < b.role ? -1 : a.role > b.role ? 1 : 0))
+    let number = 2
+    for (const c of sameId.slice(1)) {
+      while (taken.has(`${id}_${number}`)) number++
+      taken.add(`${id}_${number}`)
+      renamed.set(c, `${id}_${number}`)
+    }
+  }
+  return tidied.map((c) => ({ id: renamed.get(c) ?? c.id, role: c.role }))
+}
+
 function newGoal(childId: string, instructorId: string, input: GoalInput): LearningGoal {
+  const characters = storedCharacters(input.characters)
   return {
     goalId: crypto.randomUUID(),
     childId,
@@ -284,7 +311,7 @@ function newGoal(childId: string, instructorId: string, input: GoalInput): Learn
     title: tidy(input.title),
     situationType: input.situationType ? tidy(input.situationType) || null : null,
     category: input.category?.trim() || null,
-    characters: input.characters.map((c) => (c.relation?.trim() ? { name: tidy(c.name), relation: tidy(c.relation) } : { name: tidy(c.name) })),
+    characters,
     requiredElements: distinct(input.requiredElements),
     forbiddenExpressions: distinct(input.forbiddenExpressions),
     // 서버는 정규화한 조건(목록은 정렬)의 SHA-256 이다. 가짜 서버는 같은 내용이면 같은 값이면 충분하다.
@@ -294,14 +321,15 @@ function newGoal(childId: string, instructorId: string, input: GoalInput): Learn
       input.situationType ? tidy(input.situationType) : "",
       distinct(input.requiredElements).sort(),
       distinct(input.forbiddenExpressions).sort(),
-      input.characters.map((c) => `${tidy(c.name)}|${c.relation ? tidy(c.relation) : ""}`).sort(),
+      characters.map((c) => `${c.role}|${c.id}`).sort(),
     ]),
     createdAt: new Date().toISOString(),
   }
 }
 
 /**
- * CreateLearningGoalRequest 검사: @NotBlank @Size(max = 200) title, @Size(max = 200) situationType, 등장인물 이름 @NotBlank.
+ * CreateLearningGoalRequest 검사: @NotBlank @Size(max = 200) title, @Size(max = 200) situationType,
+ * 등장인물 role @NotBlank, id 는 비우거나 영문 대문자 코드.
  * prefix 는 배정 요청 안의 goal 처럼 감싼 경우의 필드 앞부분이다.
  */
 function goalFieldErrors(body: Record<string, unknown>, prefix = ""): FieldError[] {
@@ -312,16 +340,27 @@ function goalFieldErrors(body: Record<string, unknown>, prefix = ""): FieldError
     return [{ field: `${prefix}situationType`, message: "크기가 0에서 200 사이여야 합니다" }]
   }
   const characters = Array.isArray(body.characters) ? (body.characters as Partial<GoalCharacter>[]) : []
-  const unnamed = characters.findIndex((c) => typeof c?.name !== "string" || !c.name.trim())
-  if (unnamed >= 0) return [{ field: `${prefix}characters[${unnamed}].name`, message: "공백일 수 없습니다" }]
+  const noRole = characters.findIndex((c) => typeof c?.role !== "string" || !c.role.trim())
+  if (noRole >= 0) return [{ field: `${prefix}characters[${noRole}].role`, message: "공백일 수 없습니다" }]
+  const badId = characters.findIndex((c) => c.id != null && !/^([A-Z][A-Z0-9_]*)?$/.test(c.id))
+  if (badId >= 0) {
+    return [{ field: `${prefix}characters[${badId}].id`, message: "영문 대문자로 시작하고 영문 대문자·숫자·밑줄만 쓸 수 있습니다." }]
+  }
   return []
 }
 
 /** 서버 GoalConditions 의 모순 검사(422 INVALID_GOAL_CONDITIONS). 요청 검증(422 VALIDATION_FAILED)을 통과한 뒤에 본다. */
 function goalConditionErrors(input: GoalInput, prefix = ""): FieldError[] {
-  return contradictingForbidden(input.requiredElements, input.forbiddenExpressions).map((index) => ({
+  const learner: FieldError[] = input.characters.flatMap((c, i) =>
+    c.id === "LEARNER"
+      ? [{ field: `${prefix}characters[${i}].id`, message: "LEARNER 는 역할극의 아이 자리라 등장인물로 둘 수 없습니다." }]
+      : []
+  )
+  if (learner.length > 0) return learner
+  const roles = input.characters.map((c) => c.role)
+  return contradictingForbidden(input.requiredElements, input.forbiddenExpressions, roles).map((index) => ({
     field: `${prefix}forbiddenExpressions[${index}]`,
-    message: "필수 요소에 들어 있는 표현은 피할 표현으로 둘 수 없습니다.",
+    message: "필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없습니다.",
   }))
 }
 

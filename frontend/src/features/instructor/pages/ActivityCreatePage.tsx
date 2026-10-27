@@ -40,11 +40,13 @@ import {
 } from '../lib/goalPresets'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import {
-  CHARACTER_NAME_MAX,
+  CHARACTER_ROLE_MAX,
   REQUIRED_ELEMENT_PRESETS,
   RELATION_OPTIONS,
   SITUATION_MAX,
   contradictingForbidden,
+  OTHER_CHARACTER_ID,
+  relationLabel,
   type GoalCharacter,
 } from '../lib/goalConditions'
 import { cn } from '@/lib/utils'
@@ -206,7 +208,11 @@ function ActivityCreatePage() {
   const steps =
     activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal' && s.key !== 'conditions')
   // 저장 전에 화면에서 먼저 막는다. 서버도 같은 규칙으로 거절한다.
-  const contradictions = contradictingForbidden(conditions.requiredElements, conditions.forbiddenExpressions)
+  const contradictions = contradictingForbidden(
+    conditions.requiredElements,
+    conditions.forbiddenExpressions,
+    conditions.characters.map((c) => c.role)
+  )
 
   const preset = GOAL_PRESETS.find((p) => p.id === presetId)
   const goal: GoalChoice | null =
@@ -582,8 +588,9 @@ function ActivityCreatePage() {
 
 /**
  * 역할극 추가 조건 (시안 T-ACT-04). 왼쪽은 상황·등장인물·관계, 오른쪽은 피할 표현·필수 요소다. 모두 선택 입력이다.
- * 관계는 인물에 붙는다. 인물 칩을 고른 뒤 관계 버튼을 누르면 그 인물의 관계가 된다(같은 버튼을 다시 누르면 지운다).
- * 피할 표현이 필수 요소 안에 들어 있으면 그 칩에 "필수 요소와 겹침"을 붙이고 다음으로 가지 못하게 한다.
+ * 등장인물 칩에는 이름 대신 역할 설명을 적고 그 글자가 role 이 된다. 칩을 고른 뒤 관계 버튼을 누르면 그 관계가 칩의 id 가 된다
+ * (같은 버튼을 다시 누르면 OTHER 로 돌린다).
+ * 피할 표현이 필수 요소나 등장인물 안에 들어 있으면 그 칩에 "필수 요소·등장인물과 겹침"을 붙이고 다음으로 가지 못하게 한다.
  */
 function ConditionsStep({
   value,
@@ -598,29 +605,28 @@ function ConditionsStep({
   onBack: () => void
   onNext: () => void
 }) {
-  const [selectedName, setSelectedName] = useState<string | null>(null)
-  const selected = value.characters.find((c) => c.name === selectedName) ?? null
+  const [selectedRole, setSelectedRole] = useState<string | null>(null)
+  const selected = value.characters.find((c) => c.role === selectedRole) ?? null
 
-  function addCharacter(name: string) {
-    if (!value.characters.some((c) => c.name === name)) {
-      onChange({ ...value, characters: [...value.characters, { name }] })
+  function addCharacter(role: string) {
+    if (!value.characters.some((c) => c.role === role)) {
+      onChange({ ...value, characters: [...value.characters, { id: OTHER_CHARACTER_ID, role }] })
     }
-    setSelectedName(name)
+    setSelectedRole(role)
   }
 
-  function removeCharacter(name: string) {
-    onChange({ ...value, characters: value.characters.filter((c) => c.name !== name) })
-    if (selectedName === name) setSelectedName(null)
+  function removeCharacter(role: string) {
+    onChange({ ...value, characters: value.characters.filter((c) => c.role !== role) })
+    if (selectedRole === role) setSelectedRole(null)
   }
 
-  function toggleRelation(relation: string) {
+  function toggleRelation(id: string) {
     if (!selected) return
     onChange({
       ...value,
-      characters: value.characters.map((c) => {
-        if (c.name !== selected.name) return c
-        return c.relation === relation ? { name: c.name } : { name: c.name, relation }
-      }),
+      characters: value.characters.map((c) =>
+        c.role !== selected.role ? c : { id: c.id === id ? OTHER_CHARACTER_ID : id, role: c.role }
+      ),
     })
   }
 
@@ -654,18 +660,25 @@ function ConditionsStep({
             <h2 id="characters-heading" className="text-sm font-semibold">
               2. 등장인물
             </h2>
+            <p className={helperTextClass}>이름 대신 역할로 적어 주세요.</p>
             <div className="flex flex-wrap items-center gap-2">
               {value.characters.map((c) => (
                 <Chip
-                  key={c.name}
-                  label={c.relation ? `${c.relation} ${c.name}` : c.name}
-                  pressed={c.name === selectedName}
-                  onSelect={() => setSelectedName(c.name)}
-                  onRemove={() => removeCharacter(c.name)}
-                  removeLabel={`${c.name} 빼기`}
+                  key={c.role}
+                  label={characterLabel(c)}
+                  pressed={c.role === selectedRole}
+                  onSelect={() => setSelectedRole(c.role)}
+                  onRemove={() => removeCharacter(c.role)}
+                  removeLabel={`${c.role} 빼기`}
                 />
               ))}
-              <ChipAdder label="인물 이름" buttonLabel="인물 추가" maxLength={CHARACTER_NAME_MAX} onAdd={addCharacter} />
+              <ChipAdder
+                label="인물 역할"
+                buttonLabel="인물 추가"
+                placeholder="예: 넘어진 친구"
+                maxLength={CHARACTER_ROLE_MAX}
+                onAdd={addCharacter}
+              />
             </div>
           </section>
 
@@ -674,19 +687,19 @@ function ConditionsStep({
               3. 관계
             </h2>
             <p className={helperTextClass}>
-              {selected ? `${selected.name}은(는) 아이에게 어떤 사람인가요?` : '등장인물을 고르면 관계를 정할 수 있어요.'}
+              {selected ? `${selected.role}은(는) 아이에게 어떤 사람인가요?` : '등장인물을 고르면 관계를 정할 수 있어요.'}
             </p>
             <div role="group" aria-labelledby="relation-heading" className="flex flex-wrap gap-2">
               {RELATION_OPTIONS.map((relation) => (
                 <button
-                  key={relation}
+                  key={relation.id}
                   type="button"
                   disabled={!selected}
-                  aria-pressed={selected?.relation === relation}
-                  onClick={() => toggleRelation(relation)}
+                  aria-pressed={selected?.id === relation.id}
+                  onClick={() => toggleRelation(relation.id)}
                   className={cn(filterButtonClass, 'disabled:cursor-not-allowed disabled:text-[var(--instructor-text-disabled)]')}
                 >
-                  {relation}
+                  {relation.label}
                 </button>
               ))}
             </div>
@@ -785,7 +798,7 @@ function Chip({
   tone?: 'neutral' | 'danger'
   conflict?: boolean
 }) {
-  const text = conflict ? `${label} · 필수 요소와 겹침` : label
+  const text = conflict ? `${label} · 필수 요소·등장인물과 겹침` : label
   return (
     <span
       className={cn(
@@ -825,11 +838,13 @@ function Chip({
 function ChipAdder({
   label,
   buttonLabel,
+  placeholder,
   maxLength,
   onAdd,
 }: {
   label: string
   buttonLabel: string
+  placeholder?: string
   maxLength?: number
   onAdd: (value: string) => void
 }) {
@@ -847,6 +862,7 @@ function ChipAdder({
       <input
         aria-label={label}
         value={draft}
+        placeholder={placeholder}
         maxLength={maxLength}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -865,12 +881,18 @@ function ChipAdder({
   )
 }
 
+/** 등장인물 칩·확인 단계에 보일 글자. 관계를 골랐으면 괄호로 붙인다. */
+function characterLabel(character: GoalCharacter): string {
+  const relation = relationLabel(character.id)
+  return relation ? `${character.role}(${relation})` : character.role
+}
+
 /** 확인 단계에 보일 추가 조건. 입력한 것만 보인다. */
 function ConditionsSummary({ conditions }: { conditions: Conditions }) {
   const rows: [string, string][] = []
   if (conditions.situation.trim()) rows.push(['상황', conditions.situation.trim()])
   if (conditions.characters.length > 0) {
-    rows.push(['등장인물', conditions.characters.map((c) => (c.relation ? `${c.name}(${c.relation})` : c.name)).join(', ')])
+    rows.push(['등장인물', conditions.characters.map(characterLabel).join(', ')])
   }
   if (conditions.requiredElements.length > 0) rows.push(['필수 요소', conditions.requiredElements.join(', ')])
   if (conditions.forbiddenExpressions.length > 0) rows.push(['피할 표현', conditions.forbiddenExpressions.join(', ')])
