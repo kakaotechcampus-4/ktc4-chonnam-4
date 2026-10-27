@@ -6,8 +6,10 @@
 --   그 아이가 배정받은 적 없는 것을 하나 골라 활동에 붙인다. 목표는 보지 않는다. 강사 승인 단계는 없다.
 --
 -- 고칠 때 지킬 것
--- - 새 시나리오는 'DRAFT' 로 넣는다. 팀 검토를 마친 뒤 같은 행의 status 를 'APPROVED' 로 바꾸면 그때부터 아이에게 붙는다.
--- - DRAFT 인 행만 이 파일로 내용·상태를 고칠 수 있다. APPROVED·RETIRED 행은 아래 INSERT 를 고쳐도 바뀌지 않는다(ON CONFLICT ... WHERE).
+-- - 이 파일은 세 단계로 돈다. ① 시나리오 본문을 늘 DRAFT 로 넣거나 고친다 ② 작은 목표를 넣거나 고친다 ③ 파일 끝 "승인하기"에 적은 ID 를
+--   APPROVED 로 올린다. 승인을 맨 끝에 두어야 ①②가 DRAFT 상태에서 끝까지 저장된다. 상태는 INSERT 에 적지 않는다.
+-- - 팀 검토를 마치면 "승인하기"에 그 ID 를 더한다. 작은 목표가 하나 이상 있는 DRAFT 만 올라가고, 그때부터 아이에게 붙는다.
+-- - DRAFT 인 행만 이 파일로 내용을 고칠 수 있다. APPROVED·RETIRED 행은 아래 INSERT 를 고쳐도 본문도 작은 목표도 바뀌지 않는다.
 --   승인본은 활동이 가리키고 있어, 고치면 지난 역할극이 본 내용도 바뀌기 때문이다.
 -- - 승인본을 바꾸려면 새 scenario_id 로 DRAFT 를 더해 검토·승인하고, 예전 것은 파일 끝의 UPDATE 로 'RETIRED' 로 내린다
 --   (새 배정에서 빠지고 기록은 남는다).
@@ -20,9 +22,13 @@ INSERT INTO scenario (
     scenario_id, status, scenario_level, goal_content_hash, source_scenario_id,
     title, summary, ai_role, characters, scenario_facts, prohibited_inferences, opening_prompts,
     origin, prompt_version, policy_version, created_at
-) VALUES
+)
+SELECT v.scenario_id::uuid, 'DRAFT', v.scenario_level, v.goal_content_hash, v.source_scenario_id::uuid,
+    v.title, v.summary, v.ai_role, v.characters::jsonb, v.scenario_facts::jsonb, v.prohibited_inferences::jsonb,
+    v.opening_prompts::jsonb, v.origin, v.prompt_version, v.policy_version, v.created_at::timestamptz
+FROM (VALUES
 (
-    '5ce00000-0000-4000-8000-000000000001', 'DRAFT', 'L1', NULL, NULL,
+    '5ce00000-0000-4000-8000-000000000001', 'L1', NULL, NULL,
     '친구의 그림이 찢어졌어요', '친구 다온이의 그림이 찢어져 다온이가 속상해한다.', '친구 다온',
     '[{"name": "다온", "relation": "같은 반 친구"}]',
     '["다온이가 그린 그림이 찢어졌다.", "다온이는 고개를 숙이고 있다."]',
@@ -31,7 +37,7 @@ INSERT INTO scenario (
     'PREPARED', NULL, NULL, '2026-10-27T00:00:00Z'
 ),
 (
-    '5ce00000-0000-4000-8000-000000000002', 'DRAFT', 'L2', NULL, NULL,
+    '5ce00000-0000-4000-8000-000000000002', 'L2', NULL, NULL,
     '놀이 순서를 기다려요', '미끄럼틀 앞에서 친구 하람이와 순서를 정해야 한다.', '친구 하람',
     '[{"name": "하람", "relation": "같은 반 친구"}]',
     '["미끄럼틀 앞에 줄이 있다.", "하람이가 먼저 줄을 섰다."]',
@@ -40,16 +46,19 @@ INSERT INTO scenario (
     'PREPARED', NULL, NULL, '2026-10-27T00:00:00Z'
 ),
 (
-    '5ce00000-0000-4000-8000-000000000003', 'DRAFT', 'L3', NULL, NULL,
+    '5ce00000-0000-4000-8000-000000000003', 'L3', NULL, NULL,
     '친구가 넘어졌어요', '운동장에서 친구 서진이가 넘어져 무릎을 다쳤다.', '친구 서진',
     '[{"name": "서진", "relation": "같은 반 친구"}]',
     '["서진이가 달리다 넘어졌다.", "서진이 무릎에 상처가 났다.", "선생님은 교실에 있다."]',
     '["서진이가 장난치다 넘어졌다고 말하지 않는다."]',
     '{"S0": "서진이가 넘어졌어. 어떻게 하면 좋을까?", "S1": "서진이 무릎이 아파 보여. 서진이한테 뭐라고 말해 줄까?", "S2": "\"많이 아파? 선생님께 같이 갈까?\" 하고 말해 볼까?"}',
     'PREPARED', NULL, NULL, '2026-10-27T00:00:00Z'
+)) AS v (
+    scenario_id, scenario_level, goal_content_hash, source_scenario_id,
+    title, summary, ai_role, characters, scenario_facts, prohibited_inferences, opening_prompts,
+    origin, prompt_version, policy_version, created_at
 )
 ON CONFLICT (scenario_id) DO UPDATE SET
-    status = EXCLUDED.status,
     scenario_level = EXCLUDED.scenario_level,
     goal_content_hash = EXCLUDED.goal_content_hash,
     source_scenario_id = EXCLUDED.source_scenario_id,
@@ -104,6 +113,12 @@ ON CONFLICT (micro_goal_id) DO UPDATE SET
     required_evidence = EXCLUDED.required_evidence,
     achievement_example = EXCLUDED.achievement_example
 WHERE (SELECT s.status FROM scenario s WHERE s.scenario_id = scenario_micro_goal.scenario_id) = 'DRAFT';
+
+-- 승인하기. 팀 검토를 마친 시나리오의 ID 를 아래 목록에 더한다. 작은 목표가 하나 이상 있는 DRAFT 만 올라간다.
+-- UPDATE scenario s SET status = 'APPROVED'
+-- WHERE s.status = 'DRAFT'
+--   AND s.scenario_id IN ('...')
+--   AND EXISTS (SELECT 1 FROM scenario_micro_goal g WHERE g.scenario_id = s.scenario_id);
 
 -- 승인본 내리기. 대체된 승인본의 ID 를 아래에 더한다. 이미 붙은 활동은 계속 그 시나리오를 가리킨다.
 -- UPDATE scenario SET status = 'RETIRED' WHERE status = 'APPROVED' AND scenario_id IN ('...');

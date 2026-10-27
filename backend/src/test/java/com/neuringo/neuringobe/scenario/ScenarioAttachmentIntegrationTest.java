@@ -29,6 +29,7 @@ import com.neuringo.neuringobe.quiz.repository.QuizItemRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioRepository;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +41,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
@@ -235,6 +237,80 @@ class ScenarioAttachmentIntegrationTest {
                 .isNull();
         assertThat(activities.findById(finished.getActivityId()).orElseThrow().getScenarioId())
                 .isEqualTo(example);
+    }
+
+    @Test
+    void approvingInTheSeedKeepsMicroGoalsAndLeavesApprovedRowsAlone() throws Exception {
+        UUID example = SEEDED_EXAMPLES.get(0);
+        String seed = readResource("db/seed/R__scenarios.sql");
+        // 팀 검토를 마치고 "승인하기"에 ID 를 더하면서 작은 목표 하나를 고친 시드.
+        String approve =
+                "\nUPDATE scenario s SET status = 'APPROVED' WHERE s.status = 'DRAFT'"
+                        + " AND s.scenario_id IN ('"
+                        + example
+                        + "') AND EXISTS (SELECT 1 FROM scenario_micro_goal g"
+                        + " WHERE g.scenario_id = s.scenario_id);\n";
+        String approvedSeed = seed.replace("다온이의 기분을 말로 짐작한다", "승인 때 고친 작은 목표") + approve;
+        try {
+            // DRAFT 를 고치면서 승인하면 고친 작은 목표로 승인된다.
+            runSql(approvedSeed);
+            assertThat(statusOf(example)).isEqualTo("APPROVED");
+            assertThat(microGoalsOf(example)).contains("승인 때 고친 작은 목표");
+
+            // 새 DB 에 승인된 시드를 처음 돌려도 작은 목표가 다 들어간다.
+            jdbc.update("delete from scenario where scenario_id = ?", example);
+            runSql(approvedSeed);
+            assertThat(statusOf(example)).isEqualTo("APPROVED");
+            assertThat(microGoalsOf(example)).hasSize(2).contains("승인 때 고친 작은 목표");
+
+            // 승인본은 시드를 고쳐 다시 돌려도 본문도 작은 목표도 바뀌지 않는다.
+            runSql(seed.replace("친구의 그림이 찢어졌어요", "다시 고친 제목") + approve);
+            assertThat(titleOf(example)).isEqualTo("친구의 그림이 찢어졌어요");
+            assertThat(microGoalsOf(example)).contains("승인 때 고친 작은 목표");
+        } finally {
+            // 다른 테스트가 보는 예시를 처음 상태(DRAFT·시드 내용)로 돌린다.
+            runScript("db/migration/V16__demote_unreviewed_scenario_examples.sql");
+            runScript("db/seed/R__scenarios.sql");
+        }
+        assertThat(statusOf(example)).isEqualTo("DRAFT");
+        assertThat(microGoalsOf(example)).contains("다온이의 기분을 말로 짐작한다");
+    }
+
+    @Test
+    void scenarioWithoutMicroGoalsIsNotApproved() {
+        UUID id = UUID.randomUUID();
+        insertScenario(id, "DRAFT", "L1", "2000-01-01T00:00:00Z");
+
+        runSql(
+                "UPDATE scenario s SET status = 'APPROVED' WHERE s.status = 'DRAFT'"
+                        + " AND s.scenario_id IN ('"
+                        + id
+                        + "') AND EXISTS (SELECT 1 FROM scenario_micro_goal g"
+                        + " WHERE g.scenario_id = s.scenario_id);");
+
+        assertThat(statusOf(id)).isEqualTo("DRAFT");
+    }
+
+    private String readResource(String path) throws Exception {
+        return new String(
+                new ClassPathResource(path).getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private void runSql(String sql) {
+        new ResourceDatabasePopulator(new ByteArrayResource(sql.getBytes(StandardCharsets.UTF_8)))
+                .execute(dataSource);
+    }
+
+    private String statusOf(UUID scenarioId) {
+        return jdbc.queryForObject(
+                "select status from scenario where scenario_id = ?", String.class, scenarioId);
+    }
+
+    private List<String> microGoalsOf(UUID scenarioId) {
+        return jdbc.queryForList(
+                "select description from scenario_micro_goal where scenario_id = ? order by order_no",
+                String.class,
+                scenarioId);
     }
 
     private void runScript(String path) {
