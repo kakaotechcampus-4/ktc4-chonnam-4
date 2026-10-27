@@ -22,7 +22,6 @@ import {
   filterButtonClass,
   focusRingClass,
   helperTextClass,
-  hitAreaClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -804,11 +803,16 @@ function Chip({
       ) : (
         <span>{text}</span>
       )}
+      {/* 빼기 버튼의 클릭 영역은 위아래로만 48px 로 넓힌다. 공통 클릭 영역처럼 좌우로도 넓히면 옆의 이름 버튼을 덮어, 이름을 눌러도 칩이 빠진다. */}
       <button
         type="button"
         aria-label={removeLabel}
         onClick={onRemove}
-        className={cn('relative inline-flex size-6 items-center justify-center rounded-full', hitAreaClass, focusRingClass)}
+        className={cn(
+          'relative inline-flex h-6 w-8 items-center justify-center rounded-full',
+          'after:absolute after:inset-x-0 after:top-1/2 after:h-12 after:-translate-y-1/2',
+          focusRingClass
+        )}
       >
         <MaterialIcon name="close" className="size-4" />
       </button>

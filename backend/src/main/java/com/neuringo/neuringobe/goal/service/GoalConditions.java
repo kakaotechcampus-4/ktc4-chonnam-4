@@ -22,15 +22,19 @@ import java.util.regex.Pattern;
  * 목표 조건의 정리·모순 검사·해시 규칙. 스프링과 DB 없이 같은 입력이면 같은 결과를 낸다.
  *
  * <ul>
- *   <li>정리: 앞뒤 공백을 지우고 안쪽 여러 칸 공백을 한 칸으로 줄인다. 목록은 같은 값을 한 번만 남기고 입력 순서를 지킨다.
+ *   <li>정리: 앞뒤 공백을 지우고 안쪽 여러 칸 공백을 한 칸으로 줄인다. 전각 공백·줄 바꿈 없는 공백 같은 유니코드 공백도 공백으로 본다. 목록은 같은 값을 한 번만
+ *       남기고 입력 순서를 지킨다.
  *   <li>모순: 피할 표현이 필수 요소 안에 들어 있으면 그 피할 표현을 가리켜 거절한다. 시나리오 생성 결과 검사와 같이 띄어쓰기와 대소문자를 무시한다. 그 검사는 생성
  *       결과 전체에서 피할 표현을 찾으므로, 필수 요소에 들어간 피할 표현은 생성이 계속 실패하게 만든다.
  *   <li>해시: 정리한 값으로 계산하되 목록은 정렬해 넣는다. 칩 순서만 다른 목표는 같은 목표다.
  * </ul>
+ *
+ * <p>검사는 저장할 값과 같은 정리를 거친 값으로 한다. 정리 전 값으로 검사하면 정리에서만 지워지는 공백 때문에, 검사는 통과하고 저장된 조건은 모순일 수 있다. 밖에서는
+ * {@link #prepare} 하나로 검사와 정리를 함께 받는다.
  */
 final class GoalConditions {
 
-    private static final Pattern SPACES = Pattern.compile("\\s+");
+    private static final Pattern SPACES = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private static final ObjectMapper HASH_JSON =
             new ObjectMapper().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     private static final Comparator<Map<String, Object>> BY_NAME_THEN_RELATION =
@@ -49,6 +53,34 @@ final class GoalConditions {
             List<Map<String, Object>> characters,
             List<String> requiredElements,
             List<String> forbiddenExpressions) {}
+
+    /** 검사 결과. 걸린 곳이 없을 때만 {@code goal} 이 있다. */
+    record Prepared(List<FieldError> errors, Normalized goal) {}
+
+    /** 검사하고, 통과하면 저장할 모양으로 정리해 함께 돌려준다. */
+    static Prepared prepare(
+            String title,
+            String situationType,
+            String category,
+            List<GoalCharacter> characters,
+            List<String> requiredElements,
+            List<String> forbiddenExpressions,
+            String fieldPrefix) {
+        List<FieldError> errors =
+                violations(characters, requiredElements, forbiddenExpressions, fieldPrefix);
+        if (!errors.isEmpty()) {
+            return new Prepared(errors, null);
+        }
+        return new Prepared(
+                List.of(),
+                normalize(
+                        title,
+                        situationType,
+                        category,
+                        characters,
+                        requiredElements,
+                        forbiddenExpressions));
+    }
 
     /**
      * 정리하고 검사한다. 걸린 곳이 있으면 {@code fieldPrefix} 를 붙인 필드 경로로 모두 돌려주고, 없으면 빈 목록이다. 목록 안 빈 값·null 과 모순은
@@ -85,7 +117,7 @@ final class GoalConditions {
         return errors;
     }
 
-    /** {@link #violations} 가 비어 있을 때만 부른다. */
+    /** {@link #violations} 가 비어 있을 때만 부른다. 밖에서는 {@link #prepare} 를 쓴다. */
     static Normalized normalize(
             String title,
             String situationType,
@@ -127,7 +159,7 @@ final class GoalConditions {
     private static void addBlankItems(List<FieldError> errors, List<String> values, String field) {
         for (int i = 0; i < values.size(); i++) {
             String value = values.get(i);
-            if (value == null || value.isBlank()) {
+            if (value == null || text(value).isEmpty()) {
                 errors.add(new FieldError(field + "[" + i + "]", "비어 있는 항목이 있습니다."));
             }
         }
@@ -154,18 +186,16 @@ final class GoalConditions {
     }
 
     private static String text(String value) {
-        return value == null ? null : SPACES.matcher(value.strip()).replaceAll(" ");
+        return value == null ? null : SPACES.matcher(value).replaceAll(" ").strip();
     }
 
     private static String blankToNull(String value) {
         return value == null || value.isEmpty() ? null : value;
     }
 
-    /** 시나리오 생성 결과의 피할 표현 검사와 같은 비교 기준(공백 제거, 소문자). */
+    /** 시나리오 생성 결과의 피할 표현 검사와 같은 비교 기준(공백 제거, 소문자). 저장할 값과 같게 정리한 뒤 비교한다. */
     private static String compact(String value) {
-        return SPACES.matcher(Objects.requireNonNull(value))
-                .replaceAll("")
-                .toLowerCase(Locale.ROOT);
+        return text(Objects.requireNonNull(value)).replace(" ", "").toLowerCase(Locale.ROOT);
     }
 
     private record HashInput(

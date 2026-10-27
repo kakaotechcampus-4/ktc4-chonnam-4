@@ -60,6 +60,54 @@ class GoalConditionsIntegrationTest {
     }
 
     @Test
+    void rejectsAForbiddenExpressionThatOnlyFullWidthSpacesSeparate() {
+        MvcTestResult result =
+                saveGoal(
+                        Map.of(
+                                "title", "친구 위로하기",
+                                "requiredElements", List.of("위로 표현 1회"),
+                                "forbiddenExpressions", List.of("\u3000위로\u3000")));
+
+        assertThat(result).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(result)
+                .bodyJson()
+                .extractingPath("$.error.fieldErrors[*].field")
+                .asArray()
+                .containsExactly("forbiddenExpressions[0]");
+        assertThat(goalsOfChild()).isEmpty();
+    }
+
+    @Test
+    void assignmentRejectsFullWidthSpacedForbiddenExpressionAndSavesNothing() {
+        MvcTestResult result =
+                fixtures.postJsonWithKey(
+                        fixtures.instructor(),
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "goal",
+                                Map.of(
+                                        "title", "친구 위로하기",
+                                        "requiredElements", List.of("위로 표현 1회"),
+                                        "forbiddenExpressions", List.of("\u3000위로\u3000"))),
+                        UUID.randomUUID());
+
+        assertThat(result).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(result)
+                .bodyJson()
+                .extractingPath("$.error.fieldErrors[*].field")
+                .asArray()
+                .containsExactly("goal.forbiddenExpressions[0]");
+        assertThat(goalsOfChild()).isEmpty();
+        assertThat(fixtures.get("/api/v1/children/{childId}/activities", childId))
+                .bodyJson()
+                .extractingPath("$.data")
+                .asArray()
+                .isEmpty();
+    }
+
+    @Test
     void assignmentPointsAtTheGoalFieldAndSavesNothing() {
         MvcTestResult result =
                 fixtures.postJsonWithKey(

@@ -122,6 +122,59 @@ class GoalConditionsTest {
     }
 
     @Test
+    void checksTheSameValuesItWouldStoreIncludingUnicodeSpaces() {
+        // 전각 공백(U+3000)과 줄 바꿈 없는 공백(U+00A0)은 저장할 때 지워지므로, 검사도 지운 값으로 한다.
+        List<FieldError> errors =
+                GoalConditions.violations(
+                        List.of(),
+                        List.of("위로 표현 1회"),
+                        List.of("\u3000위로\u3000", "\u00A0위\u00A0로", "괜찮아"),
+                        "");
+
+        assertThat(errors)
+                .extracting(FieldError::field)
+                .containsExactly("forbiddenExpressions[0]", "forbiddenExpressions[1]");
+    }
+
+    @Test
+    void pointsAtEveryRequestPositionEvenWhenStoringMergesThem() {
+        // 저장하면 둘이 "위로" 하나가 되지만, 오류는 화면이 보낸 칩 두 개를 각각 가리킨다.
+        GoalConditions.Prepared prepared =
+                GoalConditions.prepare(
+                        "위로하기",
+                        null,
+                        null,
+                        List.of(),
+                        List.of("위로 표현 1회"),
+                        List.of("괜찮아", "위로", "\u3000위로"),
+                        "goal.");
+
+        assertThat(prepared.goal()).isNull();
+        assertThat(prepared.errors())
+                .extracting(FieldError::field)
+                .containsExactly("goal.forbiddenExpressions[1]", "goal.forbiddenExpressions[2]");
+    }
+
+    @Test
+    void preparedGoalIsStoredWithUnicodeSpacesCleaned() {
+        GoalConditions.Prepared prepared =
+                GoalConditions.prepare(
+                        "\u3000친구\u00A0위로하기 ",
+                        "\u3000",
+                        null,
+                        List.of(),
+                        List.of("\u3000위로 표현 1회"),
+                        List.of("울지\u3000마"),
+                        "");
+
+        assertThat(prepared.errors()).isEmpty();
+        assertThat(prepared.goal().title()).isEqualTo("친구 위로하기");
+        assertThat(prepared.goal().situationType()).isNull();
+        assertThat(prepared.goal().requiredElements()).containsExactly("위로 표현 1회");
+        assertThat(prepared.goal().forbiddenExpressions()).containsExactly("울지 마");
+    }
+
+    @Test
     void acceptsConditionsWithoutOverlap() {
         assertThat(
                         GoalConditions.violations(
@@ -137,7 +190,7 @@ class GoalConditionsTest {
         List<FieldError> errors =
                 GoalConditions.violations(
                         Arrays.asList(new GoalCharacter("다온", null), null),
-                        Arrays.asList("위로 표현 1회", " "),
+                        Arrays.asList("위로 표현 1회", "\u3000"),
                         Arrays.asList(null, "괜찮아"),
                         "");
 
