@@ -124,6 +124,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 422 | INVALID_QUIZ_RESULT | 판정/힌트/응답 모순 |
 | 422 | VALIDATION_FAILED | 길이 검증 |
 | 404 | ACTIVITY_QUIZ_NOT_FOUND | 배정 문항 없음 |
+| 500 | QUIZ_RESULT_CALCULATION_FAILED | 정상 집계를 만들지 못함. 마지막 답안·결과·활동 변경이 롤백됨. 기존 firstResponse와 최종 답안 등을 그대로 유지해 수동 재전송 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 | 404 | ACTIVITY_QUIZ_NOT_FOUND | 없거나 소유권 밖 리소스 |
 
@@ -267,3 +268,5 @@ curl -i -X PUT "$NEURINGO_API_ORIGIN/api/v1/activity-quiz-items/${activityQuizId
 - 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
+
+S5-JIN-01(2026-10-28): 계산 장애는 기본값으로 저장하지 않습니다. 실패한 마지막 PUT은 롤백되며 GET attempt는 기존 답안 상태를 반환하거나, 최초 제출이었다면404 ATTEMPT_NOT_FOUND입니다. 정상 집계의 유효 문항0개는 성공 처리하며 L1/S1·NO_VALID_QUESTIONS를 저장합니다. 정책은 INITIAL_QUIZ_V2입니다.

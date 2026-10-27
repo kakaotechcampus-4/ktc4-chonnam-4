@@ -1,5 +1,14 @@
 # API v1 변경 이력
 
+## 2026-10-28 — S5-JIN-01 계산·저장 연결
+
+- 현재 작업 브랜치 구현 기준이며 병합·운영 배포 완료를 뜻하지 않습니다.
+- 정책 INITIAL_QUIZ_V2: 정상 집계의 유효0개만 L1/S1 기본값. 집계 장애는 답안 확정 시500 QUIZ_RESULT_CALCULATION_FAILED로 반환하고 트랜잭션을 롤백합니다.
+- 퀴즈 결과 응답에 nullable difficultyFallbackReason을 추가합니다. NO_VALID_QUESTIONS 또는 LEGACY_UNSPECIFIED이며 기본값 미사용은null입니다.
+- V13은 기존 건수/정책을 보존하고 과거 기본값 사유는 추정하지 않습니다. 로그는 최소 상태만 남기며 기본값 완료 로그는 커밋 뒤에 기록합니다.
+- FE 소스·연동 예제 타입/fixture는 수정하지 않았습니다. 최종 연동 후속 항목으로 관리합니다.
+
+
 ## 2026-10-22 — develop 63e4314 반영
 
 기준 커밋: [`63e43144c92449ec5670390a6b99d20d2b2580a5`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5). 기존 2026-10-06/c644dc2 명세에서 현재 코드의 HTTP 계약으로 갱신했습니다. 이 변경은 로컬 v1 문서/연동 예제만 수정하며 GitHub 푸시·서버·DB·제품 정책 승인을 수행하지 않습니다.
