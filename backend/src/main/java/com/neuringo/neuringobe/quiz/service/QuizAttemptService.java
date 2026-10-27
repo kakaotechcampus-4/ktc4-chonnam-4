@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -49,6 +50,7 @@ public class QuizAttemptService {
     private final ChildRepository children;
     private final ChildAccessScope access;
     private final QuizAssignmentService assignmentService;
+    private final ApplicationEventPublisher events;
 
     public QuizAttemptService(
             ActivityRepository activities,
@@ -58,7 +60,8 @@ public class QuizAttemptService {
             QuizResultRepository results,
             ChildRepository children,
             ChildAccessScope access,
-            QuizAssignmentService assignmentService) {
+            QuizAssignmentService assignmentService,
+            ApplicationEventPublisher events) {
         this.activities = activities;
         this.assignments = assignments;
         this.attempts = attempts;
@@ -67,6 +70,7 @@ public class QuizAttemptService {
         this.children = children;
         this.access = access;
         this.assignmentService = assignmentService;
+        this.events = events;
     }
 
     @Transactional
@@ -234,10 +238,17 @@ public class QuizAttemptService {
     }
 
     public QuizResultResponse result(UUID activityId, Authentication authentication) {
-        requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
+        Activity activity =
+                requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
         QuizResult result =
                 results.findById(activityId)
                         .orElseThrow(() -> conflict("QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다."));
+        if (result.isInitialDifficultyUsed() && activity.getScenarioId() == null) {
+            // 퀴즈를 마칠 때 시나리오를 붙이지 못했으면 결과를 읽을 때 다시 시도한다.
+            events.publishEvent(
+                    new FirstQuizCompleted(
+                            activityId, activity.getChildId(), result.getScenarioLevel()));
+        }
         return QuizResultResponse.from(result);
     }
 
@@ -397,6 +408,11 @@ public class QuizAttemptService {
         if (first) {
             activity.applyInitialDifficulty(
                     decision.initialSupportLevel(), decision.fallbackApplied());
+            events.publishEvent(
+                    new FirstQuizCompleted(
+                            activity.getActivityId(),
+                            activity.getChildId(),
+                            decision.scenarioLevel()));
         }
     }
 
