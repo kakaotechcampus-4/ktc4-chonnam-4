@@ -3,7 +3,6 @@ package com.neuringo.neuringobe.goal.service;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
-import com.neuringo.neuringobe.common.ApiErrorResponse;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.domain.LearningGoal;
@@ -68,23 +67,23 @@ public class LearningGoalService {
         List<GoalCharacter> characters = emptyIfNull(request.characters());
         List<String> required = emptyIfNull(request.requiredElements());
         List<String> forbidden = emptyIfNull(request.forbiddenExpressions());
-        List<ApiErrorResponse.FieldError> violations =
-                GoalConditions.violations(characters, required, forbidden, fieldPrefix);
-        if (!violations.isEmpty()) {
-            throw new ApiException(
-                    HttpStatus.UNPROCESSABLE_CONTENT,
-                    "INVALID_GOAL_CONDITIONS",
-                    "목표 조건이 올바르지 않습니다.",
-                    violations);
-        }
-        GoalConditions.Normalized goal =
-                GoalConditions.normalize(
+        GoalConditions.Prepared prepared =
+                GoalConditions.prepare(
                         request.title(),
                         request.situationType(),
                         request.category(),
                         characters,
                         required,
-                        forbidden);
+                        forbidden,
+                        fieldPrefix);
+        if (!prepared.errors().isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "INVALID_GOAL_CONDITIONS",
+                    "목표 조건이 올바르지 않습니다.",
+                    prepared.errors());
+        }
+        GoalConditions.Normalized goal = prepared.goal();
         return new LearningGoal(
                 UUID.randomUUID(),
                 childId,
