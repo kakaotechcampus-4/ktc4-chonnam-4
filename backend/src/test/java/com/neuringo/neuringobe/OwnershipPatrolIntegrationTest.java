@@ -52,6 +52,9 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("PUT /api/v1/activity-quiz-items/{activityQuizId}/attempt", "아동만"),
                     Map.entry("POST /api/v1/activity-quiz-items/{activityQuizId}/hints", "아동만"),
                     Map.entry(
+                            "POST /api/v1/activities/{activityId}/roleplay-sessions",
+                            "아동 본인만: QuizFlowIntegrationTest에서 타 아동·강사 차단 검증"),
+                    Map.entry(
                             "PATCH /api/v1/activity-quiz-items/{activityQuizId}/attempt", "내부 처리만"),
                     // 역할극 음성 설정이 있을 때만 등록된다. 이 테스트 설정(local)에는 없다.
                     Map.entry("POST /api/v1/roleplay-sessions/{sessionId}/voice-inputs", "아동만"));

@@ -1,7 +1,9 @@
 package com.neuringo.neuringobe.quiz.repository;
 
 import com.neuringo.neuringobe.quiz.domain.QuizResult;
+import com.neuringo.neuringobe.quiz.dto.InitialDifficultyEvidence;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,6 +16,30 @@ public interface QuizResultRepository extends JpaRepository<QuizResult, UUID> {
                     "select exists (select 1 from quiz_result r join activity a on a.activity_id = r.activity_id where a.child_id = :childId and r.initial_difficulty_used)",
             nativeQuery = true)
     boolean existsInitialDifficultyUsedByChild(@Param("childId") UUID childId);
+
+    /** 결과와 활동의 적용값을 한 조회에서 비교해 확정 중인 상태를 섞어 읽지 않는다. */
+    @Query(
+            """
+            select new com.neuringo.neuringobe.quiz.dto.InitialDifficultyEvidence(
+                a.activityId, a.childId, a.goalId,
+                r.validQuestionCount, r.correctQuestionCount,
+                r.scenarioLevel, r.initialSupportLevel,
+                r.difficultyFallbackApplied, r.difficultyFallbackReason, r.policyVersion)
+            from QuizResult r join Activity a on a.activityId = r.activityId
+            where a.activityId = :activityId and a.childId = :childId
+                and a.activityType = com.neuringo.neuringobe.activity.domain.ActivityType.FIRST_COMBINED
+                and a.goalId is not null and r.initialDifficultyUsed = true
+                and a.initialSupportLevel = r.initialSupportLevel
+                and a.difficultyFallbackApplied = r.difficultyFallbackApplied
+                and r.scenarioLevel in ('L1', 'L2', 'L3')
+                and r.initialSupportLevel in ('S0', 'S1', 'S2', 'S3')
+                and r.validQuestionCount >= 0 and r.correctQuestionCount >= 0
+                and r.correctQuestionCount <= r.validQuestionCount
+                and (r.validQuestionCount > 0 or r.difficultyFallbackApplied = true)
+                and trim(r.policyVersion) <> ''
+            """)
+    Optional<InitialDifficultyEvidence> findAppliedInitialDifficulty(
+            @Param("activityId") UUID activityId, @Param("childId") UUID childId);
 
     /** 아동 삭제(ADR 2026-10-04 D1). */
     @Modifying

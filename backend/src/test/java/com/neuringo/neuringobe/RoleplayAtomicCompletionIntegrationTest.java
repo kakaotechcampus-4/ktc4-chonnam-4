@@ -24,6 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -338,6 +340,58 @@ class RoleplayAtomicCompletionIntegrationTest {
                 f.session);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "GUIDING_QUESTION, PROBE_EMOTION",
+        "ANSWER_REVEAL, PROBE_EMOTION",
+        "REDIRECT, REDIRECT_TO_SCENARIO",
+        "CONFIRMATION, CONFIRM_UNDERSTANDING",
+        "CLOSING, CLOSE_ROLEPLAY"
+    })
+    void storesApprovedResponseMetadataAndKeepsItWhenCanonicalTextIsErased(
+            String responseType, String strategy) {
+        var f = fixture();
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1, 2, responseType, strategy);
+        assertThat(store.commit(command, RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        var expected = java.util.Map.of("response_type", responseType, "strategy_used", strategy);
+        assertThat(metadata(command.turnId())).isEqualTo(expected);
+        retention.completeNormallyAndDelete(f.session, f.child, f.activity);
+        assertThat(canonicalTurns(f)).isZero();
+        assertThat(metadata(command.turnId())).isEqualTo(expected);
+    }
+
+    @Test
+    void sameKeyReplayKeepsTheOriginallyCommittedResponseMetadata() {
+        var f = fixture();
+        var key = UUID.randomUUID();
+        var original = command(f, key, "a".repeat(64), 1, 2, "GUIDING_QUESTION", "PROBE_EMOTION");
+        store.commit(original, RoleplayTurnDeadline.start());
+        var replay =
+                (RoleplayCheckpointStore.Committed)
+                        store.commit(
+                                command(
+                                        f,
+                                        key,
+                                        "a".repeat(64),
+                                        1,
+                                        2,
+                                        "ANSWER_REVEAL",
+                                        "PROBE_EMOTION"),
+                                RoleplayTurnDeadline.start());
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.turnId()).isEqualTo(original.turnId());
+        assertThat(metadata(original.turnId()))
+                .containsEntry("response_type", "GUIDING_QUESTION")
+                .containsEntry("strategy_used", "PROBE_EMOTION");
+        assertThat(turns(f)).isEqualTo(2);
+    }
+
+    private java.util.Map<String, Object> metadata(UUID turn) {
+        return jdbc.queryForMap(
+                "select response_type, strategy_used from roleplay_turn where turn_id=?", turn);
+    }
+
     private int turns(Fixture f) {
         return jdbc.queryForObject(
                 "select count(*) from roleplay_turn where session_id=?", Integer.class, f.session);
@@ -359,6 +413,17 @@ class RoleplayAtomicCompletionIntegrationTest {
 
     private RoleplayCheckpointCommand command(
             Fixture f, UUID key, String fingerprint, long version, int number) {
+        return command(f, key, fingerprint, version, number, "CLOSING", "CLOSE_ROLEPLAY");
+    }
+
+    private RoleplayCheckpointCommand command(
+            Fixture f,
+            UUID key,
+            String fingerprint,
+            long version,
+            int number,
+            String responseType,
+            String strategy) {
         var trace =
                 new AiTraceContext(
                         UUID.randomUUID(),
@@ -379,15 +444,15 @@ class RoleplayAtomicCompletionIntegrationTest {
                         "RELEVANT",
                         "GOAL_ACHIEVED",
                         new AnalysisResult.PrimaryGap("NONE", null),
-                        new AnalysisResult.NextStrategy("CLOSE_ROLEPLAY", goal, null, "S1"),
+                        new AnalysisResult.NextStrategy(strategy, goal, null, "S1"),
                         0.9);
         var response =
                 new CandidateResponse(
                         candidate,
                         trace.turnId(),
                         "synthetic approved response",
-                        "CLOSING",
-                        "CLOSE_ROLEPLAY",
+                        responseType,
+                        strategy,
                         goal,
                         "S1",
                         List.of());

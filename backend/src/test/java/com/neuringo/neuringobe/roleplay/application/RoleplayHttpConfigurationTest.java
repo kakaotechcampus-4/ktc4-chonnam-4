@@ -36,12 +36,22 @@ class RoleplayHttpConfigurationTest {
     }
 
     private ApplicationContextRunner ports(ApplicationContextRunner runner) {
+        return portsWithoutGoals(runner)
+                .withBean(
+                        RoleplayActivityGoalEvaluator.class,
+                        () -> mock(RoleplayActivityGoalEvaluator.class));
+    }
+
+    private ApplicationContextRunner portsWithoutGoals(ApplicationContextRunner runner) {
         return runner.withBean(
                         RoleplayRequestScopeService.class,
                         () -> mock(RoleplayRequestScopeService.class))
                 .withBean(RoleplayCheckpointStore.class, () -> mock(RoleplayCheckpointStore.class))
                 .withBean(RoleplayRequestGuard.class, () -> mock(RoleplayRequestGuard.class))
                 .withBean(RoleplayContextSource.class, () -> mock(RoleplayContextSource.class))
+                .withBean(
+                        RoleplayCompletionService.class,
+                        () -> mock(RoleplayCompletionService.class))
                 .withBean(RoleplayInputProcessor.class, () -> mock(RoleplayInputProcessor.class))
                 .withBean(LlmProvider.class, () -> mock(LlmProvider.class))
                 .withBean(SpeechToTextProvider.class, () -> mock(SpeechToTextProvider.class))
@@ -77,6 +87,11 @@ class RoleplayHttpConfigurationTest {
     @Test
     void enabledWithoutOwnedImplementationsFailsAtStartup() {
         enabled().run(c -> assertThat(c).hasFailed());
+    }
+
+    @Test
+    void enabledWithoutGoalEvaluatorCannotSilentlySkipActivityCompletion() {
+        portsWithoutGoals(enabled()).run(c -> assertThat(c).hasFailed());
     }
 
     @Test

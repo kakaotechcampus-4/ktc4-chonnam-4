@@ -314,7 +314,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var unavailable =
                     executor(
                             workers,
-                            k -> {
+                            (k, sourceDeadline) -> {
                                 calls.add("CONTEXT");
                                 return Optional.empty();
                             });
@@ -392,7 +392,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         var release = new CountDownLatch(1);
         var reads = new AtomicInteger();
         RoleplayContextSource source =
-                k -> {
+                (k, sourceDeadline) -> {
                     reads.incrementAndGet();
                     entered.countDown();
                     try {
@@ -402,7 +402,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException(e);
                     }
-                    return approved(k);
+                    return approved(k, sourceDeadline);
                 };
         try (var workers = Executors.newFixedThreadPool(2);
                 var callers = Executors.newSingleThreadExecutor()) {
@@ -821,7 +821,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                 RoleplayTurnDeadline.start());
     }
 
-    private Optional<RoleplayContextSource.Snapshot> approved(RoleplayContextSource.Key key) {
+    private Optional<RoleplayContextSource.Snapshot> approved(
+            RoleplayContextSource.Key key, RoleplayTurnDeadline sourceDeadline) {
         calls.add("CONTEXT");
         var fixture = RoleplayFixtures.input("");
         return Optional.of(
@@ -831,7 +832,11 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                         fixture.scenario(),
                         new RoleplayTurnInput.State(
                                 RoleplayFixtures.MG_EMOTION, "S1", 1, 0, false, 1, 77, 9),
-                        fixture.recentDialogue()));
+                        fixture.recentDialogue(),
+                        com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                                .inputForScenario(fixture.scenario()),
+                        com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                                .emptyResponseHistory(fixture.scenario())));
     }
 
     private RoleplayScopedVoiceTurnExecutor executor(
@@ -942,7 +947,14 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                                                 .toString());
                                     return success(
                                             new LlmCompletion(
-                                                    json, "fake", "fake", "stop", null, null),
+                                                    RoleplayFixtures.bindAnalysis(
+                                                            json,
+                                                            request.traceContext().analysisId()),
+                                                    "fake",
+                                                    "fake",
+                                                    "stop",
+                                                    null,
+                                                    null),
                                             request.traceContext(),
                                             request.operation());
                                 }));

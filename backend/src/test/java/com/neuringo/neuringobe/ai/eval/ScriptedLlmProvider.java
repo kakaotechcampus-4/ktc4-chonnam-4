@@ -52,6 +52,42 @@ final class ScriptedLlmProvider implements LlmProvider {
                                     throw new IllegalArgumentException(
                                             "unsupported operation " + request.operation());
                         };
+        if (!(formatFailureOnce.contains(request.operation()) && firstTry)) {
+            if (request.operation() == AiOperation.CAUSE_ANALYSIS
+                    || request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                java.util.Map<String, Object> body =
+                        new java.util.LinkedHashMap<>(
+                                JSON.readValue(
+                                        content,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {}));
+                if (request.operation() == AiOperation.CAUSE_ANALYSIS) {
+                    body.put(
+                            "goal_observation",
+                            new com.neuringo.neuringobe.ai.application.structured.output
+                                    .GoalObservationOutput.Analysis(
+                                    "analysis-result/v2",
+                                    request.traceContext().analysisId(),
+                                    java.util.List.of(),
+                                    new com.neuringo.neuringobe.ai.application.structured.output
+                                            .GoalObservationOutput.Assessment(
+                                            com.neuringo.neuringobe.ai.application.structured.output
+                                                    .GoalObservationOutput.ActivityDecision
+                                                    .IN_PROGRESS,
+                                            java.util.List.of())));
+                } else {
+                    body.put(
+                            "goal_observation_review",
+                            new com.neuringo.neuringobe.ai.application.structured.output
+                                    .GoalObservationOutput.Review(
+                                    "evaluation-result/v2",
+                                    request.traceContext().analysisId(),
+                                    true,
+                                    true));
+                }
+                content = JSON.writeValueAsString(body);
+            }
+        }
         int inputTokens = (request.systemPrompt().length() + request.userPrompt().length()) / 2;
         int outputTokens = content.length() / 2;
         AiCallMetadata metadata =

@@ -7,6 +7,7 @@ import com.neuringo.neuringobe.ai.application.model.LlmRequest;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,23 +20,23 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 역할극 한 턴의 세 호출(원인 판단 → 후보 응답 생성 → 응답 판단) 프롬프트를 만든다. 워크플로우 v3 11·12장 기준.
  *
- * <p>시스템 프롬프트는 classpath 의 prompts/roleplay/v1/*.md 이고, 사용자 메시지는 입력 JSON 하나다. 추적
- * 식별자(request·activity· class·child·session ID)는 프롬프트에 넣지 않는다. 모델이 그대로 돌려줘야 하는 turn·candidate·micro
- * goal ID 만 넣는다.
+ * <p>시스템 프롬프트는 classpath 의 prompts/roleplay 아래에 있고, 사용자 메시지는 입력 JSON 하나다. 추적 식별자(request·activity·
+ * class·child·session ID)는 프롬프트에 넣지 않는다. 모델이 그대로 돌려줘야 하는 turn·candidate·micro goal ID와 v2 관찰 검수를
+ * 연결하는 analysis ID만 넣는다.
  *
  * <p>재시도 횟수 관리와 호출 순서는 오케스트레이터의 책임이다. 이 클래스는 요청과, 그 요청에 맞는 출력인지 검사하는 parser 만 만든다.
  */
 public final class RoleplayPromptFactory {
 
-    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v1";
+    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v2";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation/v1";
+            "roleplay-response-evaluation/v2";
 
-    public static final String ANALYSIS_SCHEMA_VERSION = "analysis-result/v1";
+    public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
-    public static final String EVALUATION_SCHEMA_VERSION = "evaluation-result/v1";
+    public static final String EVALUATION_SCHEMA_VERSION = GoalObservationOutput.EVALUATION_VERSION;
 
     /** 후보 응답 길이 상한(공백 포함). 프롬프트는 60자 이내를 요구하고, 이 값을 넘으면 형식 실패로 막는다. */
     public static final int MAX_RESPONSE_LENGTH = 80;
@@ -52,23 +53,25 @@ public final class RoleplayPromptFactory {
     public RoleplayPromptFactory(ObjectMapper objectMapper, String policyVersion) {
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.policyVersion = policyVersion;
-        this.causeAnalysisSystemPrompt = PromptTemplates.load("roleplay/v1/cause-analysis.md");
+        this.causeAnalysisSystemPrompt = PromptTemplates.load("roleplay/v2/cause-analysis.md");
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
         this.responseEvaluationSystemPrompt =
-                PromptTemplates.load("roleplay/v1/response-evaluation.md");
+                PromptTemplates.load("roleplay/v2/response-evaluation.md");
     }
 
-    /** A. 원인 판단. retry 는 재분석일 때만 넣는다. */
+    /** 원인 판단과 관찰 근거를 같은 호출에서 준비한다. */
     public PreparedPrompt<AnalysisResult> causeAnalysis(
             AiTraceContext trace,
             AiAttemptContext attempts,
             int currentAttempt,
             RoleplayTurnInput input,
-            AnalysisRetry retry) {
+            AnalysisRetry retry,
+            GoalObservationInput observations) {
         requireSameTurn(trace, input);
 
         Map<String, Object> message = turnSections(input);
+        addObservationContext(message, observations, input, trace);
         if (retry != null) {
             Map<String, Object> retrySection = new LinkedHashMap<>();
             retrySection.put("failure_codes", retry.failureCodes());
@@ -91,7 +94,12 @@ public final class RoleplayPromptFactory {
         return new PreparedPrompt<>(
                 request,
                 RoleplayOutputParsers.analysis(
-                        objectMapper, input.learnerTurn().turnId(), microGoalIds(input)));
+                        objectMapper,
+                        input.learnerTurn().turnId(),
+                        microGoalIds(input),
+                        observations,
+                        trace.analysisId(),
+                        input.state()));
     }
 
     /** B. 후보 응답 생성. candidateId 는 호출하는 쪽이 미리 정한다. retry 는 재생성일 때만 넣는다. */
@@ -109,6 +117,7 @@ public final class RoleplayPromptFactory {
         if (!analysis.turnId().equals(input.learnerTurn().turnId())) {
             throw new IllegalArgumentException("analysis belongs to another turn");
         }
+        requireAnalysisIdentity(trace, analysis);
 
         Map<String, Object> message = turnSections(input);
         message.put("analysis_result", analysisSection(analysis));
@@ -166,14 +175,15 @@ public final class RoleplayPromptFactory {
                         MAX_RESPONSE_LENGTH));
     }
 
-    /** 응답 판단. 같은 후보를 재평가할 때도 같은 입력으로 다시 만든다. */
+    /** 같은 분석·관찰과 후보를 함께 검수한다. */
     public PreparedPrompt<EvaluationResult> responseEvaluation(
             AiTraceContext trace,
             AiAttemptContext attempts,
             int currentAttempt,
             RoleplayTurnInput input,
             AnalysisResult analysis,
-            CandidateResponse candidate) {
+            CandidateResponse candidate,
+            GoalObservationInput observations) {
         requireSameTurn(trace, input);
         Objects.requireNonNull(analysis, "analysis must not be null");
         Objects.requireNonNull(candidate, "candidate must not be null");
@@ -184,8 +194,10 @@ public final class RoleplayPromptFactory {
                 || !candidate.turnId().equals(input.learnerTurn().turnId())) {
             throw new IllegalArgumentException("analysis or candidate belongs to another turn");
         }
+        requireAnalysisIdentity(trace, analysis);
 
         Map<String, Object> message = turnSections(input);
+        addObservationContext(message, observations, input, trace);
         message.put("analysis_result", analysisSection(analysis));
         message.put("candidate_response", candidateSection(candidate));
 
@@ -201,7 +213,28 @@ public final class RoleplayPromptFactory {
                         EVALUATION_SCHEMA_VERSION,
                         policyVersion);
         return new PreparedPrompt<>(
-                request, RoleplayOutputParsers.evaluation(objectMapper, candidate.candidateId()));
+                request,
+                RoleplayOutputParsers.evaluation(
+                        objectMapper, candidate.candidateId(), trace.analysisId()));
+    }
+
+    private static void addObservationContext(
+            Map<String, Object> message,
+            GoalObservationInput observations,
+            RoleplayTurnInput input,
+            AiTraceContext trace) {
+        Objects.requireNonNull(observations, "승인된 목표 관찰 입력이 필요합니다.");
+        Objects.requireNonNull(trace.analysisId(), "목표 관찰 분석 식별자가 필요합니다.");
+        observations.requireMatches(input);
+        message.put("analysis_id", trace.analysisId());
+        message.put("goal_observation_context", observations);
+    }
+
+    private static void requireAnalysisIdentity(AiTraceContext trace, AnalysisResult analysis) {
+        Objects.requireNonNull(analysis.goalObservation(), "검수할 목표 관찰 분석이 필요합니다.");
+        if (!analysis.goalObservation().analysisId().equals(trace.analysisId())) {
+            throw new IllegalArgumentException("다른 분석의 목표 관찰 결과입니다.");
+        }
     }
 
     private Map<String, Object> turnSections(RoleplayTurnInput input) {
@@ -276,6 +309,7 @@ public final class RoleplayPromptFactory {
         section.put("primary_gap", gap);
         section.put("next_strategy", strategy);
         section.put("analysis_confidence", analysis.analysisConfidence());
+        section.put("goal_observation", analysis.goalObservation());
         return section;
     }
 

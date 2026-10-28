@@ -51,7 +51,7 @@ public class RoleplayRequestScopeService {
         return load(childId, session.getActivityId(), sessionId);
     }
 
-    private UUID requireChildId(Authentication authentication) {
+    UUID requireChildId(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {

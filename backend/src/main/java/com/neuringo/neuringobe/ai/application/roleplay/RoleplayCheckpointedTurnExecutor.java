@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import java.util.Objects;
 import java.util.UUID;
@@ -40,6 +41,7 @@ public final class RoleplayCheckpointedTurnExecutor {
     public Result executeVoice(
             RoleplayAudioResource audio,
             RoleplayTurnInput context,
+            GoalObservationInput observations,
             RoleplaySpeechTurnPipeline pipeline,
             AiTraceContext trace,
             long expectedVersion,
@@ -61,7 +63,7 @@ public final class RoleplayCheckpointedTurnExecutor {
                         if (!request.traceContext().equals(trace))
                             throw new IllegalArgumentException(
                                     "Upload trace does not match authenticated context");
-                        return pipeline.execute(request, context, shared);
+                        return pipeline.execute(request, context, observations, shared);
                     });
         }
     }
@@ -149,7 +151,7 @@ public final class RoleplayCheckpointedTurnExecutor {
                         identity.idempotencyKey(),
                         identity.fingerprint(),
                         spoken);
-        return switch (checkpoints.commit(command, deadline)) {
+        return switch (checkpoints.commitApproved(command, spoken.ready(), deadline)) {
             case RoleplayCheckpointStore.Conflict ignored -> new Conflict();
             case RoleplayCheckpointStore.Expired ignored -> timeout();
             case RoleplayCheckpointStore.Committed saved -> confirmed(command, saved, spoken);

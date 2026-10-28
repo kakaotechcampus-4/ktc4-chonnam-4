@@ -1614,7 +1614,7 @@
   {
     "id": "API-RPL-01",
     "fn": "startRoleplay",
-    "draft": true,
+    "draft": false,
     "method": "POST",
     "route": "/api/v1/activities/{activityId}/roleplay-sessions",
     "args": {
@@ -1642,7 +1642,9 @@
               }
             }
           ]
-        }
+        },
+        "activityStatus": "IN_PROGRESS",
+        "checkpointVersion": 0
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
@@ -1653,6 +1655,7 @@
     "mode": "child",
     "form": false,
     "expectedStatuses": [
+      200,
       201
     ],
     "conditional": false,

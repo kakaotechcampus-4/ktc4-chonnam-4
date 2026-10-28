@@ -223,8 +223,8 @@ await check("All 57 stable IDs have exactly one status and exported active funct
   assert.equal(new Set(fixtures.map(f=>f.id)).size, 57);
   assert.equal(fixtures.filter(f=>f.unavailable).length, 2);
   assert.equal(fixtures.filter(f=>f.conditional).length, 1);
-  assert.equal(fixtures.filter(f=>f.draft).length, 25);
-  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 29);
+  assert.equal(fixtures.filter(f=>f.draft).length, 24);
+  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 30);
   const expectedLive = fixtures.filter(f=>!f.draft && !f.unavailable).map(f=>f.fn).sort();
   const expectedDraft = fixtures.filter(f=>f.draft).map(f=>f.fn).sort();
   assert.deepEqual(Object.keys(live).sort(), expectedLive);
@@ -322,6 +322,33 @@ await check("Activity detail uses instructor auth to match current security filt
   const f=fixtures.find(f=>f.id==='API-ACT-03');
   await simulate(f,200,f.response,init=>assert.equal(new Headers(init.headers).get('Authorization'),'Bearer fake-instructor-token'));
   assert.equal(f.mode,'instructor');
+});
+await check("Roleplay start is implemented and restored requests accept 200 with current checkpoint", async () => {
+  const f=fixtures.find(f=>f.id==='API-RPL-01');
+  assert.equal(draft.startRoleplay,undefined);
+  const resumed=structuredClone(f.response);
+  resumed.data.lastDeliveredTurnId='83000000-0000-4000-8000-000000000002';
+  resumed.data.checkpointVersion=4;
+  resumed.data.delivery.messages[0].messageId=resumed.data.lastDeliveredTurnId;
+  resumed.data.delivery.messages[0].purpose='RESUME';
+  const result=await simulate(f,200,resumed,init=>{
+    assert.equal(init.body,undefined);
+    assert.equal(new Headers(init.headers).has('Authorization'),false);
+    assert.equal(new Headers(init.headers).get('Idempotency-Key'),f.args.idempotencyKey);
+  });
+  assert.equal(result.data.checkpointVersion,4);
+  assert.equal(result.data.delivery.messages[0].purpose,'RESUME');
+});
+await check("Roleplay start preserves paused/completed empty delivery without generating a question", async () => {
+  const f=fixtures.find(f=>f.id==='API-RPL-01');
+  for(const status of ['PAUSED','COMPLETED']) {
+    const stopped=structuredClone(f.response);
+    stopped.data.status=status;stopped.data.activityStatus=status;
+    stopped.data.delivery.messages=[];
+    const result=await simulate(f,200,stopped);
+    assert.equal(result.data.status,status);
+    assert.deepEqual(result.data.delivery.messages,[]);
+  }
 });
 // Portable GitHub documentation checks: no access to the backend checkout is needed.
 const { readdir, access } = await import('node:fs/promises');

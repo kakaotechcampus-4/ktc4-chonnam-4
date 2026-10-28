@@ -18,6 +18,7 @@ import com.neuringo.neuringobe.ai.application.roleplay.StructuredRoleplayTurnSte
 import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -41,7 +42,8 @@ class StructuredRoleplayTurnStepsTest {
                     new RoleplayPromptFactory(mapper, null),
                     new StructuredLlmExecutor(provider),
                     trace,
-                    input);
+                    input,
+                    RoleplayObservationTestPlans.inputForScenario((input).scenario()));
     private final RetryingRoleplayTurnExecutor executor = new RetryingRoleplayTurnExecutor();
 
     @Test
@@ -239,7 +241,15 @@ class StructuredRoleplayTurnStepsTest {
                                                 input.state(),
                                                 new RoleplayTurnInput.LearnerTurn(
                                                         UUID.randomUUID(), "test"),
-                                                input.recentDialogue())))
+                                                input.recentDialogue()),
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (new RoleplayTurnInput(
+                                                                input.scenario(),
+                                                                input.state(),
+                                                                new RoleplayTurnInput.LearnerTurn(
+                                                                        UUID.randomUUID(), "test"),
+                                                                input.recentDialogue()))
+                                                        .scenario())))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -299,7 +309,15 @@ class StructuredRoleplayTurnStepsTest {
                         };
             }
             return new AiCallResult.Success<>(
-                    new LlmCompletion(content, "fake", "fake-model", "stop", null, null), metadata);
+                    new LlmCompletion(
+                            RoleplayFixtures.bindAnalysis(
+                                    content, request.traceContext().analysisId()),
+                            "fake",
+                            "fake-model",
+                            "stop",
+                            null,
+                            null),
+                    metadata);
         }
 
         private String generation(LlmRequest request) {
@@ -332,6 +350,9 @@ class StructuredRoleplayTurnStepsTest {
                         default -> null;
                     };
             var response = new LinkedHashMap<String, Object>();
+            response.put(
+                    "goal_observation_review",
+                    RoleplayFixtures.review(request.traceContext().analysisId()));
             response.put("candidate_id", request.traceContext().candidateId());
             response.put("decision", decision.name());
             response.put("safe_to_send", decision == EvaluationDecision.PASS);

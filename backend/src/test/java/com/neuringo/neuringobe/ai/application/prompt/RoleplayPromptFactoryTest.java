@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.model.LlmRequest;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,12 +28,19 @@ class RoleplayPromptFactoryTest {
     @Test
     void causeAnalysisRequestCarriesVersionsAndTurnData() {
         PreparedPrompt<AnalysisResult> prompt =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("친구가 울고 있어."), null);
+                factory.causeAnalysis(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        input("친구가 울고 있어."),
+                        null,
+                        RoleplayObservationTestPlans.inputForScenario(
+                                (input("친구가 울고 있어.")).scenario()));
 
         LlmRequest request = prompt.request();
         assertThat(request.operation()).isEqualTo(AiOperation.CAUSE_ANALYSIS);
-        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v1");
-        assertThat(request.responseSchemaVersion()).isEqualTo("analysis-result/v1");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v2");
+        assertThat(request.responseSchemaVersion()).isEqualTo("analysis-result/v2");
         assertThat(request.policyVersion()).isEqualTo("SUPPORT-MVP-001");
         assertThat(request.systemPrompt()).contains("원인 판단 단계");
 
@@ -50,7 +58,14 @@ class RoleplayPromptFactoryTest {
     void promptsNeverCarryTraceIdentifiers() {
         String analysis = analysisJson("PROBE_EMOTION", MG_EMOTION, "S1");
         AnalysisResult parsedAnalysis =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input("울어"),
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
                         .parser()
                         .parse(analysis);
         CandidateResponse candidate =
@@ -66,7 +81,14 @@ class RoleplayPromptFactoryTest {
                         .parse(candidateJson("친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?", "GUIDING_QUESTION"));
 
         Stream.of(
-                        factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+                        factory.causeAnalysis(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        1,
+                                        input("울어"),
+                                        null,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input("울어")).scenario()))
                                 .request(),
                         factory.responseGeneration(
                                         trace(ANALYSIS_ID, null),
@@ -83,7 +105,9 @@ class RoleplayPromptFactoryTest {
                                         1,
                                         input("울어"),
                                         parsedAnalysis,
-                                        candidate)
+                                        candidate,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input("울어")).scenario()))
                                 .request())
                 .forEach(
                         request ->
@@ -98,14 +122,16 @@ class RoleplayPromptFactoryTest {
     void reanalysisAddsRetryInstruction() {
         LlmRequest request =
                 factory.causeAnalysis(
-                                trace(null, null),
+                                trace(ANALYSIS_ID, null),
                                 attempts(),
                                 2,
                                 input("친구가 사탕을 못 가져서 화났어."),
                                 new AnalysisRetry(
                                         List.of("UNSUPPORTED_CAUSE_ANALYSIS"),
                                         List.of("아동이 실제로 말한 감정"),
-                                        List.of("표현하지 않은 감정 원인")))
+                                        List.of("표현하지 않은 감정 원인")),
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("친구가 사탕을 못 가져서 화났어.")).scenario()))
                         .request();
 
         JsonNode retry = JSON.readTree(request.userPrompt()).path("retry");
@@ -190,7 +216,9 @@ class RoleplayPromptFactoryTest {
                                 1,
                                 input("친구가 울고 있어."),
                                 analysis,
-                                candidate)
+                                candidate,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("친구가 울고 있어.")).scenario()))
                         .request();
 
         JsonNode message = JSON.readTree(request.userPrompt());
@@ -198,7 +226,7 @@ class RoleplayPromptFactoryTest {
                 .isEqualTo("친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?");
         assertThat(message.path("analysis_result").path("learning_state").asString())
                 .isEqualTo("PARTIAL_UNDERSTANDING");
-        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v1");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v2");
     }
 
     @Test
@@ -224,7 +252,9 @@ class RoleplayPromptFactoryTest {
                                         attempts(),
                                         1,
                                         input("울어"),
-                                        null))
+                                        null,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input("울어")).scenario())))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(
                         () ->
@@ -234,7 +264,9 @@ class RoleplayPromptFactoryTest {
                                         1,
                                         input("울어"),
                                         analysis,
-                                        candidate))
+                                        candidate,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input("울어")).scenario())))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -275,7 +307,14 @@ class RoleplayPromptFactoryTest {
     @Test
     void systemPromptsListEveryAllowedCode() {
         String analysis =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input("울어"),
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
                         .request()
                         .systemPrompt();
         String generation =
@@ -296,7 +335,9 @@ class RoleplayPromptFactoryTest {
                                 1,
                                 input("울어"),
                                 parsedAnalysis(),
-                                parsedCandidate(parsedAnalysis()))
+                                parsedCandidate(parsedAnalysis()),
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
                         .request()
                         .systemPrompt();
 
@@ -314,7 +355,13 @@ class RoleplayPromptFactoryTest {
     }
 
     private AnalysisResult parsedAnalysis() {
-        return factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+        return factory.causeAnalysis(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        input("울어"),
+                        null,
+                        RoleplayObservationTestPlans.inputForScenario((input("울어")).scenario()))
                 .parser()
                 .parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1"));
     }

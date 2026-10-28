@@ -3,7 +3,9 @@ package com.neuringo.neuringobe.ai.application.prompt;
 import com.neuringo.neuringobe.ai.application.model.*;
 import com.neuringo.neuringobe.ai.application.port.*;
 import com.neuringo.neuringobe.ai.application.roleplay.*;
+import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
 import com.neuringo.neuringobe.roleplay.application.*;
+import com.neuringo.neuringobe.roleplay.service.ServerRoleplayActivityGoalEvaluator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,12 +15,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-/** Test-only providers: no production default or network access. */
+/** 외부 통신 없이 음성 요청을 검증하는 테스트용 제공자다. */
 @TestConfiguration(proxyBeanMethods = false)
 public class RoleplayHttpTestConfiguration {
     public static class State {
@@ -29,6 +32,11 @@ public class RoleplayHttpTestConfiguration {
         private final Queue<String> candidateTexts = new ConcurrentLinkedQueue<>();
         private final Queue<String> evaluations = new ConcurrentLinkedQueue<>();
         public boolean unavailable, unsafe, lowConfidence, blockStt;
+        public boolean activityGoalAchieved, goalDecisionUnavailable, goalCalledInTransaction;
+        public boolean useServerGoalEvaluator, changeContextAfterSpeech;
+        public GoalObservationInput contextObservations;
+        public boolean omitObservationAnalysis, omitObservationReview, unsupportedObservationReview;
+        public final AtomicInteger goalDecisions = new AtomicInteger();
         public CountDownLatch entered = new CountDownLatch(1),
                 release = new CountDownLatch(1),
                 finished = new CountDownLatch(1);
@@ -62,6 +70,16 @@ public class RoleplayHttpTestConfiguration {
             unsafe = false;
             lowConfidence = false;
             blockStt = false;
+            activityGoalAchieved = false;
+            goalDecisionUnavailable = false;
+            goalCalledInTransaction = false;
+            useServerGoalEvaluator = false;
+            changeContextAfterSpeech = false;
+            contextObservations = null;
+            omitObservationAnalysis = false;
+            omitObservationReview = false;
+            unsupportedObservationReview = false;
+            goalDecisions.set(0);
             entered = new CountDownLatch(1);
             release = new CountDownLatch(1);
             finished = new CountDownLatch(1);
@@ -74,8 +92,27 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
+    @org.springframework.context.annotation.Primary
+    RoleplayActivityGoalEvaluator httpGoalEvaluator(
+            State state, ServerRoleplayActivityGoalEvaluator server) {
+        return (command, approved, deadline) -> {
+            state.goalDecisions.incrementAndGet();
+            state.goalCalledInTransaction =
+                    org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive();
+            if (state.goalDecisionUnavailable) {
+                throw new RoleplayActivityGoalEvaluator.Unavailable();
+            }
+            if (state.useServerGoalEvaluator) return server.evaluate(command, approved, deadline);
+            return com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                    .forCommand(command, state.activityGoalAchieved);
+        };
+    }
+
+    @Bean
+    @org.springframework.context.annotation.Primary
     RoleplayContextSource httpContext(State state, JdbcTemplate jdbc) {
-        return key -> {
+        return (key, sourceDeadline) -> {
             state.calls.add("CONTEXT");
             if (state.unavailable) return Optional.empty();
             int turn =
@@ -90,9 +127,55 @@ public class RoleplayHttpTestConfiguration {
                             "test approval",
                             RoleplayFixtures.input("").scenario(),
                             new RoleplayTurnInput.State(
-                                    RoleplayFixtures.MG_EMOTION, "S1", 1, 0, false, turn, 77, 9),
-                            List.of()));
+                                    RoleplayFixtures.MG_EMOTION,
+                                    "S1",
+                                    jdbc.queryForObject(
+                                            "select count(*)+1 from roleplay_turn where session_id=? and input_micro_goal_id=?",
+                                            Integer.class,
+                                            key.sessionId(),
+                                            RoleplayFixtures.MG_EMOTION),
+                                    jdbc.queryForObject(
+                                            "select count(*) from roleplay_turn where session_id=? and micro_goal_id=? and response_type in ('GUIDING_QUESTION','REDIRECT','CONFIRMATION')",
+                                            Integer.class,
+                                            key.sessionId(),
+                                            RoleplayFixtures.MG_EMOTION),
+                                    jdbc.queryForObject(
+                                            "select exists(select 1 from roleplay_turn where session_id=? and micro_goal_id=? and response_type='ANSWER_REVEAL')",
+                                            Boolean.class,
+                                            key.sessionId(),
+                                            RoleplayFixtures.MG_EMOTION),
+                                    turn,
+                                    77,
+                                    9),
+                            List.of(),
+                            observations(state, jdbc, key.sessionId()),
+                            com.neuringo.neuringobe.roleplay.application
+                                    .RoleplayObservationTestPlans.emptyResponseHistory(
+                                    RoleplayFixtures.input("").scenario())));
         };
+    }
+
+    private GoalObservationInput observations(
+            State state, JdbcTemplate jdbc, java.util.UUID sessionId) {
+        if (state.contextObservations != null) return state.contextObservations;
+        var template =
+                RoleplayObservationTestPlans.inputForScenario(
+                        RoleplayFixtures.input("").scenario());
+        if (!state.useServerGoalEvaluator) return template;
+        var history =
+                jdbc.query(
+                        "select turn_id, micro_goal_id, criterion_reference, observation_status from roleplay_goal_observation where session_id=? order by turn_id, micro_goal_id, criterion_reference",
+                        (rs, n) ->
+                                new GoalObservationOutput.Observation(
+                                        new GoalObservationOutput.Reference(
+                                                rs.getObject("turn_id", java.util.UUID.class),
+                                                rs.getObject("micro_goal_id", java.util.UUID.class),
+                                                rs.getString("criterion_reference")),
+                                        GoalObservationOutput.Status.valueOf(
+                                                rs.getString("observation_status"))),
+                        sessionId);
+        return com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                .withSyntheticObservationContexts(template.approvedCriteria(), history);
     }
 
     @Bean
@@ -144,6 +227,23 @@ public class RoleplayHttpTestConfiguration {
     TextToSpeechProvider httpTts(State state) {
         return request -> {
             state.calls.add("TTS");
+            if (state.changeContextAfterSpeech) {
+                var supplied =
+                        RoleplayObservationTestPlans.inputForScenario(
+                                RoleplayFixtures.input("").scenario());
+                var criterion = supplied.approvedCriteria().getFirst();
+                state.contextObservations =
+                        com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                                .withSyntheticObservationContexts(
+                                        supplied.approvedCriteria(),
+                                        List.of(
+                                                new GoalObservationOutput.Observation(
+                                                        new GoalObservationOutput.Reference(
+                                                                java.util.UUID.randomUUID(),
+                                                                criterion.microGoalId(),
+                                                                criterion.reference()),
+                                                        GoalObservationOutput.Status.IMPLICIT)));
+            }
             return success(
                     new SynthesizedSpeech(
                             new byte[] {7, 8},
@@ -192,6 +292,43 @@ public class RoleplayHttpTestConfiguration {
                         }
                         default -> throw new AssertionError("Unexpected operation");
                     };
+            if (request.operation() == AiOperation.CAUSE_ANALYSIS && state.activityGoalAchieved) {
+                var body =
+                        mapper.readValue(
+                                json,
+                                new tools.jackson.core.type.TypeReference<
+                                        java.util.Map<String, Object>>() {});
+                var old =
+                        mapper.readValue(
+                                mapper.writeValueAsString(body.get("goal_observation")),
+                                GoalObservationOutput.Analysis.class);
+                var approved =
+                        old.observations().stream()
+                                .map(
+                                        o ->
+                                                new GoalObservationOutput.Observation(
+                                                        o.reference(),
+                                                        GoalObservationOutput.Status.EXPLICIT))
+                                .toList();
+                var basis = new java.util.ArrayList<GoalObservationOutput.Reference>();
+                approved.forEach(o -> basis.add(o.reference()));
+                var supplied =
+                        mapper.readValue(
+                                mapper.readTree(request.userPrompt())
+                                        .get("goal_observation_context")
+                                        .toString(),
+                                GoalObservationInput.class);
+                supplied.confirmedObservations().forEach(o -> basis.add(o.reference()));
+                body.put(
+                        "goal_observation",
+                        new GoalObservationOutput.Analysis(
+                                old.schemaVersion(),
+                                old.analysisId(),
+                                approved,
+                                new GoalObservationOutput.Assessment(
+                                        GoalObservationOutput.ActivityDecision.ACHIEVED, basis)));
+                json = mapper.writeValueAsString(body);
+            }
             json =
                     json.replace(
                             RoleplayFixtures.TURN_ID.toString(),
@@ -201,8 +338,39 @@ public class RoleplayHttpTestConfiguration {
                         json.replace(
                                 RoleplayFixtures.CANDIDATE_ID.toString(),
                                 request.traceContext().candidateId().toString());
+            if ((request.operation() == AiOperation.CAUSE_ANALYSIS && state.omitObservationAnalysis)
+                    || (request.operation() == AiOperation.RESPONSE_EVALUATION
+                            && (state.omitObservationReview
+                                    || state.unsupportedObservationReview))) {
+                var changed =
+                        mapper.readValue(
+                                json,
+                                new tools.jackson.core.type.TypeReference<
+                                        java.util.Map<String, Object>>() {});
+                if (request.operation() == AiOperation.CAUSE_ANALYSIS)
+                    changed.remove("goal_observation");
+                else if (state.omitObservationReview) changed.remove("goal_observation_review");
+                else {
+                    var review =
+                            mapper.readValue(
+                                    mapper.writeValueAsString(
+                                            changed.get("goal_observation_review")),
+                                    new tools.jackson.core.type.TypeReference<
+                                            java.util.Map<String, Object>>() {});
+                    review.put("observations_supported", false);
+                    changed.put("goal_observation_review", review);
+                }
+                json = mapper.writeValueAsString(changed);
+            }
             return new AiCallResult.Success<>(
-                    new LlmCompletion(json, "test-vendor", "test-model", "stop", null, null),
+                    new LlmCompletion(
+                            RoleplayFixtures.bindAnalysis(
+                                    json, request.traceContext().analysisId()),
+                            "test-vendor",
+                            "test-model",
+                            "stop",
+                            null,
+                            null),
                     llmMetadata(request));
         };
     }

@@ -95,18 +95,18 @@ AI는 기본적으로 비활성화된다.
 
 실제 제공자를 사용할 때만 `AI_CHAT_PROVIDER=openai`로 설정한다.
 
-## 역할극 한 턴 프롬프트 (v1)
+## 역할극 한 턴 프롬프트 — 관찰 필수 단일 계약
 
 워크플로우 v3 11·12장의 세 호출을 `RoleplayPromptFactory` 가 만든다. 결과는 `PreparedPrompt(request, parser)` 이며 `StructuredLlmExecutor.execute(request, parser)` 에 그대로 넘긴다.
 
 | 호출 | 메서드 | 시스템 프롬프트 | promptVersion | 출력 |
 | --- | --- | --- | --- | --- |
-| A. 원인 판단 | `causeAnalysis` | `prompts/roleplay/v1/cause-analysis.md` | `roleplay-cause-analysis/v1` | `AnalysisResult` |
+| A. 원인 판단 | `causeAnalysis` | `prompts/roleplay/v2/cause-analysis.md` | `roleplay-cause-analysis/v2` | `AnalysisResult` + 목표 관찰/활동 판정 |
 | B. 후보 응답 생성 | `responseGeneration` | `prompts/roleplay/v1/response-generation.md` | `roleplay-response-generation/v1` | `CandidateResponse` |
-| 응답 판단 | `responseEvaluation` | `prompts/roleplay/v1/response-evaluation.md` | `roleplay-response-evaluation/v1` | `EvaluationResult` |
+| 응답 판단 | `responseEvaluation` | `prompts/roleplay/v2/response-evaluation.md` | `roleplay-response-evaluation/v2` | `EvaluationResult` + 동일 분석의 관찰 검수 |
 
-- 사용자 메시지는 `RoleplayTurnInput`(승인 시나리오, 진행 상태, 최근 대화 최대 8줄, 표준 발화)을 JSON 으로 만든 것이다. 재시도일 때만 `retry`(재분석 지시 `AnalysisRetry`, 재생성 지시 `GenerationRetry`)가 붙는다.
-- 프롬프트에는 모델이 돌려줘야 하는 turn·candidate·micro goal ID 만 넣는다. request·activity·class·child·session ID 와 실명은 넣지 않는다.
+- 사용자 메시지는 `RoleplayTurnInput`(승인 시나리오, 진행 상태, 최근 대화 최대 8줄, 표준 발화)을 JSON으로 만든 것이다. 분석/검수에는 필수 `GoalObservationInput`의 승인 증거 참조와 이전 확정 관찰도 넣는다. 재시도일 때만 `retry`(재분석 지시 `AnalysisRetry`, 재생성 지시 `GenerationRetry`)가 붙는다.
+- 프롬프트에는 모델이 돌려줘야 하는 turn·candidate·micro goal ID와 같은 분석을 검수하는 analysis ID만 넣는다. request·activity·class·child·session ID와 실명은 넣지 않는다.
 - `candidate_id` 는 오케스트레이터가 미리 정해 넘긴다. 모델은 그대로 돌려준다.
 - 원인 판단은 `analysis_basis`, 응답 판단은 `checks` 를 먼저 쓰게 해 근거를 확인한 뒤 결론을 내리게 한다. 이 두 필드는 출력 계약 레코드에 없으며 파싱할 때 버린다.
 
@@ -121,9 +121,26 @@ parser 는 JSON 형식에 더해 아래를 검사하고, 어긋나면 `INVALID_O
 | `CandidateResponse` | candidate_id·turn_id 일치, 전략·목표·지원 수준이 분석과 같음, 80자 이하, 질문형은 물음표 정확히 1개·그 밖은 0개, 실패 후보 ID 목록 일치, 실패 후보와 같은 문장 금지 |
 | `EvaluationResult` | candidate_id 일치, PASS 면 safe_to_send=true·실패 코드 없음·치명 0, PASS 가 아니면 safe_to_send=false·실패 코드 1개 이상·판정에 맞는 retry_target, 치명 실패 수가 치명 코드 수 이상. `RETRY_EVALUATION`·`SAFE_FALLBACK` 은 오케스트레이터만 정하므로 모델 출력으로 받지 않음 |
 
+분석의 `goal_observation`과 검수의 `goal_observation_review`도 필수다.
+분석·검수의 내부 입력 `goal_observation_context`에는 `approved_criteria`, `confirmed_observations`,
+`confirmed_observation_contexts`, `current_goal_exposures`가 모두 필요하다. 확정 관찰이 없으면 관찰·관찰 연결 배열은 비어도 되지만 현재 목표별 지원 배열은 모든 승인 목표를 포함한다.
+각 관찰의 연결 정보에는 같은 턴의 후보·입력 상태와 관찰 목표의 발화 전 지원 이력이 들어간다.
+입력 목표와 관찰 목표가 다를 수 있으며, 같은 턴/이후 응답을 과거 발화의 사전 도움으로 해석하지 않는다.
+사전 응답 기록이 없다는 이유로 S0·독립 달성을 추정하지 않는다. 연결 누락은 기본값으로 보완하지 않는다.
+
+분석/검수 버전과 분석 ID, 승인 증거 참조/턴·중복/판정 근거를 검증한다.
+PASS는 관찰 근거와 활동 목표 판정을 모두 승인해야 한다. 관찰 필드가 없는 과거 출력은 형식 실패이며 v1로 우회하지 않는다.
+분석 출력의 다음 전략도 서버의 확정 지원 이력과 대조한다. 정답을 알려준 목표의 재유도와,
+현재 목표의 지원을 낮춰 같은 목표를 재유도하는 제안은 후보 생성 전에 INVALID_OUTPUT_FORMAT이다.
+기존 분석 재시도/시간 예산으로 복구하며 별도 무한 재분석을 추가하지 않는다.
+정상 호출은 기존처럼 분석→후보 생성→검수 3회다. 후보의 출력 형식은 바뀌지 않아 `candidate-response/v1`을 유지한다.
+각 버전 번호는 내부 프롬프트/출력 추적 값이며 HTTP 요청이 버전을 선택하지 않는다.
+
 ### 버전 관리
 
-프롬프트 문구나 `RoleplayCodes` 의 값을 바꾸면 `prompts/roleplay/v2/` 를 새로 만들고 버전 상수를 올린다. 기존 버전 파일은 고치지 않는다(실행 결과의 `promptVersion` 으로 어떤 문구였는지 재현할 수 있어야 한다). `RoleplayPromptFactoryTest.systemPromptsListEveryAllowedCode` 가 프롬프트의 코드표와 `RoleplayCodes` 를 대조한다.
+배포된 프롬프트 문구·출력 계약을 바꾸면 해당 호출의 버전 상수를 올리고 새 버전 자료를 사용한다. 과거 문구는 해당 Git 커밋과 `promptVersion`으로 재현한다. 런타임에서 여러 버전을 함께 지원할지는 실제 호환 요구를 확인해 결정한다.
+이번 분석/검수는 관찰 필수 단일 계약으로 전환했으며, 사용하지 않는 v1 분석/검수 리소스와 선택 분기를 제거했다. 후보 생성의 문구/출력 형식은 기존 버전을 유지한다.
+`RoleplayPromptFactoryTest.systemPromptsListEveryAllowedCode`가 활성 프롬프트의 코드표와 `RoleplayCodes`를 대조한다.
 
 ## 음성 입출력 (STT·TTS)
 

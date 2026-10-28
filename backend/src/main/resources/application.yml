@@ -46,6 +46,12 @@ server:
         secure: ${SESSION_COOKIE_SECURE:true}
         same-site: lax
 
+roleplay:
+  progress:
+    # 확정된 제한만 명시적으로 공급하며 미설정 시 새 대화 문맥을 만들지 않는다.
+    maximum-turn-count: ${ROLEPLAY_MAXIMUM_TURN_COUNT:}
+    maximum-support-turns-per-micro-goal: ${ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL:}
+
 management:
   endpoints:
     web:

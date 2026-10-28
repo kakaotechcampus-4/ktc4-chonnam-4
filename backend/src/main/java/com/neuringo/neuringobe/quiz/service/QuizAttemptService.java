@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.quiz.service;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
@@ -34,14 +35,21 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @Transactional(readOnly = true)
 public class QuizAttemptService {
+    private static final Logger log = LoggerFactory.getLogger(QuizAttemptService.class);
+
     private final ActivityRepository activities;
     private final ActivityQuizRepository assignments;
     private final QuizAttemptRepository attempts;
@@ -51,6 +59,7 @@ public class QuizAttemptService {
     private final ChildAccessScope access;
     private final QuizAssignmentService assignmentService;
     private final ActivityCompletionService completion;
+    private final ApplicationEventPublisher events;
 
     public QuizAttemptService(
             ActivityRepository activities,
@@ -61,7 +70,8 @@ public class QuizAttemptService {
             ChildRepository children,
             ChildAccessScope access,
             QuizAssignmentService assignmentService,
-            ActivityCompletionService completion) {
+            ActivityCompletionService completion,
+            ApplicationEventPublisher events) {
         this.activities = activities;
         this.assignments = assignments;
         this.attempts = attempts;
@@ -71,6 +81,7 @@ public class QuizAttemptService {
         this.access = access;
         this.assignmentService = assignmentService;
         this.completion = completion;
+        this.events = events;
     }
 
     @Transactional
@@ -238,10 +249,20 @@ public class QuizAttemptService {
     }
 
     public QuizResultResponse result(UUID activityId, Authentication authentication) {
-        requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
+        Activity activity =
+                requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
         QuizResult result =
                 results.findById(activityId)
                         .orElseThrow(() -> conflict("QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다."));
+        if (activity.getActivityType() == ActivityType.FIRST_COMBINED
+                && result.isInitialDifficultyUsed()
+                && activity.getScenarioId() == null
+                && activity.getStatus() != ActivityStatus.COMPLETED) {
+            // 조회 성공 후 별도 트랜잭션에서 미연결 시나리오만 다시 준비한다.
+            events.publishEvent(
+                    new FirstQuizCompleted(
+                            activityId, activity.getChildId(), result.getScenarioLevel()));
+        }
         return QuizResultResponse.from(result);
     }
 
@@ -387,8 +408,10 @@ public class QuizAttemptService {
                             Math.toIntExact(hints.countByAttemptId(attempt.getAttemptId())),
                             attempt.isResolvedAfterHint()));
         }
-        QuizResultCalculator.Summary summary = QuizResultCalculator.calculate(evidence);
-        InitialDifficultyPolicy.Decision decision = InitialDifficultyPolicy.decide(() -> summary);
+        InitialDifficultyPolicy.Assessment assessment =
+                InitialDifficultyPolicy.assess(() -> QuizResultCalculator.calculate(evidence));
+        QuizResultCalculator.Summary summary = assessment.summary();
+        InitialDifficultyPolicy.Decision decision = assessment.decision();
         children.findByIdForUpdate(activity.getChildId())
                 .orElseThrow(
                         () -> new ResourceNotFoundException("CHILD_NOT_FOUND", "아동을 찾을 수 없습니다."));
@@ -401,8 +424,29 @@ public class QuizAttemptService {
         if (first) {
             activity.applyInitialDifficulty(
                     decision.initialSupportLevel(), decision.fallbackApplied());
+            events.publishEvent(
+                    new FirstQuizCompleted(
+                            activity.getActivityId(),
+                            activity.getChildId(),
+                            decision.scenarioLevel()));
+        }
+        if (decision.fallbackApplied()) {
+            logFallbackAfterCommit(decision.policyVersion());
         }
         completion.completeAfterQuiz(activity);
+    }
+
+    private void logFallbackAfterCommit(String policyVersion) {
+        // 롤백된 기본값 적용을 완료 로그로 남기지 않는다.
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        log.warn(
+                                "퀴즈 난이도 기본값 저장 완료 reason=NO_VALID_QUESTIONS policyVersion={}",
+                                policyVersion);
+                    }
+                });
     }
 
     private ApiException invalidResult() {

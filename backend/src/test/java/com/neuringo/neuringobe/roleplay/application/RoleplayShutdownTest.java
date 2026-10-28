@@ -112,7 +112,7 @@ class RoleplayShutdownTest {
                                                 blockingTurn(turns, entered, release, interrupted))
                                         .addMapping("/test-turn"));
         try (var clients = Executors.newFixedThreadPool(2);
-                var http = HttpClient.newHttpClient()) {
+                var http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
             context.refresh();
             var shutdown = context.getBean("webServerGracefulShutdown", SmartLifecycle.class);
             var request =
@@ -177,6 +177,7 @@ class RoleplayShutdownTest {
                                 },
                                 () -> "timed-out");
                 response.getWriter().write(result);
+                response.flushBuffer();
             }
         };
     }

@@ -438,6 +438,26 @@ export interface DraftDelivery {
   messages: DraftMessage[];
 }
 
+export interface RoleplayStartData {
+  sessionId: UUID;
+  activityId: UUID;
+  scenarioId: UUID;
+  scenarioVersion: number;
+  status: 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED';
+  activityStatus: ActivityStatus;
+  lastDeliveredTurnId: UUID | null;
+  checkpointVersion: number;
+  delivery: {
+    messages: Array<{
+      messageId: UUID;
+      speakerRole: 'DIALOGUE';
+      purpose: 'QUESTION' | 'RESUME';
+      text: string;
+      speech: { available: false; url: null };
+    }>;
+  };
+}
+
 // 설계 제안, 실제 DTO 확정 필요
 export interface DraftRoleplaySession {
   /** 세션 */
