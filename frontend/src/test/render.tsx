@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router-dom"
 import { setAccessToken } from "@/features/instructor/auth/tokenStorage"
 import { useChildSessionStore } from "@/features/child/store/childSessionStore"
-import { instructors } from "./msw/handlers"
+import { fixtures, instructors, startChildSession } from "./msw/handlers"
 
 /**
  * 라우터·React Query 를 붙여 화면을 렌더링한다. 화면 테스트는 이 함수로 시작하면 된다.
@@ -37,7 +37,11 @@ export function signIn(instructor: { accessToken: string } = instructors.a) {
   setAccessToken(instructor.accessToken)
 }
 
-/** 아동이 입장한 상태로 만든다(RequireChildSession 가드 통과). 끝나면 각 테스트가 endSession() 으로 비운다. */
-export function enterAsChild(childName = "김하늘") {
-  useChildSessionStore.getState().startSession({ childId: "mock-child-1", childName })
+/**
+ * 아동이 입장한 상태로 만든다(RequireChildSession 가드 통과). 가짜 서버에도 아동 세션을 만들어 사용 종료가 204 가 된다.
+ * 끝나면 setup 이 화면 쪽 세션(endSession)과 가짜 서버 상태를 비운다.
+ */
+export function enterAsChild(childName = fixtures.childA1_1.displayName) {
+  startChildSession(fixtures.childA1_1.childId)
+  useChildSessionStore.getState().startSession({ childId: fixtures.childA1_1.childId, childName })
 }

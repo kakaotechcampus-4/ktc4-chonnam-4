@@ -55,6 +55,18 @@ variable "allowed_countries" {
   default     = ["KR"]
 }
 
+variable "origin_secret" {
+  description = "원본 비밀 헤더(X-Origin-Verify) 값. null 이면 붙이지 않는다"
+  type        = string
+  sensitive   = true
+  default     = null
+
+  validation {
+    condition     = var.origin_secret == null || can(regex("^[A-Za-z0-9]{32,128}$", var.origin_secret))
+    error_message = "원본 비밀 헤더 값은 영문·숫자 32~128자다(서버의 nginx 설정에 그대로 들어간다)"
+  }
+}
+
 variable "price_class" {
   description = "CloudFront 요금 등급. PriceClass_200 에 한국 엣지가 들어 있다"
   type        = string
@@ -118,6 +130,13 @@ resource "aws_cloudfront_distribution" "this" {
       origin_ssl_protocols     = ["TLSv1.2"]
       origin_read_timeout      = 120
       origin_keepalive_timeout = 5
+    }
+    dynamic "custom_header" {
+      for_each = var.origin_secret == null ? [] : [var.origin_secret]
+      content {
+        name  = "X-Origin-Verify"
+        value = custom_header.value
+      }
     }
   }
 

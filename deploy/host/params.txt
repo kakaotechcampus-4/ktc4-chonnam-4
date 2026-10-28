@@ -9,6 +9,9 @@ DB_PASSWORD=db/password
 # RDS 로 옮기면 넣는다. 없으면 같은 서버의 postgres 컨테이너(compose.dev.yml)로 붙는다.
 DB_URL?=db/url
 
+# 원본 비밀 헤더(CloudFront → 서버). .env 가 아니라 화면(nginx) 설정 조각으로 들어간다(deploy.sh). 없으면 확인하지 않는다.
+ORIGIN_SECRET?=edge/origin-secret
+
 # 아동 입장 코드(4자리)를 HMAC 으로 바꿔 저장할 때 쓰는 비밀키(32바이트 이상). 없으면 코드 발급·입장이 실패한다.
 CHILD_ACCESS_HMAC_SECRET=child-access/hmac-secret
 

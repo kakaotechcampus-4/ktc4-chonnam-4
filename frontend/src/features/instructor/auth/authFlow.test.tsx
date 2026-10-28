@@ -60,7 +60,8 @@ describe("강사 가입·로그인", () => {
       await user.type(screen.getByLabelText("비밀번호"), instructors.a.password)
       await user.click(screen.getByRole("button", { name: "로그인" }))
 
-      expect(await screen.findByText(instructors.a.name)).toBeInTheDocument()
+      // 학급 생성 화면은 사이드바와 담당 강사 칸에 이름이 두 번 나온다.
+      expect((await screen.findAllByText(instructors.a.name)).length).toBeGreaterThan(0)
       expect(memoryRouter.state.location.pathname).toBe(path)
     },
   )

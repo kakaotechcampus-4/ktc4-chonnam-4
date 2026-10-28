@@ -172,6 +172,92 @@ else
   say "서버 정보를 읽지 못했다(\`$(error_code)\`)."
 fi
 
+# 운영진 안내(AWS 사용 가이드·디스코드 공지)를 지키는지. 운영진 정기 점검과 같은 값을 본다.
+# 값 대신 개수·예/아니오·AWS 관리형 정책 이름만 적는다(버킷 이름에는 계정 ID 가 들어 있어 종류로 적는다).
+say ""
+say "### 3-2. 운영진 안내 점검"
+say ""
+say "| 확인 | 결과 |"
+say "|---|---|"
+# 홉 제한이 1 이면 컨테이너가 서버 역할 자격증명을 받지 못한다. 2 이상으로 올리려면 서버 역할을 앱에 필요한 만큼 좁힌 뒤에(운영진 안내).
+# 우리는 홉 제한과 별도로 deploy/host/setup.sh 가 컨테이너 → IMDS 를 iptables 로 막는다.
+if hop=$(value ec2 describe-instances --query 'Reservations[0].Instances[0].MetadataOptions.HttpPutResponseHopLimit'); then
+  if [ "$hop" = 1 ]; then
+    say "| IMDS 홉 제한 | 1 — 컨테이너는 서버 역할을 받지 못한다 |"
+  else
+    say "| IMDS 홉 제한 | ⚠️ $hop — 서버 역할을 좁혔는지 확인한다(운영진 안내: 역할 교체 뒤에만 2) |"
+  fi
+else
+  say "| IMDS 홉 제한 | ⚠️ 읽지 못함 (\`$(error_code)\`) |"
+fi
+if [ -n "$instance_role" ]; then
+  if policies=$(value iam list-attached-role-policies --role-name "${instance_role##*/}" --query 'AttachedPolicies[].PolicyName'); then
+    policies=$(tr '\t' ' ' <<<"$policies" | sed -E 's/[0-9]{12}/<계정>/g')
+    case " $policies " in
+      *" AdministratorAccess "* | *" PowerUserAccess "*)
+        say "| 서버 역할의 관리형 정책 | ⚠️ \`$policies\` — 넓다. 컨테이너는 IMDS 차단으로 쓰지 못하고 서버 스크립트만 쓴다 |" ;;
+      *) say "| 서버 역할의 관리형 정책 | \`${policies:-없음}\` |" ;;
+    esac
+  else
+    say "| 서버 역할의 관리형 정책 | ⚠️ 읽지 못함 (\`$(error_code)\`) |"
+  fi
+fi
+# 22번(SSH)은 열지 않는다(OIDC + SSM). 인터넷 전체(0.0.0.0/0·::/0)에 열린 규칙도 없어야 한다(80 은 CloudFront 접두사 목록만).
+# 아래 백틱은 셸 명령 치환이 아니라 JMESPath 리터럴이라 작은따옴표가 맞다.
+# shellcheck disable=SC2016
+ssh_query='length(SecurityGroupRules[?IsEgress==`false` && (IpProtocol==`"-1"` || (FromPort<=`22` && ToPort>=`22`))])'
+# shellcheck disable=SC2016
+open_query='length(SecurityGroupRules[?IsEgress==`false` && (CidrIpv4==`"0.0.0.0/0"` || CidrIpv6==`"::/0"`)])'
+if groups=$(value ec2 describe-instances --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId') && [ -n "$groups" ]; then
+  filter="Name=group-id,Values=$(tr '\t' ',' <<<"$groups")"
+  if ssh_rules=$(value ec2 describe-security-group-rules --filters "$filter" --query "$ssh_query") &&
+    open_rules=$(value ec2 describe-security-group-rules --filters "$filter" --query "$open_query"); then
+    if [ "$ssh_rules" = 0 ]; then say "| 22번(SSH) 인바운드 | 없음 |"; else say "| 22번(SSH) 인바운드 | ⚠️ ${ssh_rules}개 — 배포는 SSM 이라 필요 없다. 운영진 안내대로 닫는다 |"; fi
+    if [ "$open_rules" = 0 ]; then say "| 인터넷 전체에 열린 인바운드 | 없음 |"; else say "| 인터넷 전체에 열린 인바운드 | ⚠️ ${open_rules}개 — CloudFront 를 거치지 않는 길이다 |"; fi
+  else
+    say "| 보안 그룹 규칙 | ⚠️ 읽지 못함 (\`$(error_code)\`) |"
+  fi
+fi
+# S3: 공개 차단 4개를 켜 두고, 버킷 정책이 공개가 아니어야 한다("IsPublic": false — 운영진 정기 점검과 같은 값).
+if buckets=$(value s3api list-buckets --query "Buckets[?starts_with(Name, 'neuringo-')].Name"); then
+  for bucket in $buckets; do
+    case $bucket in
+      *backups*) kind="백업 버킷" ;;
+      *tfstate*) kind="Terraform state 버킷" ;;
+      *) kind="팀 버킷" ;;
+    esac
+    blocks=$(value s3api get-public-access-block --bucket "$bucket" \
+      --query 'PublicAccessBlockConfiguration.[BlockPublicAcls,IgnorePublicAcls,BlockPublicPolicy,RestrictPublicBuckets]' | grep -o True | wc -l) || blocks=0
+    if public=$(value s3api get-bucket-policy-status --bucket "$bucket" --query PolicyStatus.IsPublic); then
+      if [ "$public" = False ]; then public="IsPublic false"; else public="⚠️ IsPublic $public"; fi
+    elif [ "$(error_code)" = NoSuchBucketPolicy ]; then
+      public="정책 없음(공개 아님)"
+    else
+      public="⚠️ 정책 상태를 읽지 못함 (\`$(error_code)\`)"
+    fi
+    if [ "$blocks" = 4 ]; then blocks="공개 차단 4/4"; else blocks="⚠️ 공개 차단 ${blocks}/4"; fi
+    say "| $kind | $blocks · $public |"
+  done
+else
+  say "| S3 버킷 | ⚠️ 읽지 못함 (\`$(error_code)\`) |"
+fi
+# 경보·예산 메일: 확인(Confirm) 링크를 눌러야 구독이 된다. 3일 안에 누르지 않으면 AWS 가 지운다.
+if topic=$(value sns list-topics --query "Topics[?ends_with(TopicArn, ':neuringo-${PROBE_ENV:-dev}-alerts')].TopicArn") && [ -n "$topic" ]; then
+  if subs=$(value sns list-subscriptions-by-topic --topic-arn "$topic" --query 'Subscriptions[].SubscriptionArn'); then
+    confirmed=$(tr '\t' '\n' <<<"$subs" | grep -c '^arn:' || true)
+    pending=$(tr '\t' '\n' <<<"$subs" | grep -c '^PendingConfirmation' || true)
+    if [ "$confirmed" -gt 0 ]; then
+      say "| 경보 메일 받는 사람 | 확인됨 ${confirmed} · 확인 대기 ${pending} |"
+    else
+      say "| 경보 메일 받는 사람 | ⚠️ 확인됨 0 · 확인 대기 ${pending} — 경보·예산 알림이 아무에게도 가지 않는다. Infra apply 뒤 확인 메일의 링크를 누른다 |"
+    fi
+  else
+    say "| 경보 메일 받는 사람 | ⚠️ 읽지 못함 (\`$(error_code)\`) |"
+  fi
+else
+  say "| 경보 메일 받는 사람 | ⚠️ 경보 주제가 없다(Infra 적용 전) |"
+fi
+
 # 배포 역할을 어디서 받을 수 있는지(신뢰 정책의 sub). 넓으면 레포 쓰기 권한이 곧 배포 권한이다(docs/cd-architecture.md 8절).
 # sub 에는 레포 이름만 들어 있다(공개). 혹시 숫자 12자리가 섞이면 가린다.
 say ""

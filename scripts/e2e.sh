@@ -97,7 +97,9 @@ run() {
   echo "▶ 백엔드 (bootJar, local 프로필)"
   (cd backend && ./gradlew bootJar --no-daemon -q)
   jar=$(find backend/build/libs -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+  # 아동 입장 코드 발급에 32바이트 이상 HMAC 키가 필요하다(AccessCodeCryptography). 실행마다 새로 만든다.
   SPRING_PROFILES_ACTIVE=local \
+    CHILD_ACCESS_HMAC_SECRET="$(random_hex 32)" \
     DB_URL="jdbc:postgresql://localhost:$DB_PORT/$DB_NAME" DB_USERNAME="$db_user" DB_PASSWORD="$db_password" \
     java -jar "$jar" >"$LOG_DIR/backend.log" 2>&1 &
   backend_pid=$!

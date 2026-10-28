@@ -14,16 +14,9 @@ const WCAG_A_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]
 // 기본 보라색(--child-primary #7b68ee)이 흰 바탕의 "느링고" 글자·흰 글자의 아동 버튼과 만나 대비가 약 4.2:1 로 AA(4.5:1)에 못 미친다.
 // 디자인 시스템 팔레트에 맞춰 지금 색을 유지하기로 했다(#22 의 4번, PR #33). 색을 바꾸면 여기 수를 줄이거나 지운다
 // (줄일 수 있으면 실행 보고서에 알림이 뜬다).
-// 강사 화면(#28)은 보조 글자색 --instructor-text-muted(#7c7870)가 흰 바탕에서 4.40:1, 표 머리·사이드바 바탕(#f5f3ee·#f3f1ec)에서 3.9:1 안팎이고,
-// 로그인 화면의 "또는" 구분 글자(#b3afa7)는 2.19:1 이다. 시안 PNG 에서 추정한 색이라 확정되면 고친다.
+// 강사 화면은 디자인 시스템 Teacher 색으로 바꾼 뒤 위반이 없어 목록에서 뺐다.
 // 곳 수는 이 테스트가 만드는 데이터(학급 1개·아동 1명) 기준이다.
 const KNOWN_VIOLATIONS: Record<string, Record<string, number>> = {
-  "/login": { "color-contrast": 3 },
-  "/signup": { "color-contrast": 5 },
-  "/classrooms": { "color-contrast": 9 },
-  "/classrooms/new": { "color-contrast": 2 },
-  "/classrooms/:classId": { "color-contrast": 4 },
-  "/classrooms/:classId?tab=children": { "color-contrast": 7 },
   "/child": { "color-contrast": 1 },
   "/child/hello": { "color-contrast": 2 },
   "/child/activities": { "color-contrast": 1 },
