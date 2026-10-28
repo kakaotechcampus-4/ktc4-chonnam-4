@@ -43,6 +43,19 @@ case "$args" in
   "sts get-caller-identity --query Account"*) echo 123456789012 ;;
   "sts get-caller-identity --query Arn"*) echo arn:aws:sts::123456789012:assumed-role/ktc-github-deploy/GitHubActions ;;
   "ec2 describe-instances --query length"*) echo 1 ;;
+  *HttpPutResponseHopLimit*) echo "${FAKE_HOP:-1}" ;;
+  *"SecurityGroups[].GroupId"*) printf 'sg-0aaa1111\tsg-0bbb2222\n' ;;
+  "ec2 describe-security-group-rules"*FromPort*) echo "${FAKE_SSH:-0}" ;;
+  "ec2 describe-security-group-rules"*CidrIpv4*) echo "${FAKE_OPEN:-0}" ;;
+  "iam list-attached-role-policies"*) printf '%s\n' "${FAKE_POLICIES:-PowerUserAccess AmazonSSMManagedInstanceCore}" ;;
+  "s3api list-buckets --query"*) printf 'neuringo-dev-backups-123456789012\tneuringo-tfstate-123456789012\n' ;;
+  "s3api get-public-access-block"*) printf 'True\tTrue\tTrue\tTrue\n' ;;
+  "s3api get-bucket-policy-status --bucket neuringo-dev-backups"*) echo False ;;
+  "s3api get-bucket-policy-status"*)
+    echo "An error occurred (NoSuchBucketPolicy) when calling the GetBucketPolicyStatus operation: The bucket policy does not exist" >&2
+    exit 254 ;;
+  "sns list-topics --query"*) echo arn:aws:sns:ap-northeast-2:123456789012:neuringo-dev-alerts ;;
+  "sns list-subscriptions-by-topic"*) printf '%s\n' "${FAKE_SNS_SUBS:-PendingConfirmation}" ;;
   "ec2 describe-instances --query Reservations"*)
     printf 't3.medium\trunning\trequired\tec2-203-0-113-20.ap-northeast-2.compute.amazonaws.com\tarn:aws:iam::123456789012:instance-profile/ktc-ec2-ssm-profile\n' ;;
   "ssm describe-instance-information --query"*) echo 1 ;;
@@ -103,6 +116,24 @@ check "실행 요약에도 계정 ID 가 없다" lacks "$(cat "$summary")" "1234
 check "배포 역할을 받을 수 있는 곳(신뢰 정책 sub)을 적는다" has "$out" "| \`repo:kakaotechcampus-4/ktc4-chonnam-4:*\` |"
 check "와일드카드면 쓰기 권한 = 배포 권한이라고 경고한다" has "$out" "쓰기 권한 = 배포 권한"
 check "그때 할 일을 알려 준다" has "$out" "develop 보호 규칙"
+
+check "운영진 안내: IMDS 홉 제한 1" has "$out" "| IMDS 홉 제한 | 1 — 컨테이너는 서버 역할을 받지 못한다 |"
+check "운영진 안내: 넓은 서버 역할은 이름과 함께 알린다" has "$out" "| 서버 역할의 관리형 정책 | ⚠️ \`PowerUserAccess AmazonSSMManagedInstanceCore\`"
+check "운영진 안내: 22번 인바운드 없음" has "$out" "| 22번(SSH) 인바운드 | 없음 |"
+check "운영진 안내: 인터넷 전체에 열린 인바운드 없음" has "$out" "| 인터넷 전체에 열린 인바운드 | 없음 |"
+check "운영진 안내: 백업 버킷 공개 차단·IsPublic" has "$out" "| 백업 버킷 | 공개 차단 4/4 · IsPublic false |"
+check "운영진 안내: 정책 없는 버킷은 공개 아님" has "$out" "| Terraform state 버킷 | 공개 차단 4/4 · 정책 없음(공개 아님) |"
+check "경보 메일 구독이 확인되지 않았으면 경고한다" has "$out" "| 경보 메일 받는 사람 | ⚠️ 확인됨 0 · 확인 대기 1"
+check "보안 그룹 ID 를 찍지 않는다" lacks "$out" "sg-0aaa1111"
+
+out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE_HOP=2 FAKE_SSH=1 FAKE_OPEN=2 FAKE_POLICIES=$'AmazonSSMManagedInstanceCore\tneuringo-app' \
+  FAKE_SNS_SUBS=$'arn:aws:sns:ap-northeast-2:123456789012:neuringo-dev-alerts:abc\tPendingConfirmation' bash scripts/aws-probe.sh 2>&1) || true
+check "홉 제한이 2 이상이면 경고한다" has "$out" "| IMDS 홉 제한 | ⚠️ 2"
+check "22번 인바운드가 있으면 경고한다" has "$out" "| 22번(SSH) 인바운드 | ⚠️ 1개"
+check "인터넷 전체에 열린 인바운드가 있으면 경고한다" has "$out" "| 인터넷 전체에 열린 인바운드 | ⚠️ 2개"
+check "좁은 서버 역할은 경고하지 않는다" has "$out" "| 서버 역할의 관리형 정책 | \`AmazonSSMManagedInstanceCore neuringo-app\` |"
+check "확인된 구독 수를 센다" has "$out" "| 경보 메일 받는 사람 | 확인됨 1 · 확인 대기 1 |"
+check "그때도 계정 ID 를 찍지 않는다" lacks "$out" "123456789012"
 
 out=$(env -u GITHUB_ACTIONS PATH="$tmp/bin:$PATH" FAKE_SUBS=$'repo:kakaotechcampus-4/ktc4-chonnam-4:environment:infra\trepo:kakaotechcampus-4/ktc4-chonnam-4:environment:dev' \
   bash scripts/aws-probe.sh 2>&1) || true

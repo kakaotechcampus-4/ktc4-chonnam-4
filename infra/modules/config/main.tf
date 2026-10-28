@@ -1,6 +1,7 @@
 # Parameter Store 값.
 #   /neuringo/<env>/infra/…  워크플로가 읽는 인프라 값(scripts/infra-outputs.sh)
 #   /neuringo/<env>/db/…, child-access/…  서버 .env 에 들어가는 값(deploy/host/params.txt)
+#   /neuringo/<env>/edge/origin-secret     원본 비밀 헤더. deploy.sh 가 서버 nginx 설정으로 만든다(.env·앱에는 넣지 않는다)
 # 비밀값(DB 비밀번호·아동 입장 코드 HMAC 키)은 ephemeral 값 + 쓰기 전용 인자(value_wo)로 넣어 plan·state 에 남기지 않는다.
 # *_version 을 올릴 때만 새로 만든다. DB 비밀번호는 postgres 볼륨을 처음 만들 때만 적용되므로, 이미 돈 DB 에서 바꾸면
 # 앱이 접속하지 못한다(바꾸려면 DB 안의 비밀번호도 같이 바꾼다).
@@ -56,6 +57,18 @@ variable "db_password_version" {
 
 variable "hmac_secret_version" {
   description = "올리면 아동 입장 코드 HMAC 키를 새로 만든다(이미 발급한 코드는 다시 발급해야 한다)"
+  type        = number
+  default     = 1
+}
+
+variable "origin_secret" {
+  description = "원본 비밀 헤더 값(infra/live/dev 의 random_id). 서버의 nginx 가 이 값과 같은 헤더만 받는다"
+  type        = string
+  sensitive   = true
+}
+
+variable "origin_secret_version" {
+  description = "origin_secret 을 새로 만들 때 함께 올린다(쓰기 전용 값의 버전)"
   type        = number
   default     = 1
 }
@@ -128,6 +141,14 @@ resource "aws_ssm_parameter" "child_access_hmac_secret" {
   value_wo_version = var.hmac_secret_version
 }
 
+# 서버 .env 가 아니라 nginx 설정 파일로 들어간다(deploy/host/deploy.sh). 값 자체는 CloudFront 배포 설정·random_id 의 state 에도 있다.
+resource "aws_ssm_parameter" "origin_secret" {
+  name             = "${local.prefix}/edge/origin-secret"
+  type             = "SecureString"
+  value_wo         = var.origin_secret
+  value_wo_version = var.origin_secret_version
+}
+
 output "parameter_names" {
   description = "만든 Parameter Store 이름(검사·문서용)"
   value = sort([
@@ -139,5 +160,6 @@ output "parameter_names" {
     aws_ssm_parameter.db_username.name,
     aws_ssm_parameter.db_password.name,
     aws_ssm_parameter.child_access_hmac_secret.name,
+    aws_ssm_parameter.origin_secret.name,
   ])
 }

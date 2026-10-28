@@ -1,4 +1,4 @@
-// 설계·미구현 함수 26개. 2026-10-22 / 63e4314.
+// 설계·미구현 함수 24개. 2026-10-28 통합 기준. 시작·복원은 endpoints.ts에 구현.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -91,25 +91,6 @@ export function getLearningGoalLineage(
   return api.request<T.GoalData[]>("/api/v1/learning-goals/" + encodeURIComponent(args.goalId) + "/lineage", {
     method: "GET",
     auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
-export interface GetActivityStatusArgs {
-  activityId: T.UUID;
-  auth: "instructor" | "child";
-}
-
-export function getActivityStatus(
-  api: ApiClient,
-  args: GetActivityStatusArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftActivityStatusData>> {
-  return api.request<T.DraftActivityStatusData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/status", {
-    method: "GET",
-    auth: args.auth,
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
@@ -253,26 +234,6 @@ export function listScenarioMicroGoals(
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
-  });
-}
-
-export interface StartRoleplayArgs {
-  activityId: T.UUID;
-  idempotencyKey: T.UUID;
-}
-
-export function startRoleplay(
-  api: ApiClient,
-  args: StartRoleplayArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRoleplaySession>> {
-  return api.request<T.DraftRoleplaySession>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/roleplay-sessions", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [201],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey
   });
 }
 

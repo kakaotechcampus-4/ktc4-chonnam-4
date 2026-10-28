@@ -129,8 +129,12 @@
   box-sizing: border-box;
 }
 
-/* 아동 화면은 태블릿 화면을 꽉 채운다. 위 1126px 고정·테두리(Vite 템플릿)는 강사 화면에만 남긴다. */
-#root:has(.child-scope) {
+/*
+ * 아동 화면은 태블릿 화면을, 강사 화면은 브라우저 너비를 꽉 채운다(와이어프레임은 1280px 전체를 쓴다).
+ * 위 1126px 고정·테두리는 Vite 템플릿 값이라 두 화면 모두에서 푼다.
+ */
+#root:has(.child-scope),
+#root:has(.instructor-scope) {
   width: 100%;
   border-inline: none;
 }
@@ -307,48 +311,223 @@ code {
 }
 /*
  * 강사 화면 전용 디자인 토큰 (인증 화면 포함).
- * Figma 원본 접근이 막혀 있어 시안 PNG에서 눈으로 추정한 값이다.
- * 인증: T-AUTH-01·02 / 앱 셸: T-HOME-01, T-CLS-01·02·03, T-NOTI-01
- * Figma에서 실제 값을 확인하면 이 블록만 교체한다.
+ * 값은 Figma 디자인 시스템의 Teacher 모드를 따른다: 01 Color 의 Semantic color modes, 02 Typography 의 Teacher type scale,
+ * Radius·Elevation, 06 강사 서비스 컴포넌트. 화면 배치(사이드바 폭, 헤더 높이, 여백)는 Lowfi Wireframe 의 강사 화면을 따른다.
  */
 .instructor-scope {
   --instructor-font-body: 'Pretendard Variable', var(--font-sans);
 
-  --instructor-bg: #f6f5f1;
-  --instructor-auth-bg: #f3f3f3;
-  --instructor-sidebar: #f3f1ec;
+  /* Background */
+  --instructor-bg: #ffffff; /* Background/Canvas: 본문 바탕. 디자인 시스템 레이아웃 예시처럼 흰 바탕에 테두리 카드를 둔다 */
+  --instructor-auth-bg: #f8f7fa;
+  --instructor-sidebar: #f8f7fa;
   --instructor-surface: #ffffff;
-  --instructor-surface-muted: #f5f3ee;
-  --instructor-border: #e4e1da;
-  --instructor-input-border: #d6d3cc;
+  --instructor-surface-muted: #f8f7fa; /* 표 머리줄, 인용 상자처럼 카드 안의 옅은 면 */
+  --instructor-disabled-bg: #f0eef3;
 
-  --instructor-nav-active: #e2dfd8;
-  --instructor-avatar: #dcd8d0;
+  /* Border */
+  --instructor-border: #dedce4;
+  --instructor-border-subtle: #f0eef3; /* 표 행 구분선, 카드 안 구분선 */
+  --instructor-input-border: #dedce4;
+  --instructor-border-strong: #c8c5d0; /* 보조 버튼 테두리, 빈 체크박스·라디오 */
+  --instructor-focus: #a99bf5;
 
-  --instructor-text: #262522;
-  --instructor-text-muted: #7c7870;
-  --instructor-text-disabled: #b3afa7;
+  /* 사이드바 선택 항목 */
+  --instructor-nav-active: #ede9fe;
+  --instructor-nav-active-fg: #35297a;
+  --instructor-nav-fg: #494552;
+  --instructor-avatar: #dedce4;
 
-  --instructor-primary: #2c2c2c;
+  /* Text */
+  --instructor-text: #252331;
+  --instructor-text-muted: #5e5969; /* Secondary */
+  /*
+   * 표 머리줄·도움말 글자. 디자인 시스템 부품 그림은 #777382 를 쓰지만 그 값은 Icon/Secondary 이고,
+   * 옅은 바탕(#f8f7fa) 위 12px 에서 대비가 4.3:1 로 모자라다. 글자에는 Text/Secondary 를 쓴다.
+   */
+  --instructor-text-subtle: #5e5969;
+  --instructor-icon-subtle: #777382; /* 돋보기·눈 같은 보조 아이콘 */
+  --instructor-text-disabled: #a6a2af;
+
+  /* Primary */
+  --instructor-primary: #6654d9;
+  --instructor-primary-hover: #5744c4;
+  --instructor-primary-pressed: #46369f;
   --instructor-primary-foreground: #ffffff;
-  --instructor-link: #2f6db5;
+  --instructor-primary-subtle: #f5f3ff; /* 선택된 메뉴 항목·끌어 놓기 영역 바탕 */
+  --instructor-link: #5744c4;
 
-  --instructor-success-bg: #e3f0e6;
-  --instructor-success-fg: #2e6b3f;
-  --instructor-neutral-bg: #ebe9e4;
-  --instructor-neutral-fg: #5b5852;
-  --instructor-danger-fg: #b3261e;
-  /* 진행 중·권장 배지(시안 T-LRN-03 "진행중", T-ACT-02 "권장")와 주의 안내 띠(T-LRN-04 재발급 경고) */
-  --instructor-info-bg: #e6eef8;
-  --instructor-info-fg: #2f5f96;
-  --instructor-warning-bg: #fbeee2;
-  --instructor-warning-fg: #9a5a1f;
+  /* Feedback: 배지·안내 띠. 상태는 색만으로 구분하지 않고 글자도 함께 보인다 */
+  --instructor-success-bg: #f6fbef;
+  --instructor-success-fg: #416326;
+  --instructor-success-icon: #6fa637;
+  --instructor-neutral-bg: #f0eef3;
+  --instructor-neutral-fg: #494552;
+  --instructor-info-bg: #f1fbfd;
+  --instructor-info-fg: #206a7b;
+  --instructor-info-icon: #2aa5bf;
+  --instructor-warning-bg: #fffbea;
+  --instructor-warning-fg: #764219;
+  --instructor-warning-icon: #d58c13;
+  --instructor-danger-bg: #fff2f2;
+  --instructor-danger-text: #822b2b; /* 오류 문구 */
+  --instructor-danger-fg: #bc3636; /* 삭제 버튼 바탕, 빨간 글씨 버튼 */
+  --instructor-danger-border: #d64c4c;
 
-  --instructor-radius-card: 12px;
+  /* Radius: 4 배지, 8 입력·버튼, 12 카드, 16 다이얼로그·큰 카드 */
+  --instructor-radius-badge: 4px;
   --instructor-radius-control: 8px;
+  --instructor-radius-card: 12px;
+  --instructor-radius-dialog: 16px;
+
+  /* Elevation: Teacher 는 얕고 선명하게, Level 0–2 만 쓴다 */
+  --instructor-shadow-1: 0 1px 3px rgba(16, 13, 24, 0.12);
+  --instructor-shadow-2: 0 4px 12px rgba(16, 13, 24, 0.16);
+
+  /*
+   * :root 글자 크기가 18px(Vite 템플릿)이라 Tailwind 의 rem 값이 1.125배로 커진다(text-sm 이 15.75px).
+   * 시안 px 값이 그대로 나오도록 강사 화면에서는 간격·글자 크기 변수를 px 로 고정한다. 아동 화면은 18px 기준 그대로 둔다.
+   */
+  --spacing: 4px;
+
+  /*
+   * Teacher type scale: 12/18, 14/20, 16/24, 20/28, 24/34, 28/38, 32/42.
+   * Tailwind 의 text-xs·sm·base·xl·2xl 을 이 단계로 쓴다. text-lg(18)·text-3xl(30) 은 단계에 없어 강사 화면에서 쓰지 않는다.
+   */
+  --text-xs: 12px;
+  --text-xs--line-height: calc(18 / 12);
+  --text-sm: 14px;
+  --text-sm--line-height: calc(20 / 14);
+  --text-base: 16px;
+  --text-base--line-height: calc(24 / 16);
+  --text-xl: 20px;
+  --text-xl--line-height: calc(28 / 20);
+  --text-2xl: 24px;
+  --text-2xl--line-height: calc(34 / 24);
 
   font-family: var(--instructor-font-body);
+  /* 크기 클래스가 없는 글자는 Body Small(14/20). :root 의 18px·자간 0.18px 을 강사 화면에서는 쓰지 않는다. */
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  letter-spacing: normal;
   color: var(--instructor-text);
   /* #root 의 Vite 템플릿 text-align: center 를 강사 화면에서만 되돌린다. */
   text-align: left;
+}
+
+/*
+ * 강사 화면의 선택 컨트롤. 값은 디자인 시스템 05 공통 컴포넌트의 "Select · Checkbox · Radio · Switch"(Teacher) 와
+ * "Progress" 를 원본 CSS 그대로 옮겼다. 원본은 내용 20px 에 테두리를 더하는 방식(content-box)이라
+ * 바깥 크기가 상태마다 다르다: 체크박스 빈 칸 22·체크 20, 라디오 빈 칸 22·선택 32.
+ * 기본 input 을 그대로 두고 모양만 바꾸므로 키보드·화면 낭독기 동작은 브라우저 기본과 같다.
+ * utilities 보다 낮은 components 층에 두어, 화면에서 여백 등을 클래스로 덧붙일 수 있다.
+ */
+@layer components {
+  .instructor-scope input[type="checkbox"],
+  .instructor-scope input[type="radio"] {
+    appearance: none;
+    box-sizing: content-box;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border: 1px solid var(--instructor-border-strong);
+    background: var(--instructor-surface) center / 16px 16px no-repeat;
+    cursor: pointer;
+  }
+  .instructor-scope input[type="checkbox"] {
+    border-radius: var(--instructor-radius-badge);
+  }
+  .instructor-scope input[type="checkbox"]:checked {
+    border: 0;
+    background-color: var(--instructor-primary);
+    /* Material Symbols Rounded "check" 16px, 흰색 (MaterialIcon.tsx 와 같은 경로) */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960' fill='%23fff'%3E%3Cpath d='m378-332 363-363q9-9 21.5-9t21.5 9q9 9 9 21.5t-9 21.5L399-267q-9 9-21 9t-21-9L175-449q-9-9-8.5-21.5T176-492q9-9 21.5-9t21.5 9l159 160Z'/%3E%3C/svg%3E");
+  }
+  .instructor-scope input[type="radio"] {
+    border-radius: 9999px;
+  }
+  .instructor-scope input[type="radio"]:checked {
+    border: 6px solid var(--instructor-primary);
+  }
+  .instructor-scope input[type="checkbox"]:focus-visible,
+  .instructor-scope input[type="radio"]:focus-visible {
+    outline: 3px solid var(--instructor-focus);
+    outline-offset: 2px;
+  }
+  .instructor-scope input[type="checkbox"]:disabled,
+  .instructor-scope input[type="radio"]:disabled {
+    cursor: not-allowed;
+    border-color: var(--instructor-border);
+    background-color: var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="checkbox"]:checked:disabled {
+    background-color: var(--instructor-text-disabled);
+  }
+  .instructor-scope input[type="radio"]:checked:disabled {
+    border-color: var(--instructor-text-disabled);
+  }
+
+  /* Select: 입력칸과 같은 42px 상자에 Material Symbols Rounded "expand_more"(파일 이름 keyboard_arrow_down) 20px(Icon/Secondary #777382)를 오른쪽 13px 에 둔다. */
+  .instructor-scope select {
+    appearance: none;
+    padding-right: 41px;
+    background: var(--instructor-surface)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960' fill='%23777382'%3E%3Cpath d='M469-358q-5-2-10-7L261-563q-9-9-8.5-21.5T262-606q9-9 21.5-9t21.5 9l175 176 176-176q9-9 21-8.5t21 9.5q9 9 9 21.5t-9 21.5L501-365q-5 5-10 7t-11 2q-6 0-11-2Z'/%3E%3C/svg%3E")
+      right 13px center / 20px 20px no-repeat;
+  }
+
+  /*
+   * 슬라이더: 디자인 시스템에 슬라이더 부품이 없어 트랙은 Progress(높이 6, 바탕 #f0eef3, 채움 Primary, 끝 둥글게),
+   * 손잡이는 와이어프레임(24px 흰 원, 2px 테두리)에 Primary 색을 입혔다. 채운 길이는 --fill(0~100%)로 받는다.
+   */
+  .instructor-scope input[type="range"] {
+    appearance: none;
+    height: 24px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .instructor-scope input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: linear-gradient(var(--range-fill, var(--instructor-primary)) 0 0) 0 / var(--fill, 0%) 100% no-repeat,
+      var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--instructor-disabled-bg);
+  }
+  .instructor-scope input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--range-fill, var(--instructor-primary));
+  }
+  .instructor-scope input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    box-sizing: border-box;
+    width: 24px;
+    height: 24px;
+    margin-top: -9px;
+    border: 2px solid var(--range-fill, var(--instructor-primary));
+    border-radius: 9999px;
+    background: var(--instructor-surface);
+  }
+  .instructor-scope input[type="range"]::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--range-fill, var(--instructor-primary));
+    border-radius: 9999px;
+    background: var(--instructor-surface);
+  }
+  .instructor-scope input[type="range"]:focus-visible {
+    outline: 3px solid var(--instructor-focus);
+    outline-offset: 2px;
+  }
+  .instructor-scope input[type="range"]:disabled {
+    --range-fill: var(--instructor-text-disabled);
+    cursor: not-allowed;
+  }
 }

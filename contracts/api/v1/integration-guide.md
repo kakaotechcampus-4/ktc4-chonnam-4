@@ -30,6 +30,7 @@ createSessionTokenStore의 기본 키는 예제입니다. 기존 FE 저장소와
 ## 3. 인증·가입·탈퇴
 
 - 강사: Bearer 불투명 accessToken, 로그인12시간 고정·연장/refresh 없음. sessionStorage는 탭 종료 시 사라지고 만료401에서는 입력/캐시도 폐기합니다.
+- 강사 Bearer 요청에는 서버 세션(JSESSIONID)을 만들지 않습니다. 세션 쿠키로 인증되는 것은 아동뿐이고, 쿠키만 보낸 강사 API 요청은 401 AUTHENTICATION_REQUIRED입니다. 로그아웃 뒤 남은 쿠키로 강사 API가 열리지 않습니다(PR #75).
 - 공개 가입/로그인/아동 입장: auth=public, 남아 있는 강사 Bearer를 보내지 않습니다.
 - 아동: auth=child, HttpOnly JSESSIONID. credentials:include로 보내며 쿠키를 직접 읽지 않습니다. 4자리 접근 코드24시간과 아동 인증 세션 자동 만료 없음은 별개입니다.
 - 겸용 GET은 auth를 명시합니다. 역할·대상 변경 시 캐시를 정리하고 서버 소유권 검사를 우회하지 않습니다.

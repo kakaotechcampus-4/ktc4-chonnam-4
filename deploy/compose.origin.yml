@@ -1,0 +1,7 @@
+# 원본 비밀 헤더 확인을 켠다. deploy/host/deploy.sh 가 Parameter Store 에 edge/origin-secret 이 있을 때만
+# compose.dev.yml 에 덧붙인다. 로컬·검사는 덧붙이지 않아 확인하지 않는다.
+#   ORIGIN_CONF_DIR  deploy.sh 가 만든 폴더(verify.conf: 헤더가 비밀값과 다르면 403). 화면(nginx)이 읽기만 한다.
+services:
+  web:
+    volumes:
+      - "${ORIGIN_CONF_DIR:?ORIGIN_CONF_DIR 가 필요합니다}:/etc/nginx/origin:ro"

@@ -1,6 +1,6 @@
 # API-RPL-01 · 역할극 시작·기존 세션 복원
 
-> 구현 — 2026-10-28 / S5-JIN-02 작업 브랜치, 기준 `17e191b` + 미커밋 변경. 운영 배포를 의미하지 않습니다.
+> 구현 — 2026-10-28 / PR #80 + develop 통합 작업본. 공유 시작·복원 예제를 동기화했습니다. 운영 배포를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -38,7 +38,7 @@
 
 신규 생성 201 예시입니다. 복원도 같은 구조이며 200을 반환합니다.
 
-```json
+~~~json
 {
   "data": {
     "sessionId": "82000000-0000-4000-8000-000000000001",
@@ -63,7 +63,7 @@
   },
   "meta": { "traceId": "90000000-0000-4000-8000-000000000001" }
 }
-```
+~~~
 
 | 필드 | 의미 |
 |---|---|
@@ -100,63 +100,90 @@
 
 네트워크·Abort·파싱 실패는 서버 미실행을 뜻하지 않습니다. [공통 연동 규칙](../integration-guide.md)에 따라 원래 키를 보존합니다.
 
-## 6. TypeScript 호출 예제
+## 6. 복사 가능한 TypeScript
 
-아래는 실제 시작 API용 예제입니다. 공유 `examples/draft-endpoints.ts`의 기존 함수는 아직 설계 차단이 남아 있으므로 그대로 연결하지 않습니다.
-프론트엔드 소스·타입·공유 예제 파일은 이번 백엔드 변경에서 직접 수정하지 않았습니다.
+공유 시작·복원 함수는 `examples/endpoints.ts`에 구현돼 있습니다. `draft-endpoints.ts`에서 가져오지 않습니다.
+응답 타입은 `types.ts`의 `RoleplayStartData`이며 실제 프론트엔드 연동·운영 배포는 별도입니다.
 
-```ts
-import type { ApiClient, CallOptions } from "../examples/api-client.ts";
+### 요청·응답 타입
+
+~~~ts
+import type { UUID, ActivityStatus } from "./types.ts";
 
 export interface RoleplayStartData {
-  sessionId: string;
-  activityId: string;
-  scenarioId: string;
+  sessionId: UUID;
+  activityId: UUID;
+  scenarioId: UUID;
   scenarioVersion: number;
-  status: "IN_PROGRESS" | "PAUSED" | "COMPLETED";
-  activityStatus: "NOT_STARTED" | "IN_PROGRESS" | "PAUSED" | "RECOVERY_NEEDED" | "COMPLETED";
-  lastDeliveredTurnId: string | null;
+  status: 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED';
+  activityStatus: ActivityStatus;
+  lastDeliveredTurnId: UUID | null;
   checkpointVersion: number;
   delivery: {
     messages: Array<{
-      messageId: string;
-      speakerRole: "DIALOGUE";
-      purpose: "QUESTION" | "RESUME";
+      messageId: UUID;
+      speakerRole: 'DIALOGUE';
+      purpose: 'QUESTION' | 'RESUME';
       text: string;
       speech: { available: false; url: null };
     }>;
   };
 }
+~~~
+
+### 호출 함수
+
+~~~ts
+import type { ApiClient, CallOptions } from "./api-client.ts";
+import type * as T from "./types.ts";
+
+export interface StartRoleplayArgs {
+  activityId: T.UUID;
+  idempotencyKey: T.UUID;
+}
 
 export function startRoleplay(
   api: ApiClient,
-  args: { activityId: string; idempotencyKey: string },
+  args: StartRoleplayArgs,
   options: CallOptions = {}
-) {
-  return api.request<RoleplayStartData>(
-    "/api/v1/activities/" + encodeURIComponent(args.activityId) + "/roleplay-sessions",
-    {
-      method: "POST",
-      auth: "child",
-      expectedStatuses: [200, 201],
-      idempotencyKey: args.idempotencyKey,
-      signal: options.signal
-    }
-  );
+): Promise<T.ApiResponse<T.RoleplayStartData>> {
+  return api.request<T.RoleplayStartData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/roleplay-sessions", {
+    method: "POST",
+    auth: "child",
+    expectedStatuses: [200, 201],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey
+  });
 }
-```
+~~~
+
+### 사용 예시
+
+`api`는 공통 연동 규칙에 따라 생성한 클라이언트입니다. 신규 생성 201과 복원 200을 모두 처리하며 원래 요청 키를 보존합니다.
+
+~~~ts
+import { startRoleplay } from "./endpoints.ts";
+
+const response = await startRoleplay(api, {
+  activityId: "40000000-0000-4000-8000-000000000001",
+  idempotencyKey: "89000000-0000-4000-8000-000000000001"
+});
+const data = response.data;
+// messageId로 표시 중복을 제거하고 현재 상태·checkpointVersion을 사용합니다.
+// 빈 messages에서 새 질문을 만들거나 완료된 세션을 다시 시작하지 않습니다.
+~~~
 
 ## 7. cURL 계약 확인
 
 환경별 origin과 실제 아동 쿠키·CSRF를 준비합니다. 시작 본문은 보내지 않습니다.
 
-```bash
+~~~bash
 curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}/roleplay-sessions" \
   --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
   -H 'Accept: application/json' \
   -H "$NEURINGO_CSRF_HEADER: $NEURINGO_CSRF_TOKEN" \
   -H "Idempotency-Key: $NEURINGO_REQUEST_KEY"
-```
+~~~
 
 ## 8. 연결 Task·검증 범위
 
