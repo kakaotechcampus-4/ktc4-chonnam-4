@@ -11,7 +11,27 @@ public record AnalysisResult(
         @JsonProperty("learning_state") String learningState,
         @JsonProperty("primary_gap") PrimaryGap primaryGap,
         @JsonProperty("next_strategy") NextStrategy nextStrategy,
-        @JsonProperty("analysis_confidence") Double analysisConfidence) {
+        @JsonProperty("analysis_confidence") Double analysisConfidence,
+        @JsonProperty("goal_observation") GoalObservationOutput.Analysis goalObservation) {
+
+    public AnalysisResult(
+            UUID turnId,
+            String responseAct,
+            String relevance,
+            String learningState,
+            PrimaryGap primaryGap,
+            NextStrategy nextStrategy,
+            Double analysisConfidence) {
+        this(
+                turnId,
+                responseAct,
+                relevance,
+                learningState,
+                primaryGap,
+                nextStrategy,
+                analysisConfidence,
+                null);
+    }
 
     public AnalysisResult {
         Objects.requireNonNull(turnId, "turnId must not be null");

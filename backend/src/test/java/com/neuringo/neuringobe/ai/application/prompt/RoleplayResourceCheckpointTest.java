@@ -64,6 +64,9 @@ class RoleplayResourceCheckpointTest {
                             .executeVoice(
                                     resource,
                                     RoleplayFixtures.input("placeholder"),
+                                    com.neuringo.neuringobe.roleplay.application
+                                            .RoleplayObservationTestPlans.inputForScenario(
+                                            (RoleplayFixtures.input("placeholder")).scenario()),
                                     pipeline(false, null, null),
                                     RoleplayTurnDeadline.start());
             assertThat(result).isInstanceOf(RoleplayTurnOutcome.InputNoticeUnavailable.class);
@@ -86,6 +89,12 @@ class RoleplayResourceCheckpointTest {
                                                             RoleplayFixtures.trace(null, null),
                                                             AudioFormat.WEBM),
                                                     RoleplayFixtures.input("placeholder"),
+                                                    com.neuringo.neuringobe.roleplay.application
+                                                            .RoleplayObservationTestPlans
+                                                            .inputForScenario(
+                                                                    (RoleplayFixtures.input(
+                                                                                    "placeholder"))
+                                                                            .scenario()),
                                                     pipeline(true, null, null),
                                                     RoleplayTurnDeadline.start()))
                     .isInstanceOf(IllegalStateException.class)
@@ -108,6 +117,9 @@ class RoleplayResourceCheckpointTest {
                                             RoleplayFixtures.trace(null, null),
                                             AudioFormat.WEBM),
                                     RoleplayFixtures.input("placeholder"),
+                                    com.neuringo.neuringobe.roleplay.application
+                                            .RoleplayObservationTestPlans.inputForScenario(
+                                            (RoleplayFixtures.input("placeholder")).scenario()),
                                     pipeline(true, null, null),
                                     deadline);
             assertThat(result).isInstanceOf(RoleplayTurnOutcome.Guidance.class);
@@ -130,6 +142,9 @@ class RoleplayResourceCheckpointTest {
                                             RoleplayFixtures.trace(null, null),
                                             AudioFormat.WEBM),
                                     RoleplayFixtures.input("placeholder"),
+                                    com.neuringo.neuringobe.roleplay.application
+                                            .RoleplayObservationTestPlans.inputForScenario(
+                                            (RoleplayFixtures.input("placeholder")).scenario()),
                                     pipeline(false, entered, release),
                                     RoleplayTurnDeadline.start(Duration.ofSeconds(1)));
             assertThat(entered.getCount()).isZero();
@@ -179,6 +194,12 @@ class RoleplayResourceCheckpointTest {
                                             .executeVoice(
                                                     failing,
                                                     RoleplayFixtures.input("placeholder"),
+                                                    com.neuringo.neuringobe.roleplay.application
+                                                            .RoleplayObservationTestPlans
+                                                            .inputForScenario(
+                                                                    (RoleplayFixtures.input(
+                                                                                    "placeholder"))
+                                                                            .scenario()),
                                                     pipeline(false, null, null),
                                                     deadline))
                     .isInstanceOf(IllegalStateException.class)
@@ -199,6 +220,8 @@ class RoleplayResourceCheckpointTest {
         assertThat(command.candidateId()).isEqualTo(RoleplayFixtures.CANDIDATE_ID);
         assertThat(command.microGoalId()).isEqualTo(RoleplayFixtures.MG_EMOTION);
         assertThat(command.supportLevel()).isEqualTo("S1");
+        assertThat(command.responseType()).isEqualTo("GUIDING_QUESTION");
+        assertThat(command.strategyUsed()).isEqualTo("PROBE_EMOTION");
         assertThat(command.responseText()).isEqualTo("친구는 어떤 기분일까?");
         assertThat(command.canonicalUtterance()).isEqualTo("친구가 울고 있어");
         assertThat(command.expectedVersion()).isEqualTo(4);

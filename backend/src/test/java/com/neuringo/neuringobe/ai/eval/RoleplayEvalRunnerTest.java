@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -54,7 +55,8 @@ class RoleplayEvalRunnerTest {
                             new AiAttemptContext(1, 0, 0),
                             1,
                             input,
-                            null);
+                            null,
+                            RoleplayObservationTestPlans.inputForScenario((input).scenario()));
             assertThat(prompt.request().userPrompt()).contains(turn.llmUtterance());
         }
     }
@@ -69,7 +71,9 @@ class RoleplayEvalRunnerTest {
                                     new AiAttemptContext(1, 0, 0),
                                     1,
                                     SET.toInput(turn),
-                                    null)
+                                    null,
+                                    RoleplayObservationTestPlans.inputForScenario(
+                                            (SET.toInput(turn)).scenario()))
                             .request()
                             .userPrompt();
 
@@ -260,7 +264,7 @@ class RoleplayEvalRunnerTest {
                 null,
                 UUID.randomUUID(),
                 turnId,
-                null,
+                UUID.randomUUID(),
                 null);
     }
 }

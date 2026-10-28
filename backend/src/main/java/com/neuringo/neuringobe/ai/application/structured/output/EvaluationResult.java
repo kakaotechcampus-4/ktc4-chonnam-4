@@ -12,7 +12,28 @@ public record EvaluationResult(
         @JsonProperty("retry_target") RetryTarget retryTarget,
         @JsonProperty("critical_failure_count") Integer criticalFailureCount,
         @JsonProperty("failure_codes") List<String> failureCodes,
-        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction) {
+        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
+        @JsonProperty("goal_observation_review")
+                GoalObservationOutput.Review goalObservationReview) {
+
+    public EvaluationResult(
+            UUID candidateId,
+            Boolean safeToSend,
+            EvaluationDecision decision,
+            RetryTarget retryTarget,
+            Integer criticalFailureCount,
+            List<String> failureCodes,
+            RevisionInstruction revisionInstruction) {
+        this(
+                candidateId,
+                safeToSend,
+                decision,
+                retryTarget,
+                criticalFailureCount,
+                failureCodes,
+                revisionInstruction,
+                null);
+    }
 
     public EvaluationResult {
         Objects.requireNonNull(candidateId, "candidateId must not be null");
@@ -38,6 +59,14 @@ public record EvaluationResult(
     public boolean canDeliver() {
         return Boolean.TRUE.equals(safeToSend)
                 && decision == EvaluationDecision.PASS
-                && criticalFailureCount == 0;
+                && criticalFailureCount == 0
+                && (goalObservationReview == null || goalObservationReview.supportsAnalysis());
+    }
+
+    public boolean matchesObservationContract(AnalysisResult analysis) {
+        var observation = analysis.goalObservation();
+        if (observation == null) return goalObservationReview == null;
+        return goalObservationReview != null
+                && observation.analysisId().equals(goalObservationReview.analysisId());
     }
 }

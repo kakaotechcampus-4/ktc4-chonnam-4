@@ -14,6 +14,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RoleplaySessionRepository extends JpaRepository<RoleplaySession, UUID> {
+    boolean existsByActivityId(UUID activityId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+            "select s from RoleplaySession s where s.activityId = :activity and s.childId = :child order by s.sessionId")
+    List<RoleplaySession> findForActivityForUpdate(
+            @Param("activity") UUID activityId, @Param("child") UUID childId);
+
     /**
      * Lock after activity and child, before deleting turns, matching checkpoint/retention writes.
      */

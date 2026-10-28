@@ -6,6 +6,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -50,6 +52,53 @@ public class RoleplaySession {
     private Instant lastActivityAt;
 
     protected RoleplaySession() {}
+
+    /** 새 세션의 최초 지원을 저장하며 기존 세션 복원에는 사용하지 않는다. */
+    public static RoleplaySession start(
+            UUID sessionId,
+            UUID activityId,
+            UUID childId,
+            UUID scenarioId,
+            int scenarioVersion,
+            String initialSupportLevel,
+            Instant now) {
+        return start(
+                sessionId,
+                activityId,
+                childId,
+                scenarioId,
+                scenarioVersion,
+                initialSupportLevel,
+                null,
+                now);
+    }
+
+    /** 승인된 첫 질문의 목표가 명시된 신규 세션에만 함께 저장한다. */
+    public static RoleplaySession start(
+            UUID sessionId,
+            UUID activityId,
+            UUID childId,
+            UUID scenarioId,
+            int scenarioVersion,
+            String initialSupportLevel,
+            UUID initialMicroGoalId,
+            Instant now) {
+        Objects.requireNonNull(initialSupportLevel);
+        if (scenarioVersion < 1 || !Set.of("S0", "S1", "S2", "S3").contains(initialSupportLevel)) {
+            throw new IllegalArgumentException("역할극 시작 버전 또는 지원 수준이 올바르지 않습니다.");
+        }
+        RoleplaySession session = new RoleplaySession();
+        session.sessionId = Objects.requireNonNull(sessionId);
+        session.activityId = Objects.requireNonNull(activityId);
+        session.childId = Objects.requireNonNull(childId);
+        session.scenarioId = Objects.requireNonNull(scenarioId);
+        session.scenarioVersion = scenarioVersion;
+        session.status = "IN_PROGRESS";
+        session.currentSupportLevel = initialSupportLevel;
+        session.currentMicroGoalId = initialMicroGoalId;
+        session.lastActivityAt = Objects.requireNonNull(now);
+        return session;
+    }
 
     public UUID getActivityId() {
         return activityId;
@@ -96,6 +145,10 @@ public class RoleplaySession {
 
     public int getLastTurnNumber() {
         return lastTurnNumber;
+    }
+
+    public UUID getLastTurnId() {
+        return lastTurnId;
     }
 
     public boolean matchesScenario(UUID id, int version) {

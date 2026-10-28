@@ -1,15 +1,14 @@
 package com.neuringo.neuringobe.roleplay.application;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService.Scope;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Invoke inside the bounded worker after confirmed replay lookup, before starting new voice work.
- */
+/** 확정 결과 재조회 뒤, 새 음성 처리를 시작하기 전에 작업자 안에서 컨텍스트를 준비한다. */
 public final class RoleplayContextAssembler {
     private final RoleplayContextSource source;
 
@@ -33,7 +32,9 @@ public final class RoleplayContextAssembler {
                         scope.scenarioId(),
                         scope.scenarioVersion(),
                         scope.checkpointVersion());
-        var snapshot = deadline.withinBudget(() -> source.load(key)).orElseThrow(Unavailable::new);
+        var snapshot =
+                deadline.withinBudget(() -> source.load(key, deadline))
+                        .orElseThrow(Unavailable::new);
         var state = snapshot.state();
         if (!key.equals(snapshot.key())
                 || state.turnCount() != Math.addExact(scope.lastTurnNumber(), 1)
@@ -46,23 +47,38 @@ public final class RoleplayContextAssembler {
                         && !scope.currentSupportLevel().equals(state.currentSupportLevel()))) {
             throw new Unavailable();
         }
-        var input =
-                new RoleplayTurnInput(
-                        snapshot.scenario(),
-                        state,
-                        new RoleplayTurnInput.LearnerTurn(turnId, ""),
-                        snapshot.recentDialogue());
-        deadline.requireActive();
-        return new Prepared(scope.trace(requestId, turnId), input);
+        try {
+            var input =
+                    new RoleplayTurnInput(
+                            snapshot.scenario(),
+                            state,
+                            new RoleplayTurnInput.LearnerTurn(turnId, ""),
+                            snapshot.recentDialogue());
+            deadline.requireActive();
+            snapshot.observations().requireMatches(input);
+            return new Prepared(
+                    scope.trace(requestId, turnId),
+                    input,
+                    snapshot.observations(),
+                    RoleplayContextFingerprint.of(snapshot));
+        } catch (IllegalArgumentException invalidContext) {
+            throw new Unavailable();
+        }
     }
 
-    /**
-     * Learner text is empty until the speech pipeline replaces it with validated canonical text.
-     */
-    public record Prepared(AiTraceContext trace, RoleplayTurnInput input) {
+    /** 발화는 음성 처리에서 검증한 표준 발화로 교체하기 전까지 비워 둔다. */
+    public record Prepared(
+            AiTraceContext trace,
+            RoleplayTurnInput input,
+            GoalObservationInput observations,
+            String contextFingerprint) {
         public Prepared {
             Objects.requireNonNull(trace);
             Objects.requireNonNull(input);
+            Objects.requireNonNull(observations);
+            if (contextFingerprint == null || !contextFingerprint.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException("분석 자료의 지문이 필요합니다.");
+            }
         }
 
         @Override
@@ -71,10 +87,10 @@ public final class RoleplayContextAssembler {
         }
     }
 
-    /** Internal failure; no fallback content, user utterance or source details attached. */
+    /** 승인 자료를 구성할 수 없을 때 원문이나 내부 조회 정보를 노출하지 않는다. */
     public static final class Unavailable extends IllegalStateException {
         private Unavailable() {
-            super("Approved roleplay context is unavailable or inconsistent");
+            super("승인된 역할극 자료를 확인할 수 없습니다.");
         }
     }
 }

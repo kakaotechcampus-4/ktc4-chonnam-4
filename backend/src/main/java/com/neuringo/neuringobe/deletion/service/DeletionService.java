@@ -11,9 +11,11 @@ import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
+import com.neuringo.neuringobe.learningrecord.repository.LearningRecordRepository;
 import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
+import com.neuringo.neuringobe.roleplay.service.RoleplayGoalObservationStore;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.util.List;
@@ -28,9 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 도메인(goal·activity·quiz·roleplay)이 모두 child 에 기대고 있어, 지우는 순서를 child 안에 두면 순환이 생긴다. 그래서 assignment
  * 처럼 바깥 패키지에서 조립한다.
  *
- * <p>자식 테이블부터 명시적으로 삭제한다. 역할극도 V8 이후 CASCADE 없이 턴 → 세션 → 활동 순서로 삭제한다. 학급 삭제는 그 학급의 아동 삭제와 같은 경로를 탄
- * 뒤 학급 행을 지운다. 강사 탈퇴는 그 강사의 모든 학급을 같은 경로로 지운 뒤 세션과 계정 행을 지운다. 지우는 순서는 {@link #deleteChildren} 한 곳에만
- * 있다.
+ * <p>자식 테이블부터 명시적으로 삭제한다. 역할극은 CASCADE 없이 관찰 근거 → 관찰·판정 → 턴 → 세션 → 활동 순서로 삭제한다. 학급 삭제는 그 학급의 아동 삭제와
+ * 같은 경로를 탄 뒤 학급 행을 지운다. 강사 탈퇴는 그 강사의 모든 학급을 같은 경로로 지운 뒤 세션과 계정 행을 지운다. 지우는 순서는 {@link
+ * #deleteChildren} 한 곳에만 있다.
  */
 @Service
 public class DeletionService {
@@ -41,9 +43,11 @@ public class DeletionService {
     private final ChildAccessCodeRepository accessCodes;
     private final LearningGoalRepository goals;
     private final ActivityRepository activities;
+    private final LearningRecordRepository learningRecords;
     private final QuizDeletionService quizzes;
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
+    private final RoleplayGoalObservationStore roleplayObservations;
     private final AuthSessionRepository sessions;
     private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -55,9 +59,11 @@ public class DeletionService {
             ChildAccessCodeRepository accessCodes,
             LearningGoalRepository goals,
             ActivityRepository activities,
+            LearningRecordRepository learningRecords,
             QuizDeletionService quizzes,
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns,
+            RoleplayGoalObservationStore roleplayObservations,
             AuthSessionRepository sessions,
             UserAccountRepository users,
             PasswordEncoder passwordEncoder) {
@@ -67,9 +73,11 @@ public class DeletionService {
         this.accessCodes = accessCodes;
         this.goals = goals;
         this.activities = activities;
+        this.learningRecords = learningRecords;
         this.quizzes = quizzes;
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
+        this.roleplayObservations = roleplayObservations;
         this.sessions = sessions;
         this.users = users;
         this.passwordEncoder = passwordEncoder;
@@ -148,10 +156,11 @@ public class DeletionService {
         roleplaySessions.findByChildIdInForUpdate(childIds);
 
         quizzes.deleteAllByChildIds(childIds);
-        // The deferred last-turn FK is resolved when both turns and sessions are deleted in this
-        // TX.
+        roleplayObservations.deleteByChildIds(childIds);
+        // 마지막 턴 참조는 같은 트랜잭션에서 턴과 세션을 모두 삭제한 뒤 검사한다.
         roleplayTurns.deleteByChildIds(childIds);
         roleplaySessions.deleteByChildIds(childIds);
+        learningRecords.deleteByChildIds(childIds);
         activities.deleteByChildIds(childIds);
         goals.deleteByChildIds(childIds);
         accessCodes.deleteByChildIds(childIds);

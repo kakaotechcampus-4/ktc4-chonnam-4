@@ -13,4 +13,9 @@ public enum ActivityType {
     public boolean requiresGoal() {
         return this == FIRST_COMBINED || this == ROLEPLAY;
     }
+
+    /** 퀴즈를 다 풀면 활동이 끝나는 유형. 최초 결합은 뒤에 역할극이 남아 있어 퀴즈만으로는 끝나지 않는다. */
+    public boolean completesWithQuiz() {
+        return this == SELF_EMOTION_QUIZ || this == OTHER_EMOTION_QUIZ;
+    }
 }

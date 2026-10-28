@@ -16,6 +16,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.CandidateRespons
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
 import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
@@ -33,7 +34,15 @@ class RoleplayOutputParsersTest {
     class Analysis {
 
         private final LlmOutputParser<AnalysisResult> parser =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null).parser();
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input("울어"),
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
+                        .parser();
 
         @Test
         void acceptsValidOutputAndIgnoresReasoningFields() {
@@ -97,7 +106,14 @@ class RoleplayOutputParsersTest {
     class Candidate {
 
         private final AnalysisResult analysis =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input("울어"),
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
                         .parser()
                         .parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1"));
 
@@ -303,7 +319,13 @@ class RoleplayOutputParsersTest {
                 analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
                         .replace(TURN_ID.toString(), UUID.randomUUID().toString());
         PreparedPrompt<AnalysisResult> prompt =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null);
+                factory.causeAnalysis(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        input("울어"),
+                        null,
+                        RoleplayObservationTestPlans.inputForScenario((input("울어")).scenario()));
         AiCallMetadata metadata =
                 new AiCallMetadata(
                         REQUEST_ID,
@@ -336,7 +358,14 @@ class RoleplayOutputParsersTest {
 
     private LlmOutputParser<EvaluationResult> evaluationParser() {
         AnalysisResult analysis =
-                factory.causeAnalysis(trace(null, null), attempts(), 1, input("울어"), null)
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input("울어"),
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(
+                                        (input("울어")).scenario()))
                         .parser()
                         .parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1"));
         CandidateResponse candidate =
@@ -356,7 +385,8 @@ class RoleplayOutputParsersTest {
                         1,
                         input("울어"),
                         analysis,
-                        candidate)
+                        candidate,
+                        RoleplayObservationTestPlans.inputForScenario((input("울어")).scenario()))
                 .parser();
     }
 }

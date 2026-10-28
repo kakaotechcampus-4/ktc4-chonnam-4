@@ -42,6 +42,15 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     @Query("select a from Activity a where a.childId in :childIds order by a.activityId")
     List<Activity> findByChildIdInForUpdate(@Param("childIds") Collection<UUID> childIds);
 
+    /** 잠근 최초 활동의 시나리오를 한 번만 연결한다. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(
+            value =
+                    "update activity set scenario_id = :scenarioId where activity_id = :activityId and scenario_id is null and activity_type = 'FIRST_COMBINED'",
+            nativeQuery = true)
+    int attachScenarioIfEmpty(
+            @Param("activityId") UUID activityId, @Param("scenarioId") UUID scenarioId);
+
     /** 아동 삭제(ADR 2026-10-04 D1). 배정 문항·결과를 먼저 지운 뒤 부른다. */
     @Modifying
     @Query(value = "delete from activity where child_id in (:childIds)", nativeQuery = true)

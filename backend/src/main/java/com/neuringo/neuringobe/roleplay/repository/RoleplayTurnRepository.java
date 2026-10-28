@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.roleplay.repository;
 
 import com.neuringo.neuringobe.roleplay.domain.RoleplayTurn;
+import com.neuringo.neuringobe.roleplay.dto.CommittedRoleplayMessage;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
@@ -10,6 +11,18 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RoleplayTurnRepository extends JpaRepository<RoleplayTurn, UUID> {
+    @Query(
+            """
+            select new com.neuringo.neuringobe.roleplay.dto.CommittedRoleplayMessage(t.turnId, t.responseText)
+            from RoleplayTurn t where t.sessionId = :session and t.turnId = :turn
+                and t.checkpointVersion <= :version and t.turnNumber = :number
+            """)
+    Optional<CommittedRoleplayMessage> findLastCommittedMessage(
+            @Param("session") UUID sessionId,
+            @Param("turn") UUID turnId,
+            @Param("version") long version,
+            @Param("number") int number);
+
     @Modifying(flushAutomatically = true)
     @Query(
             "update RoleplayTurn t set t.canonicalUtterance = null where t.sessionId = :session and t.canonicalUtterance is not null")

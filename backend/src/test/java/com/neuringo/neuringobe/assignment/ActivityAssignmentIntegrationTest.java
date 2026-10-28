@@ -6,6 +6,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.LocalProfileIntegrationTest;
 import com.neuringo.neuringobe.TestFixtures;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -120,6 +123,86 @@ class ActivityAssignmentIntegrationTest {
     }
 
     @Test
+    void sameKeyWithNormalizedGoalAndExplicitDefaultTypeReplaysOriginalAssignment() {
+        UUID key = UUID.randomUUID();
+        MvcTestResult first = assign(childId, "  " + GOAL + "  ", key);
+        MvcTestResult retry =
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "activityType",
+                                "FIRST_COMBINED",
+                                "goal",
+                                Map.of(
+                                        "title", GOAL,
+                                        "characters", List.of(),
+                                        "requiredElements", List.of(),
+                                        "forbiddenExpressions", List.of())),
+                        key);
+
+        assertThat(first).hasStatus(HttpStatus.CREATED);
+        assertThat(retry).hasStatus(HttpStatus.OK);
+        String firstId = JsonPath.read(TestFixtures.body(first), "$.data.activityId");
+        String goalId = JsonPath.read(TestFixtures.body(first), "$.data.goalId");
+        assertThat(JsonPath.<String>read(TestFixtures.body(retry), "$.data.activityId"))
+                .isEqualTo(firstId);
+        assertThat(JsonPath.<String>read(TestFixtures.body(retry), "$.data.goalId"))
+                .isEqualTo(goalId);
+        assertThat(activityIdsOf(childId)).containsExactly(firstId);
+        assertThat(goalIdsOf(childId)).containsExactly(goalId);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ADD", "REMOVE", "REPLACE"})
+    void sameKeyCannotChangeParentGoalEvenWhenGoalContentMatches(String change) {
+        List<String> parents = new ArrayList<>();
+        for (String title : List.of("이전 목표 A", "이전 목표 B")) {
+            var parent =
+                    fixtures.postJson(
+                            instructor,
+                            "/api/v1/children/" + childId + "/learning-goals",
+                            Map.of("title", title));
+            assertThat(parent).hasStatus(HttpStatus.CREATED);
+            parents.add(JsonPath.read(TestFixtures.body(parent), "$.data.goalId"));
+        }
+        var originalGoal = new HashMap<String, Object>();
+        originalGoal.put("title", GOAL);
+        if (!change.equals("ADD")) originalGoal.put("parentGoalId", parents.getFirst());
+        var originalRequest = Map.of("childId", childId, "goal", originalGoal);
+        UUID key = UUID.randomUUID();
+        var first =
+                fixtures.postJsonWithKey(instructor, "/api/v1/activities", originalRequest, key);
+        assertThat(first).hasStatus(HttpStatus.CREATED);
+        String activityId = JsonPath.read(TestFixtures.body(first), "$.data.activityId");
+        String goalId = JsonPath.read(TestFixtures.body(first), "$.data.goalId");
+        var replay =
+                fixtures.postJsonWithKey(instructor, "/api/v1/activities", originalRequest, key);
+        assertThat(replay).hasStatus(HttpStatus.OK);
+        assertThat(JsonPath.<String>read(TestFixtures.body(replay), "$.data.activityId"))
+                .isEqualTo(activityId);
+
+        var changedGoal = new HashMap<>(originalGoal);
+        if (change.equals("REMOVE")) changedGoal.remove("parentGoalId");
+        else changedGoal.put("parentGoalId", parents.get(1));
+        assertError(
+                fixtures.postJsonWithKey(
+                        instructor,
+                        "/api/v1/activities",
+                        Map.of("childId", childId, "goal", changedGoal),
+                        key),
+                HttpStatus.CONFLICT,
+                "IDEMPOTENCY_KEY_REUSED");
+        assertThat(activityIdsOf(childId)).containsExactly(activityId);
+        assertThat(goalIdsOf(childId)).hasSize(3);
+        var savedGoal = TestFixtures.body(fixtures.get("/api/v1/learning-goals/{id}", goalId));
+        assertThat(JsonPath.<String>read(savedGoal, "$.data.parentGoalId"))
+                .isEqualTo((String) originalGoal.get("parentGoalId"));
+    }
+
+    @Test
     void sameRequestKeyForAnotherGoalIsRejected() {
         UUID key = UUID.randomUUID();
         assign(childId, GOAL, key);
@@ -153,6 +236,31 @@ class ActivityAssignmentIntegrationTest {
     }
 
     @Test
+    void sameKeySentConcurrentlyForSameRequestCreatesOneActivityAndReplaysTheRest()
+            throws Exception {
+        UUID key = UUID.randomUUID();
+        List<MvcTestResult> results = concurrently(i -> assign(childId, GOAL, key));
+        List<Integer> statuses = results.stream().map(r -> r.getResponse().getStatus()).toList();
+        assertThat(statuses).filteredOn(status -> status == 201).hasSize(1);
+        assertThat(statuses).filteredOn(status -> status == 200).hasSize(CONCURRENT_REQUESTS - 1);
+        String activityId =
+                JsonPath.read(TestFixtures.body(results.getFirst()), "$.data.activityId");
+        assertThat(results)
+                .allSatisfy(
+                        result ->
+                                assertThat(
+                                                JsonPath.<String>read(
+                                                        TestFixtures.body(result),
+                                                        "$.data.activityId"))
+                                        .isEqualTo(activityId));
+        assertThat(activityIdsOf(childId)).containsExactly(activityId);
+        assertThat(goalIdsOf(childId)).hasSize(1);
+        String detail = TestFixtures.body(fixtures.get("/api/v1/activities/{id}", activityId));
+        assertThat(JsonPath.<List<Integer>>read(detail, "$.data.quizItems[*].questionOrder"))
+                .containsExactly(1, 2, 3);
+    }
+
+    @Test
     void firstCombinedSentConcurrentlyForOneChildCreatesOnlyOne() throws Exception {
         // 최초 결합 1회는 DB 인덱스 없이 아동 행 잠금만으로 지킨다. 목표·키가 모두 다른 요청이 한꺼번에 와도 하나만 생긴다.
         List<MvcTestResult> results =
@@ -170,7 +278,8 @@ class ActivityAssignmentIntegrationTest {
     @Test
     void otherInstructorCannotAssignOrReadAndSeesNotFound() {
         TestFixtures.Instructor other = fixtures.signUpInstructor();
-        MvcTestResult created = assign(childId, GOAL, UUID.randomUUID());
+        UUID key = UUID.randomUUID();
+        MvcTestResult created = assign(childId, GOAL, key);
         String activityId = JsonPath.read(TestFixtures.body(created), "$.data.activityId");
 
         assertError(
@@ -178,7 +287,7 @@ class ActivityAssignmentIntegrationTest {
                         other,
                         "/api/v1/activities",
                         Map.of("childId", childId, "goal", Map.of("title", GOAL)),
-                        UUID.randomUUID()),
+                        key),
                 HttpStatus.NOT_FOUND,
                 "CHILD_NOT_FOUND");
         // 남의 활동은 없는 활동과 같은 code 다. code 가 다르면 그 ID 의 활동이 있다는 게 드러난다.

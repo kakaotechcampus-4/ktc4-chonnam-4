@@ -8,6 +8,8 @@ import com.neuringo.neuringobe.ai.application.roleplay.*;
 import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.roleplay.application.*;
 import com.neuringo.neuringobe.roleplay.infrastructure.input.RoleplayUploadSpoolFactory;
+import com.neuringo.neuringobe.roleplay.service.RoleplayCompletionCheckpointStore;
+import com.neuringo.neuringobe.roleplay.service.RoleplayCompletionService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceInputService;
 import jakarta.servlet.MultipartConfigElement;
@@ -59,6 +61,8 @@ public class RoleplayHttpConfiguration {
             RoleplayCheckpointStore store,
             RoleplayRequestGuard guard,
             RoleplayContextSource source,
+            RoleplayActivityGoalEvaluator goals,
+            RoleplayCompletionService completion,
             RoleplayInputProcessor inputProcessor,
             LlmProvider llm,
             SpeechToTextProvider stt,
@@ -68,7 +72,10 @@ public class RoleplayHttpConfiguration {
         var outcomes = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(p.notices()));
         var checkpoints =
                 new RoleplayCheckpointedTurnExecutor(
-                        new RoleplayTurnRunner(roleplayTurnWorkers), store, outcomes, guard);
+                        new RoleplayTurnRunner(roleplayTurnWorkers),
+                        new RoleplayCompletionCheckpointStore(store, goals, completion),
+                        outcomes,
+                        guard);
         var speech =
                 new RoleplaySpeechTurnPipeline(
                         stt,

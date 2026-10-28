@@ -42,7 +42,7 @@ class RoleplayContextAssemblerTest {
         var snapshot = snapshot(key(), state, List.of());
         var prepared =
                 new RoleplayContextAssembler(
-                                key -> {
+                                (key, sourceDeadline) -> {
                                     observed.set(key);
                                     return Optional.of(snapshot);
                                 })
@@ -51,6 +51,7 @@ class RoleplayContextAssemblerTest {
         assertThat(prepared.trace()).isEqualTo(scope.trace(request, turn));
         assertThat(prepared.input().scenario()).isEqualTo(snapshot.scenario());
         assertThat(prepared.input().state()).isEqualTo(state);
+        assertThat(prepared.observations()).isEqualTo(snapshot.observations());
         assertThat(prepared.input().state().maximumTurnCount()).isEqualTo(77);
         assertThat(prepared.input().state().maximumSupportTurnsPerMicroGoal()).isEqualTo(9);
         assertThat(prepared.input().learnerTurn().turnId()).isEqualTo(turn);
@@ -86,7 +87,8 @@ class RoleplayContextAssemblerTest {
     void missingSourceDataDoesNotFabricateContext() {
         assertThatThrownBy(
                         () ->
-                                new RoleplayContextAssembler(key -> Optional.empty())
+                                new RoleplayContextAssembler(
+                                                (key, sourceDeadline) -> Optional.empty())
                                         .prepareVoice(
                                                 scope, request, turn, RoleplayTurnDeadline.start()))
                 .isInstanceOf(RoleplayContextAssembler.Unavailable.class);
@@ -126,7 +128,7 @@ class RoleplayContextAssemblerTest {
                         0);
         var prepared =
                 new RoleplayContextAssembler(
-                                key ->
+                                (key, sourceDeadline) ->
                                         Optional.of(
                                                 snapshot(
                                                         initialKey,
@@ -155,7 +157,7 @@ class RoleplayContextAssemblerTest {
         assertThatThrownBy(
                         () ->
                                 new RoleplayContextAssembler(
-                                                key ->
+                                                (key, sourceDeadline) ->
                                                         Optional.of(
                                                                 snapshot(
                                                                         key,
@@ -174,7 +176,7 @@ class RoleplayContextAssemblerTest {
         var calls = new AtomicInteger();
         var assembler =
                 new RoleplayContextAssembler(
-                        key -> {
+                        (key, sourceDeadline) -> {
                             calls.incrementAndGet();
                             return Optional.empty();
                         });
@@ -209,7 +211,7 @@ class RoleplayContextAssemblerTest {
         var deadline = RoleplayTurnDeadline.start();
         var assembler =
                 new RoleplayContextAssembler(
-                        key -> {
+                        (key, sourceDeadline) -> {
                             deadline.cancel();
                             return Optional.of(snapshot(key, state(microGoal, "S1", 3), List.of()));
                         });
@@ -227,7 +229,7 @@ class RoleplayContextAssemblerTest {
         var snapshot = snapshot(key(), state(microGoal, "S1", 3), lines);
         lines.clear();
         var prepared =
-                new RoleplayContextAssembler(key -> Optional.of(snapshot))
+                new RoleplayContextAssembler((key, sourceDeadline) -> Optional.of(snapshot))
                         .prepareVoice(scope, request, turn, RoleplayTurnDeadline.start());
         assertThat(prepared.input().recentDialogue()).hasSize(8);
         assertThat(prepared.input().recentDialogue().getFirst().text())
@@ -247,8 +249,36 @@ class RoleplayContextAssemblerTest {
                                         "",
                                         scenario(),
                                         state(microGoal, "S1", 3),
-                                        List.of()))
+                                        List.of(),
+                                        RoleplayObservationTestPlans.inputForScenario(scenario()),
+                                        com.neuringo.neuringobe.roleplay.application
+                                                .RoleplayObservationTestPlans.emptyResponseHistory(
+                                                scenario())))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void invalidObservationCriteriaBecomeContextUnavailable() {
+        var bad =
+                new com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput(
+                        List.of(
+                                new com.neuringo.neuringobe.ai.application.prompt
+                                        .GoalObservationInput.Criterion(
+                                        microGoal, "unknown-reference", "unapproved criterion")),
+                        List.of(),
+                        List.of(),
+                        RoleplayObservationTestPlans.inputForScenario(scenario())
+                                .currentGoalExposures());
+        rejected(
+                new RoleplayContextSource.Snapshot(
+                        key(),
+                        "test-approval",
+                        scenario(),
+                        state(microGoal, "S1", 3),
+                        List.of(),
+                        bad,
+                        com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                                .emptyResponseHistory(scenario())));
     }
 
     private RoleplayContextSource.Key key() {
@@ -285,13 +315,21 @@ class RoleplayContextAssemblerTest {
             RoleplayTurnInput.State state,
             List<RoleplayTurnInput.DialogueLine> lines) {
         return new RoleplayContextSource.Snapshot(
-                key, "synthetic approval reference", scenario(), state, lines);
+                key,
+                "synthetic approval reference",
+                scenario(),
+                state,
+                lines,
+                RoleplayObservationTestPlans.inputForScenario(scenario()),
+                com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                        .emptyResponseHistory(scenario()));
     }
 
     private void rejected(RoleplayContextSource.Snapshot snapshot) {
         assertThatThrownBy(
                         () ->
-                                new RoleplayContextAssembler(key -> Optional.of(snapshot))
+                                new RoleplayContextAssembler(
+                                                (key, sourceDeadline) -> Optional.of(snapshot))
                                         .prepareVoice(
                                                 scope, request, turn, RoleplayTurnDeadline.start()))
                 .isInstanceOf(RoleplayContextAssembler.Unavailable.class);

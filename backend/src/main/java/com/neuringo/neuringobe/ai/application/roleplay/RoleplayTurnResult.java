@@ -10,7 +10,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult
 import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
 import java.util.Objects;
 
-/** Internal result, not an HTTP DTO. Ready does not mean persisted or delivered to the child. */
+/** 내부 실행 결과다. Ready도 저장 또는 아동 전달까지 완료된 상태는 아니다. */
 public sealed interface RoleplayTurnResult {
     enum InputFailure {
         NO_SPEECH,
@@ -26,13 +26,34 @@ public sealed interface RoleplayTurnResult {
         }
     }
 
-    /** Only a gated candidate can be paired with audio. A null audio means text-only success. */
-    record SpokenReady(Ready ready, String canonicalUtterance, SynthesizedSpeech speech)
+    /** 입력 당시 상태는 서버가 붙인다. 자료 지문은 요청 중에만 사용하고 공개하지 않는다. */
+    record SpokenReady(
+            Ready ready,
+            String canonicalUtterance,
+            SynthesizedSpeech speech,
+            String approvedContextFingerprint,
+            RoleplayInputContext inputContext)
             implements RoleplayTurnResult {
+        public SpokenReady(Ready ready, String canonicalUtterance, SynthesizedSpeech speech) {
+            this(ready, canonicalUtterance, speech, null, null);
+        }
+
+        public SpokenReady(
+                Ready ready,
+                String canonicalUtterance,
+                SynthesizedSpeech speech,
+                String approvedContextFingerprint) {
+            this(ready, canonicalUtterance, speech, approvedContextFingerprint, null);
+        }
+
         public SpokenReady {
             Objects.requireNonNull(ready);
             if (canonicalUtterance == null || canonicalUtterance.isBlank())
                 throw new IllegalArgumentException("Canonical utterance required");
+            if (approvedContextFingerprint != null
+                    && !approvedContextFingerprint.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException("분석 자료의 지문이 올바르지 않습니다.");
+            }
         }
 
         @Override
@@ -76,6 +97,9 @@ public sealed interface RoleplayTurnResult {
             Objects.requireNonNull(analysis);
             Objects.requireNonNull(candidate);
             Objects.requireNonNull(evaluation);
+            if (!evaluation.matchesObservationContract(analysis)) {
+                throw new IllegalArgumentException("관찰 분석과 검수의 형식 또는 분석 식별자가 일치하지 않습니다.");
+            }
             if (!analysis.turnId().equals(candidate.turnId())
                     || !candidate.candidateId().equals(evaluation.candidateId())
                     || !evaluation.canDeliver()) {

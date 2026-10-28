@@ -20,14 +20,17 @@ import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class RoleplayTurnExecutorTest {
@@ -138,6 +141,40 @@ class RoleplayTurnExecutorTest {
         steps.defect = new IllegalStateException("synthetic defect");
         assertThatThrownBy(() -> executor.execute(TURN, steps)).isSameAs(steps.defect);
         assertThat(steps.calls).containsExactly(AiOperation.CAUSE_ANALYSIS);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missingReview", "unexpectedReview", "otherAnalysis"})
+    void reportsMismatchedObservationContractsAsInvalidEvaluation(String changed) {
+        var mapper = JsonMapper.builder().build();
+        if (!changed.equals("unexpectedReview")) {
+            var body = mapper.readValue(steps.outputs.get(AiOperation.CAUSE_ANALYSIS), Map.class);
+            body.put(
+                    "goal_observation",
+                    new GoalObservationOutput.Analysis(
+                            GoalObservationOutput.ANALYSIS_VERSION,
+                            ANALYSIS,
+                            List.of(),
+                            new GoalObservationOutput.Assessment(
+                                    GoalObservationOutput.ActivityDecision.IN_PROGRESS,
+                                    List.of())));
+            steps.outputs.put(AiOperation.CAUSE_ANALYSIS, mapper.writeValueAsString(body));
+        }
+        if (!changed.equals("missingReview")) {
+            var body =
+                    mapper.readValue(steps.outputs.get(AiOperation.RESPONSE_EVALUATION), Map.class);
+            body.put(
+                    "goal_observation_review",
+                    new GoalObservationOutput.Review(
+                            GoalObservationOutput.EVALUATION_VERSION,
+                            changed.equals("otherAnalysis") ? UUID.randomUUID() : ANALYSIS,
+                            true,
+                            true));
+            steps.outputs.put(AiOperation.RESPONSE_EVALUATION, mapper.writeValueAsString(body));
+        }
+        var result = (RoleplayTurnResult.CallFailed) executor.execute(TURN, steps);
+        assertThat(result.operation()).isEqualTo(AiOperation.RESPONSE_EVALUATION);
+        assertThat(result.failure().type()).isEqualTo(AiFailureType.INVALID_OUTPUT_FORMAT);
     }
 
     private static List<AiOperation> through(AiOperation operation) {

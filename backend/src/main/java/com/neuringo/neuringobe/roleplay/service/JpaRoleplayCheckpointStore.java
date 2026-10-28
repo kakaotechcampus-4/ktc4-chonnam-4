@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Caller supplies identity from authenticated server context, never from request body fields. */
+/** 아동·활동 식별자는 요청 본문이 아닌, 서버가 인증·소유권을 확인한 값으로 전달받는다. */
 @Service
 public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
     private final ChildRepository children;
@@ -75,13 +75,35 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
 
     @Override
     public CommitResult commit(RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline) {
+        return commit(
+                command,
+                deadline,
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /**
+     * 완료 서비스가 시작한 트랜잭션에서 마지막 턴을 저장한다. 트랜잭션이 없으면 오류를 낸다.
+     *
+     * <p>스탬프 지급이나 기록 저장이 실패하면 마지막 턴도 함께 취소된다. 전체 저장과 기한 검사가 끝나고 트랜잭션이 확정된 뒤에만 성공을 응답한다.
+     *
+     * <p>외부 호출은 트랜잭션 시작 전에 마친다. 재전송된 요청에는 완료·보상을 다시 적용하지 않는다.
+     */
+    public CommitResult commitInCurrentTransaction(
+            RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline) {
+        return commit(
+                command,
+                deadline,
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_MANDATORY);
+    }
+
+    private CommitResult commit(
+            RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline, int propagation) {
         Objects.requireNonNull(command);
         Objects.requireNonNull(deadline);
         try {
             deadline.requireActive();
             var transaction = new TransactionTemplate(manager);
-            transaction.setPropagationBehavior(
-                    org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            transaction.setPropagationBehavior(propagation);
             return transaction.execute(
                     status -> {
                         deadline.requireActive();
@@ -94,7 +116,7 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                 "select set_config('statement_timeout', ?, true)",
                                 String.class,
                                 millis + "ms");
-                        // Match deletion/quiz: activity -> child -> session, only during commit.
+                        // 삭제·퀴즈 저장과 같은 순서로 활동, 아동, 세션을 잠가 교착을 피한다.
                         var activity = activities.findByIdForUpdate(command.activityId());
                         deadline.requireActive();
                         var child = children.findByIdForUpdate(command.childId());
@@ -146,7 +168,7 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                         command.supportLevel(),
                                         now);
                         sessions.flush();
-                        deadline.requireActive(); // Expiry here rolls back both writes.
+                        deadline.requireActive(); // 기한을 넘겼다면 턴 저장과 세션 갱신을 함께 취소한다.
                         return new Committed(
                                 command.turnId(),
                                 command.candidateId(),
