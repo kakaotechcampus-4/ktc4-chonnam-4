@@ -1,7 +1,11 @@
+import { childWriteRequest } from "./apiClient"
+
+export { ChildApiError, NETWORK_ERROR } from "./apiClient"
+
 /**
  * 아동 흐름 API.
- * 아동용 백엔드 API(S1-JIN-01 코드 검증 등)가 아직 없어 mock 응답을 돌려준다.
- * 실제 API가 나오면 각 함수 안쪽만 fetch 호출로 바꾸고, 화면 코드는 그대로 둔다.
+ * 입장·사용 종료는 실제 서버(API-IAM-08·09)를 부른다. 활동·퀴즈·역할극·완료는 아직 mock 응답이다.
+ * 실제 API로 바꿀 때 각 함수 안쪽만 바꾸고, 화면 코드는 그대로 둔다.
  */
 
 export type ChildAccess = {
@@ -9,46 +13,32 @@ export type ChildAccess = {
   childName: string
 }
 
-export type ChildApiErrorCode = "ACCESS_CODE_INVALID" | "ACCESS_CODE_EXPIRED"
-
-export class ChildApiError extends Error {
-  readonly status: number
-  readonly code: ChildApiErrorCode
-
-  constructor(status: number, code: ChildApiErrorCode, message: string) {
-    super(message)
-    this.name = "ChildApiError"
-    this.status = status
-    this.code = code
-  }
-}
+/** 입장 오류 코드 (API-IAM-08). 만료도 401 이다. */
+export const INVALID_ACCESS_CODE = "INVALID_ACCESS_CODE"
+export const ACCESS_CODE_EXPIRED = "ACCESS_CODE_EXPIRED"
 
 const MOCK_DELAY_MS = 500
-
-// mock 테스트용 코드: 1234 성공, 9999 만료, 0000 네트워크 오류, 그 외 틀린 코드
-const MOCK_VALID_CODE = "1234"
-const MOCK_EXPIRED_CODE = "9999"
-const MOCK_NETWORK_ERROR_CODE = "0000"
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+type ChildEntryData = {
+  childId: string
+  /** 아동 실명. 화면에서는 childName 으로 쓴다. */
+  displayName: string
+}
+
+/** 접근 코드로 입장한다. 서버가 아동 세션 쿠키를 심고, 같은 브라우저의 이전 아동 세션은 끊는다. */
 export async function verifyAccessCode(code: string): Promise<ChildAccess> {
-  await wait(MOCK_DELAY_MS)
+  // 앞자리 0이 사라지지 않게 숫자로 바꾸지 않고 문자열로 보낸다.
+  const data = await childWriteRequest<ChildEntryData>("POST", "/child-access-sessions", { accessCode: code })
+  return { childId: data.childId, childName: data.displayName }
+}
 
-  if (code === MOCK_NETWORK_ERROR_CODE) {
-    // fetch가 연결 실패 시 던지는 오류와 같은 형태로 흉내 낸다.
-    throw new TypeError("Failed to fetch")
-  }
-  if (code === MOCK_EXPIRED_CODE) {
-    throw new ChildApiError(410, "ACCESS_CODE_EXPIRED", "만료된 접근 코드입니다.")
-  }
-  if (code !== MOCK_VALID_CODE) {
-    throw new ChildApiError(401, "ACCESS_CODE_INVALID", "유효하지 않은 접근 코드입니다.")
-  }
-
-  return { childId: "mock-child-1", childName: "서연" }
+/** 사용 종료. 서버 세션만 끝내고 코드는 만료 전까지 그대로라 같은 코드로 다시 들어올 수 있다. */
+export function exitChildSession(): Promise<void> {
+  return childWriteRequest<void>("DELETE", "/child-access-sessions/current")
 }
 
 export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"

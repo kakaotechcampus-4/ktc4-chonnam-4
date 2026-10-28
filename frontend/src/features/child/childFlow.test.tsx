@@ -3,13 +3,14 @@ import type { UserEvent } from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { router } from "@/router"
 import { enterAsChild, renderRoutes } from "@/test/render"
+import { childAccessCodes, fixtures } from "@/test/msw/handlers"
 import { useChildSessionStore } from "./store/childSessionStore"
 
 // VS-003 인수 조건 검사(아동 화면 흐름). 실제 라우팅 표로 코드 입력 → 인사 → 내 활동 → 활동 소개 → 퀴즈 → 사용 종료를 따라간다.
 // - "사용 종료를 누르면 현재 브라우저의 아동 상태를 지우고 코드 입력 화면으로 돌아간다": 모든 아동 화면에서 같다.
 // - 입장하지 않았거나 사용 종료한 뒤에는 활동 화면을 주소로 열어도, 뒤로 가기로 돌아와도 코드 입력 화면으로 간다(#22 의 5번, RequireChildSession).
 // - "아동 화면에 강사용 평가 정보와 다른 아동 정보가 노출되지 않는다": 아동 화면에서 강사 화면으로 가는 길이 없다.
-// 코드 검증은 아직 화면 쪽 mock(features/child/api.ts, 1234 = 입장)이다. 실제 API(S1-JIN-01)가 붙으면 MSW 핸들러로 옮긴다.
+// 입장·사용 종료는 실제 API(API-IAM-08·09)를 MSW 가짜 서버로 대신한다. 활동·퀴즈·역할극은 아직 화면 쪽 mock(features/child/api.ts)이다.
 // 의도적으로 흐름을 바꾸면 이 테스트도 같이 고치세요.
 
 const ACTIVITY = "mock-activity-1"
@@ -23,7 +24,7 @@ const ACTIVITY_PAGES = [
 const GUARDED_PAGES = [...ACTIVITY_PAGES, `/child/done/${ACTIVITY}`]
 const CHILD_PAGES = [...ACTIVITY_PAGES, "/child/_dev/states"]
 
-async function enterCode(user: UserEvent, code = "1234") {
+async function enterCode(user: UserEvent, code = childAccessCodes.valid) {
   for (const digit of code) {
     await user.click(screen.getByRole("button", { name: digit }))
   }
@@ -36,10 +37,14 @@ describe("아동 화면 흐름", () => {
 
     await enterCode(user)
 
-    expect(await screen.findByText("안녕, 서연아!")).toBeInTheDocument()
+    // 서버가 돌려준 실명(displayName)에서 성을 빼고 이름만 부른다.
+    expect(await screen.findByText("안녕, 하늘아!")).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe("/child/hello")
     expect(memoryRouter.state.historyAction).toBe("REPLACE")
-    expect(useChildSessionStore.getState()).toMatchObject({ childId: "mock-child-1", childName: "서연" })
+    expect(useChildSessionStore.getState()).toMatchObject({
+      childId: fixtures.childA1_1.childId,
+      childName: fixtures.childA1_1.displayName,
+    })
   })
 
   it("인사 → 내 활동 → 활동 소개 → 표정 퀴즈 순서로 들어간다", async () => {
@@ -80,7 +85,7 @@ describe("아동 화면 흐름", () => {
     const { user, router: memoryRouter } = renderRoutes(router.routes, "/child")
     await enterCode(user)
     await user.click(await screen.findByRole("button", { name: "시작할래요!" }))
-    await screen.findByText("서연이의 활동")
+    await screen.findByText("하늘이의 활동")
     await user.click(screen.getByRole("button", { name: "사용 종료" }))
     await screen.findByText("입장 코드를 입력해줘!")
 
@@ -90,7 +95,7 @@ describe("아동 화면 흐름", () => {
     expect(await screen.findByText("입장 코드를 입력해줘!")).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe("/child")
     expect(memoryRouter.state.historyAction).toBe("REPLACE")
-    expect(screen.queryByText("서연이의 활동")).not.toBeInTheDocument()
+    expect(screen.queryByText("하늘이의 활동")).not.toBeInTheDocument()
   })
 
   it.each([
