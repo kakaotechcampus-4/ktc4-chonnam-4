@@ -75,13 +75,35 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
 
     @Override
     public CommitResult commit(RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline) {
+        return commit(
+                command,
+                deadline,
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /**
+     * 완료 서비스가 시작한 트랜잭션에서 마지막 턴을 저장한다. 트랜잭션이 없으면 오류를 낸다.
+     *
+     * <p>스탬프 지급이나 기록 저장이 실패하면 마지막 턴도 함께 취소된다. 전체 저장과 기한 검사가 끝나고 트랜잭션이 확정된 뒤에만 성공을 응답한다.
+     *
+     * <p>외부 호출은 트랜잭션 시작 전에 마친다. 재전송된 요청에는 완료·보상을 다시 적용하지 않는다.
+     */
+    public CommitResult commitInCurrentTransaction(
+            RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline) {
+        return commit(
+                command,
+                deadline,
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_MANDATORY);
+    }
+
+    private CommitResult commit(
+            RoleplayCheckpointCommand command, RoleplayTurnDeadline deadline, int propagation) {
         Objects.requireNonNull(command);
         Objects.requireNonNull(deadline);
         try {
             deadline.requireActive();
             var transaction = new TransactionTemplate(manager);
-            transaction.setPropagationBehavior(
-                    org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            transaction.setPropagationBehavior(propagation);
             return transaction.execute(
                     status -> {
                         deadline.requireActive();
