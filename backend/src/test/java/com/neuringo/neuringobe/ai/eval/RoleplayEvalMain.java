@@ -231,7 +231,7 @@ public final class RoleplayEvalMain {
      * 운영 설정(AiProviderConfiguration)과 같은 방식으로 Spring AI ChatModel 을 만든다. 명령줄 인자로 넘겨 application.yml
      * 의 기본값(AI_CHAT_PROVIDER=none)보다 우선하게 한다.
      */
-    private static ConfigurableApplicationContext openAiContext(String model) {
+    static ConfigurableApplicationContext openAiContext(String model) {
         String timeout = env("AI_TIMEOUT", "10s");
         List<String> properties =
                 new ArrayList<>(
@@ -268,7 +268,7 @@ public final class RoleplayEvalMain {
                         && (suites.isEmpty() || suites.contains(turn.suite()));
     }
 
-    private static Set<String> csv(String value) {
+    static Set<String> csv(String value) {
         if (value == null || value.isBlank()) return Set.of();
         return Set.of(value.split("\\s*,\\s*"));
     }
@@ -293,7 +293,7 @@ public final class RoleplayEvalMain {
         return options;
     }
 
-    private static String defaultRunId(String model) {
+    static String defaultRunId(String model) {
         String stamp =
                 DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
                         .withZone(ZoneOffset.UTC)
@@ -302,7 +302,7 @@ public final class RoleplayEvalMain {
     }
 
     /** 결과를 낸 코드 버전. 커밋하지 않은 변경이 있으면 "-dirty" 를 붙인다. git 이 없으면 null. */
-    private static String gitCommit() {
+    static String gitCommit() {
         try {
             Process process =
                     new ProcessBuilder("git", "describe", "--always", "--dirty")
@@ -320,17 +320,17 @@ public final class RoleplayEvalMain {
         }
     }
 
-    private static Double price(String name) {
+    static Double price(String name) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? null : Double.valueOf(value);
     }
 
-    private static String env(String name, String fallback) {
+    static String env(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    private static String requireEnv(String name) {
+    static String requireEnv(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(
