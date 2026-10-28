@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.config;
 import com.neuringo.neuringobe.auth.security.BearerTokenFilter;
 import com.neuringo.neuringobe.auth.security.PublicEndpoints;
 import com.neuringo.neuringobe.auth.service.AuthService;
+import com.neuringo.neuringobe.child.security.ChildSessionSecurityContextRepository;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -14,7 +15,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -54,9 +57,10 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // 아동 입장 Controller 가 직접 저장하는 세션 저장소. 꺼낼 때는 아동 인증만 돌려준다.
     @Bean
     public HttpSessionSecurityContextRepository childSecurityContextRepository() {
-        return new HttpSessionSecurityContextRepository();
+        return new ChildSessionSecurityContextRepository();
     }
 
     @Bean
@@ -64,23 +68,29 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // 강사는 Bearer 토큰, 아동은 서버 세션으로 인증한다.
+    // 강사는 Bearer 토큰, 아동은 서버 세션으로 인증한다. 강사 인증은 이번 요청에만 남기고 세션에는 넣지 않는다.
     private void applyAuthentication(
             HttpSecurity http,
             AuthService authService,
             ApiSecurityFailureHandler failures,
-            HttpSessionSecurityContextRepository contextRepository)
+            HttpSessionSecurityContextRepository childContextRepository)
             throws Exception {
+        RequestAttributeSecurityContextRepository requestContextRepository =
+                new RequestAttributeSecurityContextRepository();
         http.sessionManagement(
                         session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .securityContext(context -> context.securityContextRepository(contextRepository))
+                .securityContext(
+                        context ->
+                                context.securityContextRepository(
+                                        new DelegatingSecurityContextRepository(
+                                                requestContextRepository, childContextRepository)))
                 .exceptionHandling(
                         exceptions ->
                                 exceptions
                                         .authenticationEntryPoint(failures)
                                         .accessDeniedHandler(failures))
                 .addFilterBefore(
-                        new BearerTokenFilter(authService, failures),
+                        new BearerTokenFilter(authService, failures, requestContextRepository),
                         UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(
                         auth ->

@@ -13,6 +13,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -29,10 +30,19 @@ public class BearerTokenFilter extends OncePerRequestFilter {
 
     private final AuthService authService;
     private final AuthenticationEntryPoint entryPoint;
+    private final SecurityContextRepository contextRepository;
 
-    public BearerTokenFilter(AuthService authService, AuthenticationEntryPoint entryPoint) {
+    /**
+     * @param contextRepository 인증을 이번 요청에만 남기는 저장소. 저장하지 않으면 세션 관리가 "저장 안 된 새 인증"으로 보고 서버 세션에 넣어,
+     *     토큰을 폐기한 뒤에도 세션 쿠키만으로 강사 API 가 열린다.
+     */
+    public BearerTokenFilter(
+            AuthService authService,
+            AuthenticationEntryPoint entryPoint,
+            SecurityContextRepository contextRepository) {
         this.authService = authService;
         this.entryPoint = entryPoint;
+        this.contextRepository = contextRepository;
     }
 
     // 토큰을 쓰지 않는 요청은 토큰이 달려 있어도 검사하지 않는다. 틀린 토큰 때문에 가입·로그인이 막히지 않게 하기 위함이다.
@@ -70,11 +80,12 @@ public class BearerTokenFilter extends OncePerRequestFilter {
             return;
         }
 
-        setAuthentication(user.get());
+        setAuthentication(user.get(), request, response);
         filterChain.doFilter(request, response);
     }
 
-    private void setAuthentication(AuthenticatedUser user) {
+    private void setAuthentication(
+            AuthenticatedUser user, HttpServletRequest request, HttpServletResponse response) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -83,5 +94,6 @@ public class BearerTokenFilter extends OncePerRequestFilter {
                         java.util.List.of(
                                 new SimpleGrantedAuthority("ROLE_" + user.role().name()))));
         SecurityContextHolder.setContext(context);
+        contextRepository.saveContext(context, request, response);
     }
 }
