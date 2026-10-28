@@ -12,6 +12,7 @@ import com.neuringo.neuringobe.roleplay.application.*;
 import com.neuringo.neuringobe.roleplay.application.RoleplayUploadPolicy;
 import com.neuringo.neuringobe.roleplay.infrastructure.input.RoleplayUploadSpoolFactory;
 import com.neuringo.neuringobe.roleplay.model.RoleplayDeliveryStatus;
+import com.neuringo.neuringobe.roleplay.service.InMemoryRoleplayRequestGuard;
 import com.neuringo.neuringobe.roleplay.service.RoleplayCanonicalRetentionService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceInputService;
@@ -155,6 +156,137 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                     String.class,
                                     f.session))
                     .isNull();
+        }
+    }
+
+    @Test
+    void freshInMemoryGuardReplaysCommittedResultAndRejectsChangedInputWithoutProviders() {
+        var f = fixture();
+        var key = UUID.randomUUID();
+        RoleplayCheckpointedTurnExecutor.Success first;
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            first =
+                    (RoleplayCheckpointedTurnExecutor.Success)
+                            run(
+                                    executor(
+                                            workers,
+                                            this::approved,
+                                            new InMemoryRoleplayRequestGuard()),
+                                    scope(f),
+                                    key,
+                                    "a".repeat(64));
+            assertThat(first.replayed()).isFalse();
+        }
+        var original = ((RoleplayTurnOutcome.SpokenResponse) first.outcome()).response();
+        calls.clear();
+
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            var restarted = executor(workers, this::approved, new InMemoryRoleplayRequestGuard());
+            var replay =
+                    (RoleplayCheckpointedTurnExecutor.Success)
+                            run(restarted, scope(f), key, "a".repeat(64));
+            assertThat(replay.replayed()).isTrue();
+            assertThat(replay.checkpointVersion()).isEqualTo(first.checkpointVersion());
+            assertThat(replay.outcome()).isEqualTo(original);
+            var response =
+                    new RoleplayTurnResponseMapper(
+                                    (id, audio) -> {
+                                        throw new AssertionError("Replay must not publish audio");
+                                    })
+                            .map(replay);
+            assertThat(response.acceptedInput()).isNull();
+            assertThat(response.messages().getFirst().text()).isEqualTo(original.text());
+            assertThat(response.messages().getFirst().speech().available()).isFalse();
+            assertThat(calls).containsExactly("READ", "GUARD", "LOOKUP", "RELEASE", "CLOSE");
+
+            calls.clear();
+            assertThat(run(restarted, scope(f), key, "b".repeat(64)))
+                    .isInstanceOf(RoleplayCheckpointedTurnExecutor.Conflict.class);
+            assertThat(calls).containsExactly("READ", "GUARD", "LOOKUP", "RELEASE", "CLOSE");
+        }
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session))
+                .isEqualTo(first.checkpointVersion());
+    }
+
+    @Test
+    void freshInMemoryGuardRerunsProvidersWhenPreviousCheckpointTransactionRolledBack() {
+        var f = fixture();
+        var key = UUID.randomUUID();
+        var constraint = "test_restart_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc.execute(
+                "alter table roleplay_session add constraint "
+                        + constraint
+                        + " check (session_id <> '"
+                        + f.session
+                        + "'::uuid or last_turn_number = 0)");
+        try {
+            try (var workers = Executors.newSingleThreadExecutor()) {
+                var first = executor(workers, this::approved, new InMemoryRoleplayRequestGuard());
+                assertThatThrownBy(() -> run(first, scope(f), key, "a".repeat(64)))
+                        .isInstanceOf(
+                                org.springframework.dao.DataIntegrityViolationException.class);
+            }
+            assertThat(calls)
+                    .containsExactly(
+                            "READ",
+                            "GUARD",
+                            "LOOKUP",
+                            "CONTEXT",
+                            "STT",
+                            "INPUT",
+                            "CAUSE_ANALYSIS",
+                            "RESPONSE_GENERATION",
+                            "RESPONSE_EVALUATION",
+                            "TTS",
+                            "COMMIT",
+                            "RELEASE",
+                            "CLOSE");
+            assertThat(count(f)).isZero();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select row_version from roleplay_session where session_id=?",
+                                    Long.class,
+                                    f.session))
+                    .isZero();
+        } finally {
+            jdbc.execute("alter table roleplay_session drop constraint " + constraint);
+        }
+        calls.clear();
+
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            var restarted = executor(workers, this::approved, new InMemoryRoleplayRequestGuard());
+            var retried =
+                    (RoleplayCheckpointedTurnExecutor.Success)
+                            run(restarted, scope(f), key, "a".repeat(64));
+            assertThat(retried.replayed()).isFalse();
+            assertThat(retried.checkpointVersion()).isEqualTo(1);
+            assertThat(calls)
+                    .containsExactly(
+                            "READ",
+                            "GUARD",
+                            "LOOKUP",
+                            "CONTEXT",
+                            "STT",
+                            "INPUT",
+                            "CAUSE_ANALYSIS",
+                            "RESPONSE_GENERATION",
+                            "RESPONSE_EVALUATION",
+                            "TTS",
+                            "COMMIT",
+                            "RELEASE",
+                            "CLOSE");
+            assertThat(count(f)).isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select row_version from roleplay_session where session_id=?",
+                                    Long.class,
+                                    f.session))
+                    .isEqualTo(1L);
         }
     }
 
@@ -704,6 +836,13 @@ class RoleplayScopedVoiceTurnIntegrationTest {
 
     private RoleplayScopedVoiceTurnExecutor executor(
             java.util.concurrent.ExecutorService workers, RoleplayContextSource source) {
+        return executor(workers, source, guard);
+    }
+
+    private RoleplayScopedVoiceTurnExecutor executor(
+            java.util.concurrent.ExecutorService workers,
+            RoleplayContextSource source,
+            RoleplayRequestGuard requestGuard) {
         var recordingStore =
                 new RoleplayCheckpointStore() {
                     public LookupResult findConfirmed(
@@ -721,7 +860,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         RoleplayRequestGuard recordingGuard =
                 (id, budget) -> {
                     calls.add("GUARD");
-                    return guard.tryAcquire(id, budget)
+                    return requestGuard
+                            .tryAcquire(id, budget)
                             .map(
                                     lease ->
                                             () -> {
