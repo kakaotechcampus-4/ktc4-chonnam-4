@@ -174,9 +174,9 @@ export interface ActivityData {
   assignedAt: ISODateTime;
   /** 시작 시각 */
   startedAt: ISODateTime | null;
-  /** 완료 시각 */
+  /** 완료 시각. 독립 퀴즈는 마지막 문항 확정 때 채워짐. 최초 결합은 역할극 종료 연결 전이라 아직 null */
   completedAt: ISODateTime | null;
-  /** 지급 시각; 필드 존재가 구현 완료 의미 아님 */
+  /** 스탬프 지급 시각. completedAt과 함께 한 번만 채워짐 */
   rewardIssuedAt: ISODateTime | null;
 }
 

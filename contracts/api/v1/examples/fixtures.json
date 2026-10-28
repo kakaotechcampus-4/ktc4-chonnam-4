@@ -987,7 +987,7 @@
   {
     "id": "API-ACT-04",
     "fn": "getActivityStatus",
-    "draft": true,
+    "draft": false,
     "method": "GET",
     "route": "/api/v1/activities/{activityId}/status",
     "args": {

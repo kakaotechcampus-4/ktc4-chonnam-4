@@ -93,8 +93,8 @@ HTTP 200.
 | data[].status | ActivityStatus | 예 | 아니오 | 수행 상태; 준비상태와 구분 |
 | data[].assignedAt | ISODateTime | 예 | 아니오 | 배정/생성 시각 |
 | data[].startedAt | ISODateTime \| null | 예 | 예 | 시작 시각 |
-| data[].completedAt | ISODateTime \| null | 예 | 예 | 완료 시각 |
-| data[].rewardIssuedAt | ISODateTime \| null | 예 | 예 | 지급 시각; 필드 존재가 구현 완료 의미 아님 |
+| data[].completedAt | ISODateTime \| null | 예 | 예 | 완료 시각. 독립 퀴즈는 마지막 문항 확정 때 채워짐. 최초 결합은 역할극 종료 연결 전이라 아직 null |
+| data[].rewardIssuedAt | ISODateTime \| null | 예 | 예 | 스탬프 지급 시각. completedAt과 함께 한 번만 채워짐 |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 
@@ -168,9 +168,9 @@ export interface ActivityData {
   assignedAt: ISODateTime;
   /** 시작 시각 */
   startedAt: ISODateTime | null;
-  /** 완료 시각 */
+  /** 완료 시각. 독립 퀴즈는 마지막 문항 확정 때 채워짐. 최초 결합은 역할극 종료 연결 전이라 아직 null */
   completedAt: ISODateTime | null;
-  /** 지급 시각; 필드 존재가 구현 완료 의미 아님 */
+  /** 스탬프 지급 시각. completedAt과 함께 한 번만 채워짐 */
   rewardIssuedAt: ISODateTime | null;
 }
 ~~~

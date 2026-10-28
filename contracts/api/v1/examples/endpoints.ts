@@ -388,6 +388,24 @@ export function getActivity(
   });
 }
 
+export interface GetActivityStatusArgs {
+  activityId: T.UUID;
+  auth: "instructor" | "child";
+}
+
+export function getActivityStatus(
+  api: ApiClient,
+  args: GetActivityStatusArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ActivityStatusData>> {
+  return api.request<T.ActivityStatusData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/status", {
+    method: "GET",
+    auth: args.auth,
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
 export interface ListAssignedQuizItemsArgs {
   activityId: T.UUID;
   auth: "instructor" | "child";

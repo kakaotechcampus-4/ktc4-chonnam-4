@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.quiz.service;
 import com.neuringo.neuringobe.activity.domain.Activity;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
+import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
@@ -49,6 +50,7 @@ public class QuizAttemptService {
     private final ChildRepository children;
     private final ChildAccessScope access;
     private final QuizAssignmentService assignmentService;
+    private final ActivityCompletionService completion;
 
     public QuizAttemptService(
             ActivityRepository activities,
@@ -58,7 +60,8 @@ public class QuizAttemptService {
             QuizResultRepository results,
             ChildRepository children,
             ChildAccessScope access,
-            QuizAssignmentService assignmentService) {
+            QuizAssignmentService assignmentService,
+            ActivityCompletionService completion) {
         this.activities = activities;
         this.assignments = assignments;
         this.attempts = attempts;
@@ -67,6 +70,7 @@ public class QuizAttemptService {
         this.children = children;
         this.access = access;
         this.assignmentService = assignmentService;
+        this.completion = completion;
     }
 
     @Transactional
@@ -398,6 +402,7 @@ public class QuizAttemptService {
             activity.applyInitialDifficulty(
                     decision.initialSupportLevel(), decision.fallbackApplied());
         }
+        completion.completeAfterQuiz(activity);
     }
 
     private ApiException invalidResult() {
