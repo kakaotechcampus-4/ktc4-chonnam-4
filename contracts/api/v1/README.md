@@ -2,10 +2,11 @@
 
 > 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
+> 2026-10-28 S5·S3 통합 작업 브랜치: API-RPL-01 시작·복원 API를 구현했습니다. 활동 상태 조회도 결합했습니다. 운영 배포와 공유 TypeScript 예제 동기화는 별도입니다.
 
 ## 현재 제공 범위
 
-57개 API ID 중 **구현28개 · 조건부 구현1개 · 설계26개 · 미제공2개**입니다. 현재 코드의 존재/형식과 배포 활성화·제품 인수 완료는 구분합니다.
+이 통합 작업 브랜치 기준 57개 API ID 중 **구현30개 · 조건부 구현1개 · 설계24개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -79,7 +80,7 @@
 | [API-ACT-01 · 활동·목표 원자 생성 및 문항 배정](./activities/create-activity.md) | POST | `/api/v1/activities` | 구현 | createActivity |
 | [API-ACT-02 · 아동 배정 활동 목록 조회](./activities/list-child-activities.md) | GET | `/api/v1/children/{childId}/activities` | 구현 | listChildActivities |
 | [API-ACT-03 · 활동 상세 조회](./activities/get-activity.md) | GET | `/api/v1/activities/{activityId}` | 구현 | getActivity |
-| [API-ACT-04 · 활동 완료 status 전용 조회](./activities/get-activity-status.md) | GET | `/api/v1/activities/{activityId}/status` | 설계 | getActivityStatus |
+| [API-ACT-04 · 활동 완료 status 전용 조회](./activities/get-activity-status.md) | GET | `/api/v1/activities/{activityId}/status` | 구현 | getActivityStatus |
 ### 표정·퀴즈
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
@@ -106,7 +107,7 @@
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-RPL-01 · 역할극 시작·동일 시작 요청 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 설계 | startRoleplay |
+| [API-RPL-01 · 역할극 시작·동일 시작 요청 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 구현(작업 브랜치) | startRoleplay — 개별 문서 예제 사용 |
 | [API-RPL-02 · 역할극 세션·체크포인트 조회](./roleplay/get-roleplay-session.md) | GET | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | getRoleplaySession |
 | [API-RPL-03 · 역할극 일시정지·재개](./roleplay/update-roleplay-session.md) | PATCH | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | updateRoleplaySession |
 | [API-RPL-04 · 역할극 음성 입력 제출](./roleplay/submit-voice-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/voice-inputs` | 조건부 구현 | submitVoiceInput |

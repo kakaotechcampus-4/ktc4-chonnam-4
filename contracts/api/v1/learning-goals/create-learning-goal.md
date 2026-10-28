@@ -48,7 +48,7 @@
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
 | title | string | 예 | 아니오 | 최대200자 |
-| situationType | string \| null | 아니오 | 예 | 최대30자, 선택 |
+| situationType | string \| null | 아니오 | 예 | 최대200자, 선택 |
 | category | string \| null | 아니오 | 예 | 목표 분류, 최대30자. 별도 enum 아님 |
 | characters | Record<string, unknown>[] \| null | 아니오 | 예 | 추가 등장인물; 누락/null은 현재 [] 정리 |
 | requiredElements | string[] \| null | 아니오 | 예 | 빈/공백/null 원소는 조건 오류 |

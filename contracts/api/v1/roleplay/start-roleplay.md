@@ -1,55 +1,44 @@
-# API-RPL-01 · 역할극 시작·동일 시작 요청 복원
+# API-RPL-01 · 역할극 시작·기존 세션 복원
 
-> 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 구현 — 2026-10-28 / S5-JIN-02 작업 브랜치, 기준 `17e191b` + 미커밋 변경. 운영 배포를 의미하지 않습니다.
 
 ## 1. Endpoint
 
 | 항목 | 값 |
 |---|---|
 | Method | POST |
-| Path | /api/v1/activities/{activityId}/roleplay-sessions |
-| 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
-| 인증 | 본인 아동 HttpOnly 세션 + CSRF + Idempotency-Key |
-| 성공 | 201 — 설계 예시 |
-| 반환 | ApiResponse<DraftRoleplaySession> |
-| FE 함수 | startRoleplay |
-| 구현·협업 | 진미나·윤상현 |
+| Path | `/api/v1/activities/{activityId}/roleplay-sessions` |
+| 인증 | 본인 아동 HttpOnly 세션 + CSRF |
+| 요청 키 | `Idempotency-Key: UUID` 필수 |
+| 요청 본문 | 없음. `{}`와 임의 L/S 본문도 400으로 거절 |
+| 성공 | 신규 세션 201, 기존 세션 복원 200 |
+| 응답 | `ApiResponse<RoleplayStartData>` |
+| 캐시 | `Cache-Control: no-store` |
 
 ## 2. 용도·중요 규칙
 
-- 본인배정·승인버전·동의/준비Gate확인. 같은키동일세션/검증초기응답.
-- 새키중복세션반환vs409합의필요. 전체완료조건/턴상한을임의고정하지않는다.
+- 2026-10-28 사용자 결정: 같은 활동의 새 키 요청도 기존 세션을 복원합니다. 현재 S·작은 목표·마지막 확정 턴·상태를 초기화하지 않습니다.
+- 세션이 없을 때만 확정된 최초 S와 연결된 승인 버전으로 생성합니다. 신규 생성은 현재 FIRST_COMBINED의 준비된 경로를 지원합니다.
+- 첫 질문은 승인 시나리오의 저장된 지원 수준별 `opening_prompts`에서 읽습니다. 질문과 고정 메시지 ID를 세션·요청 키와 같은 트랜잭션으로 저장합니다. 문구 미준비나 저장 실패 시 신규 생성도 함께 롤백합니다.
+- 승인 전에 `scenario_opening_focus`에 S별 작은 목표를 명시하면 신규 세션의 질문 초점도 함께 저장합니다. 목표 목록 순서를 선택 기준으로 사용하지 않습니다. 기존 텍스트 시작 계약은 유지하지만 목표 연결이 없는 세션은 후속 운영 문맥을 공급하지 않습니다. 연결 정보는 서버 승인 자료이며 요청 본문이나 공개 응답에 추가하지 않습니다.
+- 학습 턴이 없으면 저장한 첫 질문을 같은 메시지 ID로 반환합니다. 기존 세션에 첫 질문 저장이 없으면 조건에 맞는 승인 문구를 확인해 한 번 저장합니다.
+- 진행된 세션은 마지막 확정 턴의 서버 응답만 `purpose=RESUME`으로 반환합니다. 원문 발화·전체 이력·초기 질문을 대신 반환하지 않습니다. 메시지 ID는 그 턴의 ID입니다.
+- 활동과 세션이 모두 IN_PROGRESS일 때만 메시지를 반환합니다. PAUSED·COMPLETED·RECOVERY_NEEDED 등 입력을 진행할 수 없는 상태는 현재 상태와 빈 메시지 배열을 반환합니다. 자동 재개·재시작하지 않습니다.
+- 시작 질문은 학습 턴이 아니며 턴 수를 증가시키지 않습니다. 재전송·복원으로 현재 S·체크포인트·마지막 활동 시각을 갱신하지 않습니다.
+- 응답에 상세 S·난이도 평가·점수·표준 발화를 포함하지 않습니다. 현재 구현은 텍스트만 제공하므로 `speech.available=false`, `url=null`입니다. AI·TTS 호출은 수행하지 않습니다.
+- 이 API 성공은 조건부 음성 입력 기능이나 운영 RoleplayContextSource 연결 완료를 의미하지 않습니다. 이후 대화 처리는 별도 설정·운영 연결이 필요합니다.
 
 ## 3. 요청
 
-### Path parameters
-
-| 이름 | 타입 | 필수 | 설명 |
-|---|---|---|---|
-| activityId | UUID string | 예 | 경로 식별자 |
-
-### Query parameters
-
-없음. 지원되지 않는 page/size/sort를 보내도 적용된다고 가정하지 않습니다.
-
-### Headers·쿠키
-
-| 이름 | 값/타입 | 필수 | 주의 |
-|---|---|---|---|
-| Accept | application/json | 예 | 공통 envelope |
-| Cookie | credentials: include | 예 | 브라우저 관리; HttpOnly 쿠키 직접 읽기 금지 |
-| CSRF Header | GET /api/v1/csrf의 headerName:token | 예 | 쿠키와 함께 전송 |
-| Idempotency-Key | UUID string | 예 | 동일 행동 재전송은 같은 키/같은 입력 |
-
-### Request Body
-
-없음. 빈 JSON 객체를 추가하지 않습니다.
+`activityId`와 요청 키는 UUID 문자열입니다. Query와 Body는 없습니다.
+쿠키는 `credentials: include`로 전송하고, `GET /api/v1/csrf`가 제공한 헤더 이름과 토큰을 사용합니다.
+아동 요청에 강사 Bearer 토큰을 붙이지 않습니다. 응답 유실·네트워크 실패 시 원래 키를 유지해 재시도합니다.
 
 ## 4. 성공 응답
 
-HTTP 201 — 설계 예시.
+신규 생성 201 예시입니다. 복원도 같은 구조이며 200을 반환합니다.
 
-~~~json
+```json
 {
   "data": {
     "sessionId": "82000000-0000-4000-8000-000000000001",
@@ -57,7 +46,9 @@ HTTP 201 — 설계 예시.
     "scenarioId": "80000000-0000-4000-8000-000000000001",
     "scenarioVersion": 1,
     "status": "IN_PROGRESS",
+    "activityStatus": "IN_PROGRESS",
     "lastDeliveredTurnId": null,
+    "checkpointVersion": 0,
     "delivery": {
       "messages": [
         {
@@ -65,173 +56,110 @@ HTTP 201 — 설계 예시.
           "speakerRole": "DIALOGUE",
           "purpose": "QUESTION",
           "text": "친구는 어떤 기분일까?",
-          "speech": {
-            "available": false,
-            "url": null
-          }
+          "speech": { "available": false, "url": null }
         }
       ]
     }
   },
-  "meta": {
-    "traceId": "90000000-0000-4000-8000-000000000001"
-  }
+  "meta": { "traceId": "90000000-0000-4000-8000-000000000001" }
 }
-~~~
+```
 
-### response schema
+| 필드 | 의미 |
+|---|---|
+| `sessionId`, `activityId`, `scenarioId`, `scenarioVersion` | 본인 세션과 고정된 시나리오 버전 |
+| `status` | 저장된 세션 상태 IN_PROGRESS / PAUSED / COMPLETED |
+| `activityStatus` | 저장된 활동 상태. 세션 상태와 함께 다음 행동 판단 |
+| `lastDeliveredTurnId` | 마지막 확정 학습 턴 ID, 아직 없으면 null |
+| `checkpointVersion` | 현재 세션 버전. 마지막 턴 이후 상태 변경으로도 증가할 수 있음 |
+| `delivery.messages` | 현재 표시 가능한 서버 문구. 중단 상태는 빈 배열 |
+| `messageId` | 재전송·복원 시 중복 표시를 막을 안정된 식별자 |
+| `speakerRole` | 현재 DIALOGUE |
+| `purpose` | 첫 질문 QUESTION, 마지막 응답 복원 RESUME |
+| `speech` | 현재 `{available:false,url:null}`. 오디오 재생 준비를 기다리지 않음 |
 
-| 필드 | 타입 | 필수 | null 허용 | 설명 |
-|---|---|---|---|---|
-| data.sessionId | UUID | 예 | 아니오 | 세션 |
-| data.activityId | UUID | 예 | 아니오 | 본인 활동 |
-| data.scenarioId | UUID | 예 | 아니오 | 승인 콘텐츠 |
-| data.scenarioVersion | number | 예 | 아니오 | 승인 버전 |
-| data.status | string | 예 | 아니오 | IN_PROGRESS/PAUSED 등 제안 |
-| data.lastDeliveredTurnId | UUID \| null | 예 | 예 | 마지막 확정 턴 |
-| data.delivery | DraftDelivery | 예 | 아니오 | 공개 검증 출력 |
-
-meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
+같은 키는 같은 세션을 가리키며 현재 진행 상태를 반환합니다. 진행 후의 응답을 최초 생성 응답의 고정 복사본으로 간주하지 않습니다.
+완료 상태에서 빈 메시지 배열을 받으면 새 질문을 만들거나 자동으로 다시 시작하지 않습니다.
 
 ## 5. 오류·FE 처리
 
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
-
-| HTTP | code | 상황·FE 행동 |
+| HTTP | code | 처리 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
-| 403 | ACCESS_DENIED | 역할 권한 |
-| 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
-| 404 | RESOURCE_NOT_FOUND | 리소스/소유권 코드 제안 |
-| 409 | IDEMPOTENCY_KEY_REUSED | 범용 키 충돌 제안 |
-| 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
+| 400 | INVALID_REQUEST | UUID·필수 헤더·지원하지 않는 요청 본문 확인 |
+| 401 | AUTHENTICATION_REQUIRED | 아동 재입장 필요 |
+| 403 | ACCESS_DENIED | 강사 등 아동 외 역할은 시작 불가 |
+| 403 | CSRF_TOKEN_INVALID | 토큰 재취득 후 원래 행동·키로 복구 판단 |
+| 404 | ACTIVITY_NOT_FOUND | 없는 활동·타 아동 소유·비활성 아동을 숨김 |
+| 409 | INITIAL_DIFFICULTY_NOT_READY | 최초 퀴즈 근거 미확정·불일치 |
+| 409 | INITIAL_ROLEPLAY_NOT_READY | 신규 시작 상태·연결·승인 버전 미준비 |
+| 409 | ROLEPLAY_START_DELIVERY_NOT_READY | 승인 시작 문구 또는 마지막 확정 응답 확인 불가. 임의 질문으로 대체하지 않음 |
+| 409 | IDEMPOTENCY_KEY_REUSED | 다른 활동·아동의 시작 요청에 사용한 키 |
+| 409 | ROLEPLAY_SESSION_AMBIGUOUS | 과거 같은 활동의 복수 세션. 임의 선택·새 생성 금지 |
+| 409 | ROLEPLAY_SCENARIO_CONFLICT | 활동·세션 시나리오 또는 요청 연결 불일치 |
+| 500 | INTERNAL_ERROR | 원문·예외 전문 비노출. 같은 키로 저장 결과 복구 |
 
-공통 오류 envelope 예시(message/traceId는 동적):
+네트워크·Abort·파싱 실패는 서버 미실행을 뜻하지 않습니다. [공통 연동 규칙](../integration-guide.md)에 따라 원래 키를 보존합니다.
 
-~~~json
-{
-  "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
-    "path": "/api/v1/activities/{activityId}/roleplay-sessions",
-    "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
-  }
-}
-~~~
+## 6. TypeScript 호출 예제
 
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+아래는 실제 시작 API용 예제입니다. 공유 `examples/draft-endpoints.ts`의 기존 함수는 아직 설계 차단이 남아 있으므로 그대로 연결하지 않습니다.
+프론트엔드 소스·타입·공유 예제 파일은 이번 백엔드 변경에서 직접 수정하지 않았습니다.
 
-## 6. 복사 가능한 TypeScript
+```ts
+import type { ApiClient, CallOptions } from "../examples/api-client.ts";
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
-
-### 요청·응답 타입
-
-~~~ts
-export type UUID = string;
-
-export interface DraftSpeech {
-  /** TTS 준비 여부 제안 */
-  available: boolean;
-  /** URL 반환/수명/권한 미정 */
-  url: string | null;
-}
-
-export interface DraftMessage {
-  /** 화면 출력 ID */
-  messageId: UUID;
-  /** UI 표시 주체 제안; 에이전트 분리 아님 */
-  speakerRole: 'DIALOGUE' | 'HINT';
-  /** QUESTION/HINT/FEEDBACK 등 제안 */
-  purpose: string;
-  /** 검증된 출력만 */
-  text: string;
-  /** 전달방식/TTL 미정 */
-  speech: DraftSpeech;
-}
-
-export interface DraftDelivery {
-  /** 메시지 배열 제안; 제공 트리거/순서 미정 */
-  messages: DraftMessage[];
-}
-
-export interface DraftRoleplaySession {
-  /** 세션 */
-  sessionId: UUID;
-  /** 본인 활동 */
-  activityId: UUID;
-  /** 승인 콘텐츠 */
-  scenarioId: UUID;
-  /** 승인 버전 */
+export interface RoleplayStartData {
+  sessionId: string;
+  activityId: string;
+  scenarioId: string;
   scenarioVersion: number;
-  /** IN_PROGRESS/PAUSED 등 제안 */
-  status: string;
-  /** 마지막 확정 턴 */
-  lastDeliveredTurnId: UUID | null;
-  /** 공개 검증 출력 */
-  delivery: DraftDelivery;
-}
-~~~
-
-### 호출 함수
-
-~~~ts
-import type { ApiClient, CallOptions } from "./api-client.ts";
-import { queryString } from "./api-client.ts";
-import type * as T from "./types.ts";
-
-export interface StartRoleplayArgs {
-  activityId: T.UUID;
-  idempotencyKey: T.UUID;
+  status: "IN_PROGRESS" | "PAUSED" | "COMPLETED";
+  activityStatus: "NOT_STARTED" | "IN_PROGRESS" | "PAUSED" | "RECOVERY_NEEDED" | "COMPLETED";
+  lastDeliveredTurnId: string | null;
+  checkpointVersion: number;
+  delivery: {
+    messages: Array<{
+      messageId: string;
+      speakerRole: "DIALOGUE";
+      purpose: "QUESTION" | "RESUME";
+      text: string;
+      speech: { available: false; url: null };
+    }>;
+  };
 }
 
 export function startRoleplay(
   api: ApiClient,
-  args: StartRoleplayArgs,
+  args: { activityId: string; idempotencyKey: string },
   options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRoleplaySession>> {
-  return api.request<T.DraftRoleplaySession>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/roleplay-sessions", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [201],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey
-  });
+) {
+  return api.request<RoleplayStartData>(
+    "/api/v1/activities/" + encodeURIComponent(args.activityId) + "/roleplay-sessions",
+    {
+      method: "POST",
+      auth: "child",
+      expectedStatuses: [200, 201],
+      idempotencyKey: args.idempotencyKey,
+      signal: options.signal
+    }
+  );
 }
-~~~
-
-### 사용 예시
-
-~~~ts
-import { startRoleplay } from "./draft-endpoints.ts";
-
-const response = await startRoleplay(api, {
-  "activityId": "40000000-0000-4000-8000-000000000001",
-  "idempotencyKey": "89000000-0000-4000-8000-000000000001"
-});
-const data = response.data;
-// 개인정보·원본·토큰·응답 전문을 로그에 출력하지 않습니다.
-~~~
+```
 
 ## 7. cURL 계약 확인
 
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
+환경별 origin과 실제 아동 쿠키·CSRF를 준비합니다. 시작 본문은 보내지 않습니다.
 
-~~~bash
+```bash
 curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}/roleplay-sessions" \
   --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
   -H 'Accept: application/json' \
   -H "$NEURINGO_CSRF_HEADER: $NEURINGO_CSRF_TOKEN" \
   -H "Idempotency-Key: $NEURINGO_REQUEST_KEY"
-~~~
+```
 
-## 8. 연결 Task·미정·검증
+## 8. 연결 Task·검증 범위
 
-- 관련 Task ID: `S6-JIN-01` · `S6-YOON-01`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
-- [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
-- 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
+S5-JIN-02 후속 연결이며 S6-JIN-01·S6-YOON-01의 세션·입력 UI와 연동합니다.
+서버 Controller·생성/복원 트랜잭션·승인 문구·CSRF·본인 소유권·동시 요청을 합성 자료와 PostgreSQL로 검증합니다.
+운영 AI·TTS·음성 대화 문맥·브라우저·배포 인수 완료는 별도입니다. 전체 완료 조건과 턴 상한은 이 API에서 새로 확정하지 않습니다.
