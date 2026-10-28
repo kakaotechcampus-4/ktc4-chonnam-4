@@ -117,6 +117,38 @@ run "permissions_only_for_this_server_and_edge" {
   }
 }
 
+run "always_on_until_reaches_lambda" {
+  command = apply
+
+  variables {
+    always_on_until = "2026-11-20T23:59:00+09:00"
+  }
+
+  assert {
+    condition     = aws_lambda_function.this.environment[0].variables.ALWAYS_ON_UNTIL == "2026-11-20T23:59:00+09:00"
+    error_message = "24시간 모드 끝 시각을 Lambda 가 받는다"
+  }
+}
+
+run "always_on_is_off_by_default" {
+  command = apply
+
+  assert {
+    condition     = aws_lambda_function.this.environment[0].variables.ALWAYS_ON_UNTIL == ""
+    error_message = "모듈 기본은 24시간 모드가 아니다(안 쓰면 끈다)"
+  }
+}
+
+run "rejects_malformed_always_on_until" {
+  command = plan
+
+  variables {
+    always_on_until = "11/20"
+  }
+
+  expect_failures = [var.always_on_until]
+}
+
 run "rejects_too_short_idle_time" {
   command = plan
 

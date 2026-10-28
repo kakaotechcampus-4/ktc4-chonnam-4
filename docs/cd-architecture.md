@@ -216,6 +216,9 @@ flowchart TB
 
 - 워크플로가 붙이는 `preview` 라벨은 `GITHUB_TOKEN` 으로 붙여 실행을 새로 만들지 않는다(같은 PR 을 두 번 올리지 않는다). 사람이 떼면 끝내기가 돈다.
 - **안 쓰면 끄기**(AWS 안, `infra/modules/idle-off`: EventBridge 10분마다 → Lambda `idle_off.py`): 서버가 켜져 있고, 미리보기 자리가 비었고, 서버를 켠 시각(EC2 `LaunchTime`·`STATUS_BOOTED_AT`)·마지막 배포(`state/dev.release`)·화면 컨테이너의 마지막 요청(`STATUS_LAST_REQUEST`)·GitHub Actions 가 서버에 보낸 마지막 SSM 명령(미리보기 빌드 중) 중 가장 늦은 것에서 30분(`idle_minutes`, 2026-10-11 60 → 30)이 지났으면 끄기와 같은 순서(CloudFront 닫기 → 다 닫힌 것 확인 → 배포·백업 잠금 → 서버 중지)로 끈다. 닫는 사이 새 작업이 오거나 잠금이 안 비면 CloudFront 를 다시 열고 그만둔다. 서버 상태를 못 읽거나 실패하면 끄지 않고 Lambda 오류 경보가 메일로 알린다. 처음에는 GitHub 예약(`schedule`, 20분마다)으로 했으나 이 레포에서 예약이 몇 시간씩 밀려(2026-10-11 머지 뒤 1시간 동안 0번, 매일 예약도 3~5시간 늦음) AWS 로 옮겼다. 끄기 잡은 배포 기록을 만들지 않는다(`deployment: false`).
+- **24시간 모드**(`always_on_until`, `infra/live/dev`): 그 시각까지는 안 쓰여도 끄지 않는다. 2026-10-25 팀 결정으로 사용자 테스트·시연 기간에 운영진 제공 기간 끝(11/20 23:59 KST)까지 켜 둔다(비용 약 1.6 USD/일). 끝나면 다시 30분 규칙이다. Lambda 가 서버를 켜지는 않는다 — **Dev server → 끄기**를 누르면 꺼진 채로 있고, AWS 점검 등으로 꺼지면 상태 검사 경보가 알린다. 빈 값으로 바꾸고 Infra 를 apply 하면 끝난다.
+- **대문을 서버에 맞추기**(모드와 상관없이 10분마다): 서버가 켜져 있고 대문이 열려 있는데 원본이 옛 주소면(AWS 점검·콘솔로 다시 켜져 주소가 바뀜) 지금 주소로 고친다. 서버가 꺼져 있는데 대문이 열려 있으면 닫는다(옛 IP 로 보내지 않게). 닫힌 대문은 열지 않는다(Dev server 켜기·끄기가 다루는 중이거나 누가 일부러 닫았다).
+- **쓰는 중이면 자동 배포를 미룬다**: develop 반영·PR 을 열거나 push 해서 저절로 돈 배포는, 테스트 주소를 사람이 쓰는 중이면(마지막 API 요청이 5분 안 — `status.sh` 의 `STATUS_LAST_USE`, 상태 확인·403 은 빼고) 15분까지 기다리고 그래도 쓰이면 바꾸지 않는다(Summary "미룸", 실패 아님 — 다 쓴 뒤 Re-run). 사람이 직접 누른 배포(Deploy·Dev server Run workflow)는 기다리지 않는다(`scripts/wait-idle.sh`, `release.yml` 의 `wait_idle`). 배포 중 끊김(수십 초·아동 세션 다시 입장)을 없애는 무중단 배포(blue-green·세션 DB 저장)는 메모리(4 GiB)·팀 코드(인증) 때문에 하지 않았다.
 
 | 작업 | 안에서 일어나는 일 | 걸리는 시간(목표) |
 |---|---|---|
@@ -411,7 +414,10 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
   - develop 보호 규칙(PR 필수·리뷰·force push 금지)을 건다(§11).
   - probe 뒤 팀 역할을 나눈다(§4 표). 신뢰 `sub` 를 `environment:infra`·`environment:dev` 로 좁히면 위 Environment 가 실제 경계가 된다.
 - 22번은 열지 않는다. 80번은 CloudFront 원본용 접두사 목록에만 연다. Terraform 은 운영진 보안 그룹에 이미 있는 규칙도 읽어, 인터넷 전체에서 80번(또는 모든 포트)으로 들어오는 규칙이 있으면 plan 을 멈춘다(매일 drift 도 다시 본다).
-- 접두사 목록에는 모든 고객의 CloudFront 가 들어 있어 남의 배포로도 원본에 닿는다. 원본 비밀 헤더를 더한다(2단계).
+- 접두사 목록에는 모든 고객의 CloudFront 가 들어 있어 남의 배포로도 원본에 닿는다(우리 나라 제한도 비켜 간다). 그래서 **원본 비밀 헤더**를 붙인다.
+  - CloudFront 가 원본으로 가는 요청마다 `X-Origin-Verify` 를 붙인다(`infra/modules/edge`, 값은 `random_id` 48자, Parameter Store `edge/origin-secret` 에도 같은 값). 브라우저가 같은 헤더를 넣어도 CloudFront 가 덮어쓴다.
+  - 서버의 `deploy.sh` 가 그 값으로 화면(nginx) 설정 조각을 만들어 `deploy/compose.origin.yml` 로 붙인다. 헤더가 없거나 다르면 403. 값은 `.env`(앱 컨테이너)에 넣지 않는다. 서버 안 상태 확인은 같은 헤더를 파일로 넘겨 붙인다. 값이 바뀌면 화면만 다시 띄운다.
+  - 순서: Infra apply(CloudFront 가 헤더를 보내기 시작, 퍼지는 데 몇 분) → 다음 배포(또는 Deploy force)부터 서버가 확인한다. 값이 서로 다르면 테스트 주소가 403 이고 배포 보고서가 경고한다.
 - 화면↔CloudFront 는 TLS 다. CloudFront↔EC2 는 도메인·인증서가 없어 HTTP 다. 실제 개인정보 공개 배포(Gate) 전에 원본 구간 TLS(도메인 + 인증서)를 다시 본다.
 - **서버를 껐다 켜면 공인 IP 가 바뀐다(Elastic IP 없음).** 옛 IP 는 다른 AWS 고객에게 갈 수 있고, 그동안 CloudFront 가 켜져 있으면 그 IP 로 로그인 본문·토큰·쿠키를 평문으로 보낸다. 그래서:
   - 서버는 **Dev server → 끄기**로 끈다. CloudFront 를 먼저 닫고, 다 퍼져서 꺼진 것을 다시 읽어 확인한 뒤에만 서버를 끈다. 켤 때는 서버를 켠 뒤 새 주소를 넣고 연다. 여닫기는 Terraform 밖(`edge-toggle.sh`)이라 승인 없이 몇 초다. 바꿀 때 읽은 설정의 버전(ETag)을 붙여, 그사이 다른 실행이 바꿨으면 덮어쓰지 않는다.

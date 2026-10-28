@@ -164,3 +164,38 @@ run "refuses_empty_origin" {
 
   expect_failures = [var.origin_domain]
 }
+
+run "no_origin_secret_header_by_default" {
+  command = apply
+
+  assert {
+    condition     = length(one(aws_cloudfront_distribution.this.origin).custom_header) == 0
+    error_message = "원본 비밀 헤더 값이 없으면 헤더를 붙이지 않는다"
+  }
+}
+
+run "adds_origin_secret_header" {
+  command = apply
+
+  variables {
+    origin_secret = "notarealsecretnotarealsecretnotarealsecret"
+  }
+
+  assert {
+    condition = (
+      length(one(aws_cloudfront_distribution.this.origin).custom_header) == 1 &&
+      one(one(aws_cloudfront_distribution.this.origin).custom_header).name == "X-Origin-Verify"
+    )
+    error_message = "원본으로 가는 요청에 X-Origin-Verify 를 붙인다(서버 nginx 가 다르면 403)"
+  }
+}
+
+run "refuses_unsafe_origin_secret" {
+  command = plan
+
+  variables {
+    origin_secret = "short\" ; return 200"
+  }
+
+  expect_failures = [var.origin_secret]
+}
