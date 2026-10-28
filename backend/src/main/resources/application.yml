@@ -29,7 +29,8 @@ spring:
     locations: classpath:db/migration,classpath:db/seed
 
   lifecycle:
-    timeout-per-shutdown-phase: 20s
+    # 서버 종료 시 진행 중인 요청을 최대 70초 기다린다. 최대 60초인 역할극 응답을 마칠 여유를 둔다.
+    timeout-per-shutdown-phase: 70s
 
 server:
   port: ${SERVER_PORT:8080}
