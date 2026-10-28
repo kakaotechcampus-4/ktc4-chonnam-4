@@ -3,7 +3,9 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ApiError, hasAccessToken, login, signup } from '../api'
 import { AuthLayout } from '../layout/AuthLayout'
-import { errorTextClass, fieldLabelClass, inputClass, primaryButtonClass } from '../components/styles'
+import { fieldLabelClass, inputClass, primaryButtonClass } from '../components/styles'
+import { FieldError, Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 // 백엔드 가입 규칙(SignupRequest)과 맞춘다. 서버가 최종 검증하고, 여기서는 바로 알 수 있는 실수만 막는다.
 const PASSWORD_MIN_LENGTH = 8
@@ -108,7 +110,7 @@ function SignupPage() {
 
   return (
     <AuthLayout title="강사 가입" description="기본 정보를 입력해 계정을 만드세요">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label htmlFor="signup-name" className={fieldLabelClass}>
           이름
           <input
@@ -159,45 +161,41 @@ function SignupPage() {
               />
             </label>
           </div>
-          <p
-            id="signup-password-rule"
-            className={isPasswordTooShort ? 'text-xs text-[var(--instructor-danger-fg)]' : 'text-xs text-[var(--instructor-text-muted)]'}
-          >
-            비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다.
-          </p>
-          {isPasswordMismatch && (
-            <p id="signup-password-mismatch" className="text-xs text-[var(--instructor-danger-fg)]">
-              비밀번호가 서로 다릅니다.
+          {/* 규칙을 어기면 도움말이 디자인 시스템 Form Field 의 Error 모양(아이콘 + 빨간 글자)으로 바뀐다. */}
+          {isPasswordTooShort ? (
+            <FieldError id="signup-password-rule">비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다.</FieldError>
+          ) : (
+            <p id="signup-password-rule" className="text-xs text-[var(--instructor-text-subtle)]">
+              비밀번호는 {PASSWORD_MIN_LENGTH}자 이상이어야 합니다.
             </p>
           )}
+          {isPasswordMismatch && <FieldError id="signup-password-mismatch">비밀번호가 서로 다릅니다.</FieldError>}
         </div>
 
-        <fieldset className="flex flex-col gap-3 border-t border-[var(--instructor-border)] pt-5">
+        <fieldset className="flex flex-col gap-3 border-t border-[var(--instructor-border-subtle)] pt-4">
           <legend className="sr-only">약관 동의</legend>
-          <label className="flex items-center gap-2.5 text-sm font-semibold">
+          <label className="flex items-center gap-3 text-sm font-semibold">
             <input
               type="checkbox"
               checked={isAllAgreed(agreements)}
               onChange={() => setAgreements(toggleAllAgreements)}
-              className="size-4 accent-[var(--instructor-primary)]"
             />
             전체 동의
           </label>
           {(Object.keys(AGREEMENT_LABELS) as (keyof Agreements)[]).map((key) => (
-            <label key={key} className="flex items-center gap-2.5 pl-0.5 text-sm text-[var(--instructor-text-muted)]">
+            <label key={key} className="flex items-center gap-3 pl-0.5 text-sm text-[var(--instructor-text-muted)]">
               <input
                 type="checkbox"
                 checked={agreements[key]}
                 onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
-                className="size-4 accent-[var(--instructor-primary)]"
-              />
+                />
               {AGREEMENT_LABELS[key]}
             </label>
           ))}
         </fieldset>
 
         {signupMutation.isError && (
-          <div role="alert" className={errorTextClass}>
+          <Notice tone="error" role="alert">
             <p>{error instanceof Error ? error.message : '가입에 실패했습니다.'}</p>
             {fieldErrors.length > 0 && (
               <ul className="mt-1 list-disc pl-5">
@@ -208,17 +206,17 @@ function SignupPage() {
                 ))}
               </ul>
             )}
-          </div>
+          </Notice>
         )}
 
         <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
-          {signupMutation.isPending ? '가입 중...' : '가입하기'}
+          <ButtonLabel pending={signupMutation.isPending} label="가입하기" pendingLabel="가입 중..." />
         </button>
       </form>
 
-      <div className="mt-6 text-center text-sm text-[var(--instructor-text-muted)]">
+      <div className="mt-6 border-t border-[var(--instructor-border-subtle)] pt-4 text-center text-xs text-[var(--instructor-text-subtle)]">
         이미 계정이 있으신가요?{' '}
-        <Link to="/login" className="text-[var(--instructor-text)] underline underline-offset-2">
+        <Link to="/login" className="text-[var(--instructor-link)] underline underline-offset-2">
           로그인
         </Link>
       </div>

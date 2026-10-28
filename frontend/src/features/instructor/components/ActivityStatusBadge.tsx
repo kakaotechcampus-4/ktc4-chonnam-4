@@ -1,4 +1,5 @@
 import type { ActivityStatus } from '../api'
+import { badgeClass } from './styles'
 import { cn } from '@/lib/utils'
 
 const STATUS_LABELS: Record<ActivityStatus, string> = {
@@ -19,7 +20,7 @@ const STATUS_COLORS: Record<ActivityStatus, string> = {
 
 function ActivityStatusBadge({ status }: { status: ActivityStatus }) {
   return (
-    <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', STATUS_COLORS[status])}>
+    <span className={cn(badgeClass, STATUS_COLORS[status])}>
       {STATUS_LABELS[status]}
     </span>
   )

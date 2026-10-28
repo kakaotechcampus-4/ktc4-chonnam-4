@@ -36,7 +36,7 @@ export async function signUp(page: Page, account: InstructorAccount = newInstruc
 export async function logIn(page: Page, account: InstructorAccount) {
   await page.getByLabel("이메일").fill(account.email)
   await page.getByLabel("비밀번호", { exact: true }).fill(account.password)
-  // "기관 SSO 로그인 (향후 제공)" 버튼도 이름에 "로그인" 이 들어 있어 정확히 맞춘다.
+  // "기관 계정으로 로그인 (향후 제공)" 버튼도 이름에 "로그인" 이 들어 있어 정확히 맞춘다.
   await page.getByRole("button", { name: "로그인", exact: true }).click()
 }
 
