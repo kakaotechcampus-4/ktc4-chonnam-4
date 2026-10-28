@@ -814,6 +814,80 @@ class RoleplayHttpIntegrationTest {
     }
 
     @Test
+    void concurrentDifferentInputReturns409WithoutReplacingOriginalProcessingRequest()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.blockStt = true;
+        try (var clients = Executors.newSingleThreadExecutor()) {
+            var first =
+                    clients.submit(
+                            () ->
+                                    mvc.perform(
+                                                    request(
+                                                                    f.session(),
+                                                                    key,
+                                                                    new byte[] {1},
+                                                                    "audio/webm")
+                                                            .session(session)
+                                                            .with(csrf()))
+                                            .andReturn());
+            try {
+                assertThat(state.entered.await(1, TimeUnit.SECONDS)).isTrue();
+                mvc.perform(
+                                request(f.session(), key, new byte[] {2}, "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONFLICT"));
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1}, "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.data.status").value("PROCESSING"));
+                assertThat(state.calls).containsExactly("CONTEXT", "STT");
+                assertThat(count(f)).isZero();
+            } finally {
+                state.release.countDown();
+            }
+            assertThat(first.get(3, TimeUnit.SECONDS).getResponse().getStatus()).isEqualTo(200);
+            mvc.perform(
+                            request(f.session(), key, new byte[] {1}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.replayed").value(true))
+                    .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+            mvc.perform(
+                            request(f.session(), key, new byte[] {2}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONFLICT"));
+            assertThat(state.calls)
+                    .containsExactly(
+                            "CONTEXT",
+                            "STT",
+                            "INPUT",
+                            "CAUSE_ANALYSIS",
+                            "RESPONSE_GENERATION",
+                            "RESPONSE_EVALUATION",
+                            "TTS",
+                            "PUBLISH");
+            assertThat(count(f)).isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select row_version from roleplay_session where session_id=?",
+                                    Long.class,
+                                    f.session()))
+                    .isEqualTo(1L);
+            assertEmptySpool();
+        }
+    }
+
+    @Test
     void overallTimeoutDiscardsLateProviderResultAndRemovesFile() throws Exception {
         var f = RoleplayHttpFixtures.fixture(jdbc);
         var session = enter(f);

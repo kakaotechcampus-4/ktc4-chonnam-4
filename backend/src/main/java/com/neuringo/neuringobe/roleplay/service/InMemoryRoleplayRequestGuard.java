@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.stereotype.Service;
 
-/** Single-backend ownership. The bounded worker pool limits active pipelines, without DB leases. */
+/** 서버 한 대 안에서 같은 요청의 중복 실행을 막는다. 동시에 실행할 작업 수는 작업자 풀에서 제한한다. */
 @Service
 public final class InMemoryRoleplayRequestGuard implements RoleplayRequestGuard {
     private final ConcurrentHashMap<RequestKey, LocalLease> processing = new ConcurrentHashMap<>();
@@ -21,8 +21,12 @@ public final class InMemoryRoleplayRequestGuard implements RoleplayRequestGuard 
         Objects.requireNonNull(identity);
         Objects.requireNonNull(deadline).requireActive();
         var key = new RequestKey(identity.trace().sessionId(), identity.idempotencyKey());
-        var lease = new LocalLease(key);
-        if (processing.putIfAbsent(key, lease) != null) return Optional.empty();
+        var lease = new LocalLease(key, identity.fingerprint());
+        var existing = processing.putIfAbsent(key, lease);
+        if (existing != null) {
+            if (!existing.fingerprint.equals(identity.fingerprint())) throw new InputConflict();
+            return Optional.empty();
+        }
         try {
             deadline.requireActive();
             return Optional.of(lease);
@@ -36,10 +40,12 @@ public final class InMemoryRoleplayRequestGuard implements RoleplayRequestGuard 
 
     private final class LocalLease implements Lease {
         private final RequestKey key;
+        private final String fingerprint;
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        private LocalLease(RequestKey key) {
+        private LocalLease(RequestKey key, String fingerprint) {
             this.key = key;
+            this.fingerprint = fingerprint;
         }
 
         @Override

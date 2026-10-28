@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 
-/** Use authenticated trace and prior processing ownership. No success response before DB commit. */
+/** 인증된 요청만 처리하며, 턴 저장이 확정된 뒤 성공을 반환한다. */
 public final class RoleplayCheckpointedTurnExecutor {
     private final RoleplayTurnRunner runner;
     private final RoleplayCheckpointStore checkpoints;
@@ -81,10 +81,7 @@ public final class RoleplayCheckpointedTurnExecutor {
                 deadline, shared -> executeOwned(identity, shared, pipeline), this::timeout);
     }
 
-    /**
-     * Input preparation and ownership share one bounded worker; never nest runners on the same
-     * pool.
-     */
+    /** 입력 준비와 중복 처리 확인은 같은 작업자에서 실행해, 작업자끼리 서로 기다리는 상황을 막는다. */
     public Result executePrepared(
             RoleplayTurnDeadline deadline,
             Function<RoleplayTurnDeadline, PreparedExecution> preparation) {
@@ -118,6 +115,8 @@ public final class RoleplayCheckpointedTurnExecutor {
         java.util.Optional<RoleplayRequestGuard.Lease> ownership;
         try {
             ownership = requests.tryAcquire(identity, shared);
+        } catch (RoleplayRequestGuard.InputConflict conflict) {
+            return new Conflict();
         } catch (RoleplayRequestGuard.CapacityUnavailable unavailable) {
             return new CapacityUnavailable();
         }
@@ -161,7 +160,7 @@ public final class RoleplayCheckpointedTurnExecutor {
             RoleplayCheckpointCommand command,
             RoleplayCheckpointStore.Committed saved,
             RoleplayTurnResult.SpokenReady spoken) {
-        // A duplicate can have a newly generated candidate; discard it and its audio.
+        // 이미 저장된 요청이면 새 후보와 음성을 버리고 원래 결과를 반환한다.
         if (saved.replayed()) {
             return replay(saved);
         }
