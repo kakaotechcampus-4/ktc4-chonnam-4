@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -56,8 +57,13 @@ class WithdrawalLoginRaceIntegrationTest {
                     pool.submit(
                             () ->
                                     TestFixtures.bearer(
-                                                    mvc.delete()
-                                                            .uri("/api/v1/users/me")
+                                                    mvc.post()
+                                                            .uri("/api/v1/users/me/withdrawal")
+                                                            .contentType(MediaType.APPLICATION_JSON)
+                                                            .content(
+                                                                    "{\"password\":\""
+                                                                            + instructor.password()
+                                                                            + "\"}")
                                                             .header(csrf.headerName(), csrf.token())
                                                             .cookie(csrf.cookies()),
                                                     instructor.accessToken())

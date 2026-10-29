@@ -169,10 +169,10 @@ describe("학급 상세 화면", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
   })
 
-  it("'← 학급 목록' 으로 목록 화면에 돌아간다", async () => {
+  it("현재 위치의 '학급 목록' 으로 목록 화면에 돌아간다", async () => {
     const { user, router } = renderDetailPage()
 
-    await user.click(screen.getByRole("link", { name: "← 학급 목록" }))
+    await user.click(within(screen.getByRole("navigation", { name: "현재 위치" })).getByRole("link", { name: "학급 목록" }))
 
     expect(await screen.findByText("학급 목록 화면")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/classrooms")

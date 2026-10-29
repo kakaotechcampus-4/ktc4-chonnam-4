@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-/** One attempt only. The caller owns input validation, retries, persistence and delivery. */
+/** 분석·생성·검수를 한 번 실행한다. 재시도·저장·전달은 호출자가 담당한다. */
 public final class RoleplayTurnExecutor {
     private final Supplier<UUID> candidateIds;
 
@@ -55,7 +55,8 @@ public final class RoleplayTurnExecutor {
         }
         var evaluationSuccess = (AiCallResult.Success<EvaluationResult>) evaluated;
         EvaluationResult evaluation = evaluationSuccess.data();
-        if (!candidateId.equals(evaluation.candidateId())) {
+        if (!candidateId.equals(evaluation.candidateId())
+                || !evaluation.matchesObservationContract(analysis)) {
             return invalid(AiOperation.RESPONSE_EVALUATION, evaluationSuccess.metadata());
         }
         if (!evaluation.canDeliver()) {

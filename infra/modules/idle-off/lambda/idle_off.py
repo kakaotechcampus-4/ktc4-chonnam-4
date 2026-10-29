@@ -11,11 +11,19 @@ GitHub Actions 예약(schedule)은 이 레포에서 몇 시간씩 밀리거나 �
   - 화면(nginx)에 마지막 요청이 온 시각(STATUS_LAST_REQUEST)
   - GitHub Actions 가 서버에 보낸 마지막 SSM 명령(미리보기를 빌드하는 몇 분 동안은 자리가 아직 없다)
 서버 상태를 읽지 못하면 끄지 않고 실패한다(Lambda 오류 경보가 메일로 알린다).
+
+24시간 모드(ALWAYS_ON_UNTIL, Terraform 변수 always_on_until): 그 시각까지는 안 쓰여도 끄지 않는다. 서버를 다시 켜지도 않는다
+(Dev server → 끄기를 누른 사람이 이긴다. AWS 점검으로 꺼지면 상태 검사 경보가 알린다).
+모드와 상관없이 매번 대문을 서버에 맞춘다(고정 IP 가 없어서):
+  - 서버가 켜져 있고 대문이 열려 있는데 원본이 옛 주소 → 지금 주소로 고친다(AWS 점검·콘솔로 다시 켜져 주소가 바뀐 때).
+    대문이 닫혀 있으면 열지 않는다(Dev server 켜기·끄기가 다루는 중이거나 누가 일부러 닫았다).
+  - 서버가 꺼져 있는데 대문이 열려 있음 → 닫는다(콘솔·AWS 점검으로 꺼짐. 옛 IP 는 다른 AWS 고객에게 갈 수 있다).
 로그에는 서버 ID·주소·배포 ID 를 찍지 않는다(경보 메일·콘솔에 남는다).
 """
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -26,6 +34,9 @@ LOCK_SCRIPT = (
     "mkdir -p /opt/neuringo/state && "
     f"flock -w {LOCK_SECONDS} /opt/neuringo/state/deploy.lock true && echo LOCK_FREE=1"
 )
+# scripts/edge-toggle.mjs 와 같은 원본 이름·주소 모양
+ORIGIN_IDS = ("app", "api")
+EC2_DNS = re.compile(r"^ec2-[0-9]{1,3}(-[0-9]{1,3}){3}\.[a-z0-9-]+\.compute\.amazonaws\.com$")
 DONE = {"Success", "Failed", "Cancelled", "TimedOut", "Cancelling", "Undeliverable", "Terminated", "InvalidPlatform", "AccessDenied"}
 
 
@@ -62,12 +73,18 @@ def kst(at):
     return at.astimezone(timezone(timedelta(hours=9))).strftime("%H:%M") if at else "?"
 
 
+def kst_day(at):
+    return at.astimezone(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M") if at else "?"
+
+
 def instance_state(ec2, instance_id):
+    """(상태, 켠 시각, 공인 DNS)"""
     found = ec2.describe_instances(InstanceIds=[instance_id])
     instances = [i for r in found.get("Reservations", []) for i in r.get("Instances", [])]
     if len(instances) != 1:
         raise RuntimeError(f"서버를 찾지 못했다({len(instances)}대)")
-    return instances[0]["State"]["Name"], parse_time(instances[0].get("LaunchTime"))
+    one = instances[0]
+    return one["State"]["Name"], parse_time(one.get("LaunchTime")), one.get("PublicDnsName") or ""
 
 
 def run_shell(ssm, instance_id, script, timeout, sleep, poll=3):
@@ -156,6 +173,42 @@ def edge_set(cloudfront, distribution_id, enabled):
     raise RuntimeError("그사이 다른 실행이 CloudFront 를 계속 바꾼다")
 
 
+def origin_of(config):
+    items = config.get("Origins", {}).get("Items", [])
+    for origin_id in ORIGIN_IDS:
+        for origin in items:
+            if origin.get("Id") == origin_id:
+                return origin
+    return None
+
+
+def edge_follow(cloudfront, distribution_id, state, dns):
+    """대문을 서버에 맞춘다. 무엇을 했는지 한 줄(없으면 빈 문자열). 그사이 다른 실행이 바꿨으면(ETag) 다시 읽어 한 번 더."""
+    for _ in range(3):
+        got = cloudfront.get_distribution_config(Id=distribution_id)
+        config = got["DistributionConfig"]
+        if config.get("Enabled") is not True:
+            return ""
+        if state == "stopped":
+            config["Enabled"] = False
+            done = "꺼진 서버를 가리키던 대문을 닫았다"
+        elif state == "running" and EC2_DNS.match(dns):
+            origin = origin_of(config)
+            if origin is None or origin.get("DomainName") == dns:
+                return ""
+            origin["DomainName"] = dns
+            done = "서버 주소가 바뀌어 대문 원본을 지금 주소로 고쳤다"
+        else:
+            return ""  # 켜는 중·끄는 중은 Dev server 가 다룬다
+        try:
+            cloudfront.update_distribution(Id=distribution_id, IfMatch=got["ETag"], DistributionConfig=config)
+            return done
+        except Exception as err:
+            if error_code(err) != "PreconditionFailed":
+                raise
+    raise RuntimeError("그사이 다른 실행이 CloudFront 를 계속 바꾼다")
+
+
 def edge_closed(cloudfront, distribution_id, seconds, sleep, poll=10):
     """다 퍼져서(Deployed) 정말 닫힌 것을 볼 때까지 기다린다."""
     waited = 0
@@ -191,15 +244,20 @@ def handler(event, context, aws=None, sleep=time.sleep, clock=None):
     instance_id = os.environ["INSTANCE_ID"]
     distribution_id = os.environ["DISTRIBUTION_ID"]
     idle_minutes = int(os.environ.get("IDLE_MINUTES", "30"))
+    always_on_until = parse_time(os.environ.get("ALWAYS_ON_UNTIL", ""))
     ec2, ssm, cloudfront = aws["ec2"], aws["ssm"], aws["cloudfront"]
 
     def done(result, reason, **extra):
         log(result=result, reason=reason, **extra)
         return {"result": result, "reason": reason}
 
-    state, launch_time = instance_state(ec2, instance_id)
+    state, launch_time, dns = instance_state(ec2, instance_id)
+    edge = edge_follow(cloudfront, distribution_id, state, dns)
+    extra = {"edge": edge} if edge else {}
     if state != "running":
-        return done("skip", f"서버가 켜져 있지 않다({state})")
+        return done("skip", f"서버가 켜져 있지 않다({state})", **extra)
+    if always_on_until and now < always_on_until:
+        return done("keep", f"24시간 모드 — {kst_day(always_on_until)} (KST) 까지 끄지 않는다", **extra)
 
     command_status, out = run_shell(ssm, instance_id, STATUS_SCRIPT, 60, sleep)
     status = parse_kv(out)
@@ -210,7 +268,7 @@ def handler(event, context, aws=None, sleep=time.sleep, clock=None):
     last_command = last_ci_command(ssm, instance_id, now - timedelta(minutes=idle_minutes + 5))
     go, reason, _ = decide(status, launch_time, last_command, now, idle_minutes)
     if not go:
-        return done("keep", reason)
+        return done("keep", reason, **extra)
 
     log(result="closing", reason=reason)
     changed = edge_set(cloudfront, distribution_id, False)

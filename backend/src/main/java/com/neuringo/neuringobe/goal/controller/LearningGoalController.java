@@ -40,17 +40,24 @@ public class LearningGoalController {
     @GetMapping("/api/v1/children/{childId}/learning-goals")
     public ApiResponse<List<LearningGoalResponse>> list(
             @PathVariable UUID childId, Authentication authentication) {
-        List<LearningGoalResponse> goals = service.list(childId, authentication);
-        sensitiveReads.recordIfInstructor(
-                authentication, SensitiveReadLog.Target.CHILD_GOALS, childId);
+        List<LearningGoalResponse> goals =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.CHILD_GOALS,
+                        childId,
+                        () -> service.list(childId, authentication));
         return ApiResponse.of(goals);
     }
 
     @GetMapping("/api/v1/learning-goals/{goalId}")
     public ApiResponse<LearningGoalResponse> get(
             @PathVariable UUID goalId, Authentication authentication) {
-        LearningGoalResponse goal = service.get(goalId, authentication);
-        sensitiveReads.recordIfInstructor(authentication, SensitiveReadLog.Target.GOAL, goalId);
+        LearningGoalResponse goal =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.GOAL,
+                        goalId,
+                        () -> service.get(goalId, authentication));
         return ApiResponse.of(goal);
     }
 }

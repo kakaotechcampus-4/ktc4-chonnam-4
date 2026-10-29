@@ -14,6 +14,7 @@ public record QuizResultResponse(
         String scenarioLevel,
         String initialSupportLevel,
         boolean difficultyFallbackApplied,
+        String difficultyFallbackReason,
         boolean initialDifficultyUsed,
         String policyVersion) {
     public static QuizResultResponse from(QuizResult result) {
@@ -27,6 +28,7 @@ public record QuizResultResponse(
                 result.getScenarioLevel(),
                 result.getInitialSupportLevel(),
                 result.isDifficultyFallbackApplied(),
+                result.getDifficultyFallbackReason(),
                 result.isInitialDifficultyUsed(),
                 result.getPolicyVersion());
     }

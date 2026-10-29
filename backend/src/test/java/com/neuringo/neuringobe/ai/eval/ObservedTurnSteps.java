@@ -16,6 +16,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -68,7 +69,16 @@ final class ObservedTurnSteps implements RetryableRoleplayTurnSteps {
                 result,
                 mark,
                 AiOperation.CAUSE_ANALYSIS,
-                () -> prompts.causeAnalysis(stageTrace(null), attempts(), 1, input, null).parser());
+                () ->
+                        prompts.causeAnalysis(
+                                        stageTrace(null),
+                                        attempts(),
+                                        1,
+                                        input,
+                                        null,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input).scenario()))
+                                .parser());
         return result;
     }
 
@@ -121,7 +131,9 @@ final class ObservedTurnSteps implements RetryableRoleplayTurnSteps {
                                         1,
                                         input,
                                         analysis,
-                                        candidate)
+                                        candidate,
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                (input).scenario()))
                                 .parser());
         return result;
     }

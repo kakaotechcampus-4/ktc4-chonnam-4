@@ -109,6 +109,8 @@ class RoleplayHttpIntegrationTest {
                                         .session(session)
                                         .with(csrf())
                                         .param("childId", UUID.randomUUID().toString())
+                                        .param("achieved", "true")
+                                        .param("isFinished", "true")
                                         .param("fingerprint", "forged client fingerprint"))
                         .andExpect(status().isOk())
                         .andExpect(header().string("Cache-Control", "no-store"))
@@ -128,12 +130,262 @@ class RoleplayHttpIntegrationTest {
                         "candidateId",
                         "approvalReference");
         assertThat(count(f)).isEqualTo(1);
+        assertThat(state.goalDecisions).hasValue(1);
+        assertThat(recordCount(f)).isZero();
+        mvc.perform(get("/api/v1/activities/{id}/status", f.activity()).session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
         assertThat(
                         jdbc.queryForObject(
                                 "select child_id from roleplay_session where session_id=?",
                                 UUID.class,
                                 f.session()))
                 .isEqualTo(f.child());
+        assertEmptySpool();
+    }
+
+    @Test
+    void serverObservationSnapshotReachesAnalysisAndEvaluationUnchanged() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var supplied =
+                com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                        .inputForScenario(RoleplayFixtures.input("").scenario());
+        var criterion =
+                supplied.approvedCriteria().stream()
+                        .filter(c -> c.microGoalId().equals(RoleplayFixtures.MG_EVENT))
+                        .findFirst()
+                        .orElseThrow();
+        var prior =
+                new com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput
+                        .Observation(
+                        new com.neuringo.neuringobe.ai.application.structured.output
+                                .GoalObservationOutput.Reference(
+                                UUID.randomUUID(), criterion.microGoalId(), criterion.reference()),
+                        com.neuringo.neuringobe.ai.application.structured.output
+                                .GoalObservationOutput.Status.IMPLICIT);
+        state.contextObservations =
+                com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                        .withSyntheticObservationContexts(
+                                supplied.approvedCriteria(), List.of(prior));
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(state.llmRequests)
+                .extracting(LlmRequest::responseSchemaVersion)
+                .containsExactly(
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-result/v2");
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var expected = json.readTree(json.writeValueAsString(state.contextObservations));
+        for (var call : List.of(state.llmRequests.get(0), state.llmRequests.get(2))) {
+            var payload = json.readTree(call.userPrompt());
+            assertThat(payload.path("goal_observation_context")).isEqualTo(expected);
+            assertThat(payload.path("learner_turn").path("canonical_utterance").asString())
+                    .isEqualTo("친구가 울고 있어");
+            assertThat(call.userPrompt()).doesNotContain("synthetic raw private input");
+        }
+        var reviewPayload = json.readTree(state.llmRequests.get(2).userPrompt());
+        assertThat(
+                        reviewPayload
+                                .path("analysis_result")
+                                .path("goal_observation")
+                                .path("analysis_id")
+                                .asString())
+                .isEqualTo(state.llmRequests.getFirst().traceContext().analysisId().toString());
+        assertThat(state.goalDecisions).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(
+            strings = {"ANALYSIS", "REVIEW", "UNSUPPORTED_REVIEW"})
+    void missingOrUnapprovedObservationOutputNeverSynthesizesOrCommitsAndCanRetry(String missing)
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.omitObservationAnalysis = missing.equals("ANALYSIS");
+        state.omitObservationReview = missing.equals("REVIEW");
+        state.unsupportedObservationReview = missing.equals("UNSUPPORTED_REVIEW");
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidateId").doesNotExist());
+        assertThat(state.calls).doesNotContain("TTS");
+        assertThat(state.goalDecisions).hasValue(0);
+        assertThat(recordCount(f)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_turn where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+        state.omitObservationAnalysis = false;
+        state.omitObservationReview = false;
+        state.unsupportedObservationReview = false;
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_turn where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void actualServerEvaluatorConnectsObservationHistoryCompletionAndReplay() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.useServerGoalEvaluator = true;
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.approvedContextFingerprint").doesNotExist())
+                .andExpect(jsonPath("$.data.inputContext").doesNotExist());
+        var firstTurn =
+                jdbc.queryForObject(
+                        "select turn_id from roleplay_turn where session_id=?",
+                        UUID.class,
+                        f.session());
+        var key = UUID.randomUUID();
+        state.activityGoalAchieved = true;
+        mvc.perform(
+                        request(f.session(), key, new byte[] {2}, "audio/webm")
+                                .param("approvedContextFingerprint", "0".repeat(64))
+                                .param("inputMicroGoalId", UUID.randomUUID().toString())
+                                .param("inputSupportLevel", "S3")
+                                .param("inputSupportTurn", "99")
+                                .param("inputPromptCount", "99")
+                                .param("inputAnswerRevealed", "true")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.approvedContextFingerprint").doesNotExist())
+                .andExpect(jsonPath("$.data.inputContext").doesNotExist());
+        var inputs =
+                jdbc.queryForList(
+                        "select input_micro_goal_id, input_support_level, input_support_turn, input_prompt_count, input_answer_revealed from roleplay_turn where session_id=? order by turn_number",
+                        f.session());
+        assertThat(inputs).hasSize(2);
+        assertThat(inputs.getFirst())
+                .containsEntry("input_micro_goal_id", RoleplayFixtures.MG_EMOTION)
+                .containsEntry("input_support_level", "S1")
+                .containsEntry("input_prompt_count", 0)
+                .containsEntry("input_answer_revealed", false);
+        assertThat(inputs.getLast())
+                .containsEntry("input_micro_goal_id", RoleplayFixtures.MG_EMOTION)
+                .containsEntry("input_support_level", "S1")
+                .containsEntry("input_support_turn", 2)
+                .containsEntry("input_prompt_count", 1)
+                .containsEntry("input_answer_revealed", false);
+        assertThat(state.llmRequests).hasSize(6);
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var secondAnalysis = json.readTree(state.llmRequests.get(3).userPrompt());
+        assertThat(secondAnalysis.path("goal_observation_context").path("confirmed_observations"))
+                .hasSize(1);
+        assertThat(
+                        secondAnalysis
+                                .path("goal_observation_context")
+                                .path("confirmed_observations")
+                                .get(0)
+                                .path("reference")
+                                .path("turn_id")
+                                .asString())
+                .isEqualTo(firstTurn.toString());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_goal_observation where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isEqualTo(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_goal_decision_basis where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isEqualTo(2);
+        assertThat(recordCount(f)).isEqualTo(1);
+        assertThat(canonicalCount(f)).isZero();
+        mvc.perform(get("/api/v1/activities/{id}/status", f.activity()).session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+        assertThat(state.goalDecisions).hasValue(2);
+        assertThat(state.goalCalledInTransaction).isFalse();
+        state.goalDecisionUnavailable = true;
+        state.unavailable = true;
+        mvc.perform(
+                        request(f.session(), key, new byte[] {2}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(true));
+        assertThat(state.llmRequests).hasSize(6);
+        assertThat(state.goalDecisions).hasValue(2);
+        assertThat(recordCount(f)).isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void contextChangedAfterAnalysisReturnsUnavailableWithoutSavingAndAllowsSameKeyRetry()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.useServerGoalEvaluator = true;
+        state.changeContextAfterSpeech = true;
+        var key = UUID.randomUUID();
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONTEXT_UNAVAILABLE"));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_turn where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_goal_assessment where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+        assertThat(recordCount(f)).isZero();
+        state.changeContextAfterSpeech = false;
+        state.contextObservations = null;
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_turn where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_goal_assessment where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isEqualTo(1);
         assertEmptySpool();
     }
 
@@ -756,6 +1008,8 @@ class RoleplayHttpIntegrationTest {
                 .doesNotContain("private teacher", "synthetic raw", "approval-reference");
         assertThat(state.calls).containsExactly("CONTEXT", "STT", "INPUT");
         assertThat(count(f)).isZero();
+        assertThat(state.goalDecisions).hasValue(0);
+        assertThat(recordCount(f)).isZero();
         assertEmptySpool();
     }
 
@@ -782,6 +1036,7 @@ class RoleplayHttpIntegrationTest {
         var session = enter(f);
         var key = UUID.randomUUID();
         state.blockStt = true;
+        state.activityGoalAchieved = true;
         try (var clients = Executors.newSingleThreadExecutor()) {
             var first =
                     clients.submit(
@@ -809,6 +1064,83 @@ class RoleplayHttpIntegrationTest {
             assertThat(first.get(3, TimeUnit.SECONDS).getResponse().getStatus()).isEqualTo(200);
             assertThat(state.calls.stream().filter("STT"::equals).count()).isEqualTo(1);
             assertThat(count(f)).isEqualTo(1);
+            assertThat(state.goalDecisions).hasValue(1);
+            assertThat(recordCount(f)).isEqualTo(1);
+            assertThat(canonicalCount(f)).isZero();
+            assertEmptySpool();
+        }
+    }
+
+    @Test
+    void concurrentDifferentInputReturns409WithoutReplacingOriginalProcessingRequest()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.blockStt = true;
+        try (var clients = Executors.newSingleThreadExecutor()) {
+            var first =
+                    clients.submit(
+                            () ->
+                                    mvc.perform(
+                                                    request(
+                                                                    f.session(),
+                                                                    key,
+                                                                    new byte[] {1},
+                                                                    "audio/webm")
+                                                            .session(session)
+                                                            .with(csrf()))
+                                            .andReturn());
+            try {
+                assertThat(state.entered.await(1, TimeUnit.SECONDS)).isTrue();
+                mvc.perform(
+                                request(f.session(), key, new byte[] {2}, "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONFLICT"));
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1}, "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.data.status").value("PROCESSING"));
+                assertThat(state.calls).containsExactly("CONTEXT", "STT");
+                assertThat(count(f)).isZero();
+            } finally {
+                state.release.countDown();
+            }
+            assertThat(first.get(3, TimeUnit.SECONDS).getResponse().getStatus()).isEqualTo(200);
+            mvc.perform(
+                            request(f.session(), key, new byte[] {1}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.replayed").value(true))
+                    .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+            mvc.perform(
+                            request(f.session(), key, new byte[] {2}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONFLICT"));
+            assertThat(state.calls)
+                    .containsExactly(
+                            "CONTEXT",
+                            "STT",
+                            "INPUT",
+                            "CAUSE_ANALYSIS",
+                            "RESPONSE_GENERATION",
+                            "RESPONSE_EVALUATION",
+                            "TTS",
+                            "PUBLISH");
+            assertThat(count(f)).isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select row_version from roleplay_session where session_id=?",
+                                    Long.class,
+                                    f.session()))
+                    .isEqualTo(1L);
             assertEmptySpool();
         }
     }
@@ -950,6 +1282,144 @@ class RoleplayHttpIntegrationTest {
                     .isZero();
             assertThat(state.calls).doesNotContain("PUBLISH");
         }
+    }
+
+    @Test
+    void achievedGoalCompletesThroughVoiceHttpAndReplaySkipsGoalEvaluation() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.activityGoalAchieved = true;
+
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        mvc.perform(get("/api/v1/activities/{id}/status", f.activity()).session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+        assertThat(state.goalDecisions).hasValue(1);
+        assertThat(state.goalCalledInTransaction).isFalse();
+        assertThat(recordCount(f)).isEqualTo(1);
+        assertThat(canonicalCount(f)).isZero();
+        var original = completionSnapshot(f);
+        var providerCalls = List.copyOf(state.calls);
+        state.goalDecisionUnavailable = true;
+
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(true));
+        assertThat(state.goalDecisions).hasValue(1);
+        assertThat(state.calls).isEqualTo(providerCalls);
+        assertThat(completionSnapshot(f)).isEqualTo(original);
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {2}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isConflict());
+        assertThat(state.goalDecisions).hasValue(1);
+        assertThat(count(f)).isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void unavailableGoalDecisionReturns503WithoutSavingOrDeliveringCandidate() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.goalDecisionUnavailable = true;
+        var failed =
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1}, "audio/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isServiceUnavailable())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONTEXT_UNAVAILABLE"))
+                        .andExpect(jsonPath("$.data").doesNotExist())
+                        .andReturn();
+        assertThat(failed.getResponse().getContentAsString())
+                .doesNotContain("친구가 울고 있어", "친구는 어떤 기분일까?");
+        assertThat(count(f)).isZero();
+        assertThat(recordCount(f)).isZero();
+        assertThat(state.calls).doesNotContain("PUBLISH");
+        assertEmptySpool();
+
+        state.goalDecisionUnavailable = false;
+        state.activityGoalAchieved = true;
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk());
+        assertThat(state.goalDecisions).hasValue(2);
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(recordCount(f)).isEqualTo(1);
+        assertThat(canonicalCount(f)).isZero();
+    }
+
+    @Test
+    void actualRecordFailureThroughVoiceHttpRollsBackAndSameKeyCanRetry() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.activityGoalAchieved = true;
+        var constraint = "http_record_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc.execute(
+                "alter table learning_record add constraint "
+                        + constraint
+                        + " check (activity_id <> '"
+                        + f.activity()
+                        + "'::uuid)");
+        try {
+            mvc.perform(
+                            request(f.session(), key, new byte[] {1}, "audio/webm")
+                                    .session(session)
+                                    .with(csrf()))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                    .andExpect(jsonPath("$.data").doesNotExist());
+            assertThat(count(f)).isZero();
+            assertThat(recordCount(f)).isZero();
+            mvc.perform(get("/api/v1/activities/{id}/status", f.activity()).session(session))
+                    .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+            assertEmptySpool();
+        } finally {
+            jdbc.execute("alter table learning_record drop constraint " + constraint);
+        }
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk());
+        assertThat(recordCount(f)).isEqualTo(1);
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(canonicalCount(f)).isZero();
+    }
+
+    private int recordCount(RoleplayHttpFixtures.Fixture f) {
+        return jdbc.queryForObject(
+                "select count(*) from learning_record where activity_id=?",
+                Integer.class,
+                f.activity());
+    }
+
+    private int canonicalCount(RoleplayHttpFixtures.Fixture f) {
+        return jdbc.queryForObject(
+                "select count(*) from roleplay_turn where session_id=? and canonical_utterance is not null",
+                Integer.class,
+                f.session());
+    }
+
+    private java.util.Map<String, Object> completionSnapshot(RoleplayHttpFixtures.Fixture f) {
+        return jdbc.queryForMap(
+                "select a.completed_at, a.reward_issued_at, r.record_id, s.row_version from activity a join learning_record r on r.activity_id=a.activity_id join roleplay_session s on s.activity_id=a.activity_id where s.session_id=?",
+                f.session());
     }
 
     private MockMultipartHttpServletRequestBuilder request(

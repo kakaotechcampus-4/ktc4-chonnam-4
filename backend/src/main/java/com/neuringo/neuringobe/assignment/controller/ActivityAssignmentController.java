@@ -50,9 +50,12 @@ public class ActivityAssignmentController {
     @GetMapping("/api/v1/activities/{activityId}")
     public ApiResponse<ActivityDetailResponse> detail(
             @PathVariable UUID activityId, Authentication authentication) {
-        ActivityDetailResponse detail = service.detail(activityId, authentication);
-        sensitiveReads.recordIfInstructor(
-                authentication, SensitiveReadLog.Target.ACTIVITY, activityId);
+        ActivityDetailResponse detail =
+                sensitiveReads.read(
+                        authentication,
+                        SensitiveReadLog.Target.ACTIVITY,
+                        activityId,
+                        () -> service.detail(activityId, authentication));
         return ApiResponse.of(detail);
     }
 }

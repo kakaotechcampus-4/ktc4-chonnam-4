@@ -39,6 +39,9 @@ public class QuizResult {
     @Column(name = "difficulty_fallback_applied", nullable = false)
     private boolean difficultyFallbackApplied;
 
+    @Column(name = "difficulty_fallback_reason")
+    private String difficultyFallbackReason;
+
     @Column(name = "initial_difficulty_used", nullable = false)
     private boolean initialDifficultyUsed;
 
@@ -68,6 +71,7 @@ public class QuizResult {
         this.scenarioLevel = decision.scenarioLevel();
         this.initialSupportLevel = decision.initialSupportLevel();
         this.difficultyFallbackApplied = decision.fallbackApplied();
+        this.difficultyFallbackReason = decision.fallbackApplied() ? "NO_VALID_QUESTIONS" : null;
         this.initialDifficultyUsed = initialDifficultyUsed;
         this.policyVersion = decision.policyVersion();
         this.snapshottedAt = snapshottedAt;
@@ -107,6 +111,12 @@ public class QuizResult {
 
     public boolean isDifficultyFallbackApplied() {
         return difficultyFallbackApplied;
+    }
+
+    public String getDifficultyFallbackReason() {
+        return difficultyFallbackApplied && difficultyFallbackReason == null
+                ? "LEGACY_UNSPECIFIED"
+                : difficultyFallbackReason;
     }
 
     public boolean isInitialDifficultyUsed() {

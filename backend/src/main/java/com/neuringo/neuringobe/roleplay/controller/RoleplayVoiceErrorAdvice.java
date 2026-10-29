@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.roleplay.controller;
 import com.neuringo.neuringobe.common.ApiErrorResponse;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.TraceIds;
+import com.neuringo.neuringobe.roleplay.application.RoleplayActivityGoalEvaluator;
 import com.neuringo.neuringobe.roleplay.application.RoleplayContextAssembler;
 import com.neuringo.neuringobe.roleplay.infrastructure.input.RoleplayUploadSpoolFactory;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,9 +40,12 @@ public class RoleplayVoiceErrorAdvice {
         return response(error, request);
     }
 
-    @ExceptionHandler(RoleplayContextAssembler.Unavailable.class)
+    @ExceptionHandler({
+        RoleplayContextAssembler.Unavailable.class,
+        RoleplayActivityGoalEvaluator.Unavailable.class
+    })
     public ResponseEntity<ApiErrorResponse> context(
-            RoleplayContextAssembler.Unavailable ex, HttpServletRequest request) {
+            RuntimeException ex, HttpServletRequest request) {
         return response(
                 new ApiException(
                         HttpStatus.SERVICE_UNAVAILABLE,

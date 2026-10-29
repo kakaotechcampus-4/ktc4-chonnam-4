@@ -3,6 +3,8 @@ package com.neuringo.neuringobe;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jayway.jsonpath.JsonPath;
+import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
+import com.neuringo.neuringobe.user.domain.UserRole;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
@@ -24,6 +26,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
@@ -34,6 +42,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>"활성 강사가 로그인하고 본인 정보를 조회할 수 있다": 가입 → 로그인 → GET /api/v1/auth/session 이 같은 강사를 돌려준다.
  *   <li>"인증이 없거나 만료되면 보호된 기능을 사용할 수 없다": 헤더가 없으면 401 AUTHENTICATION_REQUIRED, 틀린·만료·로그아웃한 토큰은 401
  *       INVALID_TOKEN 이다. 막힌 변경 요청은 저장하지 않는다. 로그아웃은 그 세션만 끝내고 같은 강사의 다른 세션은 그대로 둔다.
+ *   <li>강사 인증은 서버 세션에 남지 않는다: 토큰 요청은 세션을 만들지 않고, 로그아웃 뒤 세션 쿠키만으로는 강사 API 가 열리지 않는다. 세션에 강사 인증이 들어가
+ *       있어도 세션으로는 아동만 인증된다.
  *   <li>"비밀번호는 Spring Security 의 적응형 단방향 인코더로 저장된다": DB 에는 BCrypt 해시만 있고 원문은 없다. 로그인 토큰도 원문이 아니라
  *       해시로 저장된다.
  *   <li>"비밀번호는 8자 이상이며 추가 조합 규칙은 적용하지 않는다": 7자는 422, 8자는 숫자만·같은 글자만이어도 가입된다. BCrypt 한계(72바이트)를 넘으면
@@ -44,7 +54,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *   <li>공개 경로(가입·로그인·CSRF 토큰)는 틀린 토큰이 달려 있어도 열린다(PublicEndpoints 의 규칙).
  *   <li>"이용약관·개인정보 처리방침 각각 필수 동의, 버전·시각 저장": 둘 중 하나라도 빠지면 422 이고 계정이 생기지 않는다. 가입하면 서버가 정한 버전과 동의
  *       시각이 계정 행에 함께 저장된다.
- *   <li>"확인 없이 즉시 탈퇴, 같은 이메일 재가입은 새 ID": 탈퇴하면 그 강사의 모든 토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
+ *   <li>"즉시 탈퇴, 같은 이메일 재가입은 새 ID": 현재 비밀번호를 다시 확인한 뒤 바로 지운다(틀리면 403 이고 아무것도 지우지 않는다). 탈퇴하면 그 강사의 모든
+ *       토큰이 바로 막히고, 같은 이메일로 다시 가입하면 다른 ID 가 된다.
  * </ul>
  */
 @LocalProfileIntegrationTest
@@ -136,8 +147,7 @@ class AuthIntegrationTest {
         TestFixtures.Instructor instructor = fixtures.signUpInstructor();
         String otherTab = fixtures.login(instructor.email(), instructor.password());
 
-        MvcTestResult withdrawal =
-                send(mvc.delete().uri("/api/v1/users/me"), null, instructor.accessToken());
+        MvcTestResult withdrawal = withdraw(instructor.password(), instructor.accessToken());
 
         assertThat(withdrawal).hasStatus(HttpStatus.NO_CONTENT);
         assertUnauthorized(
@@ -155,6 +165,52 @@ class AuthIntegrationTest {
                 fixtures.signUp(
                         new TestFixtures.Credentials(instructor.email(), instructor.password()));
         assertThat(again).isNotEqualTo(instructor.userId());
+    }
+
+    /** 비밀번호가 틀리면 탈퇴하지 않는다. 401 이 아니라 403 이라 화면이 로그아웃시키지 않고, 세션도 그대로 쓸 수 있다. */
+    @Test
+    void withdrawalWithWrongPasswordKeepsAccountAndSession() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                withdraw("wrong-" + instructor.password(), instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("PASSWORD_MISMATCH");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
+        assertThat(withdraw(instructor.password(), instructor.accessToken()))
+                .hasStatus(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void withdrawalWithoutPasswordIsValidationError() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+
+        MvcTestResult withdrawal =
+                send(
+                        mvc.post().uri("/api/v1/users/me/withdrawal"),
+                        "{\"password\":\"\"}",
+                        instructor.accessToken());
+
+        assertThat(withdrawal).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(withdrawal)
+                .bodyJson()
+                .extractingPath("$.error.code")
+                .isEqualTo("VALIDATION_FAILED");
+        assertThat(
+                        TestFixtures.bearer(
+                                        mvc.get().uri("/api/v1/auth/session"),
+                                        instructor.accessToken())
+                                .exchange())
+                .hasStatusOk();
     }
 
     /** 로그인해야 쓸 수 있는 요청. 변경 요청은 CSRF 토큰을 실어서 CSRF 가 아니라 인증에서 막히는지 본다. */
@@ -240,6 +296,55 @@ class AuthIntegrationTest {
         assertThat(logout).hasStatus(HttpStatus.NO_CONTENT);
         assertUnauthorized(get("/api/v1/auth/session", instructor.accessToken()), "INVALID_TOKEN");
         assertThat(get("/api/v1/auth/session", otherDevice)).hasStatusOk();
+    }
+
+    @Test
+    void bearerRequestCreatesNoServerSession() {
+        String token = fixtures.signUpInstructor().accessToken();
+
+        MvcTestResult result = get("/api/v1/classrooms", token);
+
+        assertThat(result).hasStatusOk();
+        assertThat(result.getMvcResult().getRequest().getSession(false)).isNull();
+    }
+
+    // 브라우저에 세션 쿠키가 이미 있던 경우다. 토큰을 폐기한 뒤 쿠키만으로 강사 API 가 열리면 안 된다.
+    @Test
+    void sessionCookieAloneIsRejectedAfterLogout() {
+        String token = fixtures.signUpInstructor().accessToken();
+        MockHttpSession browserSession = new MockHttpSession();
+
+        MvcTestResult withToken =
+                TestFixtures.bearer(mvc.get().uri("/api/v1/classrooms"), token)
+                        .session(browserSession)
+                        .exchange();
+        MvcTestResult logout = send(mvc.delete().uri("/api/v1/auth/session"), null, token);
+        MvcTestResult cookieOnly =
+                mvc.get().uri("/api/v1/classrooms").session(browserSession).exchange();
+
+        assertThat(withToken).hasStatusOk();
+        assertThat(logout).hasStatus(HttpStatus.NO_CONTENT);
+        assertUnauthorized(cookieOnly, "AUTHENTICATION_REQUIRED");
+    }
+
+    // 어떤 경로로든 강사 인증이 세션에 들어가 있어도 세션으로는 아동만 인증된다.
+    @Test
+    void instructorAuthenticationFoundInSessionIsIgnored() {
+        TestFixtures.Instructor instructor = fixtures.signUpInstructor();
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new AuthenticatedUser(
+                                instructor.userId(), UUID.randomUUID(), UserRole.INSTRUCTOR),
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_INSTRUCTOR"))));
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+
+        MvcTestResult result = mvc.get().uri("/api/v1/classrooms").session(session).exchange();
+
+        assertUnauthorized(result, "AUTHENTICATION_REQUIRED");
     }
 
     @Test
@@ -447,6 +552,13 @@ class AuthIntegrationTest {
             request.contentType(MediaType.APPLICATION_JSON).content(json);
         }
         return (token == null ? request : TestFixtures.bearer(request, token)).exchange();
+    }
+
+    private MvcTestResult withdraw(String password, String token) {
+        return send(
+                mvc.post().uri("/api/v1/users/me/withdrawal"),
+                "{\"password\":\"" + password + "\"}",
+                token);
     }
 
     private static void assertUnauthorized(MvcTestResult result, String code) {

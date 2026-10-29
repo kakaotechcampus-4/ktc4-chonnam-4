@@ -9,11 +9,13 @@
 | `backend/Dockerfile` | Temurin 21 LTS 멀티스테이지(JDK 로 빌드 → JRE 로 실행). root 가 아닌 사용자(uid 10001)로 돈다 |
 | `frontend/Dockerfile` · `frontend/nginx.conf` | 화면 이미지: Node 24 로 `vite build`(`VITE_API_BASE_URL=/api/v1`) → nginx-unprivileged(uid 101, 8080). `/api/` 는 backend 로 넘기고, 화면 주소는 index.html, 응답 헤더 `X-Neuringo-Release` 에 커밋 |
 | `deploy/compose.dev.yml` | 서버 구성: web + backend + `postgres:18.6`. 밖으로 여는 것은 web 하나. 메모리 상한(backend 1.5 GiB·postgres 768 MiB·web 64 MiB), 로그 회전. 미리보기는 `APP_DB_*` 로 미리보기 DB 에 붙는다 |
+| `deploy/compose.origin.yml` | 원본 비밀 헤더 확인을 켠다. `deploy.sh` 가 Parameter Store `edge/origin-secret` 이 있을 때만 덧붙인다(화면 nginx 가 헤더가 다르면 403) |
 | `deploy/host/params.txt` | 서버 `.env` 에 넣을 설정값 목록(Parameter Store 이름). 여기에 없는 값은 컨테이너에 들어가지 않는다 |
 | `deploy/host/deploy.sh` | 서버에서: 자리 확인 → 설정값 → `.env`(600) → develop 은 배포 전 백업 / 미리보기는 미리보기 DB 새로 → 새 이미지 2개 → 상태 확인(API 200·화면 200·화면 헤더의 커밋) → 안 되면 직전 상태(미리보기가 끼어 있으면 미리보기 전 develop)로 되돌림 → 옛 이미지 정리 |
-| `deploy/host/status.sh` | 서버 상태(올라간 것·자리·컨테이너·여유)와, 서버에서 CloudFront 주소로 화면·API·커밋을 불러 본 결과(KEY=값) |
+| `deploy/host/status.sh` | 서버 상태(올라간 것·자리·컨테이너·여유·사람이 마지막으로 쓴 API 요청·원본 헤더 확인)와, 서버에서 CloudFront 주소로 화면·API·커밋을 불러 본 결과(KEY=값) |
 | `deploy/host/backup.sh` · `restore-check.sh` | `pg_dump` → S3(14일), 그 백업을 서버의 임시 postgres 에 복구해 확인 |
 | `deploy/host/setup.sh` | 서버 기본 설정: Docker·Compose·AWS CLI·swap 2 GiB·journald 상한·보안 업데이트·`/opt/neuringo`·컨테이너의 인스턴스 메타데이터(IMDS) 차단 |
+| `scripts/wait-idle.sh` | 저절로 돈 배포 전에, 테스트 주소를 쓰는 중이면(마지막 API 요청 5분 안) 15분까지 기다리고 그래도 쓰면 미룬다 |
 | `scripts/ssm-run.sh` | Actions 에서 서버로 스크립트를 보내고(SSM) 끝날 때까지 기다린다. 출력의 계정 ID·ARN·IP 를 가린다 |
 | `scripts/release-bundle.sh` | 배포 묶음(compose + `deploy/host`)을 서버 스크립트 하나로 만든다. 서버는 `releases/<SHA>` 에 풀고 `current` 를 돌린다 |
 | `scripts/server-power.sh` | 서버(EC2) 켜기·끄기·상태·권한(DryRun). 끄기 권한이 없으면 "OS 를 끄면 중지"일 때만 서버 안에서 끈다 |
@@ -49,7 +51,7 @@
 
 ## Dev server (팀원용)
 
-**PR 을 열면 미리보기가 저절로 뜬다(기본값).** 라벨은 기본값을 바꿀 때만, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda 가 10분마다 본다). 결과 보고서는 그 실행의 Summary 다. 테스트 주소와 결과(떴음·자리 있음·서버 꺼짐·실패·끝냄·켜기·끄기)는 디스코드 **#pr-주소** 채널에 저절로 온다(secret `DISCORD_PREVIEW_WEBHOOK`, 없으면 알리지 않는다).
+**PR 을 열면 미리보기가 저절로 뜬다(기본값).** 라벨은 기본값을 바꿀 때만, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda 가 10분마다 본다). 단 24시간 모드 기간(지금은 2026-11-20 23:59 KST 까지, `infra/README.md`)에는 끄지 않는다. 그 동안 테스트 주소를 누가 쓰는 중이면 저절로 돈 배포·미리보기는 다 쓸 때까지(최대 15분) 기다리고, 그래도 쓰면 미룬다. 결과 보고서는 그 실행의 Summary 다. 테스트 주소는 디스코드 고정 메시지. 미리보기 결과(떴음·자리 있음·서버 꺼짐·실패·끝냄·켜기·끄기)도 디스코드 **#pr-주소** 채널에 저절로 온다(secret `DISCORD_PREVIEW_WEBHOOK`, 없으면 알리지 않는다).
 
 | 어디서 | 할 일 | 하는 일 |
 |---|---|---|

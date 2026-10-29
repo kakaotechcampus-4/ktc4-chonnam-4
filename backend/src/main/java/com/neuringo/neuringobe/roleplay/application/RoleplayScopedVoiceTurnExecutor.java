@@ -2,9 +2,11 @@ package com.neuringo.neuringobe.roleplay.application;
 
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayAudioResource;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointedTurnExecutor;
+import com.neuringo.neuringobe.ai.application.roleplay.RoleplayInputContext;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayRequestIdentity;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplaySpeechTurnPipeline;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
+import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnResult;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService.Scope;
 import java.util.Objects;
 import java.util.UUID;
@@ -27,10 +29,7 @@ public final class RoleplayScopedVoiceTurnExecutor {
         this.speech = Objects.requireNonNull(speech);
     }
 
-    /**
-     * Scope must come from authenticated server lookup. This entry computes the fingerprint itself.
-     * Owns the upload on every exit.
-     */
+    /** 인증된 범위에서 음성 지문을 계산하고 분석 자료 지문을 결과에 연결한다. 모든 종료 경로에서 업로드를 해제한다. */
     public RoleplayCheckpointedTurnExecutor.Result executeVoice(
             Scope scope,
             UUID requestId,
@@ -58,8 +57,22 @@ public final class RoleplayScopedVoiceTurnExecutor {
                                 active -> {
                                     var prepared =
                                             contexts.prepareVoice(scope, requestId, turnId, active);
-                                    return speech.execute(
-                                            input.request(), prepared.input(), active);
+                                    var result =
+                                            speech.execute(
+                                                    input.request(),
+                                                    prepared.input(),
+                                                    prepared.observations(),
+                                                    active);
+                                    if (result instanceof RoleplayTurnResult.SpokenReady spoken) {
+                                        return new RoleplayTurnResult.SpokenReady(
+                                                spoken.ready(),
+                                                spoken.canonicalUtterance(),
+                                                spoken.speech(),
+                                                prepared.contextFingerprint(),
+                                                RoleplayInputContext.from(
+                                                        prepared.input().state()));
+                                    }
+                                    return result;
                                 });
                     });
         }

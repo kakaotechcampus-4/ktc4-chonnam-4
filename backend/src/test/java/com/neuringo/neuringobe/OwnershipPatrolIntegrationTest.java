@@ -45,12 +45,15 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("POST /api/v1/auth/sessions", "공개: 로그인"),
                     Map.entry("GET /api/v1/auth/session", "자기 세션만 본다"),
                     Map.entry("DELETE /api/v1/auth/session", "자기 세션만 끝낸다"),
-                    Map.entry("DELETE /api/v1/users/me", "자기 계정만 탈퇴한다"),
+                    Map.entry("POST /api/v1/users/me/withdrawal", "자기 계정만 탈퇴한다"),
                     Map.entry("POST /api/v1/classrooms", "새 학급을 자기 소유로 만든다. 남의 ID 를 받지 않는다"),
                     Map.entry("POST /api/v1/child-access-sessions", "아동 입장(코드)"),
                     Map.entry("DELETE /api/v1/child-access-sessions/current", "아동 사용 종료"),
                     Map.entry("PUT /api/v1/activity-quiz-items/{activityQuizId}/attempt", "아동만"),
                     Map.entry("POST /api/v1/activity-quiz-items/{activityQuizId}/hints", "아동만"),
+                    Map.entry(
+                            "POST /api/v1/activities/{activityId}/roleplay-sessions",
+                            "아동 본인만: QuizFlowIntegrationTest에서 타 아동·강사 차단 검증"),
                     Map.entry(
                             "PATCH /api/v1/activity-quiz-items/{activityQuizId}/attempt", "내부 처리만"),
                     // 역할극 음성 설정이 있을 때만 등록된다. 이 테스트 설정(local)에는 없다.
@@ -77,6 +80,7 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-result",
                             "ACTIVITY_NOT_FOUND"),
+                    Map.entry("GET /api/v1/activities/{activityId}/status", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
@@ -247,6 +251,10 @@ class OwnershipPatrolIntegrationTest {
                 get(
                         "GET /api/v1/activities/{activityId}/quiz-result",
                         "/api/v1/activities/%s/quiz-result",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/activities/{activityId}/status",
+                        "/api/v1/activities/%s/status",
                         Owned::activityId),
                 get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",

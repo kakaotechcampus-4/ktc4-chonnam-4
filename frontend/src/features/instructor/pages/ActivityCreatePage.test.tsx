@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
 import axe from "axe-core"
 import { getResponse, http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
@@ -123,6 +123,36 @@ describe("활동 만들기 화면", () => {
     expect(screen.getByText(/최초 결합 활동을 마쳐서 표정 퀴즈를 만들 수 있어요/)).toBeInTheDocument()
   })
 
+  it("유형 카드 묶음에서는 선택된 카드에만 Tab 이 멈춘다", async () => {
+    renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
+
+    expect(await screen.findByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("tabindex", "0")
+    expect(screen.getByRole("radio", { name: "표정 퀴즈만" })).toHaveAttribute("tabindex", "-1")
+    expect(screen.getByRole("radio", { name: "역할극만" })).toHaveAttribute("tabindex", "-1")
+  })
+
+  it("아무 카드도 고르지 않았으면 고를 수 있는 카드에 Tab 이 멈추고, 방향키로 꺼진 카드를 건너뛰어 고른다", async () => {
+    seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
+    const { user } = renderWizard(`?step=type&classId=${A1}&childId=${CHILD.childId}`)
+
+    const quiz = await screen.findByRole("radio", { name: "표정 퀴즈만" })
+    expect(quiz).toHaveAttribute("tabindex", "0")
+    expect(screen.getByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("tabindex", "-1")
+
+    quiz.focus()
+    await user.keyboard("{ArrowLeft}")
+    expect(quiz).toHaveAttribute("aria-checked", "true")
+    expect(quiz).toHaveFocus()
+
+    const self = screen.getByRole("radio", { name: "내 감정 알기" })
+    expect(self).toBeChecked()
+    self.focus()
+    await user.keyboard("{ArrowDown}")
+
+    expect(screen.getByRole("radio", { name: "상대 감정 알기" })).toBeChecked()
+    expect(quiz).toHaveAttribute("aria-checked", "true")
+  })
+
   it("최초 활동을 마친 아동에게는 목표 없이 상대 감정 퀴즈를 배정한다", async () => {
     seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
     let body: unknown
@@ -210,6 +240,37 @@ describe("활동 만들기 화면", () => {
     await screen.findByRole("heading", { name: "아동 상세 · 김하늘 (햇살반)" })
     expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`)
     expect(storedGoals(CHILD.childId)).toHaveLength(1)
+  })
+
+  it("배정 중에 다른 화면으로 가면, 응답이 도착해도 아동 상세로 끌고 가지 않는다", async () => {
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.post(
+        "*/api/v1/activities",
+        async ({ request }) => {
+          await held
+          return getResponse(handlers, request)
+        },
+        { once: true },
+      ),
+    )
+    const { user, router } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+
+    await goToConfirm(user)
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    expect(await screen.findByRole("button", { name: "배정 중..." })).toBeDisabled()
+    await router.navigate("/classrooms")
+    expect(await screen.findByText("학급 목록 화면")).toBeInTheDocument()
+
+    release()
+    // 배정은 서버에 저장되고, 화면은 강사가 옮긴 곳에 그대로 있다.
+    await vi.waitFor(() => expect(storedGoals(CHILD.childId)).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(router.state.location.pathname).toBe("/classrooms")
+    expect(screen.getByText("학급 목록 화면")).toBeInTheDocument()
   })
 
   it("표정 퀴즈 종류를 펼친 유형 화면에 접근성 위반이 없다", async () => {

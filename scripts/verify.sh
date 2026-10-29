@@ -120,6 +120,7 @@ e2e_record_selftest() { bash scripts/test-e2e-record.sh; }
 aws_probe_selftest() { bash scripts/test-aws-probe.sh; }
 host_deploy_selftest() { bash scripts/test-host-deploy.sh; }
 ssm_run_selftest() { bash scripts/test-ssm-run.sh; }
+wait_idle_selftest() { bash scripts/test-wait-idle.sh; }
 dev_server_selftest() { bash scripts/test-dev-server.sh && node --test scripts/edge-toggle.test.mjs scripts/preview-notify.test.mjs; }
 host_setup_selftest() { bash scripts/test-host-setup.sh; }
 infra_outputs_selftest() { bash scripts/test-infra-outputs.sh; }
@@ -198,6 +199,7 @@ workflows() {
   run "scripts: AWS 권한 확인 자체 검사" aws_probe_selftest
   run "scripts: 서버 배포(develop·PR 미리보기)·상태·백업·복구 확인·배포 묶음 자체 검사" host_deploy_selftest
   run "scripts: 서버 기본 설정 자체 검사" host_setup_selftest
+  run "scripts: 쓰는 중이면 자동 배포 미루기 자체 검사" wait_idle_selftest
   run "scripts: SSM 실행 자체 검사" ssm_run_selftest
   run "scripts: 인프라 값 읽기 자체 검사" infra_outputs_selftest
   run "scripts: 서버 켜기·끄기·CloudFront 여닫기 자체 검사" dev_server_selftest

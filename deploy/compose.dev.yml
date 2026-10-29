@@ -52,8 +52,8 @@ services:
     # 호스트에 포트를 열지 않는다. 요청은 web 이 compose 네트워크로 넘긴다.
     # 상한이 없으면 JVM(MaxRAMPercentage=75)이 서버 전체 4 GiB 기준으로 힙을 잡는다. 1.5 GiB 면 힙은 약 1.1 GiB 다.
     mem_limit: "${BACKEND_MEM_LIMIT:-1536m}"
-    # Spring 의 graceful shutdown(20초)이 끝날 때까지 기다린다.
-    stop_grace_period: 30s
+    # 서버가 진행 중인 요청을 70초 동안 기다릴 수 있도록, 컨테이너 강제 종료까지 90초를 준다.
+    stop_grace_period: 90s
     logging:
       driver: json-file
       options:

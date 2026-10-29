@@ -20,6 +20,7 @@ import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -195,12 +196,16 @@ public class ActivityAssignmentService {
         return new Assignment(ActivityResponse.from(created), true);
     }
 
-    /** 같은 요청 키의 재전송인지. 처음 배정한 목표와 이번 요청의 목표 내용이 같아야 한다. 독립 퀴즈는 둘 다 목표가 없다. */
+    /** 같은 요청 키를 다시 보내도 목표 내용이나 이전 목표 식별자가 다르면 같은 배정 요청으로 인정하지 않는다. */
     private boolean sameGoal(Activity prior, LearningGoal requested) {
         if (prior.getGoalId() == null || requested == null) {
             return prior.getGoalId() == null && requested == null;
         }
         return goals.findById(prior.getGoalId())
+                .filter(
+                        saved ->
+                                Objects.equals(
+                                        saved.getParentGoalId(), requested.getParentGoalId()))
                 .map(LearningGoal::getContentHash)
                 .filter(requested.getContentHash()::equals)
                 .isPresent();

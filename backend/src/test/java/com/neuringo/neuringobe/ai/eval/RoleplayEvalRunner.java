@@ -13,6 +13,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -104,7 +105,8 @@ final class RoleplayEvalRunner {
                             UUID next = UUID.randomUUID();
                             analysisId.set(next);
                             return next;
-                        });
+                        },
+                        RoleplayObservationTestPlans.inputForScenario((input).scenario()));
         ObservedTurnSteps observed =
                 new ObservedTurnSteps(steps, recorder, prompts, input, trace, analysisId::get);
 

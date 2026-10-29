@@ -89,8 +89,8 @@ run "dev_wires_modules" {
     error_message = "사용자 테스트 주소(CloudFront 기본 주소)를 내보낸다"
   }
   assert {
-    condition     = length(module.config.parameter_names) == 8
-    error_message = "워크플로·서버가 읽는 Parameter Store 값 8개를 만든다"
+    condition     = length(module.config.parameter_names) == 9
+    error_message = "워크플로·서버가 읽는 Parameter Store 값 9개를 만든다(원본 비밀 헤더 포함)"
   }
   assert {
     condition     = length(random_id.suffix.hex) == 6

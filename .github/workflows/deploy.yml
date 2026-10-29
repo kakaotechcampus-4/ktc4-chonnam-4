@@ -123,3 +123,5 @@ jobs:
       sha: ${{ needs.plan.outputs.sha }}
       mode: develop
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+      # develop 반영으로 저절로 돈 배포는 테스트 주소를 쓰는 중이면 15분까지 기다리고 그래도 쓰면 미룬다. 직접 누르면 바로.
+      wait_idle: ${{ github.event_name != 'workflow_dispatch' && 15 || 0 }}

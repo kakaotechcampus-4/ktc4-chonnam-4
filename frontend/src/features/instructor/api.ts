@@ -316,12 +316,12 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * 즉시 탈퇴한다. 서버는 비밀번호를 다시 묻지 않고 계정과 학급·아동·학습 기록을 모두 지운다(확인 창은 화면이 띄운다). 성공했을 때만 토큰을 지운다.
- * 실패하면 계정이 그대로라 로그인 상태를 유지한다.
+ * 즉시 탈퇴한다. 서버가 현재 비밀번호를 다시 확인한 뒤 계정과 학급·아동·학습 기록을 모두 지운다. 성공했을 때만 토큰을 지운다.
+ * 실패하면 계정이 그대로라 로그인 상태를 유지한다. 비밀번호가 틀리면 401 이 아니라 403(PASSWORD_MISMATCH)이라 로그아웃되지 않는다.
  */
-export async function withdraw(): Promise<void> {
+export async function withdraw(password: string): Promise<void> {
   cancelPendingRequests()
-  await writeRequest<void>('DELETE', '/users/me')
+  await writeRequest<void>('POST', '/users/me/withdrawal', { password })
   clearAccessToken()
 }
 

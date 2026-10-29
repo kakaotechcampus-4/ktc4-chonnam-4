@@ -62,6 +62,14 @@ base_compose="$state_dir/$ENV_NAME.base.compose.yml"
 base_release="$state_dir/$ENV_NAME.base.release"
 lease_file="$state_dir/preview.lease"
 docker_log="$log_dir/docker-$ENV_NAME.log"
+# 원본 비밀 헤더(우리 CloudFront 를 거친 요청만 받는다). 값은 render_env 가 Parameter Store 에서 읽고, .env 가 아니라
+# 화면(nginx)이 읽는 설정 조각(origin_dir/verify.conf)과 서버 안 상태 확인용 헤더 파일(origin_header)로 둔다.
+origin_secret=""
+origin_dir="$state_dir/nginx-origin"
+origin_header="$state_dir/origin-header"
+origin_changed=0
+use_origin=0
+[ -f "$origin_dir/verify.conf" ] && use_origin=1
 started=$SECONDS
 
 say() { echo "[deploy] $*"; }
@@ -76,9 +84,14 @@ kv_value() { # 키 파일 — KEY=값 기록 파일에서 값 하나
   sed -n "s/^$1=//p" "$2" | tail -n 1
 }
 compose_at() { # .env compose파일 인자...
-  local env=$1 file=$2
+  local env=$1 file=$2 extra=()
   shift 2
-  APP_ENV_FILE="$env" docker compose --env-file "$env" -f "$file" -p "$PROJECT" "$@"
+  # 원본 비밀 헤더 설정 조각이 있으면 같은 묶음의 compose.origin.yml 로 화면에 붙인다(옛 묶음에는 없어 확인하지 않는다).
+  if [ "$use_origin" = 1 ] && [ -f "${file%/*}/compose.origin.yml" ]; then
+    extra=(-f "${file%/*}/compose.origin.yml")
+  fi
+  APP_ENV_FILE="$env" ORIGIN_CONF_DIR="$origin_dir" \
+    docker compose --env-file "$env" -f "$file" "${extra[@]}" -p "$PROJECT" "$@"
 }
 new_compose() { compose_at "$new_env" "$COMPOSE_FILE" "$@"; }
 # 아래 두 함수는 stop_app·running_is·psql_admin 등에 이름으로 넘겨 부른다(shellcheck 은 그것을 보지 못한다).
@@ -221,6 +234,13 @@ render_env() { # 만들 파일
     return 1
   fi
 
+  # 원본 비밀 헤더는 .env(앱 컨테이너)에 넣지 않는다. nginx 설정에 그대로 들어가므로 모양을 본다(Terraform 은 영문·숫자 48자).
+  origin_secret=${value[${prefix}edge/origin-secret]:-}
+  if [ -n "$origin_secret" ] && ! [[ "$origin_secret" =~ ^[A-Za-z0-9]{32,128}$ ]]; then
+    say "원본 비밀 헤더 값 모양이 틀렸다(edge/origin-secret, 영문·숫자 32~128자)"
+    return 1
+  fi
+
   # 미리보기에는 아동 입장 코드 비밀키도 따로 쓴다(PR 코드가 기본 DB 의 입장 코드를 풀 수 없게).
   if [ "$MODE" = preview ] && [ -n "${value[${prefix}child-access/hmac-secret]+set}" ]; then
     value["${prefix}child-access/hmac-secret"]=$(random_hex 32)
@@ -236,6 +256,7 @@ render_env() { # 만들 파일
     printf "APP_PORT='%s'\n" "$APP_PORT"
     printf "SPRING_PROFILES_ACTIVE='%s'\n" "${SPRING_PROFILES_ACTIVE:-$ENV_NAME}"
     for i in "${!keys[@]}"; do
+      [ "${keys[$i]}" != ORIGIN_SECRET ] || continue
       if [ -n "${value[${names[$i]}]+set}" ]; then
         printf "%s='%s'\n" "${keys[$i]}" "${value[${names[$i]}]}"
       fi
@@ -259,10 +280,13 @@ render_env() { # 만들 파일
 
 # 상태 확인 한 번: API 200, 그리고 기대 커밋이 있으면 화면 200 + 헤더 X-Neuringo-Release 가 그 커밋.
 check_once() { # 기대커밋(없으면 화면은 안 본다)
-  curl -fsS -o /dev/null --max-time 5 "$BASE_URL/api/v1/csrf" 2>/dev/null || return 1
+  # 화면이 원본 비밀 헤더를 확인하면 CloudFront 처럼 그 헤더를 붙인다(파일로 넘겨 프로세스 목록에 값이 나오지 않게).
+  local auth=()
+  [ -f "$origin_header" ] && auth=(-H "@$origin_header")
+  curl -fsS -o /dev/null --max-time 5 "${auth[@]}" "$BASE_URL/api/v1/csrf" 2>/dev/null || return 1
   [ -n "$1" ] || return 0
   local headers
-  headers=$(curl -fsS -o /dev/null -D - --max-time 5 "$BASE_URL/" 2>/dev/null) || return 1
+  headers=$(curl -fsS -o /dev/null -D - --max-time 5 "${auth[@]}" "$BASE_URL/" 2>/dev/null) || return 1
   grep -qi "^x-neuringo-release: $1" <<<"$headers"
 }
 
@@ -403,6 +427,28 @@ if [ "$MODE" = preview ]; then
   preview_password=$(random_hex 24)
 fi
 render_env "$new_env"
+# 원본 비밀 헤더: 값이 있으면 화면(nginx)의 설정 조각(헤더가 다르면 403)과 상태 확인용 헤더 파일을 새 값으로 쓰고
+# compose.origin.yml 을 덧붙인다. 값은 CloudFront 배포 설정(Terraform)과 같다. 없으면(Infra 적용 전) 지우고 확인하지 않는다.
+# 설정 조각은 nginx 가 뜰 때만 읽으므로 값이 바뀌면 6 에서 화면을 다시 띄운다. 조각은 nginx(uid 101)가 읽게 644 이고,
+# 서버의 다른 사용자는 위의 state 폴더(700)에 막힌다. 헤더 파일은 600.
+if [ -n "$origin_secret" ]; then
+  mkdir -p "$origin_dir"
+  chmod 755 "$origin_dir"
+  # shellcheck disable=SC2016 # $http_x_origin_verify 는 nginx 변수다(셸이 풀지 않는다)
+  printf 'if ($http_x_origin_verify != "%s") {\n    return 403;\n}\n' "$origin_secret" >"$origin_dir/verify.conf.tmp"
+  chmod 644 "$origin_dir/verify.conf.tmp"
+  cmp -s "$origin_dir/verify.conf.tmp" "$origin_dir/verify.conf" || origin_changed=1
+  mv "$origin_dir/verify.conf.tmp" "$origin_dir/verify.conf"
+  printf 'X-Origin-Verify: %s\n' "$origin_secret" >"$origin_header.tmp"
+  mv "$origin_header.tmp" "$origin_header"
+  use_origin=1
+  echo "DEPLOY_ORIGIN_CHECK=on"
+else
+  [ ! -e "$origin_dir" ] || origin_changed=1
+  rm -rf "$origin_dir" "$origin_header"
+  use_origin=0
+  echo "DEPLOY_ORIGIN_CHECK=off"
+fi
 old_images="$(env_value APP_IMAGE "$env_file") $(env_value WEB_IMAGE "$env_file")"
 
 # 3. develop: 배포 전 백업. DB 볼륨이 있으면(첫 배포가 아니면) 반드시 한다. DB 가 멈춰 있으면 지금 설정으로 띄운 뒤 한다.
@@ -468,6 +514,10 @@ fi
 # 6. 바꾸고 확인한다. up 이 실패해도(컨테이너 일부만 바뀌었을 수 있다) 되돌리기로 간다.
 up_ok=1
 new_compose up -d --remove-orphans >>"$docker_log" 2>&1 || up_ok=0
+# 원본 비밀 헤더 값만 바뀌었으면(이미지·설정 그대로) compose 는 화면을 다시 만들지 않는다. nginx 가 새 조각을 읽게 다시 띄운다.
+if [ "$up_ok" = 1 ] && [ "$origin_changed" = 1 ]; then
+  new_compose up -d --no-deps --force-recreate web >>"$docker_log" 2>&1 || up_ok=0
+fi
 if [ "$up_ok" = 1 ] && healthy "$RELEASE" && running_is "$IMAGE" "$WEB_IMAGE" new_compose; then
   mv "$new_env" "$env_file"
   if [ "$MODE" = preview ]; then
