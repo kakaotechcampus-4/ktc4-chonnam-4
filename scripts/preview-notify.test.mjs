@@ -79,6 +79,13 @@ test("서버가 꺼져 있어 push 를 건너뛰면 그렇게 알린다", () => 
   assert.match(text, /^⏸️ \*\*PR #62 새 커밋은 올리지 않았습니다\*\* — 서버가 꺼져 있습니다/)
 })
 
+test("테스트 주소를 쓰는 중이라 미루면 실패가 아니라 미뤘다고 알린다", () => {
+  const text = compose(preview({ task: "PR 미리보기 다시 올리기", releaseResult: "busy" }))
+  assert.match(text, /^⏸️ \*\*PR #65 미리보기를 미뤘습니다\*\* — 테스트 주소를 누가 쓰는 중/)
+  assert.match(text, /`preview` 라벨을 뗐다가 다시 붙이면/)
+  assert.doesNotMatch(text, /주소:/)
+})
+
 test("배포가 되돌려지면 실패와 이유", () => {
   const text = compose(preview({ releaseResult: "rolled_back", releaseJob: "failure", state: { SERVER_STATE: "running", LEASE_ACTIVE: "0" } }))
   assert.match(text, /^❌ \*\*PR #65 미리보기 실패\*\* — 새 버전이 상태 확인/)
@@ -100,6 +107,12 @@ test("미리보기를 끝내면 알리고, 끝낼 것이 없었으면 보내지 
   assert.match(ended, /^⚪ \*\*PR #65 미리보기를 끝냈습니다\*\* — 주소에는 이제 develop 최신 `c3d12f3` 이 떠 있습니다/)
   assert.equal(compose({ task: "미리보기 끝내기", pr: "65", releaseResult: "not_this_pr", releaseJob: "success" }), null)
   assert.equal(compose({ task: "미리보기 끝내기", pr: "65", releaseResult: "", releaseJob: "success" }), null)
+})
+
+test("PR 을 닫았는데 테스트 주소를 쓰는 중이라 끝내기를 미루면 그렇게 알린다", () => {
+  const text = compose({ task: "미리보기 끝내기", pr: "65", releaseResult: "busy", releaseJob: "success", runUrl: RUN })
+  assert.match(text, /^⏸️ \*\*PR #65 미리보기 끝내기를 미뤘습니다\*\* — 테스트 주소를 누가 쓰는 중이라 주소에는 아직 PR #65 미리보기가 떠 있습니다/)
+  assert.match(text, /Run workflow → `미리보기 끝내기`/)
 })
 
 test("켜기·끄기는 누른 사람과 함께, 상태 보기는 보내지 않는다", () => {

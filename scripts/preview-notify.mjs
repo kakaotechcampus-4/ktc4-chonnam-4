@@ -111,6 +111,14 @@ export function compose(input) {
         `그 뒤에 PR #${pr} 에서 \`preview\` 라벨을 뗐다가 다시 붙이면 뜹니다.`,
       )
     }
+    if (result === "busy") {
+      return lines(
+        `⏸️ **PR #${pr} 미리보기를 미뤘습니다** — 테스트 주소를 누가 쓰는 중이라 기다렸지만 계속 쓰였습니다`,
+        about,
+        `다 쓴 뒤 PR #${pr} 에서 \`preview\` 라벨을 뗐다가 다시 붙이면 기다리지 않고 바로 올립니다.`,
+        report,
+      )
+    }
     if (!running || result === "server_off") {
       return lines(
         `⏸️ **PR #${pr} 새 커밋은 올리지 않았습니다** — 서버가 꺼져 있습니다(push 로는 서버를 켜지 않습니다)`,
@@ -126,6 +134,14 @@ export function compose(input) {
     if (result === "ok") {
       const who = pr ? `PR #${pr} 미리보기를` : "미리보기를"
       return lines(`⚪ **${who} 끝냈습니다** — 주소에는 이제 develop 최신${short(sha) ? ` ${short(sha)}` : ""} 이 떠 있습니다${by}`, report)
+    }
+    if (result === "busy") {
+      const who = pr ? `PR #${pr} 미리보기` : "미리보기"
+      return lines(
+        `⏸️ **${who} 끝내기를 미뤘습니다** — 테스트 주소를 누가 쓰는 중이라 주소에는 아직 ${who}가 떠 있습니다`,
+        "다 쓴 뒤 Actions → Dev server → Run workflow → `미리보기 끝내기` 를 누르면 기다리지 않고 바로 끝냅니다.",
+        report,
+      )
     }
     if (result in FAILED || releaseJob === "failure") return failed(pr ? `PR #${pr} 미리보기 끝내기 실패` : "미리보기 끝내기 실패")
     return null // 끝낼 미리보기가 없었다(다른 PR·develop 이 떠 있음, 서버 꺼짐)
