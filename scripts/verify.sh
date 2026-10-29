@@ -121,7 +121,7 @@ aws_probe_selftest() { bash scripts/test-aws-probe.sh; }
 host_deploy_selftest() { bash scripts/test-host-deploy.sh; }
 ssm_run_selftest() { bash scripts/test-ssm-run.sh; }
 wait_idle_selftest() { bash scripts/test-wait-idle.sh; }
-dev_server_selftest() { bash scripts/test-dev-server.sh && node --test scripts/edge-toggle.test.mjs; }
+dev_server_selftest() { bash scripts/test-dev-server.sh && node --test scripts/edge-toggle.test.mjs scripts/preview-notify.test.mjs; }
 host_setup_selftest() { bash scripts/test-host-setup.sh; }
 infra_outputs_selftest() { bash scripts/test-infra-outputs.sh; }
 tf_selftest() { bash scripts/test-tf.sh; }

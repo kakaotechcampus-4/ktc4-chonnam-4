@@ -483,7 +483,7 @@ jobs:
             [ -z "$(value STATUS_ORIGIN_NO_HEADER)" ] || echo "| 헤더 없는 직접 요청(서버 안, 남의 CloudFront 흉내) | $(mark "$(value STATUS_ORIGIN_NO_HEADER)" 403) |"
             [ -z "$(value STATUS_ORIGIN_WITH_HEADER)" ] || echo "| 헤더를 붙인 직접 요청(서버 안) | $(mark "$(value STATUS_ORIGIN_WITH_HEADER)" 200) |"
             echo
-            echo "주소는 디스코드 고정 메시지에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
+            echo "주소는 디스코드 #pr-주소 채널에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
           } >>"$GITHUB_STEP_SUMMARY"
           if [ -n "$(value STATUS_ORIGIN_NO_HEADER)" ] && [ "$(value STATUS_ORIGIN_NO_HEADER)" != 403 ]; then
             echo "::warning title=원본 비밀 헤더::헤더 없는 직접 요청이 403 이 아니다($(value STATUS_ORIGIN_NO_HEADER)). 화면 nginx 가 설정 조각을 읽지 못했다 — Deploy(force)로 다시 띄운다"
