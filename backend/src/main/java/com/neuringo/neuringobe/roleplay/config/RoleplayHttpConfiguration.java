@@ -56,6 +56,7 @@ public class RoleplayHttpConfiguration {
     @Bean
     public RoleplayVoiceInputService roleplayVoiceInputService(
             RoleplayHttpProperties p,
+            RoleplayProgressProperties progress,
             RoleplayRequestScopeService scopes,
             @Qualifier("roleplayTurnWorkers") ThreadPoolExecutor roleplayTurnWorkers,
             RoleplayCheckpointStore store,
@@ -69,6 +70,9 @@ public class RoleplayHttpConfiguration {
             TextToSpeechProvider tts,
             RoleplaySpeechDelivery speechDelivery,
             JsonMapper mapper) {
+        if (!progress.configured()) {
+            throw new IllegalStateException("역할극 HTTP API를 켜려면 전체·목표별 턴 제한을 함께 설정해야 합니다.");
+        }
         var outcomes = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(p.notices()));
         var checkpoints =
                 new RoleplayCheckpointedTurnExecutor(
