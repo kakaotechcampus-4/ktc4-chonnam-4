@@ -1,15 +1,21 @@
-import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteChild, getChild, getClassroom, listChildActivities, listLearningGoals } from '../api'
+import { deleteChild, getChild, getClassroom, issueChildCode, listChildActivities, listLearningGoals } from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
-import { PageTabs } from '../components/PageTabs'
+import { ButtonLabel } from '../components/ButtonLabel'
 import {
+  cardClass,
   dangerOutlineButtonClass,
+  outlineButtonClass,
   primaryButtonClass,
+  tabBaseClass,
+  tabDisabledClass,
+  tabIdleClass,
+  tabSelectedClass,
   tableClass,
   tableHeadRowClass,
   tableRowClass,
@@ -19,11 +25,12 @@ import { formatDateTime } from '../lib/dateTime'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 
-const HISTORY_TAB = '활동 이력'
+type DetailTab = 'history' | 'access-code'
 
 /**
- * 아동 상세 (시안 T-LRN-03~05). S1 은 활동 이력 탭만 연다(ADR 2026-10-03 D5).
- * 활동을 누르면 활동 리포트로 간다. 개요·학습 상태와 접근 코드·QR 은 후속 범위라 탭만 보인다.
+ * 아동 상세 (시안 T-LRN-03~05). 활동 이력과 접근 코드 탭을 연다. 개요·학습 상태는 후속 범위라 탭만 보인다.
+ * 탭은 주소의 ?tab= 으로 관리한다(학급 상세와 같은 방식). 시안의 QR 은 MVP 범위 밖이라 탭 이름에서도 뺀다.
+ * 활동을 누르면 활동 리포트로 간다.
  * 아동 삭제는 기록과 함께 영구 삭제라, 확인 창에서 함께 지워지는 활동 수를 알린다(ADR 2026-10-04 D3·D4).
  */
 function ChildDetailPage() {
@@ -31,6 +38,8 @@ function ChildDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: DetailTab = searchParams.get('tab') === 'access-code' ? 'access-code' : 'history'
 
   const childQuery = useQuery({
     queryKey: ['children', childId],
@@ -74,6 +83,10 @@ function ChildDetailPage() {
   // 주소의 학급과 아동의 실제 학급이 다르면 잘못된 주소다. 다른 학급 이름을 붙여 보이지 않는다.
   const isWrongClassroom = child !== undefined && child.classId !== classId
 
+  function selectTab(next: DetailTab) {
+    setSearchParams(next === 'history' ? {} : { tab: next }, { replace: true })
+  }
+
   const title = child
     ? `아동 상세 · ${child.displayName}${classroom && !isWrongClassroom ? ` (${classroom.name})` : ''}`
     : '아동 상세'
@@ -102,15 +115,35 @@ function ChildDetailPage() {
         )
       }
       subheader={
-        <PageTabs
-          label="아동 상세"
-          selected={HISTORY_TAB}
-          tabs={[
-            { label: '개요 · 학습 상태' },
-            { label: '접근 코드 · QR' },
-            { label: HISTORY_TAB, available: true },
-          ]}
-        />
+        <div role="tablist" aria-label="아동 상세" className="flex gap-1">
+          <span
+            role="tab"
+            aria-disabled="true"
+            aria-selected={false}
+            title="준비 중인 화면입니다"
+            className={cn(tabBaseClass, tabDisabledClass)}
+          >
+            개요 · 학습 상태
+          </span>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'access-code'}
+            onClick={() => selectTab('access-code')}
+            className={cn(tabBaseClass, tab === 'access-code' ? tabSelectedClass : tabIdleClass)}
+          >
+            접근 코드
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'history'}
+            onClick={() => selectTab('history')}
+            className={cn(tabBaseClass, tab === 'history' ? tabSelectedClass : tabIdleClass)}
+          >
+            활동 이력
+          </button>
+        </div>
       }
     >
       <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
@@ -140,62 +173,69 @@ function ChildDetailPage() {
           {childQuery.error instanceof Error ? childQuery.error.message : '아동을 찾을 수 없습니다.'}
         </Notice>
       ) : (
-        <section role="tabpanel" aria-label={HISTORY_TAB}>
-          {activitiesQuery.isLoading ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-          ) : activitiesQuery.isError ? (
-            <Notice tone="error">
-              {activitiesQuery.error instanceof Error
-                ? activitiesQuery.error.message
-                : '활동 이력을 불러오지 못했습니다.'}
-            </Notice>
-          ) : activities?.length === 0 ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정된 활동이 없습니다.</p>
-          ) : (
-            <div className={tableClass}>
-              <table className="w-full">
-                <thead>
-                  <tr className={tableHeadRowClass}>
-                    <th scope="col" className="px-2 py-2.5 font-normal">
-                      학습 목표
-                    </th>
-                    <th scope="col" className="px-2 py-2.5 font-normal">
-                      상태
-                    </th>
-                    <th scope="col" className="px-2 py-2.5 font-normal">
-                      배정
-                    </th>
-                    <th scope="col" className="px-2 py-2.5 font-normal">
-                      완료
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activities?.map((activity) => (
-                    <tr key={activity.activityId} className={tableRowClass}>
-                      <td className="px-2 py-3">
-                        <Link to={`/activities/${activity.activityId}/report`} className="hover:underline">
-                          {activity.goalId
-                            ? (goalTitles.get(activity.goalId) ?? '학습 목표')
-                            : ACTIVITY_TYPE_LABELS[activity.activityType]}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-3">
-                        <ActivityStatusBadge status={activity.status} />
-                      </td>
-                      <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
-                        {formatDateTime(activity.assignedAt)}
-                      </td>
-                      <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
-                        {formatDateTime(activity.completedAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <>
+          {/* 받은 코드는 다시 조회할 수 없어, 탭을 오가도 사라지지 않게 접근 코드 패널은 숨기기만 한다.
+              다른 아동으로 바로 넘어가면 앞 아동의 코드가 남지 않도록 아동마다 패널을 새로 만든다(key). */}
+          <AccessCodePanel key={childId} childId={childId!} hidden={tab !== 'access-code'} />
+          {tab === 'history' && (
+            <section role="tabpanel" aria-label="활동 이력">
+              {activitiesQuery.isLoading ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+              ) : activitiesQuery.isError ? (
+                <Notice tone="error">
+                  {activitiesQuery.error instanceof Error
+                    ? activitiesQuery.error.message
+                    : '활동 이력을 불러오지 못했습니다.'}
+                </Notice>
+              ) : activities?.length === 0 ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정된 활동이 없습니다.</p>
+              ) : (
+                <div className={tableClass}>
+                  <table className="w-full">
+                    <thead>
+                      <tr className={tableHeadRowClass}>
+                        <th scope="col" className="px-2 py-2.5 font-normal">
+                          학습 목표
+                        </th>
+                        <th scope="col" className="px-2 py-2.5 font-normal">
+                          상태
+                        </th>
+                        <th scope="col" className="px-2 py-2.5 font-normal">
+                          배정
+                        </th>
+                        <th scope="col" className="px-2 py-2.5 font-normal">
+                          완료
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activities?.map((activity) => (
+                        <tr key={activity.activityId} className={tableRowClass}>
+                          <td className="px-2 py-3">
+                            <Link to={`/activities/${activity.activityId}/report`} className="hover:underline">
+                              {activity.goalId
+                                ? (goalTitles.get(activity.goalId) ?? '학습 목표')
+                                : ACTIVITY_TYPE_LABELS[activity.activityType]}
+                            </Link>
+                          </td>
+                          <td className="px-2 py-3">
+                            <ActivityStatusBadge status={activity.status} />
+                          </td>
+                          <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
+                            {formatDateTime(activity.assignedAt)}
+                          </td>
+                          <td className="px-2 py-3 text-[var(--instructor-text-muted)]">
+                            {formatDateTime(activity.completedAt)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           )}
-        </section>
+        </>
       )}
 
       {child && (
@@ -218,6 +258,94 @@ function ChildDetailPage() {
         />
       )}
     </InstructorLayout>
+  )
+}
+
+/**
+ * 접근 코드 카드(시안 T-LRN-04 오른쪽 카드). 서버는 코드 원문을 저장하지 않아, 받은 직후에만 코드를 보여 줄 수 있다.
+ * 요청 키는 "코드 받기" 한 번에 하나다. 받은 뒤 다시 누르면 새 코드이고, 실패해서 다시 누르면 같은 키로 보내
+ * 서버가 이미 만든 코드가 있으면 그 코드를 돌려받는다(한 번 누름에 코드가 두 번 바뀌지 않는다).
+ */
+function AccessCodePanel({ childId, hidden }: { childId: string; hidden: boolean }) {
+  const requestKeyRef = useRef<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const issueMutation = useMutation({
+    mutationFn: () => {
+      requestKeyRef.current ??= crypto.randomUUID()
+      return issueChildCode(childId, requestKeyRef.current)
+    },
+    onSuccess: () => {
+      requestKeyRef.current = null
+      setCopied(false)
+    },
+  })
+
+  const issued = issueMutation.data
+
+  async function handleCopy() {
+    if (!issued) return
+    try {
+      await navigator.clipboard.writeText(issued.accessCode)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <section
+      role="tabpanel"
+      aria-label="접근 코드"
+      hidden={hidden}
+      className={cn(cardClass, 'flex max-w-[540px] flex-col gap-4 p-5')}
+    >
+      <h2 className="text-sm font-semibold">접근 코드</h2>
+      <div
+        aria-live="polite"
+        className="flex flex-col items-center gap-1 rounded-[var(--instructor-radius-control)] bg-[var(--instructor-surface-muted)] px-4 py-6"
+      >
+        {issued ? (
+          <>
+            <p className="font-mono text-4xl font-semibold tracking-[0.4em] text-[var(--instructor-text)]">
+              {issued.accessCode}
+            </p>
+            <p className="text-xs text-[var(--instructor-text-subtle)]">
+              {formatDateTime(issued.expiresAt)}까지 쓸 수 있어요
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-[var(--instructor-text-muted)]">
+            코드를 받으면 아이가 입장 화면에 숫자 4자리를 넣어 들어와요.
+          </p>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => issueMutation.mutate()}
+          disabled={issueMutation.isPending}
+          className={issued ? outlineButtonClass : primaryButtonClass}
+        >
+          <ButtonLabel
+            pending={issueMutation.isPending}
+            label={issued ? '코드 다시 받기' : '코드 받기'}
+            pendingLabel="받는 중..."
+          />
+        </button>
+        <button type="button" onClick={handleCopy} disabled={!issued} className={outlineButtonClass}>
+          {copied ? '복사했어요' : '복사'}
+        </button>
+      </div>
+      {issueMutation.isError && (
+        <Notice tone="error" role="alert">
+          {describeError(issueMutation.error, '코드를 받지 못했습니다.')}
+        </Notice>
+      )}
+      <Notice tone="warning">
+        다시 받으면 이전 코드는 바로 쓸 수 없어요. 코드는 지금만 볼 수 있으니 아이에게 전해 주세요.
+      </Notice>
+    </section>
   )
 }
 
