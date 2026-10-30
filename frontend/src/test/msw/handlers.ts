@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw"
 import type {
+  AccessCode,
   Activity,
   ActivityStatus,
   ActivityType,
@@ -190,6 +191,8 @@ let goals: LearningGoal[] = []
 let activities: StoredActivity[] = []
 let activityQuizzes: AssignedQuizItem[] = []
 let quizResults = new Map<string, QuizResult>()
+// 발급 요청 키 → 그 요청이 받은 코드. 같은 키로 다시 보내면 원래 코드·만료를 돌려준다.
+let issuedCodes = new Map<string, { childId: string; code: AccessCode }>()
 // 비워 두면 승인 문항이 없는 서버처럼 배정이 422 QUIZ_ITEMS_UNAVAILABLE 이다.
 let quizPool = FULL_POOL
 // 브라우저의 아동 세션 쿠키(JSESSIONID). 입장하면 그 아동 ID, 사용 종료하면 null 이다.
@@ -208,6 +211,7 @@ export function resetMswData() {
   activities = []
   activityQuizzes = []
   quizResults = new Map()
+  issuedCodes = new Map()
   quizPool = FULL_POOL
 }
 
@@ -683,6 +687,35 @@ export const handlers = [
     if (!ownedChild(childId, session)) return childNotFound(path)
     removeChildren([childId])
     return new HttpResponse(null, { status: 204 })
+  }),
+
+  // 입장 코드 발급(API-IAM-07). 실제 서버처럼 원문을 다시 조회하는 API 는 없다.
+  http.post("*/api/v1/children/:childId/access-codes", ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const childId = String(params.childId)
+    const path = new URL(request.url).pathname
+    const key = request.headers.get("Idempotency-Key")
+    if (!UUID_FORMAT.test(childId) || !key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    const child = ownedChild(childId, session)
+    if (!child) return childNotFound(path)
+    const prior = issuedCodes.get(key)
+    if (prior) {
+      if (prior.childId !== childId) {
+        return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 발급 요청에 사용한 키입니다.", path)
+      }
+      return HttpResponse.json(envelope(prior.code), { status: 201 })
+    }
+    if (child.status !== "ACTIVE") {
+      return apiError(409, "CHILD_NOT_ACTIVE", "활성 상태의 아동만 코드를 발급할 수 있습니다.", path)
+    }
+    const code: AccessCode = {
+      accessCode: String(Math.floor(Math.random() * 10000)).padStart(4, "0"),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    }
+    issuedCodes.set(key, { childId, code })
+    return HttpResponse.json(envelope(code), { status: 201 })
   }),
 
   http.get("*/api/v1/children/:childId/learning-goals", ({ params, request }) => {

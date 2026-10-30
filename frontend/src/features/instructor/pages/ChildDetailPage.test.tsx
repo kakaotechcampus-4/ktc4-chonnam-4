@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react"
-import { describe, expect, it, beforeEach } from "vitest"
-import { fixtures, seedActivity } from "@/test/msw/handlers"
+import { http } from "msw"
+import { afterEach, describe, expect, it, beforeEach } from "vitest"
+import { apiError, fixtures, seedActivity } from "@/test/msw/handlers"
+import { server } from "@/test/msw/server"
 import { getChild, listChildren } from "../api"
 import { renderRoutes, signIn } from "@/test/render"
 import { ChildDetailPage } from "./ChildDetailPage"
@@ -44,13 +46,13 @@ describe("아동 상세 화면", () => {
     expect(within(rows[1]).getByText("완료")).toBeInTheDocument()
   })
 
-  it("활동 이력 탭만 열리고 나머지 탭은 준비 중으로 보인다", async () => {
+  it("처음에는 활동 이력 탭이 열리고, 개요 탭은 준비 중으로 보인다", async () => {
     renderChildDetail()
 
     const tabs = await screen.findByRole("tablist", { name: "아동 상세" })
     expect(within(tabs).getByRole("tab", { name: "활동 이력" })).toHaveAttribute("aria-selected", "true")
+    expect(within(tabs).getByRole("tab", { name: "접근 코드" })).toHaveAttribute("aria-selected", "false")
     expect(within(tabs).getByRole("tab", { name: "개요 · 학습 상태" })).toHaveAttribute("aria-disabled", "true")
-    expect(within(tabs).getByRole("tab", { name: "접근 코드 · QR" })).toHaveAttribute("aria-disabled", "true")
   })
 
   it("활동을 누르면 그 활동의 리포트로 간다", async () => {
@@ -126,5 +128,77 @@ describe("아동 상세 화면", () => {
 
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
     expect((await getChild(CHILD.childId)).childId).toBe(CHILD.childId)
+  })
+
+  // 입장 코드 받기(멘토 리뷰: 강사가 아이에게 줄 코드를 화면에서 받을 방법이 없다).
+  // 서버가 원문을 저장하지 않아, 받은 직후에만 코드가 보인다.
+  describe("접근 코드 탭", () => {
+    afterEach(() => server.events.removeAllListeners())
+
+    function recordIssueKeys() {
+      const keys: string[] = []
+      server.events.on("request:start", ({ request }) => {
+        if (request.method === "POST" && request.url.endsWith("/access-codes")) {
+          keys.push(request.headers.get("Idempotency-Key") ?? "")
+        }
+      })
+      return keys
+    }
+
+    it("코드 받기를 누르면 숫자 4자리와 만료 시각이 보이고, 탭을 오가도 코드가 남는다", async () => {
+      const { user, router } = renderChildDetail()
+
+      await user.click(await screen.findByRole("tab", { name: "접근 코드" }))
+      expect(router.state.location.search).toBe("?tab=access-code")
+      const panel = screen.getByRole("tabpanel", { name: "접근 코드" })
+      expect(within(panel).getByRole("button", { name: "복사" })).toBeDisabled()
+
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+
+      const code = await within(panel).findByText(/^\d{4}$/)
+      expect(within(panel).getByText(/까지 쓸 수 있어요$/)).toBeInTheDocument()
+      await user.click(screen.getByRole("tab", { name: "활동 이력" }))
+      await user.click(screen.getByRole("tab", { name: "접근 코드" }))
+      expect(within(panel).getByText(code.textContent!)).toBeInTheDocument()
+    })
+
+    it("실패해서 다시 누르면 같은 요청 키로, 받은 뒤 다시 받으면 새 요청 키로 보낸다", async () => {
+      server.use(
+        http.post(
+          "*/api/v1/children/:childId/access-codes",
+          ({ request }) => apiError(500, "INTERNAL_ERROR", "서버 오류", new URL(request.url).pathname),
+          { once: true },
+        ),
+      )
+      const keys = recordIssueKeys()
+      const { user } = renderChildDetail()
+
+      await user.click(await screen.findByRole("tab", { name: "접근 코드" }))
+      const panel = screen.getByRole("tabpanel", { name: "접근 코드" })
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+      expect(await within(panel).findByRole("alert")).toBeInTheDocument()
+
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+      await within(panel).findByText(/^\d{4}$/)
+      await user.click(within(panel).getByRole("button", { name: "코드 다시 받기" }))
+      await within(panel).findByRole("button", { name: "코드 다시 받기" })
+
+      expect(keys).toHaveLength(3)
+      expect(keys[1]).toBe(keys[0])
+      expect(keys[2]).not.toBe(keys[1])
+    })
+
+    it("코드를 받으면 복사할 수 있다", async () => {
+      const { user } = renderChildDetail()
+
+      await user.click(await screen.findByRole("tab", { name: "접근 코드" }))
+      const panel = screen.getByRole("tabpanel", { name: "접근 코드" })
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+      const code = await within(panel).findByText(/^\d{4}$/)
+      await user.click(within(panel).getByRole("button", { name: "복사" }))
+
+      expect(await within(panel).findByRole("button", { name: "복사했어요" })).toBeInTheDocument()
+      expect(await navigator.clipboard.readText()).toBe(code.textContent)
+    })
   })
 })

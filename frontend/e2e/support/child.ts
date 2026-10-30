@@ -1,8 +1,8 @@
 import { expect, request, type APIRequestContext, type Page } from "@playwright/test"
 import { marker, newInstructor } from "./instructor.js"
 
-// 아동 화면 E2E 공통 단계. 입장·사용 종료는 실제 API(API-IAM-08·09)다. 강사 화면에는 아직 코드 발급 화면이 없어서
-// (아동 상세의 "접근 코드 · QR" 탭은 후속 범위) 강사 API 로 가입 → 학급 → 아동 → 코드 발급을 한 뒤 그 코드로 입장한다.
+// 아동 화면 E2E 공통 단계. 입장·사용 종료는 실제 API(API-IAM-08·09)다. 아동 화면만 보려는 단계라 강사 화면의
+// 코드 받기(아동 상세 "접근 코드" 탭)를 거치지 않고 강사 API 로 가입 → 학급 → 아동 → 코드 발급을 한 뒤 그 코드로 입장한다.
 // 활동·퀴즈·역할극은 아직 화면 쪽 mock(src/features/child/api.ts)이라 아래 MOCK_ACTIVITY 로 연다.
 
 export const MOCK_ACTIVITY = "mock-activity-1"
