@@ -710,8 +710,283 @@ class RoleplayCompletionIntegrationTest {
                 f.activity);
     }
 
+    @Autowired com.neuringo.neuringobe.activity.repository.ActivityRepository limitActivities;
+    @Autowired com.neuringo.neuringobe.quiz.repository.QuizResultRepository limitQuizzes;
+    @Autowired com.neuringo.neuringobe.activity.service.ActivityCompletionService limitCompletion;
+
+    @Autowired
+    com.neuringo.neuringobe.roleplay.service.RoleplayCanonicalRetentionService limitRetention;
+
+    private RoleplayCompletionService completionWithLimit(int maximum) {
+        return new RoleplayCompletionService(
+                checkpoints,
+                limitActivities,
+                limitQuizzes,
+                limitCompletion,
+                limitRetention,
+                observations,
+                transactionManager,
+                new com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties(maximum, 1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void maximumTurnCompletesWithoutChangingTheUnachievedGoalAndReplaysOnce(int maximum) {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var key = UUID.randomUUID();
+        var command = command(f, key, "a".repeat(64), 1);
+        var plan = RoleplayObservationTestPlans.forCommand(command, false);
+        var service = completionWithLimit(maximum);
+
+        var first =
+                (RoleplayCheckpointStore.Committed)
+                        service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start());
+        assertThat(first.replayed()).isFalse();
+        assertCompleted(f);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select decision from roleplay_goal_assessment where session_id=? and turn_id=?",
+                                String.class,
+                                f.session,
+                                command.turnId()))
+                .isEqualTo("IN_PROGRESS");
+        var snapshot = completionSnapshot(f);
+        var replay =
+                (RoleplayCheckpointStore.Committed)
+                        service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start());
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.turnId()).isEqualTo(first.turnId());
+        assertThat(completionSnapshot(f)).isEqualTo(snapshot);
+        assertCompleted(f);
+        var different = command(f, key, "b".repeat(64), 1);
+        assertThat(
+                        service.commitApprovedTurn(
+                                different,
+                                RoleplayObservationTestPlans.forCommand(different, false),
+                                RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Conflict.class);
+        assertThat(completionSnapshot(f)).isEqualTo(snapshot);
+    }
+
+    @Test
+    void closingBeforeMaximumTurnDoesNotByItselfCompleteTheActivity() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+        assertThat(
+                        completionWithLimit(3)
+                                .commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        assertThat(turns(f)).isEqualTo(2);
+        assertThat(canonicalTurns(f)).isEqualTo(2);
+        assertThat(records(f)).isZero();
+        assertThat(activity(f)).containsEntry("status", "IN_PROGRESS");
+    }
+
+    @Test
+    void achievingTheGoalAtMaximumStillCreatesOnlyOneRewardAndRecord() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+        assertThat(
+                        completionWithLimit(2)
+                                .commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, true),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        assertCompleted(f);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select decision from roleplay_goal_assessment where session_id=? and turn_id=?",
+                                String.class,
+                                f.session,
+                                command.turnId()))
+                .isEqualTo("ACHIEVED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void maximumTurnFirstCombinedStillRequiresACompletedQuiz(boolean quizFinished) {
+        var f = fixture(ActivityType.FIRST_COMBINED);
+        if (quizFinished) {
+            jdbc.update(
+                    "insert into quiz_result(activity_id,valid_question_count,correct_question_count,total_hint_count,resolved_after_hint_count,difficulty_fallback_applied,initial_difficulty_used,policy_version,snapshotted_at) values(?,3,2,0,0,false,true,'synthetic-policy',?)",
+                    f.activity,
+                    Timestamp.from(NOW));
+        }
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+        var result =
+                completionWithLimit(2)
+                        .commitApprovedTurn(
+                                command,
+                                RoleplayObservationTestPlans.forCommand(command, false),
+                                RoleplayTurnDeadline.start());
+        if (quizFinished) {
+            assertThat(result).isInstanceOf(RoleplayCheckpointStore.Committed.class);
+            assertCompleted(f);
+        } else {
+            assertThat(result).isInstanceOf(RoleplayCheckpointStore.Conflict.class);
+            assertUnchanged(f);
+        }
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "GUIDING_QUESTION,CLOSE_ROLEPLAY",
+        "CLOSING,PROBE_EMOTION",
+        "GUIDING_QUESTION,PROBE_EMOTION"
+    })
+    void maximumTurnRejectsNonClosingCandidatesWithoutSaving(String responseType, String strategy) {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1, responseType, strategy);
+        assertThat(
+                        completionWithLimit(2)
+                                .commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Conflict.class);
+        assertUnchanged(f);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"record", "deletion"})
+    void maximumTurnFailureRollsBackEverythingAndRetrySucceeds(String failure) {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+        var plan = RoleplayObservationTestPlans.forCommand(command, false);
+        var service = completionWithLimit(2);
+        String table = failure.equals("record") ? "learning_record" : "roleplay_turn";
+        String constraint = "test_limit_" + UUID.randomUUID().toString().replace("-", "");
+        String condition =
+                failure.equals("record")
+                        ? "activity_id <> '" + f.activity + "'::uuid"
+                        : "session_id <> '"
+                                + f.session
+                                + "'::uuid or canonical_utterance is not null";
+        jdbc.execute(
+                "alter table "
+                        + table
+                        + " add constraint "
+                        + constraint
+                        + " check ("
+                        + condition
+                        + ")");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    service.commitApprovedTurn(
+                                            command, plan, RoleplayTurnDeadline.start()))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertUnchanged(f);
+        } finally {
+            jdbc.execute("alter table " + table + " drop constraint " + constraint);
+        }
+        assertThat(service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        assertCompleted(f);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select decision from roleplay_goal_assessment where session_id=? and turn_id=?",
+                                String.class,
+                                f.session,
+                                command.turnId()))
+                .isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void concurrentMaximumTurnRetriesCreateOnlyOneCompletion() throws Exception {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var key = UUID.randomUUID();
+        var service = completionWithLimit(2);
+        var start = new CountDownLatch(1);
+        try (var callers = Executors.newFixedThreadPool(2)) {
+            var first =
+                    callers.submit(
+                            () -> {
+                                start.await();
+                                var command = command(f, key, "a".repeat(64), 1);
+                                return service.commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start());
+                            });
+            var second =
+                    callers.submit(
+                            () -> {
+                                start.await();
+                                var command = command(f, key, "a".repeat(64), 1);
+                                return service.commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start());
+                            });
+            start.countDown();
+            var results =
+                    List.of(
+                            (RoleplayCheckpointStore.Committed) first.get(10, TimeUnit.SECONDS),
+                            (RoleplayCheckpointStore.Committed) second.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(RoleplayCheckpointStore.Committed::replayed).count())
+                    .isEqualTo(1);
+            assertThat(results.stream().map(RoleplayCheckpointStore.Committed::turnId).distinct())
+                    .hasSize(1);
+        }
+        assertCompleted(f);
+    }
+
+    @Test
+    void differentConcurrentRequestsAtMaximumProduceOneCompletionAndOneConflict() throws Exception {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var service = completionWithLimit(2);
+        var start = new CountDownLatch(1);
+        try (var callers = Executors.newFixedThreadPool(2)) {
+            var first =
+                    callers.submit(
+                            () -> {
+                                start.await();
+                                var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+                                return service.commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start());
+                            });
+            var second =
+                    callers.submit(
+                            () -> {
+                                start.await();
+                                var command = command(f, UUID.randomUUID(), "b".repeat(64), 1);
+                                return service.commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start());
+                            });
+            start.countDown();
+            var results =
+                    List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(results)
+                    .filteredOn(RoleplayCheckpointStore.Committed.class::isInstance)
+                    .hasSize(1);
+            assertThat(results)
+                    .filteredOn(RoleplayCheckpointStore.Conflict.class::isInstance)
+                    .hasSize(1);
+        }
+        assertCompleted(f);
+    }
+
     private RoleplayCheckpointCommand command(
             Fixture f, UUID key, String fingerprint, long version) {
+        return command(f, key, fingerprint, version, "CLOSING", "CLOSE_ROLEPLAY");
+    }
+
+    private RoleplayCheckpointCommand command(
+            Fixture f,
+            UUID key,
+            String fingerprint,
+            long version,
+            String responseType,
+            String strategy) {
         var trace =
                 new AiTraceContext(
                         UUID.randomUUID(),
@@ -732,15 +1007,15 @@ class RoleplayCompletionIntegrationTest {
                         "RELEVANT",
                         "GOAL_ACHIEVED",
                         new AnalysisResult.PrimaryGap("NONE", null),
-                        new AnalysisResult.NextStrategy("CLOSE_ROLEPLAY", goal, null, "S1"),
+                        new AnalysisResult.NextStrategy(strategy, goal, null, "S1"),
                         0.9);
         var response =
                 new CandidateResponse(
                         candidate,
                         trace.turnId(),
                         "synthetic approved response",
-                        "CLOSING",
-                        "CLOSE_ROLEPLAY",
+                        responseType,
+                        strategy,
                         goal,
                         "S1",
                         List.of());

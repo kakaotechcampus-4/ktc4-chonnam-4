@@ -77,7 +77,7 @@ final class RoleplayOutputParsers {
             try {
                 RoleplaySupportDecisionRules.requireValidAnalysis(state, observationInput, result);
             } catch (IllegalArgumentException invalidSupport) {
-                throw new InvalidLlmOutputException("지원 조정 제안이 확정 도움 이력과 충돌합니다.", null);
+                throw new InvalidLlmOutputException("지원 조정 또는 최대 턴 마무리가 확정 상태와 충돌합니다.", null);
             }
             return result;
         };
@@ -89,7 +89,8 @@ final class RoleplayOutputParsers {
             AnalysisResult analysis,
             List<UUID> expectedFailedCandidateIds,
             Set<String> failedCandidateTexts,
-            int maxTextLength) {
+            int maxTextLength,
+            boolean maximumTurnReached) {
         LlmOutputParser<CandidateResponse> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, CandidateResponse.class);
         Set<String> normalizedFailedTexts = new HashSet<>();
@@ -112,6 +113,11 @@ final class RoleplayOutputParsers {
             check(
                     oneOf(RoleplayCodes.RESPONSE_TYPES, result.responseType()),
                     "unknown response_type");
+            check(
+                    !maximumTurnReached
+                            || ("CLOSE_ROLEPLAY".equals(result.strategyUsed())
+                                    && "CLOSING".equals(result.responseType())),
+                    "최대 턴에는 마무리 응답이 필요합니다.");
             check(
                     Set.copyOf(result.previousFailedCandidateIds())
                             .equals(Set.copyOf(expectedFailedCandidateIds)),
