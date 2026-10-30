@@ -196,6 +196,75 @@ class RoleplayGoalObservationPlanTest {
                 proposal(List.of(observation(emotion)), Decision.ACHIEVED, Set.of()));
     }
 
+    @ParameterizedTest
+    @EnumSource(
+            value = ObservationStatus.class,
+            names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
+    void rejectsAchievementBasedOnlyOnANegativeCurrentObservation(ObservationStatus status) {
+        rejects(
+                context(List.of()),
+                proposal(
+                        List.of(new Observation(emotion, status)),
+                        Decision.ACHIEVED,
+                        Set.of(emotion)));
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ObservationStatus.class,
+            names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
+    void rejectsAchievementBasedOnlyOnANegativeConfirmedObservation(ObservationStatus status) {
+        var prior = reference(UUID.randomUUID(), emotionGoal, "emotion-evidence");
+        rejects(
+                context(List.of(new Observation(prior, status))),
+                proposal(List.of(observation(reason)), Decision.ACHIEVED, Set.of(prior)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aPositiveObservationOutsideTheDecisionBasisCannotJustifyAchievement(boolean confirmed) {
+        var positive =
+                confirmed ? reference(UUID.randomUUID(), reasonGoal, "reason-evidence") : reason;
+        var negative = new Observation(emotion, ObservationStatus.MISUNDERSTOOD);
+        rejects(
+                context(confirmed ? List.of(observation(positive)) : List.of()),
+                proposal(
+                        confirmed ? List.of(negative) : List.of(negative, observation(positive)),
+                        Decision.ACHIEVED,
+                        Set.of(emotion)));
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ObservationStatus.class,
+            names = {"EXPLICIT", "IMPLICIT"})
+    void acceptsAchievementWithAPositiveCurrentBasis(ObservationStatus status) {
+        var plan =
+                RoleplayGoalObservationPlan.validateReferences(
+                        context(List.of()),
+                        proposal(
+                                List.of(new Observation(emotion, status)),
+                                Decision.ACHIEVED,
+                                Set.of(emotion)));
+        assertThat(plan.proposal().decision()).isEqualTo(Decision.ACHIEVED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ObservationStatus.class,
+            names = {"EXPLICIT", "IMPLICIT"})
+    void acceptsMixedBasisWithAPositiveConfirmedObservation(ObservationStatus status) {
+        var prior = reference(UUID.randomUUID(), emotionGoal, "emotion-evidence");
+        var plan =
+                RoleplayGoalObservationPlan.validateReferences(
+                        context(List.of(new Observation(prior, status))),
+                        proposal(
+                                List.of(new Observation(reason, ObservationStatus.MISUNDERSTOOD)),
+                                Decision.ACHIEVED,
+                                Set.of(prior, reason)));
+        assertThat(plan.proposal().decisionBasis()).containsExactlyInAnyOrder(prior, reason);
+    }
+
     @Test
     void rejectsDecisionBasisThatWasNeverObserved() {
         rejects(
