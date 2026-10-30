@@ -84,9 +84,9 @@ AI: 넘어진 뒤에 친구는 아프고 속상했을까, 슬펐을까?
 | 괄호 안 상태 | 뜻 |
 | --- | --- |
 | `DELIVERED` | AI 대답이 검사를 통과해 전달됨 |
-| `RETRY_REQUIRED · RETRY_TURN` + `SAFETY_CHECK_ERROR` | AI 대답 검사(RESPONSE_EVALUATION)가 실패함. 스크립트가 같은 말을 한 번 더 보낸다 |
+| `RETRY_REQUIRED · RETRY_TURN` + `SAFETY_CHECK_ERROR` | AI 대답 검사(RESPONSE_EVALUATION) 호출이 실패했거나 결과가 앞뒤가 맞지 않음. 스크립트가 같은 말을 한 번 더 보낸다 |
 | `REINPUT_REQUIRED` + `SAFE_FALLBACK` | AI 대답 만들기(RESPONSE_GENERATION)가 재시도 끝에 실패함 |
-| `REINPUT_REQUIRED` + `INPUT_CONFIRMATION` | 원인 분석(CAUSE_ANALYSIS)이 재시도 끝에 실패함 |
+| `REINPUT_REQUIRED` + `INPUT_CONFIRMATION` | 원인 분석(CAUSE_ANALYSIS)이 재시도 끝에 실패했거나, 검사가 아이 말을 다시 확인하자고 판단함(`CONFIRM_INPUT`). 기록의 마지막 호출이 `RESPONSE_EVALUATION` 이고 `"decision": "CONFIRM_INPUT"` 이면 뒤쪽이다 |
 
 **LLM 기록:** 백엔드는 개인정보 때문에 LLM 입력·출력을 로그에 남기지 않는다. 로컬에서는 `backend/build/local-roleplay/llm-trace.log` 에 호출마다 종류·입력·출력을 남긴다. 위처럼 실패한 턴은 이 파일에서 모델이 무엇을 냈는지 보면 된다. 끄려면 `LOCAL_LLM_TRACE=` 로 띄운다.
 
