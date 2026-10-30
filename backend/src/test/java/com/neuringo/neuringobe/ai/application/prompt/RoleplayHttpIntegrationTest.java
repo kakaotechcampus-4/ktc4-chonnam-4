@@ -44,6 +44,8 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 @TestPropertySource(
         properties = {
             "roleplay.http.enabled=true",
+            "roleplay.progress.maximum-turn-count=77",
+            "roleplay.progress.maximum-support-turns-per-micro-goal=9",
             "roleplay.http.maximum-upload-bytes=16",
             "roleplay.http.maximum-request-bytes=65536",
             "roleplay.http.allowed-formats=WEBM",

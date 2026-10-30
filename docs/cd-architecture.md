@@ -339,10 +339,11 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 | 무엇 | 어떻게 | 상태 |
 |---|---|---|
 | 키 전달 | `params.txt` 의 이름 → Parameter Store `SecureString`(`/neuringo/<env>/ai·stt·tts/…`) → `deploy.sh` 가 서버 `.env`(권한 600)로. Terraform 은 만들지 않는다(사람이 가진 값이라 plan·state 에 두지 않는다) | 이름 ✅. 값을 넣는 사람은 키 담당자. 팀 SSO 역할로 `ssm:PutParameter` 가 되는지는 처음 넣을 때 확인하고, 안 되면 운영진에 요청한다. 키는 GitHub·레포·채팅에 두지 않는다 |
+| 역할극 HTTP·턴 정책 | `ROLEPLAY_*` → Parameter Store `roleplay/http/…`, `roleplay/progress/…` → backend 환경변수. [설정표와 활성화 조건](../backend/docs/roleplay-runtime-config.md) | 전달 경로 준비. 기본 꺼짐, 활성화 시 필수 정책 검증. S4 승인 자료·운영 입력 처리·음성 전달 구현 후 활성화 |
 | 잘못 넣었을 때 | STT·TTS 를 켰는데 키·목소리 ID 가 없으면 앱이 시작되지 않는다 → 상태 확인 실패 → 직전 `.env` 로 되돌림(§3) | ✅ 설계에 있음 |
 | 나가는 길 | 서버 → 인터넷 443. 운영진 보안 그룹의 아웃바운드가 막혀 있으면 요청한다 | 서버를 켠 첫 실습에서 확인 |
 | 대기 시간 | CloudFront 120초·nginx 110초(§2). 한 턴 = STT + 분석·후보·평가(+재시도) + TTS | 오케스트레이션이 한 턴 상한(`roleplay.http.turn-budget`, 최대 60초)을 두고 넘으면 안전한 기본 응답(`SAFE_FALLBACK`)으로 간다. AI 를 기다리는 동안 DB 트랜잭션을 잡지 않는다(dev 커넥션 풀 10개) |
-| 음성 업로드 | 한 턴 최대 2 MB. CloudFront 는 그대로 넘긴다 | Spring 기본 업로드 한도(`spring.servlet.multipart.max-file-size`)는 1 MB 라 업로드 API 를 만들 때 올린다 |
+| 음성 업로드 | 기존 음성 처리 용량은 2 MB이며, 실제 파일·multipart 요청 한도는 `ROLEPLAY_UPLOAD_MAX_BYTES`·`ROLEPLAY_REQUEST_MAX_BYTES`로 명시한다. CloudFront 는 그대로 넘긴다 | 역할극 HTTP 활성화 시 `MultipartConfigElement`로 두 한도를 적용한다. 파일 상한은 기존 음성 처리 용량 이하여야 한다 |
 | 마이크 | HTTPS 화면에서만 열린다 | ✅ CloudFront HTTPS. 마이크를 막는 응답 헤더(`Permissions-Policy`)는 두지 않는다 |
 | 비용 | AWS Budgets·Cost Explorer 는 외부 API 요금을 보지 못한다 | 제공자 콘솔에서 월 사용 한도·알림을 건다. 앱이 하루 토큰 상한과 요청당 `max_tokens` 를 두고, 넘으면 기본 응답으로 간다(VS-017 기본 응답 사용률). 호출마다 토큰 수(`AiCallMetadata`)를 비식별 로그로 남겨 비용 보고(§7)에 합친다 |
 | 데이터 | 아동 발화(음성·전사문)가 AWS 밖(OpenAI·타입캐스트)으로 나간다 | 외부 AI 데이터 처리 조건(DEC-040)과 공개 배포 Gate 전에는 테스트 데이터만 둔다(§1) |
