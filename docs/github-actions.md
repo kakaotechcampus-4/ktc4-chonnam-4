@@ -72,7 +72,7 @@ flowchart LR
 | lint·zizmor 지적 | PR 의 Files changed 에 줄 단위 주석 |
 | gitleaks | Security 실행 로그. 비밀 값은 가려서(`--redact`) 파일·줄·규칙만 나온다 |
 | dependency-review | Security 실행의 **Summary** |
-| 배포 결과·건너뛴 이유 | Deploy·Dev server 실행의 **Summary**(무엇을 올렸나·확인 표·자리·다음에 누를 것, 또는 건너뛴 이유). 테스트 주소는 적지 않는다(디스코드 고정 메시지). 서버 쪽 앱 로그는 공개 로그에 싣지 않고 서버의 `/opt/neuringo/logs` 에 남긴다(SSM 세션으로 본다) |
+| 배포 결과·건너뛴 이유 | Deploy·Dev server 실행의 **Summary**(무엇을 올렸나·확인 표·자리·다음에 누를 것, 또는 건너뛴 이유). 테스트 주소는 적지 않는다(Dev server 가 디스코드 #pr-주소 채널 메시지에만 넣는다). 서버 쪽 앱 로그는 공개 로그에 싣지 않고 서버의 `/opt/neuringo/logs` 에 남긴다(SSM 세션으로 본다) |
 | 백업·복구 확인 | Ops backup 실행의 **Summary**(백업 크기·테이블 수·마이그레이션 버전·행 수) |
 | 인프라 plan·apply·drift | Infra 실행의 **Summary**(바뀌는 리소스·동작 표, 가드 결과, apply 결과 한 줄). plan·apply 원문과 리소스 값은 찍지 않는다. 오류는 계정 ID·ARN·IP·ID·메일을 가려 로그에 남긴다 |
 | 사용자 테스트 주소 | 공개 로그·Summary 에는 찍지 않는다. 콘솔 CloudFront 또는 Parameter Store `/neuringo/dev/infra/cloudfront-domain` 에서 보고 팀에만 알린다 |
@@ -102,6 +102,7 @@ flowchart LR
 **머지 전에 꼭 등록할 secret 은 없다.**
 - AWS 는 secret 이 아니라 저장소 **변수** `AWS_ACCOUNT_ID` 하나다. OIDC 로 1시간짜리 자격증명을 받으므로 액세스 키를 두지 않는다(팀 계정에서는 만들 수도 없다).
 - `ALERT_EMAILS`(선택): 경보·예산 메일 주소 JSON 배열(예: `["a@example.com"]`). Infra 가 Terraform 변수로 넘긴다. 없으면 메일 구독 없이 만든다.
+- `DISCORD_PREVIEW_WEBHOOK`(선택): 팀 디스코드 #pr-주소 채널의 웹후크 주소. Dev server 가 결과와 테스트 주소를 알린다(팀만 보는 채널이라 주소를 넣는다, 멘션은 풀지 않는다). 없으면 알리지 않는다. 레포의 `DISCORD_WEBHOOK` 은 운영진 멘토 리뷰 알림(`notify-discord.yml`)용이라 쓰지 않는다.
 - 서버 켜기·끄기·CloudFront 여닫기는 **Dev server** 가 한다(변수 없음, [infra/README.md](../infra/README.md) "서버를 끄고 켤 때"). 옛 변수 `EDGE_ENABLED` 는 쓰지 않는다(지운다).
 - Environment `infra`(승인자 지정, develop 만)는 첫 apply 전에, `dev`(develop 만, 승인자 없음)는 머지 전에 만든다. 없으면 GitHub 이 보호 없는 환경을 자동으로 만든다.
 - `AWS_ACCOUNT_ID` 는 변수라 각 단계 머리에 그대로 찍힌다(운영진 가이드: 비밀값이 아님). 숨기려면 같은 이름의 secret 으로 옮긴다.
