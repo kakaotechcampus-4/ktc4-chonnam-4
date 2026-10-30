@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -82,6 +83,26 @@ class RoleplayCompletionIntegrationTest {
                                 UUID.class,
                                 f.session))
                 .isEqualTo(command.turnId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GoalObservationOutput.Status.class,
+            names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
+    void unsupportedAchievementCannotPersistATurnRewardOrDeleteSpeech(
+            GoalObservationOutput.Status status) {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 1);
+
+        assertThatThrownBy(
+                        () ->
+                                completion.commitApprovedTurn(
+                                        command,
+                                        reviewedPlan(command, true, status, List.of()),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertUnchanged(f);
+        assertThat(observationCount(f, "roleplay_goal_evidence_current")).isZero();
     }
 
     @Test
@@ -420,7 +441,7 @@ class RoleplayCompletionIntegrationTest {
                                 reviewedPlan(
                                         retry,
                                         true,
-                                        GoalObservationOutput.Status.CONTRADICTORY,
+                                        GoalObservationOutput.Status.IMPLICIT,
                                         List.of()),
                                 RoleplayTurnDeadline.start());
 

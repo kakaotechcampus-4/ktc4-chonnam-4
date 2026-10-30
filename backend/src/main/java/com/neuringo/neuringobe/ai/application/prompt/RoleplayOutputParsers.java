@@ -190,7 +190,14 @@ final class RoleplayOutputParsers {
         check(analysis != null, "목표 관찰 분석이 필요합니다.");
         check(analysisId.equals(analysis.analysisId()), "목표 관찰의 분석 식별자가 일치하지 않습니다.");
         var available = new HashSet<GoalObservationOutput.Reference>();
-        input.confirmedObservations().forEach(o -> available.add(o.reference()));
+        var positive = new HashSet<GoalObservationOutput.Reference>();
+        for (var prior : input.confirmedObservations()) {
+            available.add(prior.reference());
+            if (prior.status() == GoalObservationOutput.Status.EXPLICIT
+                    || prior.status() == GoalObservationOutput.Status.IMPLICIT) {
+                positive.add(prior.reference());
+            }
+        }
         for (var observation : analysis.observations()) {
             var ref = observation.reference();
             check(turnId.equals(ref.turnId()), "새 관찰이 다른 턴을 참조합니다.");
@@ -198,6 +205,10 @@ final class RoleplayOutputParsers {
                     input.contains(ref.microGoalId(), ref.criterionReference()),
                     "승인되지 않은 목표 또는 학습 증거입니다.");
             check(available.add(ref), "목표 관찰이 중복됐습니다.");
+            if (observation.status() == GoalObservationOutput.Status.EXPLICIT
+                    || observation.status() == GoalObservationOutput.Status.IMPLICIT) {
+                positive.add(ref);
+            }
         }
         var basis = analysis.activityGoal().basis();
         check(new HashSet<>(basis).size() == basis.size(), "판정 근거가 중복됐습니다.");
@@ -207,6 +218,11 @@ final class RoleplayOutputParsers {
                                 != GoalObservationOutput.ActivityDecision.ACHIEVED
                         || !basis.isEmpty(),
                 "활동 목표 달성 판정에는 관찰 근거가 필요합니다.");
+        check(
+                analysis.activityGoal().decision()
+                                != GoalObservationOutput.ActivityDecision.ACHIEVED
+                        || basis.stream().anyMatch(positive::contains),
+                "활동 목표 달성 판정에는 명시적 또는 간접 표현 근거가 필요합니다.");
     }
 
     /** 모델이 ```json ... ``` 으로 감싸 보내는 경우만 벗긴다. */

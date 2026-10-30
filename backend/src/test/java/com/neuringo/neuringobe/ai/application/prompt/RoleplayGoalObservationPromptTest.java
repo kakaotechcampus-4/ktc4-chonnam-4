@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -404,6 +405,124 @@ class RoleplayGoalObservationPromptTest {
         assertThat(result.goalObservation().observations()).hasSize(2);
         assertThat(result.goalObservation().activityGoal().decision())
                 .isEqualTo(ActivityDecision.ACHIEVED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = Status.class,
+            names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
+    void rejectsAchievementWithOnlyANegativeCurrentBasis(Status status) {
+        var body = analysisBody(ANALYSIS_ID);
+        var extension = object(body.get("goal_observation"));
+        extension.put("observations", List.of(new Observation(event, status)));
+        extension.put("activity_goal", new Assessment(ActivityDecision.ACHIEVED, List.of(event)));
+
+        // 과거 긍정 관찰이 있어도 판정이 참조하지 않으면 근거가 될 수 없다.
+        assertThatThrownBy(() -> analysisPrompt().parser().parse(json.writeValueAsString(body)))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = Status.class,
+            names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
+    void rejectsAchievementWithOnlyANegativeConfirmedBasis(Status status) {
+        var supplied =
+                com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                        .withSyntheticObservationContexts(
+                                criteria(), List.of(new Observation(prior, status)));
+        var body = analysisBody(ANALYSIS_ID);
+        object(body.get("goal_observation"))
+                .put("activity_goal", new Assessment(ActivityDecision.ACHIEVED, List.of(prior)));
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null), attempts(), 1, input, null, supplied)
+                        .parser();
+
+        // 현재 긍정 관찰도 판정 근거에서 빠져 있으면 달성을 뒷받침하지 않는다.
+        assertThatThrownBy(() -> parser.parse(json.writeValueAsString(body)))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = Status.class,
+            names = {"EXPLICIT", "IMPLICIT"})
+    void acceptsAchievementWithAPositiveCurrentBasis(Status status) {
+        var body = analysisBody(ANALYSIS_ID);
+        var extension = object(body.get("goal_observation"));
+        extension.put("observations", List.of(new Observation(event, status)));
+        extension.put("activity_goal", new Assessment(ActivityDecision.ACHIEVED, List.of(event)));
+
+        assertThat(
+                        analysisPrompt()
+                                .parser()
+                                .parse(json.writeValueAsString(body))
+                                .goalObservation()
+                                .activityGoal()
+                                .decision())
+                .isEqualTo(ActivityDecision.ACHIEVED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = Status.class,
+            names = {"EXPLICIT", "IMPLICIT"})
+    void acceptsMixedBasisWithAPositiveConfirmedObservation(Status status) {
+        var supplied =
+                com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans
+                        .withSyntheticObservationContexts(
+                                criteria(), List.of(new Observation(prior, status)));
+        var body = analysisBody(ANALYSIS_ID);
+        var extension = object(body.get("goal_observation"));
+        extension.put("observations", List.of(new Observation(event, Status.CONTRADICTORY)));
+        extension.put(
+                "activity_goal", new Assessment(ActivityDecision.ACHIEVED, List.of(event, prior)));
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null), attempts(), 1, input, null, supplied)
+                        .parser();
+
+        assertThat(
+                        parser.parse(json.writeValueAsString(body))
+                                .goalObservation()
+                                .activityGoal()
+                                .basis())
+                .containsExactly(event, prior);
+    }
+
+    @Test
+    void unsupportedAchievementIsReanalyzedBeforeGeneratingAnyCandidate() {
+        var provider = new ObservationProvider();
+        provider.negativeAchievementOnce = true;
+        assertThat(execute(provider)).isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(provider.requests)
+                .extracting(LlmRequest::operation)
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        assertThat(
+                        json.readTree(provider.requests.get(1).userPrompt())
+                                .path("retry")
+                                .path("failure_codes")
+                                .get(0)
+                                .asString())
+                .isEqualTo("INVALID_OUTPUT_FORMAT");
+    }
+
+    @Test
+    void repeatedUnsupportedAchievementStopsWithoutGeneratingACandidate() {
+        var provider = new ObservationProvider();
+        provider.alwaysNegativeAchievement = true;
+        assertThat(execute(provider)).isInstanceOf(RoleplayTurnResult.RecoveryRequired.class);
+        assertThat(provider.requests)
+                .hasSize(3)
+                .allSatisfy(
+                        request ->
+                                assertThat(request.operation())
+                                        .isEqualTo(AiOperation.CAUSE_ANALYSIS));
     }
 
     @ParameterizedTest
@@ -816,6 +935,8 @@ class RoleplayGoalObservationPromptTest {
         private boolean reanalyzeOnce;
         private boolean invalidSupportOnce;
         private boolean alwaysInvalidSupport;
+        private boolean negativeAchievementOnce;
+        private boolean alwaysNegativeAchievement;
 
         @Override
         public AiCallResult<LlmCompletion> complete(LlmRequest request) {
@@ -863,6 +984,20 @@ class RoleplayGoalObservationPromptTest {
                 invalidSupportOnce = false;
                 var body = analysisBody(request.traceContext().analysisId());
                 object(body.get("next_strategy")).put("recommended_support_level", "S0");
+                return new AiCallResult.Success<>(
+                        new LlmCompletion(
+                                json.writeValueAsString(body), "fake", "fake", "stop", null, null),
+                        metadata);
+            }
+            if ((negativeAchievementOnce || alwaysNegativeAchievement)
+                    && request.operation() == AiOperation.CAUSE_ANALYSIS) {
+                negativeAchievementOnce = false;
+                var body = analysisBody(request.traceContext().analysisId());
+                var extension = object(body.get("goal_observation"));
+                extension.put(
+                        "observations", List.of(new Observation(event, Status.MISUNDERSTOOD)));
+                extension.put(
+                        "activity_goal", new Assessment(ActivityDecision.ACHIEVED, List.of(event)));
                 return new AiCallResult.Success<>(
                         new LlmCompletion(
                                 json.writeValueAsString(body), "fake", "fake", "stop", null, null),
