@@ -37,6 +37,8 @@ final class ScenarioOutputParser {
         MICRO_GOAL_COUNT_OUT_OF_RANGE,
         MICRO_GOAL_ID_INVALID,
         EVIDENCE_COUNT_OUT_OF_RANGE,
+        EVIDENCE_NOT_CONDITION,
+        EVIDENCE_COPIES_FACT,
         STARTING_QUESTIONS_INVALID,
         QUESTION_FORMAT_INVALID,
         TOO_LONG,
@@ -82,6 +84,13 @@ final class ScenarioOutputParser {
     private static final Pattern PHONE_NUMBER = Pattern.compile("\\d{2,4}-\\d{3,4}-\\d{4}");
     private static final Pattern LONG_DIGITS = Pattern.compile("\\d{6,}");
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern TRAILING_NOTE = Pattern.compile("\\s*\\([^()]*\\)$");
+    private static final Pattern PUNCTUATION = Pattern.compile("[\\s.!。]+");
+
+    /** 한글 음절의 받침 번호(유니코드 한글 음절 순서). */
+    private static final int FINAL_NIEUN = 4;
+
+    private static final int FINAL_MIEUM = 16;
 
     private ScenarioOutputParser() {}
 
@@ -136,6 +145,7 @@ final class ScenarioOutputParser {
                     evidence >= 1 && evidence <= 3,
                     ScenarioFailure.EVIDENCE_COUNT_OUT_OF_RANGE,
                     "micro_goals.required_evidence");
+            checkEvidence(goal.requiredEvidence(), scenario.scenarioFacts());
         }
 
         checkStartingQuestions(scenario.startingQuestions());
@@ -193,6 +203,55 @@ final class ScenarioOutputParser {
                 NARRATOR.equals(role) || (!LEARNER.equals(role) && ids.contains(role)),
                 ScenarioFailure.AI_ROLE_INVALID,
                 "ai_role");
+    }
+
+    /**
+     * 달성 조건은 "~을 말한다"처럼 아동 발화의 조건이어야 한다. 시나리오 사실("친구가 넘어졌다.")을 그대로 옮긴 증거는 원인 판단이 "사실을 다 말해야 달성"으로
+     * 읽을 수 있어 막는다. 실제 출력에 섞이는 명사형("~말함", "~말하기")은 같은 뜻이라 받는다.
+     */
+    private static void checkEvidence(List<String> evidence, List<String> facts) {
+        Set<String> factTexts =
+                new HashSet<>(facts.stream().map(ScenarioOutputParser::compact).toList());
+        for (String item : evidence) {
+            check(
+                    isCondition(item),
+                    ScenarioFailure.EVIDENCE_NOT_CONDITION,
+                    "micro_goals.required_evidence");
+            check(
+                    !factTexts.contains(compact(item)),
+                    ScenarioFailure.EVIDENCE_COPIES_FACT,
+                    "micro_goals.required_evidence");
+        }
+    }
+
+    /** 현재형 동사(~한다, ~는다)나 명사형(~하기, ~함)으로 끝나는지. 과거형 서술(~했다)과 형용사(~슬프다)는 조건이 아니다. 끝의 괄호 보충은 뺀다. */
+    private static boolean isCondition(String text) {
+        String body =
+                text == null
+                        ? ""
+                        : TRAILING_NOTE
+                                .matcher(PUNCTUATION.matcher(text.strip()).replaceAll(" ").strip())
+                                .replaceAll("");
+        if (body.isEmpty()) {
+            return false;
+        }
+        char last = body.charAt(body.length() - 1);
+        if (last == '기' || finalConsonant(last) == FINAL_MIEUM) {
+            return true;
+        }
+        if (last != '다' || body.length() < 2) {
+            return false;
+        }
+        char before = body.charAt(body.length() - 2);
+        return before == '는' || finalConsonant(before) == FINAL_NIEUN;
+    }
+
+    private static int finalConsonant(char syllable) {
+        return syllable >= '가' && syllable <= '힣' ? (syllable - '가') % 28 : -1;
+    }
+
+    private static String compact(String text) {
+        return text == null ? "" : PUNCTUATION.matcher(text).replaceAll("");
     }
 
     private static void checkStartingQuestions(Map<String, String> questions) {
