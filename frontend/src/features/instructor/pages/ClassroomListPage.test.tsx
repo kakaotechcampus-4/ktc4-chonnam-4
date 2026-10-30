@@ -41,6 +41,35 @@ describe("학급 목록 화면", () => {
     expect(screen.queryByText("불러오는 중...")).not.toBeInTheDocument()
   })
 
+  // 멘토 리뷰: 아동 수가 대시라 0명과 구분되지 않았고, 값이 없는 열이 많아 미완성으로 보였다.
+  it("학급마다 아동 수를 보이고, 아직 값이 없는 열은 보이지 않는다", async () => {
+    renderListPage()
+
+    await screen.findByRole("cell", { name: "햇살반" })
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "학급명",
+      "아동 수",
+      "상태",
+      "상세",
+    ])
+    const [sunshine, wind] = classroomRows()
+    expect(await within(sunshine).findByRole("cell", { name: "2" })).toBeInTheDocument()
+    expect(await within(wind).findByRole("cell", { name: "1" })).toBeInTheDocument()
+  })
+
+  it("아동 수를 못 받으면 0 대신 대시를 두고 '확인 중' 으로 읽힌다", async () => {
+    server.use(
+      http.get("*/api/v1/classrooms/:classId/children", ({ request }) =>
+        apiError(500, "INTERNAL_ERROR", "서버 오류", new URL(request.url).pathname),
+      ),
+    )
+    renderListPage()
+
+    await screen.findByRole("cell", { name: "햇살반" })
+    expect(await within(classroomRows()[0]).findByRole("cell", { name: "확인 중" })).toBeInTheDocument()
+    expect(within(classroomRows()[0]).queryByRole("cell", { name: "0" })).not.toBeInTheDocument()
+  })
+
   it("사이드바에 로그인한 강사 이름을 보인다", async () => {
     renderListPage()
 
