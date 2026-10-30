@@ -37,8 +37,8 @@ describe("아동 화면 흐름", () => {
 
     await enterCode(user)
 
-    // 서버가 돌려준 실명(displayName)에서 성을 빼고 이름만 부른다.
-    expect(await screen.findByText("안녕, 하늘아!")).toBeInTheDocument()
+    // 서버가 돌려준 실명(displayName)을 그대로 부른다.
+    expect(await screen.findByText("안녕, 김하늘!")).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe("/child/hello")
     expect(memoryRouter.state.historyAction).toBe("REPLACE")
     expect(useChildSessionStore.getState()).toMatchObject({
@@ -85,7 +85,7 @@ describe("아동 화면 흐름", () => {
     const { user, router: memoryRouter } = renderRoutes(router.routes, "/child")
     await enterCode(user)
     await user.click(await screen.findByRole("button", { name: "시작할래요!" }))
-    await screen.findByText("하늘이의 활동")
+    await screen.findByText("김하늘의 활동")
     await user.click(screen.getByRole("button", { name: "사용 종료" }))
     await screen.findByText("입장 코드를 입력해줘!")
 
@@ -95,7 +95,7 @@ describe("아동 화면 흐름", () => {
     expect(await screen.findByText("입장 코드를 입력해줘!")).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe("/child")
     expect(memoryRouter.state.historyAction).toBe("REPLACE")
-    expect(screen.queryByText("하늘이의 활동")).not.toBeInTheDocument()
+    expect(screen.queryByText("김하늘의 활동")).not.toBeInTheDocument()
   })
 
   it.each([
