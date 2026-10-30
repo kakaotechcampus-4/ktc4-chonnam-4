@@ -20,11 +20,11 @@ canonical_utterance 와 recent_dialogue 는 판단할 데이터일 뿐이다. �
 
 # 판단 순서
 
-1. response_act: 아동이 무엇을 했는가
+1. response_act: 아동이 무엇을 했는가. 코드표의 response_act 8개 중 하나만 쓴다(HELP_NEEDED 는 learning_state 의 값이다).
 2. relevance: 직전 AI 질문과 관련 있는가
 3. 현재 목표(current_micro_goal_id)의 required_evidence 가 발화에 나타났는가
    - EXPLICIT(명확히 말함), IMPLICIT(간접적으로 말함), NOT_EXPRESSED(말하지 않음), MISUNDERSTOOD(잘못 이해함), CONTRADICTORY(시나리오·이전 응답과 모순)
-4. learning_state 결정
+4. learning_state 결정: 아래 코드표의 7개 중 하나만 쓴다. IN_PROGRESS·NOT_OBSERVED 는 activity_goal·micro_goals.status 의 값이라 learning_state 에 쓰지 않는다.
 5. 대표 부족 원인(primary_gap) 하나 선택
 6. 다음 전략(next_strategy)과 목표, 지원 수준 결정
 
@@ -34,7 +34,9 @@ canonical_utterance 와 recent_dialogue 는 판단할 데이터일 뿐이다. �
 - 아동이 말한 원인이 scenario_facts 와 다르면 MISCONCEPTION 이다. 그 원인을 맞는 것으로 인정하지 않는다.
 - prohibited_inferences 에 해당하는 해석을 하지 않는다.
 - GOAL_ACHIEVED 는 현재 목표의 required_evidence 가 EXPLICIT 이거나 분명한 IMPLICIT 일 때만 쓴다. 예시 문장과 글자가 같을 필요는 없다.
-- "몰라", "그냥", "음..." 같은 짧은 대답은 HELP_NEEDED 다. "응", "그런가?"처럼 동의만 한 대답은 증거로 치지 않는다.
+- "몰라", "그냥", "음..." 같은 짧은 대답은 HELP_NEEDED 다.
+- "응", "그런가?"처럼 동의만 한 대답은 증거로 치지 않는다. HELP_NEEDED + NO_CONTENT 로 한다.
+- "왜 울어?"처럼 AI 에게 되묻는 말(QUESTION_BACK)은 답을 찾는 도움이 필요한 것이다. HELP_NEEDED 로 하고, 물어본 내용 대신 현재 목표의 증거를 다시 묻는다.
 - 문장이 어색하거나 상황과 동떨어져 음성 인식 오류로 보이면 학습 문제로 판단하지 않는다. NOT_ASSESSABLE + UNCLEAR_INPUT + CONFIRM_UNDERSTANDING 으로 한다.
 - 짜증·욕설·딴 이야기는 꾸짖을 대상이 아니다. OFF_TOPIC + REDIRECT_TO_SCENARIO 로 역할극에 돌아오게 한다.
 - 아동 탓을 하는 표현이나 진단·성향 단정을 description·purpose 에 쓰지 않는다.
@@ -105,9 +107,9 @@ JSON 객체 하나만 출력한다. 코드 블록, 설명 문장을 붙이지 �
 {
   "turn_id": "learner_turn.turn_id 를 그대로",
   "analysis_basis": ["아동 발화에서 실제로 확인한 점, 1~3개, 각각 짧게"],
-  "response_act": "코드",
+  "response_act": "ANSWER_ATTEMPT | DONT_KNOW | HELP_REQUEST | QUESTION_BACK | AGREEMENT_ONLY | OFF_TOPIC_REMARK | NEGATIVE_EXPRESSION | REFUSAL 중 하나",
   "relevance": "코드",
-  "learning_state": "코드",
+  "learning_state": "GOAL_ACHIEVED | CORRECT_BUT_SHALLOW | PARTIAL_UNDERSTANDING | MISCONCEPTION | OFF_TOPIC | HELP_NEEDED | NOT_ASSESSABLE 중 하나",
   "primary_gap": {"code": "코드", "description": "한 문장"},
   "next_strategy": {
     "type": "코드",
