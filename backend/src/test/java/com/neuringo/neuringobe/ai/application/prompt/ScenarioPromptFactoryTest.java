@@ -325,7 +325,7 @@ class ScenarioPromptFactoryTest {
                 "EMOTION_RECOGNITION",
                 "놀이터",
                 List.of(Map.of("id", "FRIEND", "role", "같은 반 친구")),
-                List.of("친구의 표정을 보는 장면"),
+                List.of("친구의 표정을 보고 기분 말하기"),
                 List.of("싸움"));
     }
 
