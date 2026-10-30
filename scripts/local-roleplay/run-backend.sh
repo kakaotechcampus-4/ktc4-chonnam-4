@@ -64,8 +64,35 @@ else
   win() { printf '%s' "$1"; }
   SEP=':'
 fi
-(cd "$OUT/jar" && jar xf "$(win "$JAR")")
-javac -proc:none -encoding UTF-8 -d "$(win "$OUT/addon")" \
+# JDK 21 이상의 bin 폴더를 찾는다. Windows 는 PATH 에 java 만 있고 jar·javac 가 없는 경우가 많다(Oracle javapath).
+jdk_ok() { [ -x "$1/javac" ] || [ -x "$1/javac.exe" ]; }
+jdk_version() { "$1/javac" -version 2>&1 | tr -d '\r' | sed -nE 's/^javac ([0-9]+).*/\1/p' | head -1; }
+find_jdk() {
+  local candidates=()
+  [ -n "${JAVA_HOME:-}" ] && candidates+=("$JAVA_HOME/bin")
+  if command -v java >/dev/null; then
+    local home
+    home=$(java -XshowSettings:properties -version 2>&1 | tr -d '\r' | sed -n 's/^ *java.home = //p')
+    [ -n "$home" ] && candidates+=("$(command -v cygpath >/dev/null && cygpath -u "$home" || echo "$home")/bin")
+  fi
+  local dir
+  for dir in "$HOME"/.gradle/jdks/*/bin "$HOME"/.gradle/jdks/*/Contents/Home/bin \
+    /c/Program\ Files/Java/*/bin /c/Program\ Files/Eclipse\ Adoptium/*/bin /c/Program\ Files/Microsoft/*/bin \
+    /c/Program\ Files/Amazon\ Corretto/*/bin /usr/lib/jvm/*/bin; do
+    candidates+=("$dir")
+  done
+  for dir in "${candidates[@]}"; do
+    if jdk_ok "$dir" && [ "$(jdk_version "$dir")" -ge 21 ] 2>/dev/null; then
+      printf '%s' "$dir"
+      return
+    fi
+  done
+  return 1
+}
+JDK_BIN=$(find_jdk) || { echo "JDK 21 이상(javac 포함)을 찾지 못했다. JAVA_HOME 을 JDK 21 폴더로 지정해 주세요." >&2; exit 1; }
+echo "   JDK: $JDK_BIN"
+(cd "$OUT/jar" && "$JDK_BIN/jar" xf "$(win "$JAR")")
+"$JDK_BIN/javac" -proc:none -encoding UTF-8 -d "$(win "$OUT/addon")" \
   -cp "$(win "$OUT/jar/BOOT-INF/classes")$SEP$(win "$OUT/jar/BOOT-INF/lib")/*" "$(win "$HERE/LocalRoleplayBeans.java")"
 
 args=(
@@ -94,5 +121,5 @@ done
 export LOCAL_LLM_TRACE
 
 echo "== 백엔드 시작 (http://localhost:8080, 끝내려면 Ctrl+C)"
-exec java -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dloader.path="$(win "$OUT/addon")" \
+exec "$JDK_BIN/java" -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dloader.path="$(win "$OUT/addon")" \
   -cp "$(win "$JAR")" org.springframework.boot.loader.launch.PropertiesLauncher "${args[@]}"
