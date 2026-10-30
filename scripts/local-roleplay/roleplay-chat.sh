@@ -62,7 +62,11 @@ call() {
   local args=(-s -o "$WORK/out" -w '%{http_code}' -c "$jar" -b "$jar" -X "$method" -H "X-XSRF-TOKEN: $token")
   [ -n "${BEARER:-}" ] && [ "$jar" = "$TEACHER_JAR" ] && args+=(-H "Authorization: Bearer $BEARER")
   [ "$method" != GET ] && args+=(-H "Idempotency-Key: $(uuid)")
-  [ -n "$body" ] && args+=(-H 'Content-Type: application/json' -d "$body")
+  # 본문은 UTF-8 파일로 보낸다. Windows 의 curl 은 한글 인자를 UTF-8 이 아닌 코드 페이지로 받는다.
+  if [ -n "$body" ]; then
+    printf '%s' "$body" > "$WORK/body.json"
+    args+=(-H 'Content-Type: application/json; charset=utf-8' --data-binary "@$(win "$WORK/body.json")")
+  fi
   local status
   status=$(curl "${args[@]}" "$@" "$BASE$path")
   if [ "${status:0:1}" != 2 ]; then
