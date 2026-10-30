@@ -47,7 +47,7 @@ export ROLEPLAY_MAXIMUM_TURN_COUNT=${ROLEPLAY_MAXIMUM_TURN_COUNT:-8}
 export ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL=${ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL:-3}
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
 # LLM 요청 종류·입력·출력을 남길 파일. 끄려면 LOCAL_LLM_TRACE= 로 비운다.
-export LOCAL_LLM_TRACE=${LOCAL_LLM_TRACE-$OUT/llm-trace.log}
+LOCAL_LLM_TRACE=${LOCAL_LLM_TRACE-$OUT/llm-trace.log}
 
 echo "== bootJar"
 (cd "$BACKEND" && ./gradlew -q bootJar)
@@ -56,12 +56,21 @@ JAR=$(ls "$BACKEND"/build/libs/*-SNAPSHOT.jar | grep -v plain | head -1)
 echo "== 로컬 전용 부품 컴파일"
 rm -rf "$OUT/jar" "$OUT/addon"/*
 mkdir -p "$OUT/jar"
-(cd "$OUT/jar" && unzip -q "$JAR")
-javac -proc:none -encoding UTF-8 -d "$OUT/addon" -cp "$OUT/jar/BOOT-INF/classes:$OUT/jar/BOOT-INF/lib/*" "$HERE/LocalRoleplayBeans.java"
+# Windows(Git Bash)의 java·javac 는 Windows 경로와 ; 구분자를 쓴다.
+if command -v cygpath >/dev/null; then
+  win() { cygpath -w "$1"; }
+  SEP=';'
+else
+  win() { printf '%s' "$1"; }
+  SEP=':'
+fi
+(cd "$OUT/jar" && jar xf "$(win "$JAR")")
+javac -proc:none -encoding UTF-8 -d "$(win "$OUT/addon")" \
+  -cp "$(win "$OUT/jar/BOOT-INF/classes")$SEP$(win "$OUT/jar/BOOT-INF/lib")/*" "$(win "$HERE/LocalRoleplayBeans.java")"
 
 args=(
   --roleplay.http.enabled=true
-  --roleplay.http.spool-directory="$OUT/spool"
+  --roleplay.http.spool-directory="$(win "$OUT/spool")"
   --roleplay.http.maximum-upload-bytes=2000000
   --roleplay.http.maximum-request-bytes=2500000
   --roleplay.http.allowed-formats=WEBM,WAV,MP3,OGG,MP4
@@ -81,6 +90,9 @@ for kind in SAFETY_ESCALATION_CHILD SAFETY_ESCALATION_TEACHER SAFETY_CHECK_ERROR
   i=$((i + 1))
 done
 
+[ -n "$LOCAL_LLM_TRACE" ] && LOCAL_LLM_TRACE=$(win "$LOCAL_LLM_TRACE")
+export LOCAL_LLM_TRACE
+
 echo "== 백엔드 시작 (http://localhost:8080, 끝내려면 Ctrl+C)"
-exec java -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dloader.path="$OUT/addon" \
-  -cp "$JAR" org.springframework.boot.loader.launch.PropertiesLauncher "${args[@]}"
+exec java -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dloader.path="$(win "$OUT/addon")" \
+  -cp "$(win "$JAR")" org.springframework.boot.loader.launch.PropertiesLauncher "${args[@]}"

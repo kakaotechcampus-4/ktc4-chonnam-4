@@ -35,7 +35,16 @@ trap 'rm -rf "$WORK"' EXIT
 TEACHER_JAR=$WORK/teacher.cookies
 CHILD_JAR=$WORK/child.cookies
 
-uuid() { cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z'; }
+# Windows(Git Bash): jq 는 줄 끝에 \r 을 붙이고, curl 은 Windows 경로를 받는다.
+jq() { command jq "$@" | tr -d '\r'; }
+if command -v cygpath >/dev/null; then win() { cygpath -w "$1"; }; else win() { printf '%s' "$1"; }; fi
+
+# 무작위 UUID(v4). /proc 나 uuidgen 이 없는 Windows Git Bash 에서도 돈다.
+uuid() {
+  local h
+  h=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+  printf '%s-%s-4%s-%x%s-%s\n' "${h:0:8}" "${h:8:4}" "${h:13:3}" $(( (0x${h:16:1} & 3) | 8 )) "${h:17:3}" "${h:20:12}"
+}
 
 # call 쿠키파일 메서드 경로 [JSON 본문] [추가 curl 인자...] — CSRF 를 붙이고, 실패하면 응답을 보여 주고 멈춘다.
 call() {
@@ -112,7 +121,7 @@ send() {
   printf '%s' "$1" > "$WORK/utterance.wav"
   local res attempt
   for attempt in 1 2; do
-    res=$(call "$CHILD_JAR" POST "/api/v1/roleplay-sessions/$session_id/voice-inputs" '' -F "audio=@$WORK/utterance.wav;type=audio/wav")
+    res=$(call "$CHILD_JAR" POST "/api/v1/roleplay-sessions/$session_id/voice-inputs" '' -F "audio=@$(win "$WORK/utterance.wav");type=audio/wav")
     jq -r '(.data.messages // [])[] | "AI: " + .text' <<<"$res"
     jq -r '"    (" + ([.data.status, .data.action] | map(select(. != null and . != "NONE")) | join(" · ")) + ")"' <<<"$res"
     [ "$(jq -r .data.action <<<"$res")" = RETRY_TURN ] && [ "$attempt" = 1 ] || break

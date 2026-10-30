@@ -15,7 +15,14 @@
 ## 준비
 
 - JDK 21, `curl`, `jq`, Docker(로컬 DB)
-- `backend/.env`: DB 접속 값 (`backend/.env.example` 참고)
+- `backend/.env`: DB 접속 값. `docker compose` 도 이 파일을 읽는다. 계정·비밀번호는 아무 값이나 정해서 넣는다.
+
+```
+DB_NAME=neuringo_local
+DB_USERNAME=neuringo
+DB_PASSWORD=아무-비밀번호
+```
+
 - `backend/.env.local`: LLM 키 (`scenarioEval` 과 같은 파일)
 
 ```
@@ -25,6 +32,16 @@ AI_MODEL=gpt-5.4-nano
 ```
 
 OpenAI 에 직접 붙을 때는 `AI_BASE_URL` 을 `/v1` 까지 쓴다. 빠지면 모든 요청이 `PROVIDER_REQUEST_REJECTED` 로 실패한다.
+
+### Windows
+
+스크립트는 bash 라서 **Git Bash** 에서 실행한다(PowerShell 아님). `jq` 가 없으면 PowerShell 에서 `winget install jqlang.jq` 로 설치한 뒤 Git Bash 를 다시 연다. `backend/.env` 는 PowerShell 에서 이렇게 만들 수 있다.
+
+```powershell
+cd backend
+"DB_NAME=neuringo_local`nDB_USERNAME=neuringo`nDB_PASSWORD=local-pass" | Set-Content -Encoding ascii .env
+docker compose up -d
+```
 
 ## 실행
 
