@@ -67,7 +67,7 @@ call() {
 }
 
 for tool in curl jq; do
-  command -v "$tool" >/dev/null || {
+  type -P "$tool" >/dev/null || {
     echo "$tool 이 없다. Windows 는 PowerShell 에서 'winget install jqlang.jq' 로 설치하고 Git Bash 를 새로 연다." >&2
     exit 1
   }
