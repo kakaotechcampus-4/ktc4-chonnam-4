@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react"
+import { act, screen, within } from "@testing-library/react"
 import { http } from "msw"
 import { afterEach, describe, expect, it, beforeEach } from "vitest"
 import { apiError, fixtures, seedActivity } from "@/test/msw/handlers"
@@ -199,6 +199,61 @@ describe("아동 상세 화면", () => {
 
       expect(await within(panel).findByRole("button", { name: "복사했어요" })).toBeInTheDocument()
       expect(await navigator.clipboard.readText()).toBe(code.textContent)
+    })
+
+    // 목록을 거치지 않고 다른 아동 상세로 바로 넘어가면(그 아동을 이미 불러온 적이 있으면 로딩 화면도 없이) 같은 화면이 남는다.
+    // 이때 앞 아동의 코드가 보이면 강사가 그 코드를 다른 아이에게 줄 수 있다.
+    async function switchToChild(
+      router: ReturnType<typeof renderChildDetail>["router"],
+      queryClient: ReturnType<typeof renderChildDetail>["queryClient"],
+      childId: string,
+    ) {
+      queryClient.setQueryData(["children", childId], await getChild(childId))
+      await act(() => router.navigate(`/classrooms/${A1}/children/${childId}?tab=access-code`))
+    }
+
+    it("다른 아동으로 바로 넘어가면 앞 아동의 코드와 복사 상태가 남지 않는다", async () => {
+      const { user, router, queryClient } = renderChildDetail()
+
+      await user.click(await screen.findByRole("tab", { name: "접근 코드" }))
+      const panel = screen.getByRole("tabpanel", { name: "접근 코드" })
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+      const code = (await within(panel).findByText(/^\d{4}$/)).textContent!
+      await user.click(within(panel).getByRole("button", { name: "복사" }))
+      await within(panel).findByRole("button", { name: "복사했어요" })
+
+      await switchToChild(router, queryClient, fixtures.childA1_2.childId)
+
+      const next = screen.getByRole("tabpanel", { name: "접근 코드" })
+      expect(within(next).queryByText(code)).not.toBeInTheDocument()
+      expect(within(next).getByRole("button", { name: "코드 받기" })).toBeInTheDocument()
+      expect(within(next).getByRole("button", { name: "복사" })).toBeDisabled()
+    })
+
+    it("받기에 실패한 뒤 다른 아동으로 넘어가면 앞 아동의 요청 키를 다시 쓰지 않는다", async () => {
+      server.use(
+        http.post(
+          "*/api/v1/children/:childId/access-codes",
+          ({ request }) => apiError(500, "INTERNAL_ERROR", "서버 오류", new URL(request.url).pathname),
+          { once: true },
+        ),
+      )
+      const keys = recordIssueKeys()
+      const { user, router, queryClient } = renderChildDetail()
+
+      await user.click(await screen.findByRole("tab", { name: "접근 코드" }))
+      const panel = screen.getByRole("tabpanel", { name: "접근 코드" })
+      await user.click(within(panel).getByRole("button", { name: "코드 받기" }))
+      expect(await within(panel).findByRole("alert")).toBeInTheDocument()
+
+      await switchToChild(router, queryClient, fixtures.childA1_2.childId)
+      const next = screen.getByRole("tabpanel", { name: "접근 코드" })
+      expect(within(next).queryByRole("alert")).not.toBeInTheDocument()
+      await user.click(within(next).getByRole("button", { name: "코드 받기" }))
+      await within(next).findByText(/^\d{4}$/)
+
+      expect(keys).toHaveLength(2)
+      expect(keys[1]).not.toBe(keys[0])
     })
   })
 })

@@ -174,8 +174,9 @@ function ChildDetailPage() {
         </Notice>
       ) : (
         <>
-          {/* 받은 코드는 다시 조회할 수 없어, 탭을 오가도 사라지지 않게 접근 코드 패널은 숨기기만 한다. */}
-          <AccessCodePanel childId={childId!} hidden={tab !== 'access-code'} />
+          {/* 받은 코드는 다시 조회할 수 없어, 탭을 오가도 사라지지 않게 접근 코드 패널은 숨기기만 한다.
+              다른 아동으로 바로 넘어가면 앞 아동의 코드가 남지 않도록 아동마다 패널을 새로 만든다(key). */}
+          <AccessCodePanel key={childId} childId={childId!} hidden={tab !== 'access-code'} />
           {tab === 'history' && (
             <section role="tabpanel" aria-label="활동 이력">
               {activitiesQuery.isLoading ? (
