@@ -7,9 +7,6 @@ import { marker, newInstructor } from "./instructor.js"
 
 export const MOCK_ACTIVITY = "mock-activity-1"
 
-/** 화면이 부르는 이름. 아동 이름의 마지막 덩어리다(성을 빼고 이름만 부른다, src/features/child/lib/childName.ts). */
-export const CHILD_GIVEN_NAME = "서연"
-
 // playwright.config.ts 와 같은 고정 주소. 프론트는 VITE_API_BASE_URL 없이 빌드되어 이 주소를 부른다.
 const API_ORIGIN = "http://localhost:8080"
 
@@ -31,7 +28,7 @@ async function post<T>(api: APIRequestContext, path: string, body: unknown, head
 /**
  * 강사 API 로 아동을 등록하고 입장 코드를 발급한다. 브라우저와 쿠키가 섞이지 않게 따로 만든 요청 컨텍스트를 쓴다.
  * 아동 이름에는 이번 실행의 표시(marker)를 넣는다. scripts/e2e.sh 가 백엔드·DB 로그에서 찾아 개인정보가 새는지 본다.
- * 띄어 쓴 이름의 마지막 덩어리(CHILD_GIVEN_NAME)만 불러서 화면에는 "서연아", "서연이의 활동"으로 보인다.
+ * 화면은 이 이름(실명)을 그대로 불러서 "안녕, {이름}!", "{이름}의 활동"으로 보인다.
  */
 export async function issueChildCode(): Promise<E2EChild> {
   const api = await request.newContext({ baseURL: API_ORIGIN })
@@ -45,7 +42,7 @@ export async function issueChildCode(): Promise<E2EChild> {
     const auth = { Authorization: `Bearer ${accessToken}` }
 
     const { classId } = await post<{ classId: string }>(api, "/api/v1/classrooms", { name: `아동 E2E 학급 ${marker}` }, auth)
-    const name = `하늘 ${marker} ${CHILD_GIVEN_NAME}`
+    const name = `하늘 ${marker} 서연`
     const { childId } = await post<{ childId: string }>(api, `/api/v1/classrooms/${classId}/children`, { displayName: name }, auth)
     const { accessCode } = await post<{ accessCode: string }>(api, `/api/v1/children/${childId}/access-codes`, undefined, {
       ...auth,
@@ -67,7 +64,7 @@ export async function enterChild(page: Page): Promise<E2EChild> {
   }
   await page.getByRole("button", { name: "입장하기" }).click()
   await expect(page).toHaveURL(/\/child\/hello$/)
-  await expect(page.getByText(`안녕, ${CHILD_GIVEN_NAME}아!`)).toBeVisible()
+  await expect(page.getByText(`안녕, ${child.name}!`)).toBeVisible()
   return child
 }
 
