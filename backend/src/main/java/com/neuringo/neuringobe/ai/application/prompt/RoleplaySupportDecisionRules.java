@@ -15,6 +15,10 @@ public final class RoleplaySupportDecisionRules {
             GoalObservationInput observations,
             AnalysisResult analysis) {
         var next = analysis.nextStrategy();
+        if (state.turnCount() >= state.maximumTurnCount()
+                && !"CLOSE_ROLEPLAY".equals(next.type())) {
+            throw new IllegalArgumentException("최대 턴에서는 역할극을 마무리해야 합니다.");
+        }
         if (!GOAL_QUESTION_STRATEGIES.contains(next.type())) return;
         var target =
                 observations.currentGoalExposures().stream()

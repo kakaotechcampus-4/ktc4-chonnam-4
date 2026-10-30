@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
 import com.neuringo.neuringobe.roleplay.application.RoleplayActivityGoalEvaluator.Decision;
 import com.neuringo.neuringobe.roleplay.application.RoleplayGoalObservationPlan;
+import com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -24,6 +25,7 @@ public class RoleplayCompletionService {
     private final ActivityCompletionService completion;
     private final RoleplayCanonicalRetentionService retention;
     private final RoleplayGoalObservationStore observations;
+    private final RoleplayProgressProperties limits;
     private final TransactionTemplate transaction;
 
     public RoleplayCompletionService(
@@ -33,13 +35,15 @@ public class RoleplayCompletionService {
             ActivityCompletionService completion,
             RoleplayCanonicalRetentionService retention,
             RoleplayGoalObservationStore observations,
-            PlatformTransactionManager transactions) {
+            PlatformTransactionManager transactions,
+            RoleplayProgressProperties limits) {
         this.checkpoints = checkpoints;
         this.activities = activities;
         this.quizzes = quizzes;
         this.completion = completion;
         this.retention = retention;
         this.observations = observations;
+        this.limits = Objects.requireNonNull(limits);
         this.transaction = new TransactionTemplate(transactions);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -89,8 +93,19 @@ public class RoleplayCompletionService {
                                 status.setRollbackOnly();
                                 return new RoleplayCheckpointStore.Conflict();
                             }
+                            // 저장소가 잠긴 세션의 다음 턴 번호를 이미 대조했다.
+                            boolean maximumTurnReached =
+                                    limits.configured()
+                                            && command.turnNumber() >= limits.maximumTurnCount();
+                            if (maximumTurnReached
+                                    && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
+                                            || !"CLOSING".equals(command.responseType()))) {
+                                status.setRollbackOnly();
+                                return new RoleplayCheckpointStore.Conflict();
+                            }
                             observations.save(plan);
-                            if (plan.proposal().decision() == Decision.ACHIEVED) {
+                            if (plan.proposal().decision() == Decision.ACHIEVED
+                                    || maximumTurnReached) {
                                 completion.completeAfterRoleplay(activity);
                                 retention.completeNormallyAndDelete(
                                         command.sessionId(),

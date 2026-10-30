@@ -111,7 +111,10 @@ public class RoleplayHttpTestConfiguration {
 
     @Bean
     @org.springframework.context.annotation.Primary
-    RoleplayContextSource httpContext(State state, JdbcTemplate jdbc) {
+    RoleplayContextSource httpContext(
+            State state,
+            JdbcTemplate jdbc,
+            com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties progress) {
         return (key, sourceDeadline) -> {
             state.calls.add("CONTEXT");
             if (state.unavailable) return Optional.empty();
@@ -145,7 +148,7 @@ public class RoleplayHttpTestConfiguration {
                                             key.sessionId(),
                                             RoleplayFixtures.MG_EMOTION),
                                     turn,
-                                    77,
+                                    progress.configured() ? progress.maximumTurnCount() : 77,
                                     9),
                             List.of(),
                             observations(state, jdbc, key.sessionId()),
@@ -266,17 +269,28 @@ public class RoleplayHttpTestConfiguration {
             if (failure != null)
                 return new AiCallResult.Failure<>(
                         new AiFailure(failure, null), llmMetadata(request));
+            var turnState = mapper.readTree(request.userPrompt()).path("state");
+            int maximum = turnState.path("maximum_turn_count").asInt();
+            boolean maximumReached = maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
             String json =
                     switch (request.operation()) {
                         case CAUSE_ANALYSIS ->
                                 RoleplayFixtures.analysisJson(
-                                        "PROBE_EMOTION", RoleplayFixtures.MG_EMOTION, "S1");
+                                        maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",
+                                        RoleplayFixtures.MG_EMOTION,
+                                        "S1");
                         case RESPONSE_GENERATION -> {
                             String text = state.candidateTexts.poll();
                             String candidate =
                                     RoleplayFixtures.candidateJson(
-                                            text == null ? "친구는 어떤 기분일까?" : text,
-                                            "GUIDING_QUESTION");
+                                            text == null
+                                                    ? (maximumReached
+                                                            ? "함께해 줘서 고마워."
+                                                            : "친구는 어떤 기분일까?")
+                                                    : text,
+                                            maximumReached ? "CLOSING" : "GUIDING_QUESTION");
+                            if (maximumReached)
+                                candidate = candidate.replace("PROBE_EMOTION", "CLOSE_ROLEPLAY");
                             yield candidate.replace(
                                     "\"previous_failed_candidate_ids\":[]",
                                     "\"previous_failed_candidate_ids\":"
