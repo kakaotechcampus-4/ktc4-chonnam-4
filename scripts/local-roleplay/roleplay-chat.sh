@@ -66,6 +66,12 @@ call() {
   cat "$WORK/out"
 }
 
+for tool in curl jq; do
+  command -v "$tool" >/dev/null || {
+    echo "$tool 이 없다. Windows 는 PowerShell 에서 'winget install jqlang.jq' 로 설치하고 Git Bash 를 새로 연다." >&2
+    exit 1
+  }
+done
 curl -sf -o /dev/null "$BASE/api/v1/csrf" || { echo "백엔드($BASE)가 떠 있지 않다. run-backend.sh 를 먼저 실행하세요." >&2; exit 1; }
 $DB_PSQL -tAc 'select 1' >/dev/null || { echo "DB 에 접속할 수 없다. DB_PSQL 을 확인하세요." >&2; exit 1; }
 
