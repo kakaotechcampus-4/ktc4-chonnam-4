@@ -7,6 +7,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
+import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
 import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
 import java.util.HashSet;
 import java.util.List;
@@ -18,7 +19,7 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 역할극 프롬프트 v1 출력의 계약 검사. 형식은 맞지만 이 요청과 맞지 않는 출력(다른 turn_id, 허용하지 않은 코드, 전략과 다른 후보, 판정과 어긋난 전달 조건)을
+ * 역할극의 관찰 필수 출력 계약 검사. 형식은 맞지만 이 요청과 맞지 않는 출력(다른 turn_id, 허용하지 않은 코드, 전략과 다른 후보, 판정과 어긋난 전달 조건)을
  * InvalidLlmOutputException 으로 막는다. StructuredLlmExecutor 는 이를 INVALID_OUTPUT_FORMAT 으로 돌려준다(워크플로우
  * v3 11.6·11.8 의 시스템 사전 차단).
  *
@@ -41,7 +42,12 @@ final class RoleplayOutputParsers {
     private RoleplayOutputParsers() {}
 
     static LlmOutputParser<AnalysisResult> analysis(
-            ObjectMapper objectMapper, UUID expectedTurnId, Set<UUID> microGoalIds) {
+            ObjectMapper objectMapper,
+            UUID expectedTurnId,
+            Set<UUID> microGoalIds,
+            GoalObservationInput observationInput,
+            UUID expectedAnalysisId,
+            RoleplayTurnInput.State state) {
         LlmOutputParser<AnalysisResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, AnalysisResult.class);
         return content -> {
@@ -66,6 +72,13 @@ final class RoleplayOutputParsers {
                     "target_micro_goal_id is not a micro goal of the scenario");
             double confidence = result.analysisConfidence();
             check(confidence >= 0.0 && confidence <= 1.0, "analysis_confidence out of range");
+            checkAnalysisObservation(
+                    result.goalObservation(), observationInput, expectedTurnId, expectedAnalysisId);
+            try {
+                RoleplaySupportDecisionRules.requireValidAnalysis(state, observationInput, result);
+            } catch (IllegalArgumentException invalidSupport) {
+                throw new InvalidLlmOutputException("지원 조정 또는 최대 턴 마무리가 확정 상태와 충돌합니다.", null);
+            }
             return result;
         };
     }
@@ -76,7 +89,8 @@ final class RoleplayOutputParsers {
             AnalysisResult analysis,
             List<UUID> expectedFailedCandidateIds,
             Set<String> failedCandidateTexts,
-            int maxTextLength) {
+            int maxTextLength,
+            boolean maximumTurnReached) {
         LlmOutputParser<CandidateResponse> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, CandidateResponse.class);
         Set<String> normalizedFailedTexts = new HashSet<>();
@@ -100,6 +114,11 @@ final class RoleplayOutputParsers {
                     oneOf(RoleplayCodes.RESPONSE_TYPES, result.responseType()),
                     "unknown response_type");
             check(
+                    !maximumTurnReached
+                            || ("CLOSE_ROLEPLAY".equals(result.strategyUsed())
+                                    && "CLOSING".equals(result.responseType())),
+                    "최대 턴에는 마무리 응답이 필요합니다.");
+            check(
                     Set.copyOf(result.previousFailedCandidateIds())
                             .equals(Set.copyOf(expectedFailedCandidateIds)),
                     "previous_failed_candidate_ids does not match the retry");
@@ -120,7 +139,7 @@ final class RoleplayOutputParsers {
     }
 
     static LlmOutputParser<EvaluationResult> evaluation(
-            ObjectMapper objectMapper, UUID expectedCandidateId) {
+            ObjectMapper objectMapper, UUID expectedCandidateId, UUID expectedAnalysisId) {
         LlmOutputParser<EvaluationResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, EvaluationResult.class);
         return content -> {
@@ -151,8 +170,65 @@ final class RoleplayOutputParsers {
             check(
                     result.criticalFailureCount() >= critical,
                     "critical_failure_count is lower than the critical failure codes");
+            var review = result.goalObservationReview();
+            check(review != null, "목표 관찰 검수가 필요합니다.");
+            check(expectedAnalysisId.equals(review.analysisId()), "다른 분석에 대한 목표 관찰 검수입니다.");
+            if (result.decision() == EvaluationDecision.PASS) {
+                check(review.supportsAnalysis(), "목표 관찰과 활동 목표 판정이 모두 승인되어야 합니다.");
+            } else if (!review.supportsAnalysis()) {
+                check(
+                        Set.of(
+                                        EvaluationDecision.REANALYZE,
+                                        EvaluationDecision.CONFIRM_INPUT,
+                                        EvaluationDecision.SAFETY_ESCALATION)
+                                .contains(result.decision()),
+                        "근거 없는 분석은 후보만 재생성할 수 없습니다.");
+            }
             return result;
         };
+    }
+
+    private static void checkAnalysisObservation(
+            GoalObservationOutput.Analysis analysis,
+            GoalObservationInput input,
+            UUID turnId,
+            UUID analysisId) {
+        check(analysis != null, "목표 관찰 분석이 필요합니다.");
+        check(analysisId.equals(analysis.analysisId()), "목표 관찰의 분석 식별자가 일치하지 않습니다.");
+        var available = new HashSet<GoalObservationOutput.Reference>();
+        var positive = new HashSet<GoalObservationOutput.Reference>();
+        for (var prior : input.confirmedObservations()) {
+            available.add(prior.reference());
+            if (prior.status() == GoalObservationOutput.Status.EXPLICIT
+                    || prior.status() == GoalObservationOutput.Status.IMPLICIT) {
+                positive.add(prior.reference());
+            }
+        }
+        for (var observation : analysis.observations()) {
+            var ref = observation.reference();
+            check(turnId.equals(ref.turnId()), "새 관찰이 다른 턴을 참조합니다.");
+            check(
+                    input.contains(ref.microGoalId(), ref.criterionReference()),
+                    "승인되지 않은 목표 또는 학습 증거입니다.");
+            check(available.add(ref), "목표 관찰이 중복됐습니다.");
+            if (observation.status() == GoalObservationOutput.Status.EXPLICIT
+                    || observation.status() == GoalObservationOutput.Status.IMPLICIT) {
+                positive.add(ref);
+            }
+        }
+        var basis = analysis.activityGoal().basis();
+        check(new HashSet<>(basis).size() == basis.size(), "판정 근거가 중복됐습니다.");
+        check(available.containsAll(basis), "판정 근거에 없는 관찰을 참조했습니다.");
+        check(
+                analysis.activityGoal().decision()
+                                != GoalObservationOutput.ActivityDecision.ACHIEVED
+                        || !basis.isEmpty(),
+                "활동 목표 달성 판정에는 관찰 근거가 필요합니다.");
+        check(
+                analysis.activityGoal().decision()
+                                != GoalObservationOutput.ActivityDecision.ACHIEVED
+                        || basis.stream().anyMatch(positive::contains),
+                "활동 목표 달성 판정에는 명시적 또는 간접 표현 근거가 필요합니다.");
     }
 
     /** 모델이 ```json ... ``` 으로 감싸 보내는 경우만 벗긴다. */

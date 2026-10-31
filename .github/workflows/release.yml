@@ -66,9 +66,13 @@ on:
         description: 배포 뒤 CloudFront 로 확인할 때 기다릴 초(대문을 막 열었으면 길게)
         type: number
         default: 30
+      wait_idle:
+        description: 사람이 테스트 주소를 쓰는 중이면(마지막 API 요청 5분 안) 이 분까지 기다린다. 그래도 쓰면 미룬다. 0 = 기다리지 않음(사람이 누른 배포)
+        type: number
+        default: 0
     outputs:
       result:
-        description: ok·unchanged·rolled_back·failed·skipped_preview·slot_taken·server_off·…
+        description: ok·unchanged·rolled_back·failed·skipped_preview·slot_taken·server_off·busy(쓰는 중이라 미룸)·…
         value: ${{ jobs.deploy.outputs.result }}
 
 permissions:
@@ -247,13 +251,13 @@ jobs:
     needs: [resolve, build]
     if: always() && needs.resolve.result == 'success' && needs.resolve.outputs.ready == 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45 # 쓰는 중이면 기다리는 시간(wait_idle, 자동 배포 15분) 포함
     environment: dev
     permissions:
       contents: read
       id-token: write # GitHub OIDC 토큰으로 AWS 임시 자격증명(1시간)을 받는다
     outputs:
-      result: ${{ steps.deploy.outputs.result }}
+      result: ${{ steps.idle.outputs.busy == 'true' && 'busy' || steps.deploy.outputs.result }}
 
     steps:
       - name: Checkout (이 워크플로를 부른 커밋의 서버 스크립트)
@@ -306,8 +310,42 @@ jobs:
           done
           docker logout "$registry" >/dev/null 2>&1 || true
 
+      # 24시간 켜 둔 서버를 사람이 쓰는 중이면(마지막 API 요청 5분 안) 바꾸지 않고 기다린다. 끝까지 쓰면 미룬다(실패 아님).
+      # 저절로 돈 배포만(wait_idle > 0). 이미지는 위에서 ECR 에 올려 두었다.
+      - name: Wait until nobody is using it
+        id: idle
+        if: inputs.wait_idle > 0
+        env:
+          WAIT: ${{ inputs.wait_idle }}
+          MODE: ${{ inputs.mode }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          code=0
+          out=$(bash scripts/wait-idle.sh "$WAIT") || code=$?
+          echo "$out"
+          value() { sed -n "s/^$1=//p" <<<"$out" | tail -n 1; }
+          [ "$code" = 0 ] || [ "$code" = 75 ] || exit "$code"
+          waited=$(value WAIT_WAITED)
+          if [ "$code" = 75 ]; then
+            echo "busy=true" >>"$GITHUB_OUTPUT"
+            last=$(TZ=Asia/Seoul date -d "$(value WAIT_LAST_USE)" '+%m/%d %H:%M' 2>/dev/null || echo "?")
+            if [ "$MODE" = preview ]; then what="PR #$PR 미리보기"; else what="develop 배포 \`${SHA:0:7}\`"; fi
+            {
+              echo "## $what — ⏸️ 미룸: 테스트 주소를 쓰는 중"
+              echo
+              echo "${WAIT} 분 기다렸지만 계속 쓰였다(마지막 API 요청 $last KST). 쓰는 사람을 끊지 않으려고 서버는 바꾸지 않았다. 이미지는 ECR 에 올려 두었다."
+              echo
+              echo "다 쓴 뒤 다시 실행(Re-run)하거나, 지금 바꿔야 하면 사람이 직접 누른다(Actions → Deploy 또는 Dev server — 직접 누르면 기다리지 않는다)."
+            } >>"$GITHUB_STEP_SUMMARY"
+            echo "::notice title=배포 미룸::테스트 주소를 쓰는 중이다(마지막 API 요청 $last KST). 다 쓴 뒤 Re-run"
+          elif [ "${waited:-0}" -gt 0 ]; then
+            echo "::notice title=기다림::쓰는 사람이 멈출 때까지 ${waited}분 기다린 뒤 배포한다"
+          fi
+
       - name: Deploy to server (SSM)
         id: deploy
+        if: steps.idle.outputs.busy != 'true'
         env:
           REPO: ${{ steps.infra.outputs.ecr_repository_url }}
           SHA: ${{ inputs.sha }}
@@ -378,6 +416,10 @@ jobs:
             [ -n "$(value DEPLOY_SECONDS)" ] && echo "| 서버에서 바꿔 띄우기 | $(value DEPLOY_SECONDS)초 |"
             [ -n "$(value FLYWAY_VERSION)" ] && echo "| DB | $([ "$MODE" = preview ] && echo "미리보기 전용 DB 를 새로 만듦 · " || echo "기본 DB · ")마이그레이션 $(value FLYWAY_VERSION) |"
             [ "$(value PREVIEW_ENDED)" = 1 ] && echo "| 미리보기 | 끝냄(미리보기 DB·자리 정리) |"
+            case $(value DEPLOY_ORIGIN_CHECK) in
+              on) echo "| 원본 비밀 헤더 | 확인함 — 우리 CloudFront 를 거친 요청만 받는다 |" ;;
+              off) echo "| 원본 비밀 헤더 | ⚠️ 확인 안 함 — Parameter Store \`edge/origin-secret\` 이 없다(Infra 적용 전) |" ;;
+            esac
             echo
             case $code:$result in
               75:not_this_pr) echo "서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다." ;;
@@ -433,9 +475,21 @@ jobs:
             echo "| API \`/api/v1/csrf\` | $(mark "$(value EDGE_API)" 200) |"
             echo "| 화면 \`/\` | $(mark "$(value EDGE_PAGE)" 200) |"
             echo "| 화면이 이 커밋인가(\`X-Neuringo-Release\`) | $(mark "$(value EDGE_RELEASE_MATCH)" yes) |"
+            # 원본 비밀 헤더를 확인하는데 위 API 가 200 이면 CloudFront 가 맞는 헤더를 붙이고 있다(403 이면 값이 서로 다르다).
+            case $(value STATUS_ORIGIN_CHECK) in
+              on) echo "| 원본 비밀 헤더 확인(서버 안) | ✅ on |" ;;
+              off) echo "| 원본 비밀 헤더 확인(서버 안) | ⚠️ off — Parameter Store 값이 없어 확인하지 않는다(Infra 적용 전) |" ;;
+            esac
+            [ -z "$(value STATUS_ORIGIN_NO_HEADER)" ] || echo "| 헤더 없는 직접 요청(서버 안, 남의 CloudFront 흉내) | $(mark "$(value STATUS_ORIGIN_NO_HEADER)" 403) |"
+            [ -z "$(value STATUS_ORIGIN_WITH_HEADER)" ] || echo "| 헤더를 붙인 직접 요청(서버 안) | $(mark "$(value STATUS_ORIGIN_WITH_HEADER)" 200) |"
             echo
-            echo "주소는 디스코드 고정 메시지에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
+            echo "주소는 디스코드 #pr-주소 채널에 있다(공개 레포라 여기에는 적지 않는다). 미리보기·develop 을 바꾸면 그 화면에서 **다시 로그인**한다(DB 가 바뀐다)."
           } >>"$GITHUB_STEP_SUMMARY"
-          if [ "$(value EDGE_API)" != 200 ] || [ "$(value EDGE_RELEASE_MATCH)" != yes ]; then
+          if [ -n "$(value STATUS_ORIGIN_NO_HEADER)" ] && [ "$(value STATUS_ORIGIN_NO_HEADER)" != 403 ]; then
+            echo "::warning title=원본 비밀 헤더::헤더 없는 직접 요청이 403 이 아니다($(value STATUS_ORIGIN_NO_HEADER)). 화면 nginx 가 설정 조각을 읽지 못했다 — Deploy(force)로 다시 띄운다"
+          fi
+          if [ "$(value STATUS_ORIGIN_CHECK)" = on ] && [ "$(value EDGE_API)" = 403 ]; then
+            echo "::warning title=원본 비밀 헤더::서버가 CloudFront 요청을 403 으로 막는다. CloudFront 설정(Infra apply)과 Parameter Store edge/origin-secret 값이 다르다 — Infra 를 apply 했으면 퍼지는 몇 분 뒤 Deploy(force)"
+          elif [ "$(value EDGE_API)" != 200 ] || [ "$(value EDGE_RELEASE_MATCH)" != yes ]; then
             echo "::warning title=CloudFront 확인::테스트 주소에서 이 커밋이 아직 보이지 않는다. 대문이 닫혀 있으면 Dev server → 켜기"
           fi

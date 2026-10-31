@@ -99,14 +99,22 @@ class RoleplaySpeechTurnPipelineTest {
                         true);
         var prepared =
                 new RoleplayContextAssembler(
-                                key ->
+                                (key, sourceDeadline) ->
                                         Optional.of(
                                                 new RoleplayContextSource.Snapshot(
                                                         key,
                                                         "synthetic approval",
                                                         fixture.scenario(),
                                                         fixture.state(),
-                                                        fixture.recentDialogue())))
+                                                        fixture.recentDialogue(),
+                                                        com.neuringo.neuringobe.roleplay.application
+                                                                .RoleplayObservationTestPlans
+                                                                .inputForScenario(
+                                                                        fixture.scenario()),
+                                                        com.neuringo.neuringobe.roleplay.application
+                                                                .RoleplayObservationTestPlans
+                                                                .emptyResponseHistory(
+                                                                        fixture.scenario()))))
                         .prepareVoice(scope, trace.requestId(), trace.turnId(), deadline);
         assertThat(prepared.trace()).isEqualTo(trace);
         var result = (RoleplayTurnOutcome.SpokenResponse) execute(prepared.input());
@@ -306,7 +314,14 @@ class RoleplaySpeechTurnPipelineTest {
                                             };
                                     return success(
                                             new LlmCompletion(
-                                                    content, "fake", "fake", "stop", null, null),
+                                                    RoleplayFixtures.bindAnalysis(
+                                                            content,
+                                                            request.traceContext().analysisId()),
+                                                    "fake",
+                                                    "fake",
+                                                    "stop",
+                                                    null,
+                                                    null),
                                             request.operation());
                                 }));
         try (var workers = Executors.newSingleThreadExecutor()) {
@@ -314,7 +329,16 @@ class RoleplaySpeechTurnPipelineTest {
                     new RoleplayTurnResponder(
                             new RoleplayTurnRunner(workers),
                             new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of())));
-            return responder.execute(deadline, shared -> pipeline.execute(audio, context, shared));
+            return responder.execute(
+                    deadline,
+                    shared ->
+                            pipeline.execute(
+                                    audio,
+                                    context,
+                                    com.neuringo.neuringobe.roleplay.application
+                                            .RoleplayObservationTestPlans.inputForScenario(
+                                            context.scenario()),
+                                    shared));
         }
     }
 

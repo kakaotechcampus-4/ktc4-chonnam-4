@@ -1,12 +1,11 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplayCodes;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Approved data only. No source audio, STT original, generated audio, rejected candidate or event.
- */
+/** 검수된 응답과 표준 발화만 전달한다. 원본 음성·STT 원문·실패 후보·사건 정보는 포함하지 않는다. */
 public final class RoleplayCheckpointCommand {
     private final UUID requestId;
     private final UUID idempotencyKey;
@@ -22,8 +21,12 @@ public final class RoleplayCheckpointCommand {
     private final long expectedVersion;
     private final int turnNumber;
     private final String supportLevel;
+    private final String responseType;
+    private final String strategyUsed;
     private final String responseText;
     private final String canonicalUtterance;
+    private final String approvedContextFingerprint;
+    private final RoleplayInputContext inputContext;
 
     private RoleplayCheckpointCommand(
             AiTraceContext trace,
@@ -48,6 +51,10 @@ public final class RoleplayCheckpointCommand {
         if (expectedVersion < 0 || turnNumber < 1)
             throw new IllegalArgumentException("Invalid checkpoint counters");
         var candidate = result.ready().candidate();
+        if (!RoleplayCodes.RESPONSE_TYPES.contains(candidate.responseType())
+                || !RoleplayCodes.STRATEGY_TYPES.contains(candidate.strategyUsed())) {
+            throw new IllegalArgumentException("응답 종류 또는 전략이 허용된 값이 아닙니다.");
+        }
         if (!candidate.turnId().equals(trace.turnId()))
             throw new IllegalArgumentException("Checkpoint belongs to another turn");
         this.requestId = trace.requestId();
@@ -58,8 +65,12 @@ public final class RoleplayCheckpointCommand {
         this.expectedVersion = expectedVersion;
         this.turnNumber = turnNumber;
         this.supportLevel = candidate.supportLevel();
+        this.responseType = candidate.responseType();
+        this.strategyUsed = candidate.strategyUsed();
         this.responseText = candidate.text();
         this.canonicalUtterance = result.canonicalUtterance();
+        this.approvedContextFingerprint = result.approvedContextFingerprint();
+        this.inputContext = result.inputContext();
     }
 
     public static RoleplayCheckpointCommand fromApproved(
@@ -133,8 +144,24 @@ public final class RoleplayCheckpointCommand {
         return responseText;
     }
 
+    public String responseType() {
+        return responseType;
+    }
+
+    public String strategyUsed() {
+        return strategyUsed;
+    }
+
     public String canonicalUtterance() {
         return canonicalUtterance;
+    }
+
+    public String approvedContextFingerprint() {
+        return approvedContextFingerprint;
+    }
+
+    public RoleplayInputContext inputContext() {
+        return inputContext;
     }
 
     @Override

@@ -9,6 +9,9 @@ DB_PASSWORD=db/password
 # RDS 로 옮기면 넣는다. 없으면 같은 서버의 postgres 컨테이너(compose.dev.yml)로 붙는다.
 DB_URL?=db/url
 
+# 원본 비밀 헤더(CloudFront → 서버). .env 가 아니라 화면(nginx) 설정 조각으로 들어간다(deploy.sh). 없으면 확인하지 않는다.
+ORIGIN_SECRET?=edge/origin-secret
+
 # 아동 입장 코드(4자리)를 HMAC 으로 바꿔 저장할 때 쓰는 비밀키(32바이트 이상). 없으면 코드 발급·입장이 실패한다.
 CHILD_ACCESS_HMAC_SECRET=child-access/hmac-secret
 
@@ -40,3 +43,15 @@ TTS_VOICE_ID?=tts/voice-id
 TTS_LANGUAGE?=tts/language
 TTS_AUDIO_FORMAT?=tts/audio-format
 TTS_TIMEOUT?=tts/timeout
+
+# 역할극. 설정이 없으면 HTTP API 는 꺼진다. 켜려면 합의된 턴·업로드·작업자 정책과 구현 빈이 필요하다.
+ROLEPLAY_HTTP_ENABLED?=roleplay/http/enabled
+ROLEPLAY_SPOOL_DIRECTORY?=roleplay/http/spool-directory
+ROLEPLAY_UPLOAD_MAX_BYTES?=roleplay/http/maximum-upload-bytes
+ROLEPLAY_REQUEST_MAX_BYTES?=roleplay/http/maximum-request-bytes
+ROLEPLAY_ALLOWED_FORMATS?=roleplay/http/allowed-formats
+ROLEPLAY_WORKER_COUNT?=roleplay/http/worker-count
+ROLEPLAY_QUEUE_CAPACITY?=roleplay/http/queue-capacity
+ROLEPLAY_TURN_BUDGET?=roleplay/http/turn-budget
+ROLEPLAY_MAXIMUM_TURN_COUNT?=roleplay/progress/maximum-turn-count
+ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL?=roleplay/progress/maximum-support-turns-per-micro-goal

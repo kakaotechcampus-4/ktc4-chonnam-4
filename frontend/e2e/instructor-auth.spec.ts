@@ -16,7 +16,8 @@ test("로그인하지 않고 강사 화면을 열면 로그인 화면으로 가�
   await logIn(page, account)
 
   await expect(page).toHaveURL(/\/classrooms\/new$/)
-  await expect(page.getByText(account.name)).toBeVisible()
+  // 학급 생성 화면은 사이드바와 담당 강사 칸에 이름이 두 번 나온다. 로그인한 강사 표시는 사이드바에서 본다.
+  await expect(page.getByRole("complementary").getByText(account.name)).toBeVisible()
 })
 
 test("토큰이 틀리거나 폐기됐으면 첫 요청에서 로그인 화면으로 돌아가고 토큰을 지운다", async ({ page }) => {

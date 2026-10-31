@@ -47,10 +47,47 @@ final class ScriptedLlmProvider implements LlmProvider {
                             case CAUSE_ANALYSIS -> analysis(message);
                             case RESPONSE_GENERATION -> candidate(message);
                             case RESPONSE_EVALUATION -> evaluation(message);
+                            case SCENARIO_GENERATION -> scenario(message);
                             default ->
                                     throw new IllegalArgumentException(
                                             "unsupported operation " + request.operation());
                         };
+        if (!(formatFailureOnce.contains(request.operation()) && firstTry)) {
+            if (request.operation() == AiOperation.CAUSE_ANALYSIS
+                    || request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                java.util.Map<String, Object> body =
+                        new java.util.LinkedHashMap<>(
+                                JSON.readValue(
+                                        content,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {}));
+                if (request.operation() == AiOperation.CAUSE_ANALYSIS) {
+                    body.put(
+                            "goal_observation",
+                            new com.neuringo.neuringobe.ai.application.structured.output
+                                    .GoalObservationOutput.Analysis(
+                                    "analysis-result/v2",
+                                    request.traceContext().analysisId(),
+                                    java.util.List.of(),
+                                    new com.neuringo.neuringobe.ai.application.structured.output
+                                            .GoalObservationOutput.Assessment(
+                                            com.neuringo.neuringobe.ai.application.structured.output
+                                                    .GoalObservationOutput.ActivityDecision
+                                                    .IN_PROGRESS,
+                                            java.util.List.of())));
+                } else {
+                    body.put(
+                            "goal_observation_review",
+                            new com.neuringo.neuringobe.ai.application.structured.output
+                                    .GoalObservationOutput.Review(
+                                    "evaluation-result/v2",
+                                    request.traceContext().analysisId(),
+                                    true,
+                                    true));
+                }
+                content = JSON.writeValueAsString(body);
+            }
+        }
         int inputTokens = (request.systemPrompt().length() + request.userPrompt().length()) / 2;
         int outputTokens = content.length() / 2;
         AiCallMetadata metadata =
@@ -70,6 +107,49 @@ final class ScriptedLlmProvider implements LlmProvider {
         return new AiCallResult.Success<>(
                 new LlmCompletion(content, "scripted", MODEL, "stop", inputTokens, outputTokens),
                 metadata);
+    }
+
+    /** 난이도별 최소 개수를 채운 시나리오. 내용은 고정이고, 계약 검사를 통과하는지만 본다. */
+    private static String scenario(JsonNode message) {
+        String level = message.get("difficulty").get("scenario_level").asString();
+        int facts =
+                switch (level) {
+                    case "L1" -> 3;
+                    case "L2" -> 4;
+                    default -> 5;
+                };
+        int goals = "L3".equals(level) ? 4 : 3;
+        StringBuilder factJson = new StringBuilder();
+        for (int i = 1; i <= facts; i++) {
+            if (i > 1) factJson.append(',');
+            factJson.append("\"친구가 ").append(i).append("번째 일을 했다.\"");
+        }
+        StringBuilder goalJson = new StringBuilder();
+        for (int i = 1; i <= goals; i++) {
+            if (i > 1) goalJson.append(',');
+            goalJson.append(
+                    String.format(
+                            "{\"id\": \"MG-%02d\", \"description\": \"%d번째 목표를 파악한다.\","
+                                    + " \"required_evidence\": [\"관련된 내용을 말한다.\"],"
+                                    + " \"achievement_example\": \"친구가 속상했어.\"}",
+                            i, i));
+        }
+        return "{\"title\": \"고정 시나리오\", \"summary\": \"측정 도구 확인용 고정 시나리오다.\","
+                + " \"scenario_level\": \""
+                + level
+                + "\", \"ai_role\": \"NARRATOR\","
+                + " \"characters\": [{\"id\": \"LEARNER\", \"role\": \"학습자\"},"
+                + " {\"id\": \"FRIEND\", \"role\": \"친구\"}],"
+                + " \"scenario_facts\": ["
+                + factJson
+                + "],"
+                + " \"prohibited_inferences\": [\"시나리오에 없는 사건을 지어내지 않는다.\"],"
+                + " \"micro_goals\": ["
+                + goalJson
+                + "],"
+                + " \"starting_questions\": {\"S0\": \"무슨 일이 있었을까?\","
+                + " \"S1\": \"친구가 울고 있어. 무슨 일이 있었을까?\","
+                + " \"S2\": \"친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?\"}}";
     }
 
     private static String analysis(JsonNode message) {

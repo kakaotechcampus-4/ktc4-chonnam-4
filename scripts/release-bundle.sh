@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 배포 묶음(deploy/compose.dev.yml + deploy/host)을 서버에서 돌릴 스크립트 하나로 만든다. release.yml 이 ssm-run.sh 로 보낸다.
+# 배포 묶음(deploy/compose.dev.yml·compose.origin.yml + deploy/host)을 서버에서 돌릴 스크립트 하나로 만든다. release.yml 이 ssm-run.sh 로 보낸다.
 #   IMAGE=<…/neuringo/backend:SHA> WEB_IMAGE=<…/neuringo/backend:web-SHA> RELEASE=<커밋 SHA> [NEURINGO_ENV=dev] \
 #     [BACKUP_BUCKET=<버킷>] [MODE=develop|preview] [PREVIEW_PR=<번호> PREVIEW_BY=<아이디> PREVIEW_TTL=<초>] \
 #     [END_PREVIEW=1 [END_ONLY_PR=<번호>]] [FORCE=1] bash scripts/release-bundle.sh >remote.sh
@@ -41,7 +41,7 @@ image_re='^[a-z0-9.-]+(:[0-9]+)?/[a-z0-9._/-]+:[A-Za-z0-9._-]+$'
 cd "$(git rev-parse --show-toplevel)"
 archive=$(mktemp)
 trap 'rm -f "$archive"' EXIT
-tar -czf "$archive" deploy/compose.dev.yml deploy/host
+tar -czf "$archive" deploy/compose.dev.yml deploy/compose.origin.yml deploy/host
 sum=$(sha256sum "$archive" | cut -d' ' -f1)
 bundle=$(base64 -w0 <"$archive" 2>/dev/null || base64 <"$archive" | tr -d '\n')
 

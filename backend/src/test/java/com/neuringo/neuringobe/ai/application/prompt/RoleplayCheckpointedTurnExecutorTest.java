@@ -98,6 +98,9 @@ class RoleplayCheckpointedTurnExecutorTest {
                     executor.executeVoice(
                             resource,
                             RoleplayFixtures.input("test"),
+                            com.neuringo.neuringobe.roleplay.application
+                                    .RoleplayObservationTestPlans.inputForScenario(
+                                    (RoleplayFixtures.input("test")).scenario()),
                             null,
                             RoleplayFixtures.trace(null, null),
                             0,

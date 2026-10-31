@@ -1,8 +1,11 @@
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Character } from "../components/Character"
+import { ErrorState, StateDialog } from "../components/state"
+import { ChildApiError, exitChildSession } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
 import { useWarnBeforeUnload } from "../hooks/useWarnBeforeUnload"
 
@@ -23,7 +26,7 @@ function ChildLayout({
 }: {
   activityTitle?: string
   stepLabel?: string
-  /** 헤더 가운데에 activityTitle 대신 넣을 요소 (예: 내 활동의 "서연이의 활동" 제목) */
+  /** 헤더 가운데에 activityTitle 대신 넣을 요소 (예: 내 활동의 "김서연의 활동" 제목) */
   headerCenter?: React.ReactNode
   /** 화면 전체 배경 이미지 URL (예: 내 활동 열기구 배경) */
   backgroundImage?: string
@@ -34,13 +37,28 @@ function ChildLayout({
   children: React.ReactNode
 }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const endSession = useChildSessionStore((state) => state.endSession)
   useWarnBeforeUnload()
 
-  const handleExit = () => {
+  // 서버 세션이 끝난 뒤에만 이 브라우저의 아동 상태·캐시를 지우고 코드 입력 화면으로 돌아간다 (VS-003, API-IAM-09).
+  // 뒤로 가기로 활동 화면이 다시 열리지 않도록 replace 로 이동한다.
+  const finishExit = () => {
     endSession()
     navigate("/child", { replace: true })
+    queryClient.removeQueries({ queryKey: ["child"] })
   }
+
+  const exitMutation = useMutation({
+    mutationFn: exitChildSession,
+    onSuccess: finishExit,
+    onError: (error) => {
+      // 401 은 서버에 아동 세션이 이미 없다는 뜻이다(서버 재시작 등). 다시 해도 같은 401 이라 이미 끝난 것으로 본다.
+      if (error instanceof ChildApiError && error.status === 401) finishExit()
+    },
+  })
+  const showExitError =
+    exitMutation.isError && !(exitMutation.error instanceof ChildApiError && exitMutation.error.status === 401)
 
   return (
     <div
@@ -91,11 +109,12 @@ function ChildLayout({
 
         <button
           type="button"
-          onClick={handleExit}
-          className="flex items-center gap-1.5 rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-4 py-2 text-sm font-medium text-[var(--child-text-muted)] shadow-sm hover:text-[var(--child-danger-fg)]"
+          onClick={() => exitMutation.mutate()}
+          disabled={exitMutation.isPending}
+          className="flex items-center gap-1.5 rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-4 py-2 text-sm font-medium text-[var(--child-text-muted)] shadow-sm hover:text-[var(--child-danger-fg)] disabled:opacity-60"
         >
           <LogOut className="size-4" />
-          사용 종료
+          {exitMutation.isPending ? "끝내고 있어요…" : "사용 종료"}
         </button>
       </header>
 
@@ -107,6 +126,11 @@ function ChildLayout({
       >
         {children}
       </main>
+
+      {/* 종료가 실패하면 끝난 것처럼 보이지 않게 지금 화면에 남기고 다시 하게 한다. */}
+      <StateDialog open={showExitError}>
+        <ErrorState message="사용 종료를 하지 못했어요" onRetry={() => exitMutation.mutate()} />
+      </StateDialog>
     </div>
   )
 }

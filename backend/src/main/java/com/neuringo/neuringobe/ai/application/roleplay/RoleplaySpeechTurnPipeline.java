@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.model.SpeechTranscriptionRequest;
 import com.neuringo.neuringobe.ai.application.model.SynthesizedSpeech;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
+import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnResult.InputFailure;
@@ -17,9 +18,7 @@ import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
 import java.util.Objects;
 
-/**
- * Use through RoleplayTurnRunner/Responder with one deadline started before STT. No storage here.
- */
+/** 같은 요청 기한 안에서 입력 처리·분석·생성·검수·음성 생성을 수행한다. 저장은 호출자가 맡는다. */
 public final class RoleplaySpeechTurnPipeline {
     private static final int MAX_ATTEMPTS = 3;
     private final SpeechToTextProvider stt;
@@ -41,13 +40,15 @@ public final class RoleplaySpeechTurnPipeline {
         this.llm = Objects.requireNonNull(llm);
     }
 
-    /** Context's learner text is replaced; all scenario/state/dialogue values remain the same. */
+    /** 검증된 표준 발화만 교체하고 승인 기준·이전 관찰·진행 상태는 그대로 전달한다. */
     public RoleplayTurnResult execute(
             SpeechTranscriptionRequest audio,
             RoleplayTurnInput context,
+            GoalObservationInput observations,
             RoleplayTurnDeadline deadline) {
         Objects.requireNonNull(audio);
         Objects.requireNonNull(context);
+        Objects.requireNonNull(observations).requireMatches(context);
         Objects.requireNonNull(deadline);
         if (audio.currentAttempt() != 1
                 || !audio.traceContext().turnId().equals(context.learnerTurn().turnId())) {
@@ -56,7 +57,7 @@ public final class RoleplaySpeechTurnPipeline {
         }
         return switch (transcribe(audio, deadline)) {
             case AiCallResult.Success<SpeechTranscription> success ->
-                    processTranscription(success.data(), audio, context, deadline);
+                    processTranscription(success.data(), audio, context, observations, deadline);
             case AiCallResult.Failure<SpeechTranscription> ignored ->
                     rejected(InputFailure.TRANSCRIPTION_FAILED);
         };
@@ -66,6 +67,7 @@ public final class RoleplaySpeechTurnPipeline {
             SpeechTranscription transcription,
             SpeechTranscriptionRequest audio,
             RoleplayTurnInput context,
+            GoalObservationInput observations,
             RoleplayTurnDeadline deadline) {
         if (!transcription.hasSpeech()) return rejected(InputFailure.NO_SPEECH);
         Double confidence = transcription.confidence();
@@ -80,7 +82,8 @@ public final class RoleplaySpeechTurnPipeline {
                             RecoveryReason.INPUT_SAFETY_REJECTED);
             case RoleplayInputProcessor.Invalid ignored -> rejected(InputFailure.INVALID_INPUT);
             case RoleplayInputProcessor.Accepted accepted ->
-                    generateResponse(accepted.canonicalUtterance(), audio, context, deadline);
+                    generateResponse(
+                            accepted.canonicalUtterance(), audio, context, observations, deadline);
         };
     }
 
@@ -88,6 +91,7 @@ public final class RoleplaySpeechTurnPipeline {
             String canonical,
             SpeechTranscriptionRequest audio,
             RoleplayTurnInput context,
+            GoalObservationInput observations,
             RoleplayTurnDeadline deadline) {
         var input =
                 new RoleplayTurnInput(
@@ -96,7 +100,9 @@ public final class RoleplaySpeechTurnPipeline {
                         new RoleplayTurnInput.LearnerTurn(
                                 context.learnerTurn().turnId(), canonical),
                         context.recentDialogue());
-        var steps = new StructuredRoleplayTurnSteps(prompts, llm, audio.traceContext(), input);
+        var steps =
+                new StructuredRoleplayTurnSteps(
+                        prompts, llm, audio.traceContext(), input, observations);
         var result =
                 new RetryingRoleplayTurnExecutor()
                         .execute(input.learnerTurn().turnId(), steps, deadline);

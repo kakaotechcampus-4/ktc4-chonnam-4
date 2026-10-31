@@ -2,16 +2,18 @@ import { useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { hasAccessToken, login } from '../api'
-import { Eye, EyeOff } from 'lucide-react'
+import { MaterialIcon } from '../components/MaterialIcon'
 import { AuthLayout } from '../layout/AuthLayout'
 import { cn } from '@/lib/utils'
 import {
-  errorTextClass,
   fieldLabelClass,
+  hitAreaClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
 } from '../components/styles'
+import { Notice } from '../components/Feedback'
+import { ButtonLabel } from '../components/ButtonLabel'
 
 // 다른 화면이 로그인 화면으로 보낼 때 넘기는 값.
 // from: 보호 화면에서 튕겨 온 경로(로그인 뒤 돌아갈 곳), notice·email: 가입 직후 자동 로그인이 실패했을 때의 안내.
@@ -57,15 +59,12 @@ function LoginPage() {
   return (
     <AuthLayout title="로그인" description="강사 · 기관 계정으로 로그인하세요">
       {notice && (
-        <p
-          role="status"
-          className="mb-5 rounded-[var(--instructor-radius-control)] bg-[var(--instructor-surface-muted)] px-3 py-2 text-sm"
-        >
+        <Notice tone="info" role="status" className="mb-5">
           {notice}
-        </p>
+        </Notice>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label htmlFor="login-email" className={fieldLabelClass}>
           이메일
           <input
@@ -79,7 +78,7 @@ function LoginPage() {
           />
         </label>
         <div className="flex flex-col gap-2">
-          <label htmlFor="login-password" className="text-sm font-semibold">
+          <label htmlFor="login-password" className="text-sm">
             비밀번호
           </label>
           <div className="relative">
@@ -89,16 +88,16 @@ function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={cn(inputClass, 'pr-11')}
+              className={cn(inputClass, 'pr-12')}
             />
             <button
               type="button"
               onClick={() => setIsPasswordVisible((visible) => !visible)}
               aria-label={isPasswordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
               aria-pressed={isPasswordVisible}
-              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-text-muted)]"
+              className={cn('absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--instructor-icon-subtle)]', hitAreaClass)}
             >
-              {isPasswordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              <MaterialIcon name={isPasswordVisible ? 'visibility_off' : 'visibility'} className="size-5" />
             </button>
           </div>
           {/* 비밀번호 재설정은 S1 범위 밖이라 자리만 둔다. */}
@@ -112,30 +111,25 @@ function LoginPage() {
         </div>
 
         {loginMutation.isError && (
-          <p role="alert" className={errorTextClass}>
+          <Notice tone="error" role="alert">
             {loginMutation.error instanceof Error
               ? loginMutation.error.message
               : '로그인에 실패했습니다.'}
-          </p>
+          </Notice>
         )}
 
         <button type="submit" disabled={isSubmitDisabled} className={primaryButtonClass}>
-          {loginMutation.isPending ? '로그인 중...' : '로그인'}
+          <ButtonLabel pending={loginMutation.isPending} label="로그인" pendingLabel="로그인 중..." />
         </button>
       </form>
 
-      <div className="my-5 flex items-center gap-3 text-xs text-[var(--instructor-text-disabled)]">
-        <span className="h-px flex-1 bg-[var(--instructor-border)]" />
-        또는
-        <span className="h-px flex-1 bg-[var(--instructor-border)]" />
-      </div>
-      <button type="button" disabled className={cn(outlineButtonClass, 'w-full')}>
-        기관 SSO 로그인 (향후 제공)
+      <button type="button" disabled className={cn(outlineButtonClass, 'mt-2 w-full')}>
+        기관 계정으로 로그인 (향후 제공)
       </button>
 
-      <div className="mt-6 text-center text-sm text-[var(--instructor-text-muted)]">
+      <div className="mt-6 border-t border-[var(--instructor-border-subtle)] pt-4 text-center text-xs text-[var(--instructor-text-subtle)]">
         계정이 없으신가요?{' '}
-        <Link to="/signup" className="text-[var(--instructor-text)] underline underline-offset-2">
+        <Link to="/signup" className="text-[var(--instructor-link)] underline underline-offset-2">
           가입하기
         </Link>
       </div>

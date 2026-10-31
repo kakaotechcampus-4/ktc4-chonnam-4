@@ -52,6 +52,9 @@ class LocalSecurityMatrixTest {
         String children = classroom + "/children";
         return Stream.of(
                 Arguments.of(HttpMethod.POST, "/api/v1/classrooms"),
+                Arguments.of(
+                        HttpMethod.POST,
+                        "/api/v1/activities/" + UUID.randomUUID() + "/roleplay-sessions"),
                 Arguments.of(HttpMethod.POST, children),
                 Arguments.of(HttpMethod.PUT, classroom),
                 Arguments.of(HttpMethod.PATCH, classroom),

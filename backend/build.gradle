@@ -58,23 +58,14 @@ tasks.named('jacocoTestReport') {
     }
 }
 
-// AI 품질 회귀 측정(docs/ai-quality-measurement.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
-// 예: ./gradlew roleplayEval --args="--provider openai --repeats 3"
-//     (PowerShell 은 '--args=--provider openai --repeats 3' 처럼 통째로 작은따옴표로 감싼다)
-tasks.register('roleplayEval', JavaExec) {
-    group = 'verification'
-    description = '역할극 품질 회귀 세트로 지연·토큰·비용·형식 실패율·PASS율을 잰다'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.neuringo.neuringobe.ai.eval.RoleplayEvalMain'
-    workingDir = projectDir
-    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
-    // backend/.env.local 이 있으면 KEY=VALUE 를 환경변수로 넣는다(.gitignore 의 .env.* 라 커밋되지 않는다).
-    // 셸에 값이 있는 환경변수가 우선한다(빈 값은 없는 것으로 본다). Spring 앱 실행(bootRun)에는 쓰이지 않는다.
-    // 값은 출력하지 않고 읽은 이름만 출력한다. Windows 콘솔에서 깨지지 않게 로그는 영어로 쓴다.
+// backend/.env.local 이 있으면 KEY=VALUE 를 환경변수로 넣는다(.gitignore 의 .env.* 라 커밋되지 않는다).
+// 셸에 값이 있는 환경변수가 우선한다(빈 값은 없는 것으로 본다). Spring 앱 실행(bootRun)에는 쓰이지 않는다.
+// 값은 출력하지 않고 읽은 이름만 출력한다. Windows 콘솔에서 깨지지 않게 로그는 영어로 쓴다.
+def loadEnvLocal = { JavaExec task ->
     def envFile = file('.env.local')
-    doFirst {
+    task.doFirst {
         if (!envFile.isFile()) {
-            logger.lifecycle("roleplayEval: no ${envFile} (using shell environment only)")
+            logger.lifecycle("${task.name}: no ${envFile} (using shell environment only)")
             return
         }
         byte[] bytes = envFile.bytes
@@ -104,8 +95,32 @@ tasks.register('roleplayEval', JavaExec) {
                 loaded << key
             }
         }
-        logger.lifecycle("roleplayEval: .env.local loaded ${loaded}" + (skipped ? ", skipped ${skipped}" : ''))
+        logger.lifecycle("${task.name}: .env.local loaded ${loaded}" + (skipped ? ", skipped ${skipped}" : ''))
     }
+}
+
+// AI 품질 회귀 측정(docs/ai-quality-measurement.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
+// 예: ./gradlew roleplayEval --args="--provider openai --repeats 3"
+//     (PowerShell 은 '--args=--provider openai --repeats 3' 처럼 통째로 작은따옴표로 감싼다)
+tasks.register('roleplayEval', JavaExec) {
+    group = 'verification'
+    description = '역할극 품질 회귀 세트로 지연·토큰·비용·형식 실패율·PASS율을 잰다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.RoleplayEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 시나리오 생성 품질 평가(docs/scenario-generation.md). 예: ./gradlew scenarioEval --args="--provider openai --repeats 3"
+tasks.register('scenarioEval', JavaExec) {
+    group = 'verification'
+    description = '시나리오 생성 프롬프트를 고정 강사 입력으로 반복 실행해 계약 검사 통과율·지연·비용을 잰다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ScenarioEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
 }
 
 spotless {

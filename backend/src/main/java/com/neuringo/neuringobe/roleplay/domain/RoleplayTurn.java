@@ -39,6 +39,27 @@ public class RoleplayTurn {
     @Column(name = "support_level", nullable = false, length = 2)
     private String supportLevel;
 
+    @Column(name = "response_type", length = 32)
+    private String responseType;
+
+    @Column(name = "strategy_used", length = 32)
+    private String strategyUsed;
+
+    @Column(name = "input_micro_goal_id")
+    private UUID inputMicroGoalId;
+
+    @Column(name = "input_support_level", length = 2)
+    private String inputSupportLevel;
+
+    @Column(name = "input_support_turn")
+    private Integer inputSupportTurn;
+
+    @Column(name = "input_prompt_count")
+    private Integer inputPromptCount;
+
+    @Column(name = "input_answer_revealed")
+    private Boolean inputAnswerRevealed;
+
     @Column(name = "response_text", nullable = false, columnDefinition = "text")
     private String responseText;
 
@@ -63,6 +84,16 @@ public class RoleplayTurn {
         candidateId = command.candidateId();
         microGoalId = command.microGoalId();
         supportLevel = command.supportLevel();
+        responseType = command.responseType();
+        strategyUsed = command.strategyUsed();
+        var input = command.inputContext();
+        if (input != null) {
+            inputMicroGoalId = input.microGoalId();
+            inputSupportLevel = input.supportLevel();
+            inputSupportTurn = input.supportTurn();
+            inputPromptCount = input.promptCount();
+            inputAnswerRevealed = input.answerRevealed();
+        }
         responseText = command.responseText();
         canonicalUtterance = command.canonicalUtterance();
         checkpointVersion = version;

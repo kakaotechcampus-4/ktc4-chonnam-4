@@ -36,6 +36,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @IntegrationTest
 @TestPropertySource(properties = "roleplay.retention.cleanup-enabled=false")
@@ -47,6 +49,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
     @Autowired RoleplayCanonicalRetentionService retention;
     @Autowired RoleplayCheckpointStore store;
     @Autowired RoleplayRequestGuard guard;
+    @Autowired PlatformTransactionManager transactions;
 
     @BeforeEach
     void fixedClock() {
@@ -77,7 +80,141 @@ class RoleplayCanonicalRetentionIntegrationTest {
                                 Integer.class,
                                 f.session))
                 .isEqualTo(1);
+        Long version =
+                jdbc.queryForObject(
+                        "select row_version from roleplay_session where session_id=?",
+                        Long.class,
+                        f.session);
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
         assertThat(retention.completeNormallyAndDelete(f.session, f.child, f.activity)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_activity_at from roleplay_session where session_id=?",
+                                Timestamp.class,
+                                f.session))
+                .isEqualTo(Timestamp.from(NOW));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session))
+                .isEqualTo(version);
+    }
+
+    @Test
+    void parentCompletionTransactionRollsBackAndCanRetryWithoutPartialDeletion() {
+        var f = fixture();
+        var before =
+                jdbc.queryForMap(
+                        "select status, completed_at, reward_issued_at from activity where activity_id=?",
+                        f.activity);
+        var transaction = new TransactionTemplate(transactions);
+
+        assertThatThrownBy(
+                        () ->
+                                transaction.executeWithoutResult(
+                                        ignored -> {
+                                            stageActivityCompletionFixture(f);
+                                            assertThat(
+                                                            retention.completeNormallyAndDelete(
+                                                                    f.session, f.child, f.activity))
+                                                    .isEqualTo(1);
+                                            assertThat(canonical(f)).isNull();
+                                            throw new IllegalStateException(
+                                                    "synthetic parent completion failure");
+                                        }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("synthetic parent completion failure");
+        assertThat(
+                        jdbc.queryForMap(
+                                "select status, completed_at, reward_issued_at from activity where activity_id=?",
+                                f.activity))
+                .isEqualTo(before);
+        assertThat(canonical(f)).isEqualTo("synthetic canonical input");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from roleplay_session where session_id=?",
+                                String.class,
+                                f.session))
+                .isEqualTo("IN_PROGRESS");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session))
+                .isEqualTo(1L);
+
+        transaction.executeWithoutResult(
+                ignored -> {
+                    stageActivityCompletionFixture(f);
+                    assertThat(retention.completeNormallyAndDelete(f.session, f.child, f.activity))
+                            .isEqualTo(1);
+                });
+        assertThat(canonical(f)).isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from activity where activity_id=?",
+                                String.class,
+                                f.activity))
+                .isEqualTo("COMPLETED");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select completed_at = ? and reward_issued_at = ? from activity where activity_id=?",
+                                Boolean.class,
+                                Timestamp.from(NOW),
+                                Timestamp.from(NOW),
+                                f.activity))
+                .isTrue();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select status from roleplay_session where session_id=?",
+                                String.class,
+                                f.session))
+                .isEqualTo("COMPLETED");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session))
+                .isEqualTo(2L);
+    }
+
+    @Test
+    void concurrentNormalCompletionsEraseOnceAndAdvanceSessionVersionOnce() throws Exception {
+        var f = fixture();
+        var start = new CountDownLatch(1);
+        try (var threads = Executors.newFixedThreadPool(2)) {
+            var first =
+                    threads.submit(
+                            () -> {
+                                start.await();
+                                return retention.completeNormallyAndDelete(
+                                        f.session, f.child, f.activity);
+                            });
+            var other =
+                    threads.submit(
+                            () -> {
+                                start.await();
+                                return retention.completeNormallyAndDelete(
+                                        f.session, f.child, f.activity);
+                            });
+            start.countDown();
+            assertThat(List.of(first.get(5, TimeUnit.SECONDS), other.get(5, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(1, 0);
+        }
+        assertThat(canonical(f)).isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
+                                Long.class,
+                                f.session))
+                .isEqualTo(2L);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_turn_number from roleplay_session where session_id=?",
+                                Integer.class,
+                                f.session))
+                .isEqualTo(1);
     }
 
     @Test
@@ -280,6 +417,21 @@ class RoleplayCanonicalRetentionIntegrationTest {
                                 Long.class,
                                 f.session))
                 .isEqualTo(1);
+    }
+
+    /** 완료 서비스 대신 활동 상태·완료 시각·스탬프 지급 시각을 직접 바꿔 테스트를 준비한다. */
+    private void stageActivityCompletionFixture(Fixture f) {
+        jdbc.queryForObject(
+                "select activity_id from activity where activity_id=? for update",
+                UUID.class,
+                f.activity);
+        jdbc.queryForObject(
+                "select child_id from child where child_id=? for update", UUID.class, f.child);
+        jdbc.update(
+                "update activity set status='COMPLETED', completed_at=?, reward_issued_at=? where activity_id=?",
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                f.activity);
     }
 
     private String canonical(Fixture f) {

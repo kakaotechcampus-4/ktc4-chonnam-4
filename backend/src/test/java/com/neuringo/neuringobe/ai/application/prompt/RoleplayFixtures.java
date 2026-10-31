@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.prompt;
 
 import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +21,17 @@ final class RoleplayFixtures {
     static final UUID SESSION_ID = UUID.fromString("00000000-0000-0000-0000-0000000000e4");
 
     private RoleplayFixtures() {}
+
+    static String bindAnalysis(String content, UUID analysisId) {
+        return analysisId == null
+                ? content
+                : content.replace(ANALYSIS_ID.toString(), analysisId.toString());
+    }
+
+    static GoalObservationOutput.Review review(UUID analysisId) {
+        return new GoalObservationOutput.Review(
+                GoalObservationOutput.EVALUATION_VERSION, analysisId, true, true);
+    }
 
     static RoleplayTurnInput input(String utterance) {
         return new RoleplayTurnInput(
@@ -78,9 +90,12 @@ final class RoleplayFixtures {
                  "primary_gap":{"code":"MISSING_EMOTION","description":"감정을 말하지 않았다."},
                  "next_strategy":{"type":"%s","target_micro_goal_id":"%s",
                    "purpose":"감정을 말하게 돕는다.","recommended_support_level":"%s"},
-                 "analysis_confidence":0.9}
+                 "analysis_confidence":0.9,
+                 "goal_observation":{"schema_version":"analysis-result/v2","analysis_id":"%s",
+                   "observations":[{"reference":{"turn_id":"%s","micro_goal_id":"%s","criterion_reference":"test-evidence:%s:0"},"status":"NOT_EXPRESSED"}],
+                   "activity_goal":{"decision":"IN_PROGRESS","basis":[]}}}
                 """
-                .formatted(TURN_ID, strategy, target, level);
+                .formatted(TURN_ID, strategy, target, level, ANALYSIS_ID, TURN_ID, target, target);
     }
 
     static String candidateJson(String text, String responseType) {
@@ -104,7 +119,8 @@ final class RoleplayFixtures {
                  "checks":{"format_valid":true,"safety_valid":true},
                  "failure_codes":%s,"critical_failure_count":%d,
                  "decision":"%s","retry_target":%s,"safe_to_send":%s,
-                 "revision_instruction":%s}
+                 "revision_instruction":%s,
+                 "goal_observation_review":{"schema_version":"evaluation-result/v2","analysis_id":"%s","observations_supported":true,"activity_goal_supported":true}}
                 """
                 .formatted(
                         CANDIDATE_ID,
@@ -113,6 +129,7 @@ final class RoleplayFixtures {
                         decision,
                         retryTarget == null ? "null" : "\"" + retryTarget + "\"",
                         safe,
-                        revision);
+                        revision,
+                        ANALYSIS_ID);
     }
 }
