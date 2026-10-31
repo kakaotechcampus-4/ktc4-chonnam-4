@@ -40,7 +40,24 @@ public record RoleplayTurnInput(
             String scenarioLevel,
             List<String> scenarioFacts,
             List<String> prohibitedInferences,
-            List<MicroGoal> microGoals) {
+            List<MicroGoal> microGoals,
+            AiCharacter aiCharacter) {
+
+        /** AI 가 맡은 캐릭터가 없는(안내자) 시나리오. */
+        public Scenario(
+                String learningGoal,
+                String scenarioLevel,
+                List<String> scenarioFacts,
+                List<String> prohibitedInferences,
+                List<MicroGoal> microGoals) {
+            this(
+                    learningGoal,
+                    scenarioLevel,
+                    scenarioFacts,
+                    prohibitedInferences,
+                    microGoals,
+                    null);
+        }
 
         public Scenario {
             requireText(learningGoal, "learningGoal");
@@ -60,6 +77,17 @@ public record RoleplayTurnInput(
             if (microGoals.isEmpty()) {
                 throw new IllegalArgumentException("microGoals must not be empty");
             }
+        }
+    }
+
+    /**
+     * AI 가 1인칭으로 연기하는 등장인물(시나리오의 ai_role). personality·speechStyle 이 없는 예전 시나리오도 있어 null 을 허용한다.
+     */
+    public record AiCharacter(String id, String role, String personality, String speechStyle) {
+
+        public AiCharacter {
+            requireText(id, "aiCharacter.id");
+            requireText(role, "aiCharacter.role");
         }
     }
 

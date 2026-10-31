@@ -172,7 +172,8 @@ public final class RoleplayPromptFactory {
                         analysis,
                         failedIds,
                         failedTexts,
-                        MAX_RESPONSE_LENGTH));
+                        MAX_RESPONSE_LENGTH,
+                        input.scenario().aiCharacter() != null));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */
@@ -243,6 +244,15 @@ public final class RoleplayPromptFactory {
         scenario.put("scenario_level", input.scenario().scenarioLevel());
         scenario.put("scenario_facts", input.scenario().scenarioFacts());
         scenario.put("prohibited_inferences", input.scenario().prohibitedInferences());
+        RoleplayTurnInput.AiCharacter character = input.scenario().aiCharacter();
+        if (character != null) {
+            Map<String, Object> aiCharacter = new LinkedHashMap<>();
+            aiCharacter.put("id", character.id());
+            aiCharacter.put("role", character.role());
+            aiCharacter.put("personality", character.personality());
+            aiCharacter.put("speech_style", character.speechStyle());
+            scenario.put("ai_character", aiCharacter);
+        }
         scenario.put(
                 "micro_goals",
                 input.scenario().microGoals().stream()

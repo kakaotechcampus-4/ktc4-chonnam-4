@@ -215,9 +215,40 @@ class ScenarioPromptFactoryTest {
         assertFailure("L1", json -> json.put("ai_role", "LEARNER"), "AI_ROLE_INVALID");
         assertFailure("L1", json -> json.put("ai_role", "TEACHER"), "AI_ROLE_INVALID");
 
-        GeneratedScenario asCharacter =
-                parse("L1", scenario(json -> json.put("ai_role", "FRIEND")));
+        assertFailure("L1", json -> json.put("ai_role", "FRIEND"), "CHARACTERS_INVALID");
+
+        GeneratedScenario asCharacter = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
         assertThat(asCharacter.aiRole()).isEqualTo("FRIEND");
+        assertThat(asCharacter.characters().get(1).speechStyle()).isEqualTo("반말, 짧은 문장");
+    }
+
+    @Test
+    void characterOpeningLinesNeedNotAskButAskAtMostOnce() {
+        GeneratedScenario parsed = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
+        assertThat(parsed.startingQuestions().get("S0")).isEqualTo("(훌쩍이며) 흐윽…");
+
+        assertFailure(
+                "L1",
+                json -> {
+                    asFriend(json);
+                    questions(json).put("S1", "아야… 넘어졌어? 너 봤어?");
+                },
+                "QUESTION_FORMAT_INVALID");
+        assertFailure(
+                "L1", json -> questions(json).put("S0", "(훌쩍이며) 흐윽…"), "QUESTION_FORMAT_INVALID");
+    }
+
+    @Test
+    void approvedCharacterScenarioCarriesPersonaIntoRoleplay() {
+        GeneratedScenario parsed = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
+        Map<String, UUID> ids = new LinkedHashMap<>();
+        parsed.microGoals().forEach(goal -> ids.put(goal.id(), UUID.randomUUID()));
+
+        RoleplayTurnInput.Scenario roleplay =
+                ScenarioPromptFactory.toRoleplayScenario(parsed, "친구의 감정을 이해하고 공감하기", ids);
+
+        assertThat(roleplay.aiCharacter().id()).isEqualTo("FRIEND");
+        assertThat(roleplay.aiCharacter().personality()).isEqualTo("소심하고 잘 우는 편");
     }
 
     @Test
@@ -404,6 +435,16 @@ class ScenarioPromptFactoryTest {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> goals(Map<String, Object> json) {
         return (List<Map<String, Object>>) json.get("micro_goals");
+    }
+
+    /** AI 가 넘어진 친구를 1인칭으로 연기하는 시나리오로 바꾼다. */
+    private static void asFriend(Map<String, Object> json) {
+        json.put("ai_role", "FRIEND");
+        characters(json).get(1).put("personality", "소심하고 잘 우는 편");
+        characters(json).get(1).put("speech_style", "반말, 짧은 문장");
+        questions(json).put("S0", "(훌쩍이며) 흐윽…");
+        questions(json).put("S1", "(무릎을 감싸 쥐며) 아야… 나 방금 미끄럼틀 앞에서…");
+        questions(json).put("S2", "(울먹이며) 넘어진 건지… 미끄러진 건지… 정신이 없어.");
     }
 
     @SuppressWarnings("unchecked")

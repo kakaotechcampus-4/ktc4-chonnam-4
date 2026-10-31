@@ -187,7 +187,8 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                                                             g.description(),
                                                             g.evidence(),
                                                             statuses.get(g.id())))
-                                    .toList());
+                                    .toList(),
+                            aiCharacter(content.get("ai_role"), content.get("characters")));
             if (goals.stream().noneMatch(g -> g.id().equals(state.currentMicroGoalId())))
                 return Optional.empty();
 
@@ -351,6 +352,28 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         owner.currentGoal(),
                         owner.support()),
                 responses);
+    }
+
+    /** ai_role 이 등장인물 id 면 그 인물을 AI 가 연기한다. NARRATOR·빈 값이면 안내자 시나리오다. */
+    private RoleplayTurnInput.AiCharacter aiCharacter(Object aiRole, Object characters) {
+        if (aiRole == null || characters == null) return null;
+        String id = aiRole.toString();
+        for (var character : json.readTree(characters.toString())) {
+            if (!id.equals(text(character, "id"))) continue;
+            return new RoleplayTurnInput.AiCharacter(
+                    id,
+                    text(character, "role"),
+                    text(character, "personality"),
+                    text(character, "speech_style"));
+        }
+        return null;
+    }
+
+    private static String text(tools.jackson.databind.JsonNode node, String field) {
+        var value = node.get(field);
+        return value == null || !value.isString() || value.asString().isBlank()
+                ? null
+                : value.asString();
     }
 
     private List<String> strings(String value) {

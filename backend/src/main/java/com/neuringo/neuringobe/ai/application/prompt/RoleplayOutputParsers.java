@@ -89,7 +89,8 @@ final class RoleplayOutputParsers {
             AnalysisResult analysis,
             List<UUID> expectedFailedCandidateIds,
             Set<String> failedCandidateTexts,
-            int maxTextLength) {
+            int maxTextLength,
+            boolean characterVoice) {
         LlmOutputParser<CandidateResponse> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, CandidateResponse.class);
         Set<String> normalizedFailedTexts = new HashSet<>();
@@ -120,7 +121,11 @@ final class RoleplayOutputParsers {
             String text = result.text().strip();
             check(text.length() <= maxTextLength, "text is too long");
             long questionMarks = text.chars().filter(ch -> ch == '?').count();
-            if (RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
+            if (characterVoice
+                    && RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
+                // 캐릭터 대사는 묻지 않고 반응만으로 유도할 수 있다. 묻는다면 한 번만.
+                check(questionMarks <= 1, "a character line must not ask more than one question");
+            } else if (RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
                 check(questionMarks == 1, "a question response must contain exactly one question");
             } else {
                 check(questionMarks == 0, "a non-question response must not ask a question");
