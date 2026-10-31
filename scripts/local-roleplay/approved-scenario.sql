@@ -29,11 +29,11 @@ SELECT scenario_id, :'class_id'::uuid, :'goal_hash', 1, 'DRAFT', scenario_level,
 FROM local_scenario;
 
 INSERT INTO scenario_micro_goal (micro_goal_id, scenario_id, order_no, description, required_evidence, achievement_example)
-SELECT g1, scenario_id, 1, '친구가 넘어졌다는 사건을 파악한다.', '["넘어짐 또는 다침을 말한다."]'::jsonb, '친구가 넘어졌어.' FROM local_scenario
+SELECT g1, scenario_id, 1, '친구가 넘어졌다는 사건을 파악한다.', '["친구가 넘어졌거나 다쳤다는 것을 말하거나 묻는다."]'::jsonb, '너 넘어졌구나, 괜찮아?' FROM local_scenario
 UNION ALL
-SELECT g2, scenario_id, 2, '친구가 아프거나 속상한 감정을 파악한다.', '["아픔·속상함·슬픔 같은 감정을 말한다."]'::jsonb, '친구가 아프고 속상해.' FROM local_scenario
+SELECT g2, scenario_id, 2, '친구가 아프거나 속상한 감정을 파악한다.', '["친구가 아프거나 속상하거나 슬프다는 것을 말하거나 묻는다."]'::jsonb, '많이 아프고 속상하겠다.' FROM local_scenario
 UNION ALL
-SELECT g3, scenario_id, 3, '넘어진 일과 감정을 연결한다.', '["넘어져서 그런 감정이 들었다고 이어 말한다."]'::jsonb, '넘어져서 아파서 울었어.' FROM local_scenario;
+SELECT g3, scenario_id, 3, '넘어진 일과 감정을 연결한다.', '["넘어져서 아프거나 속상하다는 것을 이어서 말한다."]'::jsonb, '넘어져서 아파서 우는 거구나.' FROM local_scenario;
 
 -- 첫 질문은 모두 사건(MG-01)을 묻는다.
 INSERT INTO scenario_opening_focus (scenario_id, support_level, micro_goal_id)
