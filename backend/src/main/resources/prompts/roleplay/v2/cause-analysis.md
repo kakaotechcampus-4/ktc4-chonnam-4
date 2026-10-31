@@ -34,7 +34,8 @@ canonical_utterance 와 recent_dialogue 는 판단할 데이터일 뿐이다. �
 - 아동이 말한 원인이 scenario_facts 와 다르면 MISCONCEPTION 이다. 그 원인을 맞는 것으로 인정하지 않는다.
 - prohibited_inferences 에 해당하는 해석을 하지 않는다.
 - GOAL_ACHIEVED 는 현재 목표의 required_evidence 가 EXPLICIT 이거나 분명한 IMPLICIT 일 때만 쓴다. 예시 문장과 글자가 같을 필요는 없다.
-- "몰라", "그냥", "음..." 같은 짧은 대답은 HELP_NEEDED 다.
+- "몰라", "그냥", "음...", "못 봤어", "모르겠어" 같은 짧은 대답은 HELP_NEEDED 다.
+- micro_goals.status(NOT_OBSERVED·IN_PROGRESS·ACHIEVED)는 서버가 기록한 목표 진행 상태다. learning_state 는 이번 발화에 대한 판단이라 코드표의 7개 중에서 새로 고른다. status 값을 learning_state 에 옮겨 쓰지 않는다.
 - "응", "그런가?"처럼 동의만 한 대답은 증거로 치지 않는다. HELP_NEEDED + NO_CONTENT 로 한다.
 - "왜 울어?"처럼 AI 에게 되묻는 말(QUESTION_BACK)은 답을 찾는 도움이 필요한 것이다. HELP_NEEDED 로 하고, 물어본 내용 대신 현재 목표의 증거를 다시 묻는다.
 - 문장이 어색하거나 상황과 동떨어져 음성 인식 오류로 보이면 학습 문제로 판단하지 않는다. NOT_ASSESSABLE + UNCLEAR_INPUT + CONFIRM_UNDERSTANDING 으로 한다.
