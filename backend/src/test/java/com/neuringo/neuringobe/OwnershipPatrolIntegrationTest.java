@@ -82,6 +82,10 @@ class OwnershipPatrolIntegrationTest {
                             "ACTIVITY_NOT_FOUND"),
                     Map.entry("GET /api/v1/activities/{activityId}/status", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
+                            "GET /api/v1/activities/{activityId}/scenario-candidate",
+                            "ACTIVITY_NOT_FOUND"),
+                    Map.entry("PUT /api/v1/activities/{activityId}/scenario", "ACTIVITY_NOT_FOUND"),
+                    Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
                     // 목록: B 에게 A 의 학급이 보이지 않는다(아래 listsOnlyOwnClassrooms).
@@ -256,6 +260,21 @@ class OwnershipPatrolIntegrationTest {
                         "GET /api/v1/activities/{activityId}/status",
                         "/api/v1/activities/%s/status",
                         Owned::activityId),
+                get(
+                        "GET /api/v1/activities/{activityId}/scenario-candidate",
+                        "/api/v1/activities/%s/scenario-candidate",
+                        Owned::activityId),
+                Arguments.of(
+                        "PUT /api/v1/activities/{activityId}/scenario",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.put()
+                                                        .uri(
+                                                                "/api/v1/activities/%s/scenario"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"scenarioId\":\"" + UUID.randomUUID() + "\"}")),
                 get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                         "/api/v1/activity-quiz-items/%s/attempt",

@@ -7,9 +7,13 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-/** 승인 후보 조회에 필요한 시나리오 버전과 재사용 조건이다. */
+/** 역할극 시나리오 한 판. 판정이 끝난 판(승인·고쳐 와·반려)은 DB 트리거가 바꾸지 못하게 막는다. */
 @Entity
 @Table(name = "scenario")
 public class Scenario {
@@ -33,6 +37,26 @@ public class Scenario {
 
     @Column(name = "title", nullable = false)
     private String title;
+
+    @Column(name = "summary")
+    private String summary;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "characters", columnDefinition = "jsonb", nullable = false)
+    private List<Map<String, Object>> characters;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "scenario_facts", columnDefinition = "jsonb", nullable = false)
+    private List<String> scenarioFacts;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "prohibited_inferences", columnDefinition = "jsonb", nullable = false)
+    private List<String> prohibitedInferences;
+
+    // 지원 단계(S0·S1·S2)별 시작 질문.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "opening_prompts", columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> openingPrompts;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -61,6 +85,30 @@ public class Scenario {
 
     public String getTitle() {
         return title;
+    }
+
+    public int getScenarioVersion() {
+        return scenarioVersion;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public List<Map<String, Object>> getCharacters() {
+        return characters;
+    }
+
+    public List<String> getScenarioFacts() {
+        return scenarioFacts;
+    }
+
+    public List<String> getProhibitedInferences() {
+        return prohibitedInferences;
+    }
+
+    public Map<String, Object> getOpeningPrompts() {
+        return openingPrompts;
     }
 
     public Instant getCreatedAt() {

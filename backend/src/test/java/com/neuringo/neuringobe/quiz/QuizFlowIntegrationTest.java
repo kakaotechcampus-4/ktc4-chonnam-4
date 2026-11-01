@@ -1178,6 +1178,179 @@ class QuizFlowIntegrationTest {
         assertThat(completionEvents.forActivity(activityId)).hasSize(1);
     }
 
+    @Test
+    void ownerInstructorPagesThroughReuseCandidatesNewestApprovalFirst() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "후보 넘기기"));
+        completeAssignedQuiz(activityId, true);
+        // 작은 목표는 초안일 때만 넣을 수 있다.
+        UUID older = saveScenarioForActivity(activityId, "DRAFT", "L3");
+        UUID microGoal = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO scenario_micro_goal (micro_goal_id, scenario_id, order_no, description, required_evidence) VALUES (?, ?, 1, '감정 말하기', '[\"슬프다고 말함\"]'::jsonb)",
+                microGoal,
+                older);
+        approve(older, Instant.parse("2026-10-01T00:00:00Z"));
+        UUID newer = saveScenarioForActivity(activityId, "DRAFT", "L3");
+        approve(newer, Instant.parse("2026-10-02T00:00:00Z"));
+
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scenario.scenarioId").value(newer.toString()))
+                .andExpect(jsonPath("$.data.scenario.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .param("after", newer.toString())
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scenario.scenarioId").value(older.toString()))
+                .andExpect(
+                        jsonPath("$.data.scenario.microGoals[0].microGoalId")
+                                .value(microGoal.toString()))
+                .andExpect(
+                        jsonPath("$.data.scenario.microGoals[0].requiredEvidence[0]")
+                                .value("슬프다고 말함"))
+                // 다른 아동이 언제·몇 번 썼는지는 내보내지 않는다.
+                .andExpect(jsonPath("$.data.scenario.lastUsedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+        // 그사이 후보에서 빠진 after 를 보내면 처음부터 보여 준다.
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .param("after", UUID.randomUUID().toString())
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(jsonPath("$.data.scenario.scenarioId").value(newer.toString()));
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+    }
+
+    @Test
+    void reuseCandidateIsEmptyWhenNothingMatches() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "후보 없음"));
+        completeAssignedQuiz(activityId, true);
+        saveScenarioForActivity(activityId, "APPROVED", "L1");
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scenario").doesNotExist())
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void approvingCandidateAttachesItOnceAndRoleplayCanStart() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "후보 승인"));
+        completeAssignedQuiz(activityId, true);
+        UUID chosen = saveScenarioForActivity(activityId, "APPROVED", "L3");
+        UUID other = saveScenarioForActivity(activityId, "APPROVED", "L3");
+
+        for (int i = 0; i < 2; i++) {
+            putScenario(activityId, chosen, "teacher-quiz")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.scenarioId").value(chosen.toString()));
+        }
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isEqualTo(chosen);
+        assertThat(
+                        roleplayStarts
+                                .requireForActivity(activityId, childAuthentication())
+                                .scenario()
+                                .scenarioId())
+                .isEqualTo(chosen);
+        putScenario(activityId, other, "teacher-quiz")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_ALREADY_ATTACHED"));
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_ALREADY_ATTACHED"));
+    }
+
+    @ParameterizedTest(name = "붙일 수 없는 후보: {0}")
+    @ValueSource(strings = {"DRAFT", "REJECTED", "LEVEL", "USED", "MISSING"})
+    void approvingNonCandidateIsRejectedWithoutAttaching(String reason) throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "후보 아님"));
+        completeAssignedQuiz(activityId, true);
+        UUID scenarioId =
+                switch (reason) {
+                    case "DRAFT" -> saveScenarioForActivity(activityId, "DRAFT", "L3");
+                    case "REJECTED" -> saveScenarioForActivity(activityId, "REJECTED", "L3");
+                    case "LEVEL" -> saveScenarioForActivity(activityId, "APPROVED", "L1");
+                    case "MISSING" -> UUID.randomUUID();
+                    default -> {
+                        UUID used = saveScenarioForActivity(activityId, "APPROVED", "L3");
+                        Activity previous =
+                                new Activity(
+                                        UUID.randomUUID(),
+                                        childId,
+                                        ActivityType.ROLEPLAY,
+                                        activities.findById(activityId).orElseThrow().getGoalId(),
+                                        UUID.randomUUID(),
+                                        Instant.now());
+                        activities.saveAndFlush(previous);
+                        jdbc.update(
+                                "UPDATE activity SET scenario_id = ?, status = 'COMPLETED' WHERE activity_id = ?",
+                                used,
+                                previous.getActivityId());
+                        yield used;
+                    }
+                };
+        putScenario(activityId, scenarioId, "teacher-quiz")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_NOT_REUSABLE"));
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+    }
+
+    @Test
+    void onlyOwningInstructorSeesAndApprovesCandidatesAfterQuiz() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "후보 권한"));
+        UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
+        // 퀴즈로 난이도가 정해지기 전에는 후보를 고를 수 없다.
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("INITIAL_DIFFICULTY_NOT_READY"));
+        completeAssignedQuiz(activityId, true);
+
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .with(TestInstructors.instructor("teacher-other")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("ACTIVITY_NOT_FOUND"));
+        putScenario(activityId, scenarioId, "teacher-other").andExpect(status().isNotFound());
+        mvc.perform(
+                        get("/api/v1/activities/{id}/scenario-candidate", activityId)
+                                .session(childSession))
+                .andExpect(status().isForbidden());
+        mvc.perform(
+                        put("/api/v1/activities/{id}/scenario", activityId)
+                                .session(childSession)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"scenarioId\":\"" + scenarioId + "\"}"))
+                .andExpect(status().isForbidden());
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions putScenario(
+            UUID activityId, UUID scenarioId, String instructor) throws Exception {
+        return mvc.perform(
+                put("/api/v1/activities/{id}/scenario", activityId)
+                        .with(TestInstructors.instructor(instructor))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scenarioId\":\"" + scenarioId + "\"}"));
+    }
+
+    /** 승인 시각을 정해 승인한다. 같은 시각에 넣은 후보끼리의 순서를 고정하려고 쓴다. */
+    private void approve(UUID scenarioId, Instant approvedAt) {
+        jdbc.update(
+                "UPDATE scenario SET status = 'APPROVED', approved_at = ? WHERE scenario_id = ?",
+                java.sql.Timestamp.from(approvedAt),
+                scenarioId);
+    }
+
     @ParameterizedTest(name = "승인 후보 제외 조건: {0}")
     @ValueSource(
             strings = {
