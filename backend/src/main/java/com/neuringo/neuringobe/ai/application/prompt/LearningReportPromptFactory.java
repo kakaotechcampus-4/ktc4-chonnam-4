@@ -17,13 +17,13 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 학습 리포트의 두 호출(초안 작성 → 초안 평가) 프롬프트를 만든다(03 VS-014).
  *
- * <p>시스템 프롬프트는 classpath 의 prompts/report/ 아래 초안 v2·평가 v3 파일이고, 사용자 메시지는 입력 JSON 하나다. 추적 식별자와 아동
+ * <p>시스템 프롬프트는 classpath 의 prompts/report/ 아래 초안 v3·평가 v4 파일이고, 사용자 메시지는 입력 JSON 하나다. 추적 식별자와 아동
  * 이름은 넣지 않는다. 재시도 횟수와 호출 순서는 RetryingLearningReportGenerator 가 정한다.
  */
 public final class LearningReportPromptFactory {
 
-    public static final String GENERATION_PROMPT_VERSION = "report-generation/v2";
-    public static final String REVIEW_PROMPT_VERSION = "report-review/v3";
+    public static final String GENERATION_PROMPT_VERSION = "report-generation/v3";
+    public static final String REVIEW_PROMPT_VERSION = "report-review/v4";
 
     public static final String DRAFT_SCHEMA_VERSION = "report-draft/v1";
     public static final String REVIEW_SCHEMA_VERSION = "report-review/v2";
@@ -36,8 +36,8 @@ public final class LearningReportPromptFactory {
     public LearningReportPromptFactory(ObjectMapper objectMapper, ReportLimits limits) {
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.limits = Objects.requireNonNull(limits);
-        this.generationSystemPrompt = PromptTemplates.load("report/v2/report-generation.md");
-        this.reviewSystemPrompt = PromptTemplates.load("report/v3/report-review.md");
+        this.generationSystemPrompt = PromptTemplates.load("report/v3/report-generation.md");
+        this.reviewSystemPrompt = PromptTemplates.load("report/v4/report-review.md");
     }
 
     public ReportLimits limits() {

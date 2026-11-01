@@ -41,7 +41,7 @@ class LearningReportPromptFactoryTest {
         JsonNode message = objectMapper.readTree(request.userPrompt());
 
         assertThat(request.operation()).isEqualTo(AiOperation.REPORT_GENERATION);
-        assertThat(request.promptVersion()).isEqualTo("report-generation/v2");
+        assertThat(request.promptVersion()).isEqualTo("report-generation/v3");
         assertThat(request.systemPrompt()).contains("리포트 작성 에이전트");
         assertThat(message.get("evidence")).hasSize(4);
         assertThat(message.get("evidence").get(3).get("kind").asString()).isEqualTo("TECHNICAL");

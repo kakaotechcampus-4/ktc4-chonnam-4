@@ -155,12 +155,14 @@ public final class RoleplayGoalSummarizer {
                     case S3 -> "답을 들은 뒤";
                 };
         // 기준별 관찰이 있으면 "무엇을" 말했는지가 드러나게 기준 설명으로 쓴다. 말하지 않은 기준은 내용이 없어 쓰지 않는다.
+        // 기준 설명은 따옴표로 묶는다. "민준이가 속상하다는 감정"처럼 등장인물로 시작하는 기준을 그대로 이으면 등장인물이 말한
+        // 사람(주어)으로 읽혀, 리포트 초안이 "민준이는 … 말했어요"라고 쓴 적이 있다(2026-11-01 로컬 실행).
         List<String> criteria =
                 turn.observations().stream()
                         .filter(o -> o.status() != CriterionObservation.Status.NOT_EXPRESSED)
                         .map(
                                 o ->
-                                        objectParticle(o.criterion())
+                                        quotedObject(o.criterion())
                                                 + " "
                                                 + criterionPhrase(o.status(), turn.inputSupport()))
                         .toList();
@@ -192,13 +194,19 @@ public final class RoleplayGoalSummarizer {
         };
     }
 
-    /** 받침이 있으면 "을", 없으면 "를". 한글로 끝나지 않으면 "을(를)". */
-    static String objectParticle(String noun) {
+    /**
+     * 따옴표로 묶고 목적격 조사를 붙인다. 조사는 따옴표 안 마지막 글자가 받침이 있으면 "을", 없으면 "를", 한글이 아니면 "을(를)"이다. 예: '넘어져서 아프다는
+     * 이유'를
+     */
+    static String quotedObject(String noun) {
         char last = noun.charAt(noun.length() - 1);
+        String particle;
         if (last < '가' || last > '힣') {
-            return noun + "을(를)";
+            particle = "을(를)";
+        } else {
+            particle = (last - '가') % 28 == 0 ? "를" : "을";
         }
-        return noun + ((last - '가') % 28 == 0 ? "를" : "을");
+        return "'" + noun + "'" + particle;
     }
 
     static String supportName(SupportLevel level) {

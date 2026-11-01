@@ -65,6 +65,8 @@ $settings = @{
     # 추론 모델은 추론 토큰도 2,000 상한에 들어가 JSON 이 잘린다. 지난 실측처럼 haiku55 는 추론을 끈 값을 쓴다.
     AI_REASONING_EFFORT = $envFile["MODEL_HAIKU55_REASONING"]
     NEURINGO_AI_CALL_LOG = "true"
+    # 모델 출력이 서버 검사(80자·물음표 수·전략 일치 등)에 걸리면 어느 검사인지 남긴다. 모델 출력 글은 남기지 않는다.
+    LOGGING_LEVEL_COM_NEURINGO_NEURINGOBE_AI_APPLICATION_STRUCTURED = "DEBUG"
     AI_REPORT_GENERATION_BASE_URL = $envFile["MODEL_HAIKU55_URL"]
     AI_REPORT_GENERATION_MODEL = $envFile["MODEL_HAIKU55_ID"]
     AI_REPORT_GENERATION_REASONING_EFFORT = $envFile["MODEL_HAIKU55_REASONING"]

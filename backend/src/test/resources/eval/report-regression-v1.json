@@ -96,6 +96,24 @@
       "technical": [],
       "difficulty": null,
       "expect": { "non_empty": ["observations"], "empty": [], "forbidden": ["ADHD", "adhd", "이전 지시"] }
+    },
+    {
+      "id": "R8",
+      "purpose": "등장인물 이름이 든 기준: 말한 사람을 등장인물로 쓰지 않아야 함(2026-11-01 로컬 실행 2의 입력)",
+      "quiz": null,
+      "goals": [
+        { "title": "감정 이름 말하기", "start": "S0", "final": "S0", "result": "REACHED",
+          "observations": ["열린 질문에 '민준이가 아프거나 속상하다는 감정'을 분명히 말함"], "supports": [] },
+        { "title": "감정의 이유 말하기", "start": "S0", "final": "S0", "result": "REACHED",
+          "observations": ["열린 질문에 '넘어져서 무릎을 다쳤다는 이유'를 분명히 말함"], "supports": [] },
+        { "title": "위로하는 말 하기", "start": "S0", "final": "S0", "result": "REACHED",
+          "observations": ["열린 질문에 '괜찮은지 묻거나 걱정하는 말'을 분명히 말함"], "supports": [] },
+        { "title": "도움 행동 말하기", "start": "S0", "final": "S0", "result": "REACHED",
+          "observations": ["열린 질문에 '선생님께 알리거나 일으켜 주는 행동'을 분명히 말함"], "supports": [] }
+      ],
+      "technical": [],
+      "difficulty": { "decision_type": "FOLLOW_UP", "scenario_level": "L3", "reason_code": "ALREADY_HIGHEST", "policy_version": "FOLLOW_UP_ROLEPLAY_V1" },
+      "expect": { "non_empty": ["observations"], "empty": ["difficult_points"], "forbidden": ["민준이는", "민준이가 말", "민준이가 열린"] }
     }
   ],
   "goal_library": [

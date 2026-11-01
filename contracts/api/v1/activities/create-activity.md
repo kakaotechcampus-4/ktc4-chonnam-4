@@ -50,7 +50,7 @@
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
 | childId | UUID | 예 | 아니오 | 담당 아동 UUID |
-| activityType | ActivityType \| null | 아니오 | 예 | 생략/null은 FIRST_COMBINED. ROLEPLAY는 현재 422로 거부 |
+| activityType | ActivityType \| null | 아니오 | 예 | 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) |
 | goal | GoalBody \| null | 아니오 | 예 | FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 |
 
 ~~~json
@@ -186,7 +186,7 @@ export interface GoalBody {
 export interface ActivityBody {
   /** 담당 아동 UUID */
   childId: UUID;
-  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 현재 422로 거부 */
+  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) */
   activityType?: ActivityType | null;
   /** FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 */
   goal?: GoalBody | null;

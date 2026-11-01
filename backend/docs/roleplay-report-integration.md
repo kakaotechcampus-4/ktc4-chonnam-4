@@ -67,6 +67,7 @@ develop에서는 역할극 단독 활동(ROLEPLAY)을 422로 막고 있었다. �
 | `deletion/service/DeletionService` | 리포트·추천·난이도를 학습 기록보다 먼저 지움 | 아동 삭제(ADR D1) 순서 |
 | `auth/security/SensitiveReadLog` | 대상 4개 추가 | 리포트·추천·난이도 조회도 민감 조회로 남김 |
 | `ai/config/AiProviderConfiguration`·`SpeechProviderConfiguration` | 목적별 경로·호출 로그, `scripted` STT·`silent` TTS | 모델 분리, 로컬 끝까지 돌려 보기 |
+| `ai/application/structured/StructuredLlmExecutor` | 출력 검사에 걸리면 DEBUG 로그 한 줄(목적·프롬프트 버전·시도·검사 문장) | 고정 안내로 끝난 턴의 원인이 남지 않았다. 검사 문장은 고정 문장이라 모델 출력·아동 발화가 들어가지 않는다 |
 | `roleplay/config/LocalScriptInputConfiguration`(새 파일) | `roleplay.local-script-input=true`일 때만 입력 처리기·음성 전달 빈 | 역할극 HTTP API가 요구하는데 팀 코드에 운영 구현이 없다. 개인정보 거르기·안전 판단을 하지 않으므로 로컬 대본 전용이다 |
 | 테스트·계약 | `ApiContractTest`·`apiContract.test.ts` PATCH 지원, `OwnershipPatrolIntegrationTest` 등록, ROLEPLAY 422 기대값을 409로 | 새 API와 바뀐 배정 규칙 |
 
@@ -83,7 +84,7 @@ develop에서는 역할극 단독 활동(ROLEPLAY)을 422로 막고 있었다. �
 
 ## 아직 남은 것
 
-- **AI 요약의 주어:** 두 번째 실행에서 요약이 말한 사람을 등장인물 이름으로 썼다. 관찰 문장에 기준 문장("민준이가 아프거나 속상하다는 감정")이 그대로 들어가 주어가 섞인 것으로 보인다. 평가 모델도 걸러내지 못했다. 초안 프롬프트에 "관찰은 아동이 한 말"이라고 밝히거나, 관찰 문장을 "…을 말함" 꼴로 바꾸는 방법을 실측으로 비교해야 한다.
+- **고정 안내 턴(팀 역할극 처리기):** "모르겠어"가 잦은 대본(`scripts/local/answers/unsure.json`)으로 다시 돌리자 6번 중 3번이 고정 안내로 끝났다. 출력 검사 로그를 보면 모델은 세 번 다 응답을 냈지만 서버 검사가 같은 이유로 세 번 거절했다. 이유는 80자 초과(`text is too long`) 한 턴과, 질문이 아닌 응답 유형인데 물음표를 쓴 것(`a non-question response must not ask a question`) 두 턴이다. `StructuredRoleplayTurnSteps.generationRetry()`는 평가 모델이 돌려보낸 경우에만 재시도 지시를 만들고, 출력 검사에 걸린 경우에는 아무 지시 없이 같은 입력을 다시 보낸다. 원인 판단 단계에는 같은 경우를 위한 지시(`invalidAnalysisOutput`)가 있다. 응답 생성에도 걸린 검사를 알려 주는 재시도 지시가 필요하다. 팀 역할극 처리기의 몫이라 이 브랜치에서는 고치지 않았다.
 - **시나리오 재사용 규칙:** 재사용 시나리오의 강사 확인, 고르는 순서, 다음 후보는 팀 논의 중이다(2026-10-31). 지금은 강사 확인 없이 오래된 순으로 붙는다. 정해지면 `findFirstUnusedApproved`와 그것을 부르는 두 곳(최초 결합, 단독 역할극)을 함께 바꾼다.
 - **운영 입력 처리기와 음성 전달:** 실제 아동 음성으로 역할극 HTTP API를 켜려면 팀이 운영 구현을 만들어야 한다. 로컬 설정은 대체물이 아니다.
 - **팀 결정 1·2번:** S3 달성 뒤 다음 목표의 시작 지원과 판단 불가 답의 횟수 처리는 역할극 프롬프트 규칙에 있다. 서버 설정으로 열지 않았다. 이번 첫 실행에서도 앞 목표를 S1에서 이룬 뒤 다음 목표가 S0으로 내려가지 않고 S1에서 시작했다(리포트 개요의 목표별 도움 표). 지난 시뮬레이션에서 본 지원 고착이 실제 모델에서도 보인 것이다.

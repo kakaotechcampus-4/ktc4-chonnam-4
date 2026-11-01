@@ -5,6 +5,6 @@
 1. `powershell -File scripts/local/run-backend.ps1`로 DB 컨테이너(55433)와 백엔드를 띄운다. 모델 주소와 키는 `backend/.env.local`의 `AI_API_KEY`, `MODEL_HAIKU55_*`, `MODEL_ARGON4_*`에서 읽고 찍지 않는다. 역할극 HTTP API를 켜고, STT는 대본(`scripted`), TTS는 끔(`silent`), 입력 처리기는 로컬 전용(`roleplay.local-script-input`)이다.
 2. 프론트를 5173에 띄우고, 강사로 가입해 학급·아동·최초 결합 활동을 만든다.
 3. `powershell -File scripts/local/seed-scenarios.ps1 -ActivityId <활동 ID> -Tag first`로 그 활동의 목표에 맞는 L1~L3 승인 시나리오를 넣는다. 같은 목표로 역할극을 다시 하려면 다른 tag로 한 번 더 넣는다.
-4. `RR_EMAIL`, `RR_PASSWORD`(강사 계정)를 환경변수로 주고 `node scripts/local/roleplay-run.mjs --activity <활동 ID> --child <아동 ID> --answers scripts/local/answers/steady.json`을 실행한다. 퀴즈와 역할극을 실제 API로 돌린다.
+4. `RR_EMAIL`, `RR_PASSWORD`(강사 계정)를 환경변수로 주고 `node scripts/local/roleplay-run.mjs --activity <활동 ID> --child <아동 ID> --answers scripts/local/answers/steady.json`을 실행한다. 퀴즈와 역할극을 실제 API로 돌린다. 답 대본은 세 가지다. `steady.json`은 단서를 들으면 해내는 아동, `strong.json`은 열린 질문에 스스로 답하는 아동, `unsure.json`은 모르겠다는 답이 잦은 아동이다. 모델 출력이 서버 검사(80자, 물음표 수 등)에 걸리면 백엔드 로그에 `LLM_OUTPUT_REJECTED`로 어느 검사인지 남는다.
 
 대본 STT, 로컬 입력 처리기, 음성 전달 대체물은 개인정보 거르기와 안전 판단을 하지 않는다. 합성 대본에만 쓰고, 실제 아동 음성이나 운영 설정에는 쓰지 않는다.

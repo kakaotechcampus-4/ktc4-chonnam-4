@@ -224,18 +224,18 @@ class RoleplayGoalSummarizerTest {
         assertThat(summary.goals().get(1).observations())
                 .containsExactly(
                         "열린 질문에 모르겠다고 하거나 도움을 요청함",
-                        "상황 단서를 들은 뒤 넘어져서 아프다는 이유를 잘못 이해함",
-                        "두 선택지를 들은 뒤 넘어져서 아프다는 이유를 분명히 말함");
+                        "상황 단서를 들은 뒤 '넘어져서 아프다는 이유'를 잘못 이해함",
+                        "두 선택지를 들은 뒤 '넘어져서 아프다는 이유'를 분명히 말함");
         assertThat(summary.goals().getFirst().observations())
-                .containsExactly("답을 들은 뒤 친구가 속상하다는 감정을 따라 말함");
+                .containsExactly("답을 들은 뒤 '친구가 속상하다는 감정'을 따라 말함");
     }
 
     @Test
-    void objectParticleFollowsTheFinalConsonant() {
-        assertThat(RoleplayGoalSummarizer.objectParticle("이유")).isEqualTo("이유를");
-        assertThat(RoleplayGoalSummarizer.objectParticle("감정")).isEqualTo("감정을");
-        assertThat(RoleplayGoalSummarizer.objectParticle("위로의 말")).isEqualTo("위로의 말을");
-        assertThat(RoleplayGoalSummarizer.objectParticle("ABC")).isEqualTo("ABC을(를)");
+    void quotedObjectFollowsTheFinalConsonantInsideTheQuotes() {
+        assertThat(RoleplayGoalSummarizer.quotedObject("이유")).isEqualTo("'이유'를");
+        assertThat(RoleplayGoalSummarizer.quotedObject("감정")).isEqualTo("'감정'을");
+        assertThat(RoleplayGoalSummarizer.quotedObject("위로의 말")).isEqualTo("'위로의 말'을");
+        assertThat(RoleplayGoalSummarizer.quotedObject("ABC")).isEqualTo("'ABC'을(를)");
     }
 
     @Test
