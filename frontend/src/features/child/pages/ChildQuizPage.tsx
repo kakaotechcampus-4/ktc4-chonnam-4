@@ -11,17 +11,16 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { EmotionChoices } from "../components/quiz/EmotionChoices"
 import { PhotoGate } from "../components/quiz/PhotoGate"
 import { QuizGuideBubble } from "../components/quiz/QuizGuideBubble"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
+import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
 import {
-  getMyActivities,
   getQuizQuestions,
-  myActivitiesQueryKey,
   quizQuestionsQueryKey,
   submitQuizAnswer,
   type QuizHint,
   type QuizQuestion,
   type QuizType,
 } from "../api"
+import { useMyActivities } from "../hooks/useMyActivities"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 const CHOICE_PROMPTS: Record<QuizType, string> = {
@@ -237,10 +236,7 @@ function ChildQuizPage() {
   const [questionIndex, setQuestionIndex] = useState(0)
   const [isDone, setIsDone] = useState(false)
 
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
   const questionsQuery = useQuery({
     queryKey: quizQuestionsQueryKey(childId, activityId),
     queryFn: () => getQuizQuestions(activityId ?? ""),
@@ -261,7 +257,7 @@ function ChildQuizPage() {
     !activitiesQuery.isFetching &&
     !questionsQuery.isFetching
 
-  // 내 배정 목록에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003, 최종 차단은 서버 403).
+  // 내 배정 목록(서버가 이 아동 것만 준다)에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003).
   if (activitiesQuery.isSuccess && (!activity || activity.status === "COMPLETED")) {
     return <Navigate to="/child/activities" replace />
   }
@@ -307,9 +303,12 @@ function ChildQuizPage() {
         />
       ) : null}
 
-      <StateDialog open={showLoadError}>
-        <ErrorState message="퀴즈를 불러오지 못했어요" onRetry={retryLoad} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showLoadError}
+        error={activitiesQuery.error ?? questionsQuery.error}
+        message="퀴즈를 불러오지 못했어요"
+        onRetry={retryLoad}
+      />
     </ChildLayout>
   )
 }

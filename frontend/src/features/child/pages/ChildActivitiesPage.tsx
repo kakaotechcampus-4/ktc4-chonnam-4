@@ -1,13 +1,13 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import homeBackgroundUrl from "@/assets/child/home-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { HotAirBalloon, type BalloonColor, type BalloonPassenger } from "../components/HotAirBalloon"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { NextActivityDialog } from "../components/NextActivityDialog"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
-import { getMyActivities, myActivitiesQueryKey, type ChildActivityStatus } from "../api"
+import { LoadErrorDialog, LoadingState } from "../components/state"
+import { isActivityInProgress, type ChildActivityStatus } from "../api"
+import { useMyActivities } from "../hooks/useMyActivities"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 const BALLOON_COLOR_ORDER: BalloonColor[] = ["pink", "yellow", "purple"]
@@ -16,15 +16,20 @@ const BALLOON_OFFSETS = ["sm:mt-12", "sm:mt-0", "sm:mt-16"]
 // 완료한 순서대로 번갈아 태운다.
 const PASSENGER_ORDER: BalloonPassenger[] = ["turtle", "rabbit"]
 
+const IN_PROGRESS_BADGE = {
+  label: "진행 중",
+  className: "bg-[var(--child-warning-bg)] text-[var(--child-warning-fg)]",
+}
+
+// Figma 시안의 상태 표시는 3가지다. 일시 중단·복구 필요는 아이에게 "진행 중"으로 보인다.
 const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: string }> = {
   NOT_STARTED: {
     label: "안 했어요",
     className: "bg-[var(--child-surface-muted)] text-[var(--child-text-muted)]",
   },
-  IN_PROGRESS: {
-    label: "진행 중",
-    className: "bg-[var(--child-warning-bg)] text-[var(--child-warning-fg)]",
-  },
+  IN_PROGRESS: IN_PROGRESS_BADGE,
+  PAUSED: IN_PROGRESS_BADGE,
+  RECOVERY_NEEDED: IN_PROGRESS_BADGE,
   COMPLETED: {
     label: "완료!",
     className: "bg-[var(--child-success-bg)] text-[var(--child-success-fg)]",
@@ -39,13 +44,9 @@ const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: str
 function ChildActivitiesPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const childId = useChildSessionStore((state) => state.childId)
   const childName = useChildSessionStore((state) => state.childName) ?? ""
 
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
 
   const activities = activitiesQuery.data ?? []
   const isLoading = activitiesQuery.isPending || (activitiesQuery.isError && activitiesQuery.isFetching)
@@ -56,7 +57,7 @@ function ChildActivitiesPage() {
     (location.state as { completedActivityId?: string } | null)?.completedActivityId
   )
   const nextActivity = cameFromCompletion && activitiesQuery.isSuccess
-    ? activities.find((item) => item.status === "IN_PROGRESS") ??
+    ? activities.find((item) => isActivityInProgress(item.status)) ??
       activities.find((item) => item.status === "NOT_STARTED") ??
       null
     : null
@@ -162,9 +163,12 @@ function ChildActivitiesPage() {
         }}
       />
 
-      <StateDialog open={showError}>
-        <ErrorState message="활동을 불러오지 못했어요" onRetry={() => activitiesQuery.refetch()} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showError}
+        error={activitiesQuery.error}
+        message="활동을 불러오지 못했어요"
+        onRetry={() => activitiesQuery.refetch()}
+      />
     </ChildLayout>
   )
 }
