@@ -33,6 +33,7 @@ const PAGES: [string, string, Access][] = [
   ["/classrooms/new", "기본 정보", "강사"],
   [`/classrooms/${fixtures.classroomA1.classId}`, "바로 하기", "강사"],
   [`/classrooms/${fixtures.classroomA1.classId}?tab=children`, "김하늘", "강사"],
+  ["/recommendations", "김하늘", "강사"],
   ["/child", "입장 코드를 입력해줘!", "공개"],
   ["/child/hello", "오늘도 만나서 반가워", "아동"],
   ["/child/activities", "친구 마음 알아보기", "아동"],

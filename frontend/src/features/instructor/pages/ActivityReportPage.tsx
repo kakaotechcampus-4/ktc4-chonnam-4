@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ApiError,
@@ -6,26 +6,61 @@ import {
   getChild,
   getClassroom,
   getLearningGoal,
+  getLearningReport,
   getQuizResult,
+  getRoleplayDifficulty,
+  listRecommendations,
+  type Activity,
   type QuizResult,
 } from '../api'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { PageTabs } from '../components/PageTabs'
+import {
+  DifficultyBasisView,
+  ReportOverview,
+  RoleplayGoalsView,
+  TechnicalRecordView,
+} from '../components/report/ReportViews'
 import { cardClass } from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 
-const QUIZ_TAB = '표정 퀴즈'
+const TABS = [
+  { key: 'overview', label: '개요' },
+  { key: 'quiz', label: '표정 퀴즈' },
+  { key: 'roleplay', label: '역할극' },
+  { key: 'difficulty', label: '난이도 근거' },
+  { key: 'technical', label: '기술 기록' },
+] as const
+type TabKey = (typeof TABS)[number]['key']
+// 계약(API-REC-01)은 강사 수정을 두지 않는다. 팀이 정할 때까지 자리만 둔다.
+const EDIT_TAB_LABEL = 'AI 요약 수정'
+
+function hasRoleplay(activity: Activity): boolean {
+  return activity.activityType === 'FIRST_COMBINED' || activity.activityType === 'ROLEPLAY'
+}
+
+/** 없는 리포트·난이도는 오류가 아니라 "아직 없음"이라 null 로 바꾼다. */
+async function orNullOn404<T>(load: () => Promise<T>): Promise<T | null> {
+  try {
+    return await load()
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
+}
 
 /**
- * 활동 리포트 (시안 T-RPT-02~08). S1 은 표정 퀴즈 탭만 연다(ADR 2026-10-03 D5).
- * 배치는 시안 리포트(역할극 탭)의 두 칸(왼쪽 지표 1.5 : 오른쪽 설명 1)을 표정 퀴즈 탭에 그대로 쓴다.
- * 결과는 아동이 붙은 문항을 모두 마쳐야 생긴다. 그 전에는 서버가 409 QUIZ_NOT_COMPLETED 로 답하므로 "진행 중"으로 보인다.
+ * 활동 리포트 (시안 T-RPT-02~08). 표정 퀴즈 탭과 역할극 리포트 탭(개요·역할극·난이도 근거·기술 기록)을 연다.
+ * 역할극이 끝나면 서버가 목표별 결과·다음 난이도·추천을 먼저 만들고, AI 요약은 생성·평가를 통과한 뒤에 보인다.
+ * 요약이 아직 없거나 만들지 못했으면 리포트 API 는 404 이고, 개요 탭은 아동의 최신 난이도에 담긴 학습 기록으로 추천만 보인다.
+ * 퀴즈 결과는 아동이 붙은 문항을 모두 마쳐야 생긴다. 그 전에는 서버가 409 QUIZ_NOT_COMPLETED 로 답하므로 "진행 중"으로 보인다.
  */
 function ActivityReportPage() {
   const { activityId } = useParams<{ activityId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const activityQuery = useQuery({
     queryKey: ['activities', activityId],
@@ -55,14 +90,55 @@ function ActivityReportPage() {
     enabled: !!activity?.goalId,
   })
 
+  const withQuiz = !!activity && activity.activityType !== 'ROLEPLAY'
   // 시작 전 활동은 결과가 있을 수 없어 묻지 않는다.
   const resultQuery = useQuery({
     queryKey: ['activities', activityId, 'quiz-result'],
     queryFn: () => getQuizResult(activityId!),
-    enabled: !!activity && activity.status !== 'NOT_STARTED',
+    enabled: withQuiz && activity.status !== 'NOT_STARTED',
   })
   const isQuizInProgress =
     resultQuery.error instanceof ApiError && resultQuery.error.code === 'QUIZ_NOT_COMPLETED'
+
+  const roleplayDone = !!activity && hasRoleplay(activity) && activity.status === 'COMPLETED'
+  const reportQuery = useQuery({
+    queryKey: ['activities', activityId, 'learning-record'],
+    queryFn: () => orNullOn404(() => getLearningReport(activityId!)),
+    enabled: roleplayDone,
+  })
+  const report = reportQuery.data ?? null
+  const difficultyQuery = useQuery({
+    queryKey: ['children', activity?.childId, 'roleplay-difficulty'],
+    queryFn: () => orNullOn404(() => getRoleplayDifficulty(activity!.childId)),
+    enabled: roleplayDone,
+  })
+  // 아동의 최신 난이도가 이 활동에서 나온 것일 때만 이 활동의 것으로 쓴다.
+  const latestDifficulty =
+    difficultyQuery.data && difficultyQuery.data.sourceActivityId === activityId ? difficultyQuery.data : null
+  const recordId = report?.recordId ?? latestDifficulty?.sourceRecordId ?? null
+  const recommendationsQuery = useQuery({
+    queryKey: ['learning-records', recordId, 'recommendations'],
+    queryFn: () => listRecommendations(recordId!),
+    enabled: !!recordId,
+  })
+
+  const available: Record<TabKey, boolean> = {
+    overview: !!activity && hasRoleplay(activity),
+    quiz: withQuiz,
+    roleplay: !!report,
+    difficulty: !!report,
+    technical: !!report,
+  }
+  const requested = searchParams.get('tab')
+  const fallback: TabKey = activity && hasRoleplay(activity) && (roleplayDone || !withQuiz) ? 'overview' : 'quiz'
+  const tab: TabKey =
+    TABS.some((t) => t.key === requested) && available[requested as TabKey] ? (requested as TabKey) : fallback
+  const tabLabel = TABS.find((t) => t.key === tab)!.label
+
+  function selectTab(label: string) {
+    const next = TABS.find((t) => t.label === label)
+    if (next) setSearchParams(next.key === fallback ? {} : { tab: next.key }, { replace: true })
+  }
 
   const title = child
     ? `활동 리포트 · ${child.displayName}${classroomQuery.data ? ` (${classroomQuery.data.name})` : ''}`
@@ -74,14 +150,11 @@ function ActivityReportPage() {
       subheader={
         <PageTabs
           label="활동 리포트"
-          selected={QUIZ_TAB}
+          selected={tabLabel}
+          onSelect={selectTab}
           tabs={[
-            { label: '개요' },
-            { label: QUIZ_TAB, available: true },
-            { label: '역할극' },
-            { label: '난이도 근거' },
-            { label: '기술 기록' },
-            { label: 'AI 요약 수정' },
+            ...TABS.map((t) => ({ label: t.label, available: available[t.key] })),
+            { label: EDIT_TAB_LABEL },
           ]}
         />
       }
@@ -107,7 +180,7 @@ function ActivityReportPage() {
           {activityQuery.error instanceof Error ? activityQuery.error.message : '활동을 찾을 수 없습니다.'}
         </Notice>
       ) : (
-        <section role="tabpanel" aria-label={QUIZ_TAB} className="flex flex-col gap-4">
+        <section role="tabpanel" aria-label={tabLabel} className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold">
               {activity.goalId ? (goalQuery.data?.title ?? '학습 목표') : ACTIVITY_TYPE_LABELS[activity.activityType]}
@@ -115,23 +188,53 @@ function ActivityReportPage() {
             <ActivityStatusBadge status={activity.status} />
           </div>
 
-          {activity.status === 'NOT_STARTED' ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">
-              아직 시작 전이에요. 아동이 퀴즈를 마치면 결과가 보입니다.
-            </p>
-          ) : resultQuery.isLoading ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-          ) : isQuizInProgress ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">
-              퀴즈를 진행 중이에요. 아동이 모든 문항을 마치면 결과가 보입니다.
-            </p>
-          ) : resultQuery.isError || !resultQuery.data ? (
-            <Notice tone="error">
-              {resultQuery.error instanceof Error ? resultQuery.error.message : '결과를 불러오지 못했습니다.'}
-            </Notice>
-          ) : (
-            <QuizResultView result={resultQuery.data} quizItemCount={quizItemCount} />
-          )}
+          {tab === 'quiz' &&
+            (activity.status === 'NOT_STARTED' ? (
+              <p className="text-sm text-[var(--instructor-text-muted)]">
+                아직 시작 전이에요. 아동이 퀴즈를 마치면 결과가 보입니다.
+              </p>
+            ) : resultQuery.isLoading ? (
+              <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+            ) : isQuizInProgress ? (
+              <p className="text-sm text-[var(--instructor-text-muted)]">
+                퀴즈를 진행 중이에요. 아동이 모든 문항을 마치면 결과가 보입니다.
+              </p>
+            ) : resultQuery.isError || !resultQuery.data ? (
+              <Notice tone="error">
+                {resultQuery.error instanceof Error ? resultQuery.error.message : '결과를 불러오지 못했습니다.'}
+              </Notice>
+            ) : (
+              <QuizResultView result={resultQuery.data} quizItemCount={quizItemCount} />
+            ))}
+
+          {tab === 'overview' &&
+            (!roleplayDone ? (
+              <p className="text-sm text-[var(--instructor-text-muted)]">
+                역할극을 마치면 목표별로 필요했던 도움과 다음 수업 제안이 여기에 보여요.
+              </p>
+            ) : reportQuery.isLoading || difficultyQuery.isLoading ? (
+              <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+            ) : reportQuery.isError ? (
+              <Notice tone="error">{reportQuery.error.message}</Notice>
+            ) : (
+              <>
+                {!report && (
+                  <Notice tone="info">
+                    AI 요약을 만드는 중이거나 만들지 못했어요. 서버가 기록으로 정한 다음 난이도와 제안은 아래에서 볼 수 있어요.
+                  </Notice>
+                )}
+                <ReportOverview
+                  report={report}
+                  recommendations={recommendationsQuery.data ?? []}
+                  latestDifficulty={latestDifficulty}
+                  classId={child?.classId ?? null}
+                />
+              </>
+            ))}
+
+          {tab === 'roleplay' && report && <RoleplayGoalsView report={report} />}
+          {tab === 'difficulty' && report && <DifficultyBasisView report={report} />}
+          {tab === 'technical' && report && <TechnicalRecordView report={report} />}
         </section>
       )}
     </InstructorLayout>

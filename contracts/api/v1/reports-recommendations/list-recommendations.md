@@ -1,24 +1,27 @@
 # API-REC-03 · 학습 기록 추천 목록 조회
 
-> 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 구현 — 2026-10-31 / `feature/roleplay-report-integration` 작업 브랜치. develop 미반영이며 운영 배포를 의미하지 않습니다.
 
 ## 1. Endpoint
 
 | 항목 | 값 |
 |---|---|
 | Method | GET |
-| Path | /api/v1/learning-records/{recordId}/recommendations |
+| Path | `/api/v1/learning-records/{recordId}/recommendations` |
 | 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
 | 인증 | 담당 강사 Bearer |
-| 성공 | 200 — 설계 예시 |
-| 반환 | ApiResponse<DraftRecommendationData[]> |
+| 성공 | 200 |
 | FE 함수 | listRecommendations |
-| 구현·협업 | 배재일 |
+| 구현 | 민서(작업 브랜치), 계약 초안 배재일 |
 
 ## 2. 용도·중요 규칙
 
-- 최대3개,유형·이유·관찰근거·충분성표시.기술오류만으로하향추천금지.
-- 자동생성은서버내부; FEPOST생성/수동재생성버튼기본흐름없음.
+완료 활동 하나에 서버가 만든 다음 수업 제안을 보여 준다. 추천은 리포트 1단계에서 서버 규칙(`RECOMMENDATION_V1`)으로 만들어서 AI 요약이 실패해도 남는다.
+
+- 최대 3개이고 `displayOrder` 순서다. 규칙 순서는 보완(REINFORCE)·반복(REPEAT)·적용(APPLY)·확장(EXTEND)이다.
+- 기술 오류로 뺀 목표는 보지 않는다. 그래서 기술 오류만으로 보완 추천이 생기지 않는다.
+- 생성은 서버 내부에서만 한다. 다시 만들기 버튼이나 FE 생성 요청은 없다.
+- 퀴즈만 한 활동처럼 리포트가 없는 기록은 빈 배열이다.
 
 ## 3. 요청
 
@@ -26,19 +29,7 @@
 
 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| recordId | UUID string | 예 | 경로 식별자 |
-
-### Query parameters
-
-없음. 지원되지 않는 page/size/sort를 보내도 적용된다고 가정하지 않습니다.
-
-### Headers·쿠키
-
-| 이름 | 값/타입 | 필수 | 주의 |
-|---|---|---|---|
-| Accept | application/json | 예 | 공통 envelope |
-| Cookie | credentials: include | 예 | 브라우저 관리; HttpOnly 쿠키 직접 읽기 금지 |
-| Authorization | Bearer <accessToken> | 예 | 아동/public에 강사 토큰을 붙이지 않음 |
+| recordId | UUID string | 예 | 학습 기록(리포트 recordId) |
 
 ### Request Body
 
@@ -46,25 +37,37 @@
 
 ## 4. 성공 응답
 
-HTTP 200 — 설계 예시.
+HTTP 200.
 
 ~~~json
 {
   "data": [
     {
-      "recommendationId": "87000000-0000-4000-8000-000000000001",
+      "recommendationId": "88000000-0000-4000-8000-000000000001",
       "recordId": "86000000-0000-4000-8000-000000000001",
-      "type": "EXAMPLE_EXTENSION",
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "type": "REPEAT",
+      "displayOrder": 1,
       "suggestedGoal": {
-        "title": "감정과 이유를 설명하기"
+        "title": "넘어진 친구의 속상한 마음 알아보기",
+        "category": "EMPATHY",
+        "parentGoalId": "50000000-0000-4000-8000-000000000001"
       },
-      "reason": "상황 단서가 효과적이었어요.",
+      "reason": "'감정의 이유 말하기' 목표는 두 선택지를 받고 도달했어요. 다른 장면으로 한 번 더 해 봐요.",
+      "reasonCode": "REACHED_WITH_EXTRA_SUPPORT",
+      "basisGoalTitle": "감정의 이유 말하기",
       "evidence": [
-        "감정을 사건에 연결함"
+        "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
       ],
-      "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+      "evidenceSufficiency": "SUFFICIENT",
       "decision": null,
-      "createdGoalId": null
+      "decidedGoal": null,
+      "rejectionReason": null,
+      "createdGoalId": null,
+      "policyVersion": "RECOMMENDATION_V1",
+      "createdAt": "2026-10-31T14:20:01+09:00",
+      "decidedAt": null
     }
   ],
   "meta": {
@@ -75,80 +78,26 @@ HTTP 200 — 설계 예시.
 
 ### response schema
 
-| 필드 | 타입 | 필수 | null 허용 | 설명 |
-|---|---|---|---|---|
-| data[].recommendationId | UUID | 예 | 아니오 | 추천 |
-| data[].recordId | UUID | 예 | 아니오 | 근거 기록 |
-| data[].type | string | 예 | 아니오 | 보완/반복/확장/적용 코드 미정 |
-| data[].suggestedGoal | Record<string, unknown> | 예 | 아니오 | 목표 제안 |
-| data[].reason | string | 예 | 아니오 | 추천 이유 |
-| data[].evidence | string[] | 예 | 아니오 | 관찰 근거 |
-| data[].evidenceSufficiency | string | 예 | 아니오 | 충분성 코드 미정 |
-| data[].decision | string \| null | 예 | 예 | 미결정/강사 결정 |
-| data[].createdGoalId | UUID \| null | 예 | 예 | 채택 목표 연결; 생성 방식 합의 |
+`data`는 API-REC-04의 `RecommendationData` 배열이다.
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 
 ## 5. 오류·FE 처리
 
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
-
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
-| 401 | INVALID_TOKEN | 강사 토큰 만료/위조; 입력·토큰 폐기 |
-| 403 | ACCESS_DENIED | 역할 권한 |
-| 404 | RESOURCE_NOT_FOUND | 리소스/소유권 코드 제안 |
-| 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
+| 400 | INVALID_REQUEST | UUID·쿼리·헤더 형식 |
+| 401 | AUTHENTICATION_REQUIRED | 토큰 없음 |
+| 401 | INVALID_TOKEN | 강사 토큰 만료·위조. 입력·토큰 폐기 |
+| 403 | ACCESS_DENIED | 강사가 아닌 역할 |
+| 404 | LEARNING_RECORD_NOT_FOUND | 없는 기록·남의 기록 |
+| 500 | INTERNAL_ERROR | 내부 오류. 원문·예외 전문 비노출 |
 
-공통 오류 envelope 예시(message/traceId는 동적):
-
-~~~json
-{
-  "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
-    "path": "/api/v1/learning-records/{recordId}/recommendations",
-    "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
-  }
-}
-~~~
-
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+남의 아동·기록·추천은 없는 자원과 같은 404로 숨깁니다. 공통 오류 envelope은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
 
 ## 6. 복사 가능한 TypeScript
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
-
-### 요청·응답 타입
-
-~~~ts
-export type UUID = string;
-
-export interface DraftRecommendationData {
-  /** 추천 */
-  recommendationId: UUID;
-  /** 근거 기록 */
-  recordId: UUID;
-  /** 보완/반복/확장/적용 코드 미정 */
-  type: string;
-  /** 목표 제안 */
-  suggestedGoal: Record<string, unknown>;
-  /** 추천 이유 */
-  reason: string;
-  /** 관찰 근거 */
-  evidence: string[];
-  /** 충분성 코드 미정 */
-  evidenceSufficiency: string;
-  /** 미결정/강사 결정 */
-  decision: string | null;
-  /** 채택 목표 연결; 생성 방식 합의 */
-  createdGoalId: UUID | null;
-}
-~~~
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 응답 타입은 types.ts의 리포트·추천 절에 있습니다.
 
 ### 호출 함수
 
@@ -165,43 +114,28 @@ export function listRecommendations(
   api: ApiClient,
   args: ListRecommendationsArgs,
   options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRecommendationData[]>> {
-  return api.request<T.DraftRecommendationData[]>("/api/v1/learning-records/" + encodeURIComponent(args.recordId) + "/recommendations", {
+): Promise<T.ApiResponse<T.RecommendationData[]>> {
+  return api.request<T.RecommendationData[]>("/api/v1/learning-records/" + encodeURIComponent(args.recordId) + "/recommendations", {
     method: "GET",
     auth: "instructor",
     expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
+    signal: options.signal
   });
 }
 ~~~
 
-### 사용 예시
-
-~~~ts
-import { listRecommendations } from "./draft-endpoints.ts";
-
-const response = await listRecommendations(api, {
-  "recordId": "86000000-0000-4000-8000-000000000001"
-});
-const data = response.data;
-// 개인정보·원본·토큰·응답 전문을 로그에 출력하지 않습니다.
-~~~
-
 ## 7. cURL 계약 확인
 
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
-
 ~~~bash
-curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/learning-records/${recordId}/recommendations" \
+curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/learning-records/{recordId}/recommendations" \
   --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
   -H 'Accept: application/json' \
   -H "Authorization: Bearer $NEURINGO_ACCESS_TOKEN"
 ~~~
 
-## 8. 연결 Task·미정·검증
+## 8. 연결 Task·검증
 
-- 관련 Task ID: `S7-BAE-02`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
+- 관련 Task ID: `S7-BAE-01`
+- 서버: `backend/src/main/java/com/neuringo/neuringobe/report/controller/LearningReportController.java`. 설계 글은 `backend/docs/roleplay-report-integration.md`입니다.
+- 검증: `LearningReportApiIntegrationTest`(완료 기록·소유권·결정·삭제), `OwnershipPatrolIntegrationTest`, `contracts/api-v1.json` 시나리오(백엔드 ApiContractTest·프론트 MSW 계약 테스트).
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
-- 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

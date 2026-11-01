@@ -10,7 +10,7 @@ import { fixtures, instructors } from "@/test/msw/handlers"
 type Scenario = {
   name: string
   request: {
-    method: "GET" | "POST" | "DELETE"
+    method: "GET" | "POST" | "PATCH" | "DELETE"
     path: string
     body?: unknown
     rawBody?: string
@@ -30,6 +30,7 @@ const values: Record<string, string> = {
   classId: fixtures.classroomA1.classId,
   otherClassId: fixtures.classroomC1.classId,
   unknownClassId: "00000000-0000-4000-8000-00000000ffff",
+  unknownId: "00000000-0000-4000-8000-00000000fffe",
   malformedId: "not-a-uuid",
   instructorId: instructors.a.userId,
   instructorEmail: instructors.a.email,
@@ -82,7 +83,7 @@ async function send({ request }: Scenario) {
   }
   if (request.method === "DELETE") return fetch(url, { method: "DELETE", credentials: "include", headers })
   return fetch(url, {
-    method: "POST",
+    method: request.method,
     credentials: "include",
     headers,
     // 본문 안의 {자리표시자} 도 채운다(가입 이메일 등). JSON 의 괄호 뒤에는 따옴표가 와서 자리표시자로 읽히지 않는다.

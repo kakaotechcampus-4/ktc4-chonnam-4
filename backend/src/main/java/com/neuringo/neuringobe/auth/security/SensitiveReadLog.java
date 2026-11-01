@@ -34,7 +34,11 @@ public class SensitiveReadLog {
         GOAL,
         ACTIVITY,
         QUIZ_RESULT,
-        QUIZ_ATTEMPT
+        QUIZ_ATTEMPT,
+        LEARNING_REPORT,
+        CHILD_LEARNING_REPORTS,
+        RECOMMENDATION,
+        ROLEPLAY_DIFFICULTY
     }
 
     /** 강사 조회를 실행하고 결과를 남긴다. 막힌 조회는 남긴 뒤 같은 예외를 다시 던진다. */

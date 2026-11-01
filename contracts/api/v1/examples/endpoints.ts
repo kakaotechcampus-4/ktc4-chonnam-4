@@ -1,4 +1,4 @@
-// 구현 함수 30개·조건부 음성 함수 1개. 2026-10-28 통합 기준.
+// 구현 함수 36개·조건부 음성 함수 1개. 2026-10-31 리포트·추천 작업 브랜치 기준.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -538,5 +538,115 @@ export function startRoleplay(
     expectedStatuses: [200, 201],
     signal: options.signal,
     idempotencyKey: args.idempotencyKey
+  });
+}
+
+export interface GetLearningReportArgs {
+  activityId: T.UUID;
+}
+
+export function getLearningReport(
+  api: ApiClient,
+  args: GetLearningReportArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.LearningReportData>> {
+  return api.request<T.LearningReportData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/learning-record", {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
+export interface ListLearningReportsArgs {
+  query: {
+    childId: T.UUID;
+    page?: number;
+    size?: number;
+  };
+}
+
+export function listLearningReports(
+  api: ApiClient,
+  args: ListLearningReportsArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.LearningReportData[]>> {
+  return api.request<T.LearningReportData[]>("/api/v1/learning-records" + queryString(args.query), {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
+export interface ListRecommendationsArgs {
+  recordId: T.UUID;
+}
+
+export function listRecommendations(
+  api: ApiClient,
+  args: ListRecommendationsArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RecommendationData[]>> {
+  return api.request<T.RecommendationData[]>("/api/v1/learning-records/" + encodeURIComponent(args.recordId) + "/recommendations", {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
+export interface GetRecommendationArgs {
+  recommendationId: T.UUID;
+}
+
+export function getRecommendation(
+  api: ApiClient,
+  args: GetRecommendationArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RecommendationData>> {
+  return api.request<T.RecommendationData>("/api/v1/recommendations/" + encodeURIComponent(args.recommendationId), {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
+export interface DecideRecommendationArgs {
+  recommendationId: T.UUID;
+  body: T.RecommendationDecisionBody;
+  idempotencyKey: T.UUID;
+}
+
+export function decideRecommendation(
+  api: ApiClient,
+  args: DecideRecommendationArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RecommendationData>> {
+  return api.request<T.RecommendationData>("/api/v1/recommendations/" + encodeURIComponent(args.recommendationId), {
+    method: "PATCH",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+
+export interface GetRoleplayDifficultyArgs {
+  childId: T.UUID;
+}
+
+export function getRoleplayDifficulty(
+  api: ApiClient,
+  args: GetRoleplayDifficultyArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RoleplayDifficultyData>> {
+  return api.request<T.RoleplayDifficultyData>("/api/v1/children/" + encodeURIComponent(args.childId) + "/roleplay-difficulty", {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
   });
 }

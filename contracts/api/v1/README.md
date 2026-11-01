@@ -7,7 +7,7 @@
 
 ## 현재 제공 범위
 
-이 통합 작업 브랜치 기준 57개 API ID 중 **구현30개 · 조건부 구현1개 · 설계24개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
+이 통합 작업 브랜치 기준 58개 API ID 중 **구현36개 · 조건부 구현1개 · 설계19개 · 미제공2개**입니다. 리포트·추천 6개(API-REC-01~06)는 2026-10-31 `feature/roleplay-report-integration` 작업 브랜치에서 구현했고 develop에는 아직 없습니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -121,11 +121,12 @@
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-REC-01 · 완료 리포트 단건 조회](./reports-recommendations/get-learning-report.md) | GET | `/api/v1/activities/{activityId}/learning-record` | 설계 | getLearningReport |
-| [API-REC-02 · 아동 완료 리포트 목록 조회](./reports-recommendations/list-learning-reports.md) | GET | `/api/v1/learning-records` | 설계 | listLearningReports |
-| [API-REC-03 · 학습 기록 추천 목록 조회](./reports-recommendations/list-recommendations.md) | GET | `/api/v1/learning-records/{recordId}/recommendations` | 설계 | listRecommendations |
-| [API-REC-04 · 추천 상세 조회](./reports-recommendations/get-recommendation.md) | GET | `/api/v1/recommendations/{recommendationId}` | 설계 | getRecommendation |
-| [API-REC-05 · 추천 채택·수정 채택·보류·거절](./reports-recommendations/decide-recommendation.md) | PATCH | `/api/v1/recommendations/{recommendationId}` | 설계 | decideRecommendation |
+| [API-REC-01 · 완료 리포트 단건 조회](./reports-recommendations/get-learning-report.md) | GET | `/api/v1/activities/{activityId}/learning-record` | 구현(작업 브랜치) | getLearningReport |
+| [API-REC-02 · 아동 완료 리포트 목록 조회](./reports-recommendations/list-learning-reports.md) | GET | `/api/v1/learning-records` | 구현(작업 브랜치) | listLearningReports |
+| [API-REC-03 · 학습 기록 추천 목록 조회](./reports-recommendations/list-recommendations.md) | GET | `/api/v1/learning-records/{recordId}/recommendations` | 구현(작업 브랜치) | listRecommendations |
+| [API-REC-04 · 추천 상세 조회](./reports-recommendations/get-recommendation.md) | GET | `/api/v1/recommendations/{recommendationId}` | 구현(작업 브랜치) | getRecommendation |
+| [API-REC-05 · 추천 채택·수정 채택·보류·거절](./reports-recommendations/decide-recommendation.md) | PATCH | `/api/v1/recommendations/{recommendationId}` | 구현(작업 브랜치) | decideRecommendation |
+| [API-REC-06 · 다음 역할극 난이도 조회](./reports-recommendations/get-roleplay-difficulty.md) | GET | `/api/v1/children/{childId}/roleplay-difficulty` | 구현(작업 브랜치) | getRoleplayDifficulty |
 
 ## 변경과 검증 절차
 
@@ -137,6 +138,6 @@
 node --experimental-strip-types v1/examples/verify-examples.mjs
 ~~~
 
-검사는 JSON·57개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
+검사는 JSON·58개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
 
 [fixtures.json](./examples/fixtures.json)은 합성 예제이며 DB seed가 아닙니다. 본문/실명/토큰/비밀번호/원본 음성은 Git·Issue·로그에 올리지 않습니다.

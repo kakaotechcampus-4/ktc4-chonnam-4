@@ -20,7 +20,7 @@
 - childId와 activityType, 필요한 경우 goal 내용을 함께 전달합니다. 기존 goalId 필드는 현재 계약이 아닙니다. 목표 저장·활동 생성·문항 배정은 한 트랜잭션이며 실패 시 함께 롤백됩니다.
 - Idempotency-Key(UUID)는 필수입니다. 같은 키·같은 아동/유형/목표 내용이면 기존 활동을 200, 새 배정은 201로 반환합니다. 동일 키의 다른 요청은 409입니다.
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
-- ROLEPLAY는 enum에 있지만 현재 422 ACTIVITY_TYPE_NOT_AVAILABLE로 거부합니다. 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
+- ROLEPLAY(역할극 단독)는 최초 결합 완료 뒤에 배정하고 goal이 필수입니다. 이 아동의 다음 역할극 난이도(API-REC-06)가 있어야 하며, 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY입니다. 배정 때 그 레벨·시작 지원을 활동에 고정하고(`initialSupportLevel`), 퀴즈 문항은 붙이지 않습니다. 시나리오는 아동이 시작할 때 고정 레벨의 승인본에서 붙입니다(2026-10-31 작업 브랜치). 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
 - 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
 
@@ -131,7 +131,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 409 | FIRST_ACTIVITY_NOT_COMPLETED | 최초 결합 미완료 |
 | 422 | GOAL_REQUIRED | 최초 결합/역할극 목표 누락 |
 | 422 | GOAL_NOT_ALLOWED | 독립 퀴즈에 목표 입력 |
-| 422 | ACTIVITY_TYPE_NOT_AVAILABLE | 현재 ROLEPLAY 배정 불가 |
+| 409 | ROLEPLAY_DIFFICULTY_NOT_READY | 마친 역할극이 없어 다음 역할극 난이도가 없음. 역할극 단독 배정 불가 |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
 | 422 | INVALID_GOAL_CONDITIONS | 목표 조건 배열의 null/공백 원소 |
 | 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |

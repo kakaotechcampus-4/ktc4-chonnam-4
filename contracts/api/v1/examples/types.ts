@@ -554,56 +554,167 @@ export interface ActivityStatusData {
   status: ActivityStatus;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftReportData {
-  /** 기록 */
-  recordId: UUID;
-  /** 완료 활동 */
-  activityId: UUID;
-  /** 담당 아동 */
-  childId: UUID;
-  /** 완료 시각 */
-  completedAt: ISODateTime;
-  /** 관찰 근거 요약 */
-  summary: string;
-  /** 필드 세부 합의; 초기/독립 활동별 유무 미정 */
-  quiz: Record<string, unknown>;
-  /** 관찰/지원/일반 기술 제외 */
-  roleplay: Record<string, unknown>;
-  /** 최종 판정/정책 버전 */
-  difficultyDecision: Record<string, unknown>;
+// 리포트·추천·다음 역할극 난이도(API-REC-01~06). 2026-10-31 작업 브랜치 구현 기준.
+/** 서버가 센 값의 분자·분모. value = numerator / denominator */
+export interface RatioView {
+  numerator: number;
+  denominator: number;
+  value: number;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftRecommendationData {
-  /** 추천 */
-  recommendationId: UUID;
-  /** 근거 기록 */
-  recordId: UUID;
-  /** 보완/반복/확장/적용 코드 미정 */
-  type: string;
-  /** 목표 제안 */
-  suggestedGoal: Record<string, unknown>;
-  /** 추천 이유 */
+export interface ReportQuiz {
+  validQuestionCount: number;
+  /** 첫 응답이 정답인 문항 */
+  correctQuestionCount: number;
+  overallAccuracy: number | null;
+  resolvedAfterHintCount: number;
+}
+
+export type ObservationStatus = 'EXPLICIT' | 'IMPLICIT' | 'NOT_EXPRESSED' | 'MISUNDERSTOOD' | 'CONTRADICTORY';
+export type GoalResult = 'REACHED' | 'NOT_REACHED' | 'EXCLUDED_TECHNICAL_ERROR' | 'EXCLUDED_INTERRUPTED' | 'EXCLUDED_REFUSED';
+/** 혼자·처음 지원으로·지원을 더 받고·답을 듣고·못 함·제외 */
+export type GoalStatus = 'NO_SUPPORT_NEEDED' | 'REACHED_AT_START' | 'EXTRA_SUPPORT' | 'ANSWER_GIVEN' | 'NOT_REACHED' | 'EXCLUDED';
+
+export interface ReportCriterion {
+  /** 승인 시나리오의 관찰 기준 문장 */
+  description: string;
+  /** 마지막 관찰 상태. 관찰하지 않았으면 null */
+  status: ObservationStatus | null;
+}
+
+export interface ReportGoal {
+  microGoalId: UUID;
+  title: string;
+  startSupport: SupportLevel;
+  finalSupport: SupportLevel;
+  result: GoalResult;
+  status: GoalStatus;
+  criteria: ReportCriterion[];
+  /** 지원 단계와 기준으로 만든 짧은 문장. 아동 발화 원문이 아님 */
+  observations: string[];
+}
+
+export interface ReportRoleplay {
+  scenarioLevel: ScenarioLevel;
+  startSupportLevel: SupportLevel;
+  goals: ReportGoal[];
+  observations: string[];
+  effectiveSupport: string[];
+  /** 기술 오류 코드. 아동의 어려움으로 쓰지 않음 */
+  technicalExclusions: string[];
+}
+
+export interface ReportMetrics {
+  roleplayScore: RatioView | null;
+  goalAchievement: RatioView | null;
+  independentAchievement: RatioView | null;
+  quizAccuracy: RatioView | null;
+  quizHintRecovery: RatioView | null;
+  validGoalCount: number;
+  excludedGoalCount: number;
+}
+
+export interface ReportDifficultyDecision {
+  decisionType: 'FOLLOW_UP';
+  /** 다음 역할극 레벨 */
+  scenarioLevel: ScenarioLevel;
+  /** 이번에 한 역할극 레벨 */
+  previousLevel: ScenarioLevel;
+  nextSupportLevel: SupportLevel;
+  direction: 'LOWER' | 'KEEP' | 'RAISE';
   reason: string;
-  /** 관찰 근거 */
-  evidence: string[];
-  /** 충분성 코드 미정 */
-  evidenceSufficiency: string;
-  /** 미결정/강사 결정 */
-  decision: string | null;
-  /** 채택 목표 연결; 생성 방식 합의 */
-  createdGoalId: UUID | null;
+  /** 분모는 유효 목표 수의 6배. 유효 목표가 없으면 null */
+  scoreRate: RatioView | null;
+  consecutiveUpgradeCandidates: number;
+  policyVersion: string;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftRecommendationDecision {
-  /** 제안값; 확정 전 실서버 연결 금지 */
-  decision: 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT';
-  /** 수정 채택 목표/새 목표 생성 방식 미정 */
-  goal?: Partial<GoalBody>;
-  /** 거절 이유 선택 */
-  rejectionReason?: string | null;
+export interface ReportNarrativeItem {
+  text: string;
+  /** 생성 입력의 근거 ID(E1…) */
+  evidenceIds: string[];
+}
+
+export interface ReportNarrative {
+  observations: ReportNarrativeItem[];
+  effectiveSupports: ReportNarrativeItem[];
+  difficultPoints: ReportNarrativeItem[];
+}
+
+export interface LearningReportData {
+  recordId: UUID;
+  activityId: UUID;
+  childId: UUID;
+  /** 활동을 완료한 시각(+09:00) */
+  completedAt: ISODateTime;
+  /** 생성·평가 루프를 통과한 AI 요약 한 줄 */
+  summary: string;
+  /** 역할극 단독 활동은 null */
+  quiz: ReportQuiz | null;
+  roleplay: ReportRoleplay;
+  difficultyDecision: ReportDifficultyDecision;
+  metrics: ReportMetrics;
+  narrative: ReportNarrative | null;
+}
+
+export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND';
+export type RecommendationDecision = 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT';
+export type RecommendationRejectionReason = 'NOT_NOW' | 'NOT_SUITABLE' | 'ALREADY_PLANNED' | 'OTHER';
+
+export interface SuggestedGoal {
+  /** 확장(EXTEND)은 null. 강사가 넓힐 목표를 쓴다 */
+  title: string | null;
+  category: string | null;
+  parentGoalId: UUID | null;
+}
+
+export interface RecommendationData {
+  recommendationId: UUID;
+  recordId: UUID;
+  activityId: UUID;
+  childId: UUID;
+  type: RecommendationType;
+  displayOrder: number;
+  suggestedGoal: SuggestedGoal;
+  reason: string;
+  reasonCode: string;
+  basisGoalTitle: string | null;
+  evidence: string[];
+  evidenceSufficiency: 'SUFFICIENT' | 'LIMITED' | 'INSUFFICIENT';
+  /** 강사의 마지막 결정. 고르기 전에는 null */
+  decision: RecommendationDecision | null;
+  /** MODIFIED_ACCEPT 때 고친 목표 */
+  decidedGoal: SuggestedGoal | null;
+  rejectionReason: RecommendationRejectionReason | null;
+  /** 채택해도 서버가 목표·활동을 만들지 않아 늘 null */
+  createdGoalId: UUID | null;
+  policyVersion: string;
+  createdAt: ISODateTime;
+  decidedAt: ISODateTime | null;
+}
+
+export interface RecommendationDecisionBody {
+  decision: RecommendationDecision;
+  /** MODIFIED_ACCEPT 때 title 필수(≤200) */
+  goal?: { title?: string; category?: string | null; parentGoalId?: UUID | null } | null;
+  rejectionReason?: RecommendationRejectionReason | null;
+}
+
+export interface RoleplayDifficultyData {
+  childId: UUID;
+  scenarioLevel: ScenarioLevel;
+  initialSupportLevel: SupportLevel;
+  previousLevel: ScenarioLevel;
+  direction: 'LOWER' | 'KEEP' | 'RAISE';
+  reason: string;
+  scoreNumerator: number;
+  scoreDenominator: number;
+  consecutiveUpgradeCandidates: number;
+  policyVersion: string;
+  sourceActivityId: UUID;
+  /** 그 활동의 학습 기록. 리포트가 404여도 추천을 읽을 수 있다 */
+  sourceRecordId: UUID | null;
+  decidedAt: ISODateTime;
 }
 
 

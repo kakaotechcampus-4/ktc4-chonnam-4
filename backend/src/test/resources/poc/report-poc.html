@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>학습 리포트 PoC</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2330; --muted: #5d6675; --line: #e3e6ec;
+    --accent: #3b5bdb; --accent-soft: #e7ecfd; --ok: #2f9e44; --ok-soft: #e6f6ea;
+    --warn: #e67700; --warn-soft: #fff4e0; --bad: #c92a2a; --bad-soft: #fde8e8; --tech: #6b7280; --tech-soft: #eef0f3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 -apple-system, "Pretendard", "Segoe UI", "Malgun Gothic", sans-serif; }
+  header { padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header span { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px 24px 40px; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px 32px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+  .panel h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  select, input { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: #fff; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button { margin-top: 14px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #9aa6c9; cursor: progress; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .purpose { background: var(--accent-soft); border-radius: 6px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .ev { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .ev:last-child { border-bottom: 0; }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .id { background: var(--accent-soft); color: var(--accent); }
+  .k-TECHNICAL { background: var(--tech-soft); color: var(--tech); }
+  .k-GOAL_RESULT, .k-QUIZ_RESULT { background: #f1f3f5; color: #343a40; }
+  .k-OBSERVATION { background: var(--ok-soft); color: var(--ok); }
+  .k-EFFECTIVE_SUPPORT { background: var(--warn-soft); color: var(--warn); }
+  .status { background: #f1f3f5; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
+  .report-summary { font-size: 15px; background: #fafbff; border-left: 4px solid var(--accent); padding: 10px 12px; border-radius: 4px; }
+  .section-title { font-weight: 700; margin: 14px 0 6px; }
+  .item { padding: 6px 0; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .empty { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 12px; }
+  .b-ok { background: var(--ok-soft); color: var(--ok); }
+  .b-bad { background: var(--bad-soft); color: var(--bad); }
+  .b-warn { background: var(--warn-soft); color: var(--warn); }
+  .b-info { background: var(--accent-soft); color: var(--accent); }
+  .metric { margin: 6px 0; }
+  .metric .top { display: flex; justify-content: space-between; font-size: 13px; }
+  .bar { height: 8px; background: #edf0f5; border-radius: 4px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .timeline { display: flex; gap: 8px; flex-wrap: wrap; }
+  .round { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 180px; flex: 1; }
+  .round .n { font-size: 12px; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .placeholder { color: var(--muted); text-align: center; padding: 60px 12px; }
+  .error { background: var(--bad-soft); color: var(--bad); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; }
+  .reco { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>학습 리포트·추천·후속 난이도 PoC</h1>
+  <span>엘리스 ML API 실제 호출 · 합성 사례(실제 아동 기록 아님) · 저장 없음</span>
+</header>
+<main>
+  <div>
+    <div class="panel">
+      <h2>실행 조건</h2>
+      <label for="case">회귀 사례</label>
+      <select id="case"></select>
+      <div class="purpose" id="purpose"></div>
+      <div class="row">
+        <div><label for="gen">초안 모델</label><select id="gen"></select></div>
+        <div><label for="review">평가 모델</label><select id="review"></select></div>
+      </div>
+      <div class="row">
+        <div><label for="level">현재 난이도</label>
+          <select id="level"><option>L1</option><option selected>L2</option><option>L3</option></select></div>
+        <div><label for="candidates">이전 상향 후보 수</label><input id="candidates" type="number" min="0" value="0"></div>
+      </div>
+      <label for="goal">현재 학습 목표(확장 추천 질의)</label>
+      <input id="goal" value="감정의 이유 말하기">
+      <button id="run">실행</button>
+      <div class="hint" id="cost-hint">실행하면 실제 모델을 부릅니다. 리포트 하나에 수 원~수십 원이 듭니다.</div>
+    </div>
+    <div class="panel">
+      <h2>입력 근거 <span class="muted" style="font-weight:400">(LLM이 받는 것)</span></h2>
+      <div id="evidence" class="empty">실행하면 근거 ID(E1, E2 …)와 목표 상태가 보입니다.</div>
+    </div>
+  </div>
+  <div id="out"><div class="panel placeholder">왼쪽에서 사례와 모델을 고르고 <b>실행</b>을 누르세요.</div></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STATUS = { NO_SUPPORT_NEEDED: '지원 없이 도달', REACHED_AT_START: '처음 지원으로 도달', EXTRA_SUPPORT: '지원 더 받고 도달',
+  ANSWER_GIVEN: '답 듣고 따라 함', NOT_REACHED: '미도달', EXCLUDED: '결과에서 제외' };
+const KIND = { QUIZ_RESULT: '퀴즈 결과', GOAL_RESULT: '목표 결과', OBSERVATION: '관찰', EFFECTIVE_SUPPORT: '효과 있던 지원', TECHNICAL: '기술 오류' };
+const OUTCOME = { PASSED: ['통과', 'b-ok'], RULES_REJECTED: ['규칙 반려', 'b-warn'], REVIEW_REJECTED: ['평가 반려', 'b-warn'], CALL_FAILED: ['호출 실패', 'b-bad'] };
+const METRIC = { quizAccuracy: '퀴즈 첫 응답 정답', quizHintRecovery: '힌트 뒤 해결', roleplayScore: '역할극 점수율(VS-016)',
+  goalAchievement: '목표 도달(S0~S2)', independentAchievement: '추가 지원 없이 도달' };
+const RTYPE = { REINFORCE: '보완', REPEAT: '반복', APPLY: '적용', EXTEND: '확장' };
+let options;
+
+async function load() {
+  options = await (await fetch('/api/options')).json();
+  $('case').innerHTML = options.cases.map(c => `<option value="${c.id}">${c.id} · ${esc(c.purpose)}</option>`).join('');
+  const models = options.models.map(m => `<option value="${m.name}">${esc(m.name)} (${esc(m.id)})</option>`).join('');
+  $('gen').innerHTML = models; $('review').innerHTML = models;
+  $('gen').value = options.defaults.gen; $('review').value = options.defaults.review;
+  showPurpose();
+}
+function showPurpose() {
+  const c = options.cases.find(x => x.id === $('case').value);
+  $('purpose').textContent = c ? c.purpose : '';
+}
+$('case').addEventListener('change', showPurpose);
+
+$('run').addEventListener('click', async () => {
+  $('run').disabled = true; $('run').textContent = '실행 중… (모델 호출 10~60초)';
+  $('out').innerHTML = '<div class="panel placeholder">초안 작성 → 규칙 검사 → 평가 → 고쳐 쓰기를 진행하는 중입니다…</div>';
+  try {
+    const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: $('case').value, gen: $('gen').value, review: $('review').value,
+        currentLevel: $('level').value, previousCandidates: Number($('candidates').value || 0), currentGoal: $('goal').value }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    render(data);
+  } catch (e) {
+    $('out').innerHTML = `<div class="panel"><div class="error">${esc(e.message)}</div></div>`;
+  } finally {
+    $('run').disabled = false; $('run').textContent = '실행';
+  }
+});
+
+function chips(ids) { return (ids || []).map(id => `<span class="chip id">${esc(id)}</span>`).join(' '); }
+
+function render(d) {
+  $('evidence').innerHTML = d.evidence.map(e => `<div class="ev"><span class="chip id">${e.id}</span>
+    <div><span class="chip k-${e.kind}">${KIND[e.kind] || e.kind}</span> ${e.goal ? `<b>${esc(e.goal)}</b> ` : ''}
+    ${e.status ? `<span class="chip status">${STATUS[e.status] || e.status}</span>` : ''}<div>${esc(e.text)}</div></div></div>`).join('');
+
+  const r = d.result;
+  const shown = r.status === 'COMPLETED';
+  const draft = r.draft;
+  const section = (title, items) => `<div class="section-title">${title}</div>` + (items && items.length
+    ? items.map(i => `<div class="item">• ${esc(i.text)} ${chips(i.evidence_ids)}</div>`).join('') : '<div class="empty">(없음)</div>');
+  const report = shown ? `
+      <div class="report-summary">${esc(draft.summary)}</div>
+      ${section('관찰', draft.observations)}
+      ${section('효과적인 지원', draft.effective_supports)}
+      ${section('어려운 지점', draft.difficult_points)}`
+    : `<div class="error">강사에게 보이지 않습니다 — ${esc(r.reason)} (${esc(r.operation)}). 지표와 난이도는 그대로 남습니다.</div>
+       ${draft ? `<h3>마지막 초안(참고)</h3><div class="report-summary">${esc(draft.summary)}</div>` : ''}`;
+
+  const metrics = Object.entries(d.metrics).map(([k, m]) => m ? `<div class="metric"><div class="top"><span>${METRIC[k] || k}</span>
+      <span>${m.numerator}/${m.denominator} · ${(m.value * 100).toFixed(0)}%</span></div><div class="bar"><div style="width:${(m.value * 100).toFixed(1)}%"></div></div></div>`
+      : `<div class="metric muted">${METRIC[k] || k}: 잴 수 없음</div>`).join('');
+
+  const diff = d.difficulty;
+  const dirBadge = { LOWER: ['하향', 'b-warn'], KEEP: ['유지', 'b-info'], RAISE: ['상향', 'b-ok'] }[diff.direction];
+
+  const rounds = r.rounds.map(x => {
+    const [label, cls] = OUTCOME[x.outcome] || [x.outcome, 'b-info'];
+    const scores = x.scores ? Object.entries(x.scores).map(([k, v]) => `${k} ${v}`).join(' · ') : '';
+    return `<div class="round"><div class="n">${x.round}바퀴</div><span class="badge ${cls}">${label}</span>
+      ${x.failureCodes.length ? `<div class="hint">${x.failureCodes.map(esc).join(', ')}</div>` : ''}
+      ${scores ? `<div class="hint">${scores}</div>` : ''}</div>`;
+  }).join('');
+
+  const checks = r.itemChecks && r.itemChecks.length ? `<h3>마지막 평가의 항목별 확인(item_checks)</h3><table><tr><th>칸</th><th>#</th><th>근거</th><th>칸 맞음</th></tr>
+      ${r.itemChecks.map(c => `<tr><td>${c.section}</td><td>${c.index}</td><td>${c.grounded ? '✅' : '❌'}</td><td>${c.right_section ? '✅' : '❌'}</td></tr>`).join('')}</table>` : '';
+
+  const calls = d.calls.map(c => `<tr><td>${c.operation === 'REPORT_REVIEW' ? '평가' : '초안'}</td><td>${esc(c.model || '')}</td>
+      <td>${(c.ms / 1000).toFixed(1)}s</td><td>${c.inputTokens ?? '-'} / ${c.outputTokens ?? '-'}</td><td>${esc(c.finishReason || '-')}</td>
+      <td>${c.formatFailure ? '<span class="badge b-bad">형식 실패</span>' : ''}</td><td>₩${c.costKrw.toFixed(2)}</td></tr>`).join('');
+
+  const recos = d.recommendations.map(x => `<div class="reco"><span class="badge b-info">${RTYPE[x.type] || x.type}</span>
+      <span class="muted">${esc(x.reason)} · 근거 ${esc(x.sufficiency)}</span>
+      ${x.basisGoal ? `<div>바탕 목표: <b>${esc(x.basisGoal)}</b></div>` : ''}
+      ${x.evidence.length ? `<div class="hint">${x.evidence.map(esc).join(' / ')}</div>` : ''}
+      ${x.type === 'EXTEND' ? `<div>다음 목표 후보: ${x.suggestedGoal ? `<b>${esc(x.suggestedGoal.title)}</b> (유사도 ${x.suggestedGoal.similarity.toFixed(3)})` : '<span class="muted">맞는 목표 없음 — 강사가 고름</span>'}</div>` : ''}
+    </div>`).join('');
+  const sims = d.similarity.map(s => `<tr><td>${esc(s.title)}</td><td>${s.similarity.toFixed(3)}</td></tr>`).join('');
+
+  $('out').innerHTML = `
+    <div class="grid2">
+      <div class="panel">
+        <h2>강사에게 보일 리포트 ${shown ? '<span class="badge b-ok">통과</span>' : '<span class="badge b-bad">비표시</span>'}</h2>
+        ${report}
+      </div>
+      <div>
+        <div class="panel">
+          <h2>다음 난이도 <span class="badge ${dirBadge[1]}">${diff.previousLevel} → ${diff.nextLevel} ${dirBadge[0]}</span></h2>
+          <div class="kv"><span class="muted">이유</span><span>${esc(diff.reason)}</span>
+            <span class="muted">점수율</span><span>${(diff.scoreRatio * 100).toFixed(0)}% (${diff.validGoals}개 유효 목표)</span>
+            <span class="muted">연속 상향 후보</span><span>${diff.consecutiveUpgradeCandidates}</span>
+            <span class="muted">정책 버전</span><span>${esc(diff.policyVersion)}</span></div>
+        </div>
+        <div class="panel"><h2>정량 지표 (0~1)</h2>${metrics}</div>
+      </div>
+    </div>
+    <div class="panel"><h2>추천 (강사가 채택·수정·보류·거절)</h2>${recos || '<div class="empty">추천 없음</div>'}
+      ${sims ? `<h3>목표 유사도(질의: ${esc($('goal').value)})</h3><table><tr><th>학급 목표</th><th>코사인 유사도</th></tr>${sims}</table>` : ''}
+      ${d.similarityError ? `<div class="hint">유사도 검색 실패(다음 실행에서 다시 시도): ${esc(d.similarityError)}</div>` : ''}</div>
+    <div class="panel"><h2>뒤에서 일어난 일 — 생성·평가 루프</h2>
+      <div class="timeline">${rounds}</div>
+      ${checks}
+      <h3>LLM 호출 (합계 ${d.calls.length}번 · ₩${d.totalCostKrw.toFixed(2)} · ${(d.totalMs / 1000).toFixed(1)}초)</h3>
+      <table><tr><th>단계</th><th>모델</th><th>지연</th><th>토큰(입력/출력)</th><th>종료 이유</th><th></th><th>비용</th></tr>${calls}</table>
+      <div class="hint">프롬프트 ${esc(d.promptVersions.join(' · '))}</div>
+    </div>`;
+}
+load().catch(e => { $('out').innerHTML = `<div class="panel"><div class="error">${esc(e.message)}</div></div>`; });
+</script>
+</body>
+</html>

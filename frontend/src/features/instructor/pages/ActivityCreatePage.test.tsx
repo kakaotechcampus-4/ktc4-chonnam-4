@@ -2,7 +2,14 @@ import { screen, within } from "@testing-library/react"
 import axe from "axe-core"
 import { getResponse, http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { emptyQuizPool, fixtures, handlers, seedActivity, storedGoals } from "@/test/msw/handlers"
+import {
+  emptyQuizPool,
+  fixtures,
+  handlers,
+  seedActivity,
+  seedRoleplayLearning,
+  storedGoals,
+} from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import { ActivityCreatePage } from "./ActivityCreatePage"
@@ -28,6 +35,58 @@ function renderWizard(search = "") {
 
 describe("활동 만들기 화면", () => {
   beforeEach(() => signIn())
+
+  it("추천에서 넘어오면 목표가 채워진 역할극을 다음 난이도로 배정하고 지난 목표를 이어받는다", async () => {
+    const { activity } = seedRoleplayLearning({ childId: CHILD.childId })
+    let body: unknown
+    server.events.on("request:start", async ({ request }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
+        body = await request.clone().json()
+      }
+    })
+    const params = new URLSearchParams({
+      step: "goal",
+      classId: A1,
+      childId: CHILD.childId,
+      type: "ROLEPLAY",
+      goalTitle: "놀이터에서 위로하는 말 하기",
+      parentGoalId: activity.goalId!,
+    })
+    const { user, router } = renderWizard(`?${params.toString()}`)
+
+    expect(await screen.findByRole("tab", { name: "직접 입력", selected: true })).toBeInTheDocument()
+    expect(screen.getByLabelText("학습 목표")).toHaveValue("놀이터에서 위로하는 말 하기")
+    await user.click(screen.getByRole("button", { name: "다음 · 확인" }))
+
+    const summary = await screen.findByRole("region", { name: "배정 내용" })
+    expect(await within(summary).findByText("L2 · 시작 지원 상황 단서")).toBeInTheDocument()
+    expect(within(summary).getByText("이어받는 목표")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`))
+    expect(body).toEqual({
+      childId: CHILD.childId,
+      activityType: "ROLEPLAY",
+      goal: { title: "놀이터에서 위로하는 말 하기", parentGoalId: activity.goalId },
+    })
+  })
+
+  it("마친 역할극이 없어 다음 난이도가 없으면 확인 단계에서 알리고 배정 오류를 풀어 보인다", async () => {
+    seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
+    const params = new URLSearchParams({
+      step: "goal",
+      classId: A1,
+      childId: CHILD.childId,
+      type: "ROLEPLAY",
+      goalTitle: "친구 위로하기",
+    })
+    const { user } = renderWizard(`?${params.toString()}`)
+
+    await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
+    expect(await screen.findByText(/아직 마친 역할극이 없어 다음 난이도가 없어요/)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("최초 결합 활동의 역할극을 먼저 마쳐 주세요")
+  })
 
   it("아동과 목표를 고르고 배정하면, 그 아동의 활동 이력에 시작 전 활동으로 보인다", async () => {
     const { user, router } = renderWizard()
@@ -105,10 +164,11 @@ describe("활동 만들기 화면", () => {
     expect(first).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByText("최초 활동은 아동마다 한 번이에요.")).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "표정 퀴즈만" })).toHaveAttribute("aria-disabled", "true")
-    expect(screen.getByText("최초 활동을 마치면 열려요.")).toBeInTheDocument()
+    // 표정 퀴즈와 역할극 카드 둘 다 같은 이유로 닫혀 있다.
+    expect(screen.getAllByText("최초 활동을 마치면 열려요.")).toHaveLength(2)
     expect(screen.getByRole("radio", { name: "역할극만" })).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeDisabled()
-    expect(screen.getByText(/최초 결합 활동을 마치면 표정 퀴즈를 만들 수 있어요/)).toBeInTheDocument()
+    expect(screen.getByText(/최초 결합 활동을 마치면 표정 퀴즈와 역할극을 만들 수 있어요/)).toBeInTheDocument()
     expect(screen.queryByText(/처음 배정하는 아동은/)).not.toBeInTheDocument()
   })
 
@@ -120,7 +180,8 @@ describe("활동 만들기 화면", () => {
 
     expect(await screen.findByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("aria-disabled", "true")
     expect(screen.getByRole("radio", { name: "표정 퀴즈만" })).not.toHaveAttribute("aria-disabled", "true")
-    expect(screen.getByText(/최초 결합 활동을 마쳐서 표정 퀴즈를 만들 수 있어요/)).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "역할극만" })).not.toHaveAttribute("aria-disabled", "true")
+    expect(screen.getByText(/최초 결합 활동을 마쳐서 표정 퀴즈와 역할극을 만들 수 있어요/)).toBeInTheDocument()
   })
 
   it("유형 카드 묶음에서는 선택된 카드에만 Tab 이 멈춘다", async () => {
@@ -139,8 +200,13 @@ describe("활동 만들기 화면", () => {
     expect(quiz).toHaveAttribute("tabindex", "0")
     expect(screen.getByRole("radio", { name: "최초 결합 활동" })).toHaveAttribute("tabindex", "-1")
 
+    // 왼쪽의 최초 결합은 닫혀 있어 건너뛰고 한 바퀴 돌아 역할극을 고른다. 다시 오른쪽으로 가면 닫힌 카드를 건너뛰어 표정 퀴즈다.
     quiz.focus()
     await user.keyboard("{ArrowLeft}")
+    const roleplay = screen.getByRole("radio", { name: "역할극만" })
+    expect(roleplay).toHaveAttribute("aria-checked", "true")
+    expect(roleplay).toHaveFocus()
+    await user.keyboard("{ArrowRight}")
     expect(quiz).toHaveAttribute("aria-checked", "true")
     expect(quiz).toHaveFocus()
 

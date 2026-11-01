@@ -53,7 +53,7 @@ JSON은 Content-Type application/json입니다. FormData는 boundary를 브라�
 | FIRST_COMBINED (생략/null 기본) | goal 필수 | 아동당1회·유형별1개 총3문항 |
 | SELF_EMOTION_QUIZ | goal 금지 | 최초 결합 COMPLETED 후10문항 |
 | OTHER_EMOTION_QUIZ | goal 금지 | 최초 결합 COMPLETED 후 상황7+이미지3문항 |
-| ROLEPLAY | goal 필수 | 현재422 ACTIVITY_TYPE_NOT_AVAILABLE |
+| ROLEPLAY | goal 필수 | 다음 역할극 난이도가 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY |
 
 독립 퀴즈는 같은 아동·유형의 NOT_STARTED 중복을 차단합니다. 필요한 문항이 모자라면 배정을 거부하고 일부만 만들지 않습니다. 배정 문항은 재조회 시 유지합니다. GET /quiz-items와 GET /quiz-items/{itemId}는 현재 미제공입니다.
 

@@ -9,13 +9,34 @@ type PageTab = {
 
 /**
  * 헤더 아래 탭 띠. 시안의 탭을 모두 보여 주되, 화면이 있는 탭만 고를 수 있다.
- * 열린 탭이 하나뿐인 화면(활동 리포트)용이라 선택 상태는 `selected` 하나로 받는다.
+ * `onSelect` 를 주면 열린 탭이 버튼이 되어 고를 수 있다(학급 상세처럼 ?tab= 으로 남긴다). 주지 않으면 열린 탭 하나를 보여 주기만 한다.
  */
-function PageTabs({ label, tabs, selected }: { label: string; tabs: PageTab[]; selected: string }) {
+function PageTabs({
+  label,
+  tabs,
+  selected,
+  onSelect,
+}: {
+  label: string
+  tabs: PageTab[]
+  selected: string
+  onSelect?: (label: string) => void
+}) {
   return (
     <div role="tablist" aria-label={label} className="flex gap-1">
       {tabs.map((tab) =>
-        tab.available ? (
+        tab.available && onSelect ? (
+          <button
+            key={tab.label}
+            type="button"
+            role="tab"
+            aria-selected={tab.label === selected}
+            onClick={() => onSelect(tab.label)}
+            className={cn(tabBaseClass, tab.label === selected ? tabSelectedClass : tabIdleClass)}
+          >
+            {tab.label}
+          </button>
+        ) : tab.available ? (
           <span
             key={tab.label}
             role="tab"

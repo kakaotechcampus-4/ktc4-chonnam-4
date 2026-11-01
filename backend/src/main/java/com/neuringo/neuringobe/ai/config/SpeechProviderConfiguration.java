@@ -4,6 +4,8 @@ import com.neuringo.neuringobe.ai.application.model.AudioFormat;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.OpenAiSpeechToTextProvider;
+import com.neuringo.neuringobe.ai.infrastructure.speech.ScriptedSpeechToTextProvider;
+import com.neuringo.neuringobe.ai.infrastructure.speech.SilentTextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.TypecastTextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
 import java.util.Locale;
@@ -16,6 +18,28 @@ import org.springframework.context.annotation.Configuration;
 public final class SpeechProviderConfiguration {
 
     private SpeechProviderConfiguration() {}
+
+    /** 로컬 끝까지 돌려 보기 전용. 올린 WAV 의 대본 조각을 전사 결과로 돌려준다(운영에 쓰지 않는다). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(name = "neuringo.ai.stt.provider", havingValue = "scripted")
+    static class ScriptedSpeechToText {
+
+        @Bean
+        SpeechToTextProvider speechToTextProvider() {
+            return new ScriptedSpeechToTextProvider();
+        }
+    }
+
+    /** 로컬 끝까지 돌려 보기 전용. 음성 없이 글로만 응답한다. */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(name = "neuringo.ai.tts.provider", havingValue = "silent")
+    static class SilentTextToSpeech {
+
+        @Bean
+        TextToSpeechProvider textToSpeechProvider() {
+            return new SilentTextToSpeechProvider();
+        }
+    }
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(SpeechToTextProperties.class)

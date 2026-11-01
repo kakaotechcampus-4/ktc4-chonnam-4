@@ -1,5 +1,15 @@
 # API v1 변경 이력
 
+## 2026-10-31 — 리포트·추천·다음 역할극 난이도 구현(작업 브랜치)
+
+- 기준은 develop `ccfdff0` 위 `feature/roleplay-report-integration` 작업 브랜치입니다. develop 병합·운영 배포를 뜻하지 않습니다.
+- API-REC-01~05를 설계에서 구현으로 바꾸고, 다음 역할극 난이도 조회 API-REC-06(`GET /api/v1/children/{childId}/roleplay-difficulty`)을 더했습니다. 목차는 58개 ID 중 구현 36개·조건부 구현 1개·설계 19개·미제공 2개입니다.
+- 열려 있던 필드를 확정했습니다. 리포트의 `quiz`·`roleplay`·`difficultyDecision`은 서버가 기록에서 센 값이고, `metrics`(분자·분모)와 `narrative`(AI 항목과 근거 ID)를 더했습니다. 역할극 단독 활동은 `quiz`가 null입니다.
+- 추천 유형은 REINFORCE·REPEAT·APPLY·EXTEND, 충분성은 SUFFICIENT·LIMITED·INSUFFICIENT, 거절 이유는 NOT_NOW·NOT_SUITABLE·ALREADY_PLANNED·OTHER입니다. 채택해도 서버는 목표·활동을 만들지 않아 `createdGoalId`는 늘 null입니다.
+- 결정은 같은 키·같은 입력이면 앞 결과를 200으로, 같은 키·다른 입력이면 409 `IDEMPOTENCY_KEY_REUSED`, 확정 뒤 다시 결정하면 409 `RECOMMENDATION_ALREADY_DECIDED`입니다.
+- `contracts/api-v1.json`에 리포트·추천·난이도 시나리오 10개와 자리표시자 `unknownId`를 더했고, 백엔드·프론트 계약 실행기가 PATCH를 보냅니다.
+- 문서·전송 모의 검사 111개 통과(Node 26). 실제 서버·외부 AI 동작은 백엔드 통합 테스트에서 따로 확인합니다.
+
 ## 2026-10-28 — PR #80과 develop 충돌 해결
 
 - 기준은 PR #80 `c306bd1`과 develop `565beb6`의 통합 작업본입니다. 아래는 코드·문서 통합 내역이며 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
