@@ -54,7 +54,8 @@ final class MascotHintRule {
 
     /** 딴 이야기·짜증은 연속 금지·상한과 관계없이 바로잡는다. */
     private static Optional<Reason> redirectReason(AnalysisResult analysis) {
-        if ("NEGATIVE_EXPRESSION".equals(analysis.responseAct()))
+        if ("NEGATIVE_EXPRESSION".equals(analysis.responseAct())
+                || "REFUSAL".equals(analysis.responseAct()))
             return Optional.of(Reason.NEGATIVE_EXPRESSION);
         if ("OFF_TOPIC_REMARK".equals(analysis.responseAct())
                 || "OFF_TOPIC".equals(analysis.learningState()))

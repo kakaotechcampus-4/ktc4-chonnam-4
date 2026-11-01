@@ -40,6 +40,10 @@ public final class RoleplayPromptFactory {
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
             "roleplay-response-evaluation/v2";
 
+    /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
+    public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
+            "roleplay-response-evaluation-character/v2";
+
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
     public static final String EVALUATION_SCHEMA_VERSION = GoalObservationOutput.EVALUATION_VERSION;
@@ -54,7 +58,7 @@ public final class RoleplayPromptFactory {
     private final String characterResponseGenerationSystemPrompt;
     private final String responseEvaluationSystemPrompt;
     private final String characterCauseAnalysisRules;
-    private final String characterResponseEvaluationRules;
+    private final String characterResponseEvaluationSystemPrompt;
 
     /**
      * @param policyVersion 지원 수준·턴 제한 정책 버전(예: SUPPORT-MVP-001). 정해지지 않았으면 null.
@@ -71,7 +75,7 @@ public final class RoleplayPromptFactory {
                 PromptTemplates.load("roleplay/v2/response-evaluation.md");
         this.characterCauseAnalysisRules =
                 PromptTemplates.load("roleplay/v2/cause-analysis-character.md");
-        this.characterResponseEvaluationRules =
+        this.characterResponseEvaluationSystemPrompt =
                 PromptTemplates.load("roleplay/v2/response-evaluation-character.md");
     }
 
@@ -223,6 +227,7 @@ public final class RoleplayPromptFactory {
         if (!candidate.candidateId().equals(trace.candidateId())) {
             throw new IllegalArgumentException("trace candidateId does not match the candidate");
         }
+        boolean characterVoice = input.scenario().aiCharacter() != null;
         if (!analysis.turnId().equals(input.learnerTurn().turnId())
                 || !candidate.turnId().equals(input.learnerTurn().turnId())) {
             throw new IllegalArgumentException("analysis or candidate belongs to another turn");
@@ -240,12 +245,13 @@ public final class RoleplayPromptFactory {
                         attempts,
                         AiOperation.RESPONSE_EVALUATION,
                         currentAttempt,
-                        withCharacterRules(
-                                responseEvaluationSystemPrompt,
-                                characterResponseEvaluationRules,
-                                input),
+                        characterVoice
+                                ? characterResponseEvaluationSystemPrompt
+                                : responseEvaluationSystemPrompt,
                         toJson(message),
-                        RESPONSE_EVALUATION_PROMPT_VERSION,
+                        characterVoice
+                                ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
+                                : RESPONSE_EVALUATION_PROMPT_VERSION,
                         EVALUATION_SCHEMA_VERSION,
                         policyVersion);
         return new PreparedPrompt<>(

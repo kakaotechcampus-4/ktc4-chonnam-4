@@ -31,6 +31,8 @@ class MascotHintRuleTest {
                 .contains(Reason.OFF_TOPIC);
         assertThat(decide(state(1, 0, false), analysis("NEGATIVE_EXPRESSION", "OFF_TOPIC", "S1")))
                 .contains(Reason.NEGATIVE_EXPRESSION);
+        assertThat(decide(state(1, 0, false), analysis("REFUSAL", "HELP_NEEDED", "S1")))
+                .contains(Reason.NEGATIVE_EXPRESSION);
         assertThat(decide(state(1, 0, false), analysis("ANSWER_ATTEMPT", "MISCONCEPTION", "S1")))
                 .contains(Reason.MISCONCEPTION);
     }

@@ -396,6 +396,11 @@ class RoleplayPromptFactoryTest {
                         .parser()
                         .parse(candidateJson("(훌쩍이며) 아야… 나 방금 넘어졌어.", "GUIDING_QUESTION"));
         assertThat(line.text()).doesNotContain("?");
+        CandidateResponse strategyNamedLine =
+                characterGeneration
+                        .parser()
+                        .parse(candidateJson("(훌쩍이며) 무릎이 욱신거려…", "PROBE_EMOTION"));
+        assertThat(strategyNamedLine.responseType()).isEqualTo("GUIDING_QUESTION");
         assertThatThrownBy(
                         () ->
                                 characterGeneration
@@ -419,7 +424,7 @@ class RoleplayPromptFactoryTest {
                                                         "GUIDING_QUESTION")))
                 .isInstanceOf(InvalidLlmOutputException.class);
 
-        String characterEvaluation =
+        var characterEvaluationRequest =
                 factory.responseEvaluation(
                                 trace(ANALYSIS_ID, CANDIDATE_ID),
                                 attempts(),
@@ -428,9 +433,18 @@ class RoleplayPromptFactoryTest {
                                 parsedAnalysis(),
                                 parsedCandidate(parsedAnalysis()),
                                 observations)
-                        .request()
-                        .systemPrompt();
-        assertThat(characterEvaluation).contains("# 캐릭터 대사 검증");
+                        .request();
+        String characterEvaluation = characterEvaluationRequest.systemPrompt();
+        assertThat(characterEvaluationRequest.promptVersion())
+                .isEqualTo(RoleplayPromptFactory.CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
+        assertThat(characterEvaluation)
+                .contains("캐릭터 대사는 질문이 아니어도 된다")
+                .doesNotContain("MISSING_QUESTION");
+        assertContainsAll(
+                characterEvaluation,
+                RoleplayCodes.FAILURE_CODES.stream()
+                        .filter(code -> !code.equals("MISSING_QUESTION"))
+                        .collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test

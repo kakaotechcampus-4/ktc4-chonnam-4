@@ -97,7 +97,9 @@ final class RoleplayOutputParsers {
         Set<String> normalizedFailedTexts = new HashSet<>();
         failedCandidateTexts.forEach(text -> normalizedFailedTexts.add(normalize(text)));
         return content -> {
-            CandidateResponse result = delegate.parse(stripCodeFence(content));
+            CandidateResponse parsed = delegate.parse(stripCodeFence(content));
+            CandidateResponse result =
+                    characterVoice ? withStrategyNameAsResponseTypeFixed(parsed) : parsed;
             check(
                     result.candidateId().equals(expectedCandidateId),
                     "candidate_id does not match the request");
@@ -143,6 +145,37 @@ final class RoleplayOutputParsers {
                     "text repeats a failed candidate");
             return result;
         };
+    }
+
+    /**
+     * 캐릭터 대사 생성은 response_type 칸에 전략 이름(REDIRECT_TO_SCENARIO 등)을 그대로 적는 실수가 잦다. 전략과 지원 수준으로 응답 유형이
+     * 하나로 정해지므로, 전략 이름이 그대로 들어온 경우에만 그 유형으로 바꾼다.
+     */
+    private static CandidateResponse withStrategyNameAsResponseTypeFixed(CandidateResponse result) {
+        if (!result.responseType().equals(result.strategyUsed())) return result;
+        String responseType =
+                switch (result.strategyUsed()) {
+                    case "PROBE_EVENT", "PROBE_EMOTION", "PROBE_CAUSE" ->
+                            "S3".equals(result.supportLevel())
+                                    ? "ANSWER_REVEAL"
+                                    : "GUIDING_QUESTION";
+                    case "PROBE_ACTION", "ADVANCE_GOAL" -> "GUIDING_QUESTION";
+                    case "REDIRECT_TO_SCENARIO" -> "REDIRECT";
+                    case "CONFIRM_UNDERSTANDING" -> "CONFIRMATION";
+                    case "CLOSE_ROLEPLAY" -> "CLOSING";
+                    default -> null;
+                };
+        if (responseType == null) return result;
+        return new CandidateResponse(
+                result.candidateId(),
+                result.turnId(),
+                result.text(),
+                responseType,
+                result.strategyUsed(),
+                result.targetMicroGoalId(),
+                result.supportLevel(),
+                result.previousFailedCandidateIds(),
+                result.mascotHint());
     }
 
     static LlmOutputParser<EvaluationResult> evaluation(

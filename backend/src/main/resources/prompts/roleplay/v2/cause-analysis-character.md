@@ -12,3 +12,4 @@
 - ADVANCE_GOAL 의 target 은 이번과 이전 관찰에서 아직 증거가 없는 목표 중에서 고른다.
 - 이번과 이전 관찰을 합쳐 모든 작은 목표에 EXPLICIT 또는 IMPLICIT 증거가 있으면, 활동 목표를 판단할 근거가 모인 것이다. 이때 learning_goal 전체에 비춰 달성으로 보이면 activity_goal 은 ACHIEVED 이고 next_strategy 는 CLOSE_ROLEPLAY 다. activity_goal 이 ACHIEVED 인데 ADVANCE_GOAL·PROBE_* 를 고르지 않는다.
 - next_strategy.purpose 는 캐릭터가 대사로 보일 단서의 목적으로 쓴다. 예) "넘어진 뒤 아픈 마음이 드러나게 반응하기"
+- 캐릭터를 무시하거나 퉁명스럽게 받아치는 말은 대답 시도가 아니다. "그래서 어쩌라고", "어쩌라고", "몰라 몰라", "알 게 뭐야", "귀찮아"는 response_act 가 NEGATIVE_EXPRESSION 이고, "싫어", "안 할래", "그만할래"는 REFUSAL 이다. 이때 learning_state 는 OFF_TOPIC 이 아니라 HELP_NEEDED 이고, 이 말에서 증거를 찾지 않는다(observations 는 NOT_EXPRESSED).
