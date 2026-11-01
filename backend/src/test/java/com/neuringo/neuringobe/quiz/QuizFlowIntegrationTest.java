@@ -129,6 +129,8 @@ class QuizFlowIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // 시나리오는 학급에 묶지 않는 공용 자료라, 앞 테스트의 승인본이 같은 목표의 재사용 후보로 잡히지 않게 비운다.
+        jdbc.update("DELETE FROM scenario");
         UUID classroomId = UUID.randomUUID();
         childId = UUID.randomUUID();
         TestInstructors.save(users, "teacher-quiz");
@@ -473,8 +475,6 @@ class QuizFlowIntegrationTest {
         assertThat(preparation.initialDifficulty()).isEqualTo(evidence);
         assertThat(preparation.learningGoal().goalId()).isEqualTo(applied.getGoalId());
         assertThat(preparation.reuseKey().scenarioLevel()).isEqualTo("L2");
-        assertThat(preparation.reuseKey().classId())
-                .isEqualTo(children.findById(childId).orElseThrow().getClassId());
 
         assertThat(submitAnswer(lastAssignment, lastRequest).getResponse().getStatus())
                 .isEqualTo(200);
@@ -603,9 +603,7 @@ class QuizFlowIntegrationTest {
         assertThat(prepared.reuseKey())
                 .isEqualTo(
                         new InitialScenarioPreparation.ReuseKey(
-                                children.findById(childId).orElseThrow().getClassId(),
-                                prepared.learningGoal().contentHash(),
-                                "L3"));
+                                prepared.learningGoal().contentHash(), "L3"));
         assertThat(prepared.initialDifficulty().activityId()).isEqualTo(activityId);
         assertThat(prepared.initialDifficulty().initialSupportLevel()).isEqualTo("S0");
         assertThat(prepared.initialDifficulty().policyVersion()).isEqualTo("INITIAL_QUIZ_V2");
@@ -627,13 +625,13 @@ class QuizFlowIntegrationTest {
     }
 
     @ParameterizedTest(name = "재사용 키 조건: {0}")
-    @ValueSource(strings = {"SAME", "CLASS", "GOAL", "LEVEL"})
-    void scenarioReuseKeyIncludesClassGoalHashAndLevel(String difference) throws Exception {
+    @ValueSource(strings = {"SAME", "OTHER_CLASS", "GOAL", "LEVEL"})
+    void scenarioReuseKeyIsGoalHashAndLevelOnly(String difference) throws Exception {
         Map<String, Object> firstGoal = Map.of("title", "친구 마음 알아보기");
         UUID firstActivity = assignFirstActivity(childId, firstGoal);
         completeAssignedQuiz(firstActivity, true);
         UUID classId = children.findById(childId).orElseThrow().getClassId();
-        if (difference.equals("CLASS")) {
+        if (difference.equals("OTHER_CLASS")) {
             classId = UUID.randomUUID();
             classrooms.save(
                     new Classroom(
@@ -655,7 +653,8 @@ class QuizFlowIntegrationTest {
         InitialScenarioPreparation first = scenarioPreparations.prepare(firstActivity, teacher);
         InitialScenarioPreparation second = scenarioPreparations.prepare(secondActivity, teacher);
 
-        if (difference.equals("SAME")) {
+        // 시나리오는 공용 자료라 다른 반이어도 같은 키다.
+        if (difference.equals("SAME") || difference.equals("OTHER_CLASS")) {
             assertThat(second.reuseKey()).isEqualTo(first.reuseKey());
         } else {
             assertThat(second.reuseKey()).isNotEqualTo(first.reuseKey());
@@ -1191,35 +1190,34 @@ class QuizFlowIntegrationTest {
     }
 
     @ParameterizedTest(name = "승인 후보 제외 조건: {0}")
-    @ValueSource(strings = {"CLASS", "GOAL", "LEVEL", "DRAFT", "RETIRED", "UNSCOPED", "USED"})
+    @ValueSource(
+            strings = {
+                "GOAL",
+                "LEVEL",
+                "DRAFT",
+                "REVISION_REQUIRED",
+                "REJECTED",
+                "UNSCOPED",
+                "USED"
+            })
     void firstQuizDoesNotAttachIneligibleScenario(String mismatch) throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "조건에 맞는 승인본만"));
         String status =
-                mismatch.equals("DRAFT") || mismatch.equals("RETIRED") ? mismatch : "APPROVED";
+                List.of("DRAFT", "REVISION_REQUIRED", "REJECTED").contains(mismatch)
+                        ? mismatch
+                        : "APPROVED";
         // 승인 전 초안에서만 조건을 수정한다.
         UUID scenarioId =
                 saveScenarioForActivity(
                         activityId, "DRAFT", mismatch.equals("LEVEL") ? "L1" : "L3");
-        if (mismatch.equals("CLASS")) {
-            UUID otherClass = UUID.randomUUID();
-            classrooms.save(
-                    new Classroom(
-                            otherClass,
-                            TestInstructors.id("teacher-quiz"),
-                            "다른 반",
-                            ClassroomStatus.ACTIVE));
-            jdbc.update(
-                    "UPDATE scenario SET class_id = ? WHERE scenario_id = ?",
-                    otherClass,
-                    scenarioId);
-        } else if (mismatch.equals("GOAL")) {
+        if (mismatch.equals("GOAL")) {
             jdbc.update(
                     "UPDATE scenario SET goal_content_hash = ? WHERE scenario_id = ?",
                     "0".repeat(64),
                     scenarioId);
         } else if (mismatch.equals("UNSCOPED")) {
             jdbc.update(
-                    "UPDATE scenario SET class_id = null, goal_content_hash = null WHERE scenario_id = ?",
+                    "UPDATE scenario SET goal_content_hash = null WHERE scenario_id = ?",
                     scenarioId);
         } else if (mismatch.equals("USED")) {
             Activity previous =
@@ -1253,9 +1251,10 @@ class QuizFlowIntegrationTest {
                         "title = '변경'",
                         "scenario_level = 'L1'",
                         "goal_content_hash = null",
-                        "class_id = null",
                         "scenario_version = 2",
-                        "status = 'DRAFT'")) {
+                        "approved_at = now() - interval '1 day'",
+                        "status = 'DRAFT'",
+                        "status = 'REJECTED'")) {
             assertThatThrownBy(
                             () ->
                                     jdbc.update(
@@ -1265,13 +1264,43 @@ class QuizFlowIntegrationTest {
                                             scenarioId))
                     .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
-        jdbc.update("UPDATE scenario SET status = 'RETIRED' WHERE scenario_id = ?", scenarioId);
-        assertThatThrownBy(
-                        () ->
-                                jdbc.update(
-                                        "UPDATE scenario SET status = 'APPROVED' WHERE scenario_id = ?",
-                                        scenarioId))
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @ParameterizedTest(name = "판정이 끝난 초안은 다시 바꿀 수 없음: {0}")
+    @ValueSource(strings = {"REVISION_REQUIRED", "REJECTED"})
+    void reviewedDraftCannotChangeOrBeApproved(String reviewed) throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "판정 뒤 불변"));
+        UUID scenarioId = saveScenarioForActivity(activityId, "DRAFT", "L3");
+        jdbc.update("UPDATE scenario SET status = ? WHERE scenario_id = ?", reviewed, scenarioId);
+        for (String change : List.of("title = '변경'", "status = 'APPROVED'", "status = 'DRAFT'")) {
+            assertThatThrownBy(
+                            () ->
+                                    jdbc.update(
+                                            "UPDATE scenario SET "
+                                                    + change
+                                                    + " WHERE scenario_id = ?",
+                                            scenarioId))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        }
+    }
+
+    @Test
+    void approvingDraftFillsApprovedAtOnce() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "승인 시각"));
+        UUID scenarioId = saveScenarioForActivity(activityId, "DRAFT", "L3");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT approved_at FROM scenario WHERE scenario_id = ?",
+                                Instant.class,
+                                scenarioId))
+                .isNull();
+        jdbc.update("UPDATE scenario SET status = 'APPROVED' WHERE scenario_id = ?", scenarioId);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT approved_at FROM scenario WHERE scenario_id = ?",
+                                Instant.class,
+                                scenarioId))
+                .isNotNull();
     }
 
     @Test
@@ -1544,26 +1573,22 @@ class QuizFlowIntegrationTest {
     }
 
     @ParameterizedTest(name = "최초 시작 차단: {0}")
-    @ValueSource(strings = {"UNLINKED", "DRAFT", "RETIRED", "CLASS", "GOAL", "LEVEL", "COMPLETED"})
+    @ValueSource(
+            strings = {
+                "UNLINKED",
+                "DRAFT",
+                "REVISION_REQUIRED",
+                "REJECTED",
+                "GOAL",
+                "LEVEL",
+                "COMPLETED"
+            })
     void initialRoleplayInputRejectsUnreadyOrMismatchedApproval(String mismatch) throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "시작 근거 확인"));
         completeAssignedQuiz(activityId, true);
         UUID scenarioId =
                 saveScenarioForActivity(
                         activityId, "DRAFT", mismatch.equals("LEVEL") ? "L1" : "L3");
-        if (mismatch.equals("CLASS")) {
-            UUID otherClass = UUID.randomUUID();
-            classrooms.save(
-                    new Classroom(
-                            otherClass,
-                            TestInstructors.id("teacher-quiz"),
-                            "다른 시작 학급",
-                            ClassroomStatus.ACTIVE));
-            jdbc.update(
-                    "UPDATE scenario SET class_id = ? WHERE scenario_id = ?",
-                    otherClass,
-                    scenarioId);
-        }
         if (mismatch.equals("GOAL")) {
             jdbc.update(
                     "UPDATE scenario SET goal_content_hash = ? WHERE scenario_id = ?",
@@ -1571,7 +1596,9 @@ class QuizFlowIntegrationTest {
                     scenarioId);
         }
         String status =
-                mismatch.equals("DRAFT") || mismatch.equals("RETIRED") ? mismatch : "APPROVED";
+                List.of("DRAFT", "REVISION_REQUIRED", "REJECTED").contains(mismatch)
+                        ? mismatch
+                        : "APPROVED";
         jdbc.update("UPDATE scenario SET status = ? WHERE scenario_id = ?", status, scenarioId);
         if (!mismatch.equals("UNLINKED")) {
             jdbc.update(
@@ -2065,9 +2092,6 @@ class QuizFlowIntegrationTest {
                                     goalId,
                                     sessionId);
                         });
-        jdbc.update(
-                "UPDATE scenario SET status = 'RETIRED' WHERE scenario_id = ?",
-                activities.findById(activityId).orElseThrow().getScenarioId());
         Map<String, Object> snapshot =
                 jdbc.queryForMap("SELECT * FROM roleplay_session WHERE session_id = ?", sessionId);
         MvcResult restored =
@@ -2418,12 +2442,11 @@ class QuizFlowIntegrationTest {
         jdbc.update(
                 """
                 INSERT INTO scenario (scenario_id, status, scenario_level, goal_content_hash,
-                    class_id, scenario_version, title, scenario_facts, opening_prompts, origin, created_at)
-                SELECT ?, ?, ?, g.content_hash, c.class_id, 1, '합성 승인 시나리오', '[]'::jsonb,
+                    scenario_version, title, scenario_facts, opening_prompts, origin, created_at)
+                SELECT ?, ?, ?, g.content_hash, 1, '합성 승인 시나리오', '[]'::jsonb,
                     '{"S0":"친구는 어떤 기분일까?","S1":"친구가 눈물을 흘리고 있어. 어떤 기분일까?","S2":"친구가 슬퍼 보여. 마음을 함께 말해볼까?"}'::jsonb,
                     'PREPARED', ?
-                FROM activity a JOIN child c ON c.child_id = a.child_id
-                    JOIN learning_goal g ON g.goal_id = a.goal_id
+                FROM activity a JOIN learning_goal g ON g.goal_id = a.goal_id
                 WHERE a.activity_id = ?
                 """,
                 id,

@@ -47,7 +47,7 @@ public class JdbcRoleplayProgressSource implements RoleplayProgressSource {
                   and s.scenario_id=? and a.scenario_id=s.scenario_id and s.scenario_version=?
                   and s.row_version=? and s.status='IN_PROGRESS' and a.status='IN_PROGRESS'
                   and c.status='ACTIVE' and sc.status='APPROVED'
-                  and sc.class_id=c.class_id and sc.goal_content_hash=g.content_hash
+                  and sc.goal_content_hash=g.content_hash
                 """,
                         (rs, n) ->
                                 new Saved(

@@ -83,10 +83,7 @@ public class ScenarioAttachmentService {
         }
         scenarios
                 .findFirstUnusedApproved(
-                        child.getClassId(),
-                        goal.getContentHash(),
-                        evidence.scenarioLevel(),
-                        child.getChildId())
+                        goal.getContentHash(), evidence.scenarioLevel(), child.getChildId())
                 .ifPresent(
                         scenarioId ->
                                 activities.attachScenarioIfEmpty(

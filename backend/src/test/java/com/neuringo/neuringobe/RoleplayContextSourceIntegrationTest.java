@@ -225,23 +225,16 @@ class RoleplayContextSourceIntegrationTest {
         assertThat(load(key(f)).orElseThrow().key().scenarioVersion()).isEqualTo(3);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"class", "goalHash"})
-    void rejectsApprovedContentOutsideTheActivityReuseScope(String changed) {
+    @Test
+    void rejectsApprovedContentOutsideTheActivityReuseScope() {
+        // 시나리오는 학급에 묶지 않으므로 목표 내용이 다를 때만 범위 밖이다.
         var f =
                 fixture(
-                        value -> {
-                            if (changed.equals("class")) {
-                                jdbc.update(
-                                        "update scenario set class_id=null where scenario_id=?",
-                                        value.scenario);
-                            } else {
+                        value ->
                                 jdbc.update(
                                         "update scenario set goal_content_hash=? where scenario_id=?",
                                         "b".repeat(64),
-                                        value.scenario);
-                            }
-                        });
+                                        value.scenario));
         assertThat(load(key(f))).isEmpty();
     }
 
@@ -401,7 +394,7 @@ class RoleplayContextSourceIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"DRAFT", "RETIRED"})
+    @ValueSource(strings = {"DRAFT", "REVISION_REQUIRED", "REJECTED"})
     void doesNotExposeContentWithoutCurrentApproval(String status) {
         var f = fixture(value -> {}, status);
         assertThat(load(key(f))).isEmpty();
@@ -1883,9 +1876,8 @@ class RoleplayContextSourceIntegrationTest {
                 f.scenario,
                 now);
         jdbc.update(
-                "insert into scenario(scenario_id,class_id,goal_content_hash,status,scenario_level,title,ai_role,scenario_facts,origin,created_at) values(?,?,?,'DRAFT','L1','synthetic scenario','NARRATOR','[\"synthetic fact\"]'::jsonb,'PREPARED',?)",
+                "insert into scenario(scenario_id,goal_content_hash,status,scenario_level,title,ai_role,scenario_facts,origin,created_at) values(?,?,'DRAFT','L1','synthetic scenario','NARRATOR','[\"synthetic fact\"]'::jsonb,'PREPARED',?)",
                 f.scenario,
-                classroom,
                 "a".repeat(64),
                 now);
         jdbc.update(

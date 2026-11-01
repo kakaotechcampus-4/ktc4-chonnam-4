@@ -32,7 +32,7 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                 join child c on c.child_id = a.child_id
                 join learning_goal g on g.goal_id = a.goal_id and g.child_id = c.child_id
             where s.scenario_id = :id and s.scenario_version = :version and s.status = 'APPROVED'
-                and s.class_id = c.class_id and s.goal_content_hash = g.content_hash
+                and s.goal_content_hash = g.content_hash
                 and jsonb_typeof(s.opening_prompts) = 'object'
                 and jsonb_typeof(s.opening_prompts -> cast(:support as text)) = 'string'
             for share of s
@@ -57,12 +57,11 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
             from Scenario s
             where s.scenarioId = :scenarioId
                 and s.status = com.neuringo.neuringobe.scenario.domain.ScenarioStatus.APPROVED
-                and s.classId = :classId and s.goalContentHash = :goalHash
+                and s.goalContentHash = :goalHash
                 and s.scenarioLevel = :level and s.scenarioVersion > 0
             """)
     Optional<ApprovedScenarioVersion> findMatchingApprovedVersion(
             @Param("scenarioId") UUID scenarioId,
-            @Param("classId") UUID classId,
             @Param("goalHash") String goalHash,
             @Param("level") String level);
 
@@ -72,7 +71,6 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                     """
                     select s.scenario_id from scenario s
                     where s.status = 'APPROVED'
-                      and s.class_id = :classId
                       and s.goal_content_hash = :goalHash
                       and s.scenario_level = :level
                       and s.scenario_version > 0
@@ -85,7 +83,6 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                     """,
             nativeQuery = true)
     Optional<UUID> findFirstUnusedApproved(
-            @Param("classId") UUID classId,
             @Param("goalHash") String goalHash,
             @Param("level") String level,
             @Param("childId") UUID childId);

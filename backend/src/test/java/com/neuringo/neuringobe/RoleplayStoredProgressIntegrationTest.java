@@ -220,7 +220,7 @@ class RoleplayStoredProgressIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"paused", "class", "hash", "support", "version", "missingGoal"})
+    @ValueSource(strings = {"paused", "hash", "support", "version", "missingGoal"})
     void rejectsInvalidStoredScopeBeforeCallingThePolicy(String invalid) {
         var f = fixture();
         switch (invalid) {
@@ -232,11 +232,6 @@ class RoleplayStoredProgressIntegrationTest {
                     jdbc.update(
                             "update activity set status='PAUSED' where activity_id=?",
                             f.key().activityId());
-            case "class" ->
-                    jdbc.update(
-                            "update child set class_id=? where child_id=?",
-                            anotherClass(),
-                            f.key().childId());
             case "hash" ->
                     jdbc.update(
                             "update learning_goal set content_hash=? where goal_id=?",
@@ -324,9 +319,8 @@ class RoleplayStoredProgressIntegrationTest {
                 goal,
                 scenario);
         jdbc.update(
-                "insert into scenario(scenario_id,class_id,goal_content_hash,scenario_version,status,scenario_level,title,scenario_facts,origin,created_at) values(?,?,?,3,'DRAFT','L1','synthetic','[\"fact\"]'::jsonb,'PREPARED',now())",
+                "insert into scenario(scenario_id,goal_content_hash,scenario_version,status,scenario_level,title,scenario_facts,origin,created_at) values(?,?,3,'DRAFT','L1','synthetic','[\"fact\"]'::jsonb,'PREPARED',now())",
                 scenario,
-                classroom,
                 "a".repeat(64));
         jdbc.update(
                 "insert into scenario_micro_goal(micro_goal_id,scenario_id,order_no,description,required_evidence) values(?,?,1,'first','[\"first evidence\"]'::jsonb),(?,?,2,'second','[\"second evidence\"]'::jsonb)",

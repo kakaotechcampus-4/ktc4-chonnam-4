@@ -55,7 +55,7 @@ public class InitialRoleplayStartQueryService {
                 || sessions.existsByActivityId(activityId)) {
             throw notReady();
         }
-        var child = children.findById(childId).orElseThrow(this::notReady);
+        children.findById(childId).orElseThrow(this::notReady);
         var goal = goals.findById(evidence.goalId()).orElseThrow(this::notReady);
         if (!goal.getChildId().equals(childId)
                 || goal.getContentHash() == null
@@ -66,7 +66,6 @@ public class InitialRoleplayStartQueryService {
                 scenarios
                         .findMatchingApprovedVersion(
                                 activity.getScenarioId(),
-                                child.getClassId(),
                                 goal.getContentHash(),
                                 evidence.scenarioLevel())
                         .orElseThrow(this::notReady);

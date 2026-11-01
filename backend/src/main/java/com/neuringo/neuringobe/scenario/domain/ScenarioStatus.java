@@ -1,10 +1,12 @@
 package com.neuringo.neuringobe.scenario.domain;
 
 public enum ScenarioStatus {
-    /** 승인 전 초안. 아동에게 붙지 않는다. */
+    /** 승인 전 초안. 아동에게 붙지 않고, 이 상태일 때만 내용을 고칠 수 있다. */
     DRAFT,
-    /** 새 배정에 쓸 수 있다. */
-    APPROVED,
-    /** 고친 판으로 대체되어 새 배정에서 빠진다. 이미 붙은 활동은 계속 가리킨다. */
-    RETIRED
+    /** 강사가 고쳐 오라고 판정했다. 다시 만든 결과는 새 초안 행이 된다. */
+    REVISION_REQUIRED,
+    /** 강사가 쓰지 않기로 판정했다. 다시 승인되거나 아동에게 붙지 않는다. */
+    REJECTED,
+    /** 재사용 후보가 될 수 있다. 고친 판이 승인돼도 그대로 남는다. */
+    APPROVED
 }

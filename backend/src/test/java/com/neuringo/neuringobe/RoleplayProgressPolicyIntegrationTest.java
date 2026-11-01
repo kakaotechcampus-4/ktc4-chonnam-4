@@ -280,9 +280,8 @@ class RoleplayProgressPolicyIntegrationTest {
                 "insert into quiz_result(activity_id,valid_question_count,correct_question_count,overall_accuracy,total_hint_count,resolved_after_hint_count,scenario_level,initial_support_level,difficulty_fallback_applied,initial_difficulty_used,policy_version,snapshotted_at) values(?,1,0,0,0,0,'L1','S2',false,true,'INITIAL_QUIZ_V2',now())",
                 activity);
         jdbc.update(
-                "insert into scenario(scenario_id,class_id,goal_content_hash,scenario_version,status,scenario_level,title,scenario_facts,opening_prompts,origin,created_at) values(?,?,?,3,'DRAFT','L1','synthetic','[\"fact\"]'::jsonb,'{\"S2\":\"synthetic opening?\"}'::jsonb,'PREPARED',now())",
+                "insert into scenario(scenario_id,goal_content_hash,scenario_version,status,scenario_level,title,scenario_facts,opening_prompts,origin,created_at) values(?,?,3,'DRAFT','L1','synthetic','[\"fact\"]'::jsonb,'{\"S2\":\"synthetic opening?\"}'::jsonb,'PREPARED',now())",
                 scenario,
-                classroom,
                 "a".repeat(64));
         jdbc.update(
                 "insert into scenario_micro_goal(micro_goal_id,scenario_id,order_no,description,required_evidence) values(?,?,1,'first','[\"first evidence\"]'::jsonb),(?,?,2,'second','[\"second evidence\"]'::jsonb)",

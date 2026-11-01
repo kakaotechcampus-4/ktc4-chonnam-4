@@ -17,9 +17,6 @@ public class Scenario {
     @Column(name = "scenario_id")
     private UUID scenarioId;
 
-    @Column(name = "class_id")
-    private UUID classId;
-
     @Column(name = "scenario_version", nullable = false)
     private int scenarioVersion;
 
@@ -39,6 +36,10 @@ public class Scenario {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    // 승인본만 값이 있다. 재사용 후보 순서에서 최근 승인본을 앞에 두는 데 쓴다.
+    @Column(name = "approved_at")
+    private Instant approvedAt;
 
     protected Scenario() {}
 
@@ -64,5 +65,9 @@ public class Scenario {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getApprovedAt() {
+        return approvedAt;
     }
 }

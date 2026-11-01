@@ -41,15 +41,15 @@ public class InitialScenarioPreparationService {
                     "INITIAL_SCENARIO_INPUT_NOT_READY",
                     "시나리오 준비에 필요한 목표 근거를 확인할 수 없습니다.");
         }
-        var child =
-                children.findById(evidence.childId())
-                        .orElseThrow(
-                                () ->
-                                        new ResourceNotFoundException(
-                                                "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
+        // 학급은 더 보지 않지만, 아동이 지워졌으면 준비하지 않는다.
+        children.findById(evidence.childId())
+                .orElseThrow(
+                        () ->
+                                new ResourceNotFoundException(
+                                        "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다."));
         var reuseKey =
                 new InitialScenarioPreparation.ReuseKey(
-                        child.getClassId(), goal.contentHash(), evidence.scenarioLevel());
+                        goal.contentHash(), evidence.scenarioLevel());
         return new InitialScenarioPreparation(evidence, goal, reuseKey);
     }
 }

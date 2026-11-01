@@ -104,14 +104,14 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
         var rows =
                 jdbc.queryForList(
                         """
-                        select s.scenario_id, s.scenario_version, s.class_id, s.goal_content_hash,
+                        select s.scenario_id, s.scenario_version, s.goal_content_hash,
                                s.scenario_level, s.title, s.summary, s.ai_role, s.characters,
                                s.scenario_facts, s.prohibited_inferences, s.opening_prompts
                         from scenario s
                         join child c on c.child_id=?
                         join learning_goal g on g.goal_id=? and g.child_id=c.child_id
                         where s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
-                          and s.class_id=c.class_id and s.goal_content_hash=g.content_hash
+                          and s.goal_content_hash=g.content_hash
                         """,
                         key.childId(),
                         key.goalId(),
@@ -196,7 +196,6 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                     List.of(
                             "scenario_id",
                             "scenario_version",
-                            "class_id",
                             "goal_content_hash",
                             "scenario_level",
                             "title",
