@@ -50,7 +50,13 @@ public record CandidateResponse(
                 previousFailedCandidateIds == null
                         ? List.of()
                         : List.copyOf(previousFailedCandidateIds);
-        mascotHint = mascotHint == null || mascotHint.isBlank() ? null : mascotHint.strip();
+        // 모델이 힌트가 없다는 뜻으로 "null" 문자열을 쓰는 경우도 없는 것으로 본다.
+        mascotHint =
+                mascotHint == null
+                                || mascotHint.isBlank()
+                                || mascotHint.strip().equalsIgnoreCase("null")
+                        ? null
+                        : mascotHint.strip();
     }
 
     private static void requireText(String value, String fieldName) {

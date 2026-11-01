@@ -60,8 +60,14 @@ final class RoleplayOutputParsers {
             AnalysisResult result =
                     withClosingSupportLevelFilled(
                             delegate.parse(
-                                    withMiscopiedTurnIdFixed(
-                                            stripCodeFence(content), expectedTurnId, knownTurnIds)),
+                                    withMiscopiedIdFixed(
+                                            withMiscopiedTurnIdFixed(
+                                                    stripCodeFence(content),
+                                                    expectedTurnId,
+                                                    knownTurnIds),
+                                            "analysis_id",
+                                            expectedAnalysisId,
+                                            Set.of())),
                             state);
             check(result.turnId().equals(expectedTurnId), "turn_id does not match the request");
             check(oneOf(RoleplayCodes.RESPONSE_ACTS, result.responseAct()), "unknown response_act");
@@ -94,27 +100,32 @@ final class RoleplayOutputParsers {
         };
     }
 
-    private static final Pattern TURN_ID_FIELD =
-            Pattern.compile("\"turn_id\"\\s*:\\s*\"([^\"]+)\"");
-
     /**
-     * 모델이 긴 turn_id 를 옮겨 적다 가운데 몇 글자를 틀리는 일이 잦다(앞 8자는 같고 뒤가 다른 값). 이번 턴 말고는 쓸 수 없는 자리라, 앞 8자가 같고 이전
-     * 턴 id 도 아닌 값이면 이번 턴 id 를 잘못 옮긴 것으로 보고 모두 바로잡는다. 그 밖의 값은 그대로 두어 검증에서 걸러진다.
+     * 모델이 긴 id(turn_id·analysis_id·candidate_id)를 옮겨 적다 가운데 몇 글자를 틀리는 일이 잦다(앞 8자는 같고 뒤가 다른 값). 그
+     * 자리에는 정해진 값 하나만 올 수 있으므로, 앞 8자가 같고 다른 알려진 id 도 아닌 값이면 잘못 옮긴 것으로 보고 모두 바로잡는다. 그 밖의 값은 그대로 두어
+     * 검증에서 걸러진다.
      */
-    static String withMiscopiedTurnIdFixed(
-            String content, UUID expectedTurnId, Set<String> knownTurnIds) {
-        if (content == null) return null;
-        String expected = expectedTurnId.toString();
-        Matcher matcher = TURN_ID_FIELD.matcher(content);
+    static String withMiscopiedIdFixed(
+            String content, String field, UUID expectedId, Set<String> knownIds) {
+        if (content == null || expectedId == null) return content;
+        String expected = expectedId.toString();
+        Matcher matcher =
+                Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]+)\"")
+                        .matcher(content);
         if (!matcher.find()) return content;
         String written = matcher.group(1);
         if (written.equals(expected)
-                || knownTurnIds.contains(written)
+                || knownIds.contains(written)
                 || written.length() < 8
                 || !written.regionMatches(true, 0, expected, 0, 8)) {
             return content;
         }
         return content.replace("\"" + written + "\"", "\"" + expected + "\"");
+    }
+
+    static String withMiscopiedTurnIdFixed(
+            String content, UUID expectedTurnId, Set<String> knownTurnIds) {
+        return withMiscopiedIdFixed(content, "turn_id", expectedTurnId, knownTurnIds);
     }
 
     /** 마무리(CLOSE_ROLEPLAY)는 지원 수준을 현재 수준 그대로 둔다. 모델이 빠뜨리면 그 값으로 채운다. */
@@ -142,6 +153,14 @@ final class RoleplayOutputParsers {
                 result.goalObservation());
     }
 
+    /** 마스코트가 아동에게 하는 말이 아니라 내부 지시처럼 쓰인 경우. 예) "넘어졌던 일을 다시 말해보게 하기", "캐릭터가 ~말하게 해줘" */
+    private static final Pattern MASCOT_INSTRUCTION =
+            Pattern.compile("(캐릭터|단서|유도|목표|힌트|역할극|지원 수준|(하|주|보|돌려주)기[.!…]*$)");
+
+    static boolean looksLikeInstruction(String mascotHint) {
+        return MASCOT_INSTRUCTION.matcher(mascotHint.strip()).find();
+    }
+
     static LlmOutputParser<CandidateResponse> candidate(
             ObjectMapper objectMapper,
             UUID expectedCandidateId,
@@ -156,7 +175,17 @@ final class RoleplayOutputParsers {
         Set<String> normalizedFailedTexts = new HashSet<>();
         failedCandidateTexts.forEach(text -> normalizedFailedTexts.add(normalize(text)));
         return content -> {
-            CandidateResponse parsed = delegate.parse(stripCodeFence(content));
+            CandidateResponse parsed =
+                    delegate.parse(
+                            withMiscopiedIdFixed(
+                                    withMiscopiedIdFixed(
+                                            stripCodeFence(content),
+                                            "candidate_id",
+                                            expectedCandidateId,
+                                            Set.of()),
+                                    "turn_id",
+                                    analysis.turnId(),
+                                    Set.of()));
             CandidateResponse result =
                     characterVoice ? withStrategyNameAsResponseTypeFixed(parsed) : parsed;
             check(
@@ -186,6 +215,9 @@ final class RoleplayOutputParsers {
             if (mascotHintRequired) {
                 check(result.mascotHint() != null, "the mascot hint is required for this turn");
                 check(result.mascotHint().length() <= maxTextLength, "the mascot hint is too long");
+                check(
+                        !looksLikeInstruction(result.mascotHint()),
+                        "the mascot hint must speak to the child, not describe an instruction");
             } else {
                 check(result.mascotHint() == null, "the mascot hint is not allowed for this turn");
             }
@@ -242,7 +274,14 @@ final class RoleplayOutputParsers {
         LlmOutputParser<EvaluationResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, EvaluationResult.class);
         return content -> {
-            EvaluationResult result = delegate.parse(stripCodeFence(content));
+            String repaired = stripCodeFence(content);
+            repaired =
+                    withMiscopiedIdFixed(repaired, "candidate_id", expectedCandidateId, Set.of());
+            if (expectedAnalysisId != null) {
+                repaired =
+                        withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
+            }
+            EvaluationResult result = delegate.parse(repaired);
             check(
                     result.candidateId().equals(expectedCandidateId),
                     "candidate_id does not match the request");

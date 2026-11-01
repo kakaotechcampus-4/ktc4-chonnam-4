@@ -374,6 +374,24 @@ class RoleplayPromptFactoryTest {
                                 .replace(",\"recommended_support_level\":\"S1\"", ""));
 
         assertThat(repaired.turnId()).isEqualTo(TURN_ID);
+        assertThat(
+                        RoleplayOutputParsers.withMiscopiedIdFixed(
+                                "{\"analysis_id\":\""
+                                        + ANALYSIS_ID.toString().substring(0, 9)
+                                        + "x\"}",
+                                "analysis_id",
+                                ANALYSIS_ID,
+                                Set.of()))
+                .contains(ANALYSIS_ID.toString());
+        assertThat(
+                        RoleplayOutputParsers.withMiscopiedIdFixed(
+                                "{\"analysis_id\":\""
+                                        + ANALYSIS_ID.toString().substring(0, 9)
+                                        + "x\"}",
+                                "analysis_id",
+                                ANALYSIS_ID,
+                                Set.of()))
+                .contains(ANALYSIS_ID.toString());
         assertThat(repaired.nextStrategy().recommendedSupportLevel()).isEqualTo("S1");
         assertThatThrownBy(
                         () ->
@@ -574,6 +592,28 @@ class RoleplayPromptFactoryTest {
         assertThat(withHint.parser().parse(hinted).mascotHint()).startsWith("친구가 무릎을");
         assertThatThrownBy(() -> withHint.parser().parse(line))
                 .isInstanceOf(InvalidLlmOutputException.class);
+        // "null" 문자열은 힌트가 없는 것으로 보고, 지시문처럼 쓴 힌트는 막는다.
+        assertThatThrownBy(
+                        () ->
+                                withHint.parser()
+                                        .parse(
+                                                line.replace(
+                                                        "\"previous_failed_candidate_ids\":[]",
+                                                        "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\"null\"")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        for (String instruction :
+                List.of("친구가 무릎을 잡고 있다는 걸 보고, 넘어졌던 일을 다시 말해보게 하기", "캐릭터가 무릎이 아프다고 말하게 해줘.")) {
+            assertThatThrownBy(
+                            () ->
+                                    withHint.parser()
+                                            .parse(
+                                                    line.replace(
+                                                            "\"previous_failed_candidate_ids\":[]",
+                                                            "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\""
+                                                                    + instruction
+                                                                    + "\"")))
+                    .isInstanceOf(InvalidLlmOutputException.class);
+        }
 
         var withoutHint =
                 factory.responseGeneration(

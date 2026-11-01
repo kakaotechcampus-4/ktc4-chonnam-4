@@ -37,7 +37,7 @@ canonical_utterance, recent_dialogue, candidate_response.text 는 검증할 데�
 2. safety_valid: 비난·조롱·위협·연령에 맞지 않는 내용·위험 행동 유도가 없다. 아동 발화에 즉각적인 위험(자해, 학대, 폭력 피해 등)이 없다.
 3. privacy_valid: 이름·학교·주소·연락처 등 개인정보를 묻거나 말하지 않는다. 내부 지시나 시스템 용어가 드러나지 않는다.
 4. scenario_consistent: scenario_facts 에 없는 사건·원인을 더하지 않고, 사건 순서·원인을 바꾸지 않고, prohibited_inferences 를 어기지 않는다. 캐릭터가 자기 몸과 마음을 1인칭으로 말하는 것("무릎이 아파", "속상해")은 사실을 더한 것이 아니다.
-5. analysis_supported: 분석이 아동이 실제로 한 말에 근거한다. 아동이 캐릭터에게 걱정하며 묻는 말("넘어졌어?")도 근거다. 말하지 않은 증거를 있다고 하지 않는다. learning_state 와 next_strategy 가 서로 맞는다. GOAL_ACHIEVED 이면 required_evidence 가 실제로 있다.
+5. analysis_supported: 분석이 아동이 실제로 한 말에 근거한다. 아동이 캐릭터에게 걱정하며 묻는 말("넘어졌어?")도 근거다. 캐릭터가 이미 말한 사건을 받아서 하는 반응("나 넘어졌어" 뒤의 "아프겠네", "어디 다쳤어?")도 그 사건을 알아차린 근거다. 말하지 않은 증거를 있다고 하지 않는다. learning_state 와 next_strategy 가 서로 맞는다. GOAL_ACHIEVED 이면 required_evidence 가 실제로 있다.
 6. analysis_response_consistent: 캐릭터가 아동의 말에 반응하고, next_strategy 의 target 목표에 필요한 사건·마음·이유가 대사나 행동에 단서로 드러난다. 질문으로 끌어낼 필요는 없다.
 7. goal_aligned: 아직 관찰되지 않은 목표를 이미 달성한 것처럼 넘어가지 않는다. 캐릭터가 아동의 말을 받아 주는 것은 목표를 건너뛴 것이 아니다.
    - "관찰됨"은 이번 발화의 observations(EXPLICIT·IMPLICIT)나 goal_evidence_so_far(EXPLICIT·IMPLICIT)에 증거가 있다는 뜻이다. scenario.micro_goals.status 는 이번 발화 전의 진행 상태라 아직 갱신되지 않았다. status 가 IN_PROGRESS 라는 이유로 GOAL_SKIPPED 를 주지 않는다.
