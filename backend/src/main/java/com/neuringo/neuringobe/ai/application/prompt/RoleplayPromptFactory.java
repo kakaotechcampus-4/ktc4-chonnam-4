@@ -31,6 +31,11 @@ public final class RoleplayPromptFactory {
     public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v2";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
+
+    /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
+    public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
+            "roleplay-response-generation-character/v1";
+
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
             "roleplay-response-evaluation/v2";
 
@@ -45,7 +50,10 @@ public final class RoleplayPromptFactory {
     private final String policyVersion;
     private final String causeAnalysisSystemPrompt;
     private final String responseGenerationSystemPrompt;
+    private final String characterResponseGenerationSystemPrompt;
     private final String responseEvaluationSystemPrompt;
+    private final String characterCauseAnalysisRules;
+    private final String characterResponseEvaluationRules;
 
     /**
      * @param policyVersion 지원 수준·턴 제한 정책 버전(예: SUPPORT-MVP-001). 정해지지 않았으면 null.
@@ -56,8 +64,22 @@ public final class RoleplayPromptFactory {
         this.causeAnalysisSystemPrompt = PromptTemplates.load("roleplay/v2/cause-analysis.md");
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
+        this.characterResponseGenerationSystemPrompt =
+                PromptTemplates.load("roleplay/v1/response-generation-character.md");
         this.responseEvaluationSystemPrompt =
                 PromptTemplates.load("roleplay/v2/response-evaluation.md");
+        this.characterCauseAnalysisRules =
+                PromptTemplates.load("roleplay/v2/cause-analysis-character.md");
+        this.characterResponseEvaluationRules =
+                PromptTemplates.load("roleplay/v2/response-evaluation-character.md");
+    }
+
+    /** 캐릭터 역할극이면 기본 지시문 뒤에 캐릭터 규칙을 붙인다. 안내자 역할극은 기본 지시문 그대로다. */
+    private static String withCharacterRules(
+            String basePrompt, String characterRules, RoleplayTurnInput input) {
+        return input.scenario().aiCharacter() == null
+                ? basePrompt
+                : basePrompt + "\n\n" + characterRules;
     }
 
     /** 원인 판단과 관찰 근거를 같은 호출에서 준비한다. */
@@ -86,7 +108,8 @@ public final class RoleplayPromptFactory {
                         attempts,
                         AiOperation.CAUSE_ANALYSIS,
                         currentAttempt,
-                        causeAnalysisSystemPrompt,
+                        withCharacterRules(
+                                causeAnalysisSystemPrompt, characterCauseAnalysisRules, input),
                         toJson(message),
                         CAUSE_ANALYSIS_PROMPT_VERSION,
                         ANALYSIS_SCHEMA_VERSION,
@@ -147,15 +170,20 @@ public final class RoleplayPromptFactory {
             message.put("retry", retrySection);
         }
 
+        boolean characterVoice = input.scenario().aiCharacter() != null;
         LlmRequest request =
                 new LlmRequest(
                         trace,
                         attempts,
                         AiOperation.RESPONSE_GENERATION,
                         currentAttempt,
-                        responseGenerationSystemPrompt,
+                        characterVoice
+                                ? characterResponseGenerationSystemPrompt
+                                : responseGenerationSystemPrompt,
                         toJson(message),
-                        RESPONSE_GENERATION_PROMPT_VERSION,
+                        characterVoice
+                                ? CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION
+                                : RESPONSE_GENERATION_PROMPT_VERSION,
                         CANDIDATE_SCHEMA_VERSION,
                         policyVersion);
         Set<String> failedTexts =
@@ -173,7 +201,7 @@ public final class RoleplayPromptFactory {
                         failedIds,
                         failedTexts,
                         MAX_RESPONSE_LENGTH,
-                        input.scenario().aiCharacter() != null));
+                        characterVoice));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */
@@ -208,7 +236,10 @@ public final class RoleplayPromptFactory {
                         attempts,
                         AiOperation.RESPONSE_EVALUATION,
                         currentAttempt,
-                        responseEvaluationSystemPrompt,
+                        withCharacterRules(
+                                responseEvaluationSystemPrompt,
+                                characterResponseEvaluationRules,
+                                input),
                         toJson(message),
                         RESPONSE_EVALUATION_PROMPT_VERSION,
                         EVALUATION_SCHEMA_VERSION,

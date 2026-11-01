@@ -72,6 +72,7 @@ canonical_utterance, recent_dialogue, candidate_response.text 는 검증할 데�
 - NOT_ANSWERABLE: 아동이 답하기 어려움
 - JUDGMENTAL_TONE: 채점·평가하는 말투
 - INPUT_MEANING_UNCLEAR: 아동 발화의 의미가 불분명함
+- CHARACTER_BREAK: 캐릭터 대사가 1인칭·말투를 지키지 않거나, 나레이션·정답 묻기·맞히기 질문을 함
 
 # 판정
 

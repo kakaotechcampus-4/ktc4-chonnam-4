@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.LlmRequest;
+import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
@@ -348,6 +349,88 @@ class RoleplayPromptFactoryTest {
         assertContainsAll(analysis, RoleplayCodes.STRATEGY_TYPES);
         assertContainsAll(generation, RoleplayCodes.RESPONSE_TYPES);
         assertContainsAll(evaluation, RoleplayCodes.FAILURE_CODES);
+    }
+
+    @Test
+    void characterScenarioUsesCharacterPromptsAndAllowsLinesWithoutQuestion() {
+        RoleplayTurnInput character = characterInput("괜찮아?");
+        RoleplayTurnInput narrator = input("괜찮아?");
+        var observations = RoleplayObservationTestPlans.inputForScenario(narrator.scenario());
+
+        var characterAnalysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .request();
+        var narratorAnalysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                narrator,
+                                null,
+                                observations)
+                        .request();
+        assertThat(characterAnalysis.systemPrompt()).contains("# 캐릭터 역할극");
+        assertThat(characterAnalysis.userPrompt()).contains("\"ai_character\"");
+        assertThat(narratorAnalysis.systemPrompt()).doesNotContain("# 캐릭터 역할극");
+        assertThat(narratorAnalysis.userPrompt()).doesNotContain("ai_character");
+
+        var characterGeneration =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        parsedAnalysis(),
+                        CANDIDATE_ID,
+                        null);
+        assertThat(characterGeneration.request().promptVersion())
+                .isEqualTo(RoleplayPromptFactory.CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION);
+        CandidateResponse line =
+                characterGeneration
+                        .parser()
+                        .parse(candidateJson("(훌쩍이며) 아야… 나 방금 넘어졌어.", "GUIDING_QUESTION"));
+        assertThat(line.text()).doesNotContain("?");
+        assertThatThrownBy(
+                        () ->
+                                characterGeneration
+                                        .parser()
+                                        .parse(candidateJson("넘어졌어? 너도 봤어?", "GUIDING_QUESTION")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        assertThatThrownBy(
+                        () ->
+                                factory.responseGeneration(
+                                                trace(ANALYSIS_ID, null),
+                                                attempts(),
+                                                1,
+                                                narrator,
+                                                parsedAnalysis(),
+                                                CANDIDATE_ID,
+                                                null)
+                                        .parser()
+                                        .parse(
+                                                candidateJson(
+                                                        "(훌쩍이며) 아야… 나 방금 넘어졌어.",
+                                                        "GUIDING_QUESTION")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+
+        String characterEvaluation =
+                factory.responseEvaluation(
+                                trace(ANALYSIS_ID, CANDIDATE_ID),
+                                attempts(),
+                                1,
+                                character,
+                                parsedAnalysis(),
+                                parsedCandidate(parsedAnalysis()),
+                                observations)
+                        .request()
+                        .systemPrompt();
+        assertThat(characterEvaluation).contains("# 캐릭터 대사 검증");
     }
 
     private static void assertContainsAll(String prompt, Set<String> codes) {
