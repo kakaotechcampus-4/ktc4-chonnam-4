@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 시나리오 조회와 [수정하기] 초안의 새 판 만들기·고치기·판정·폐기(명세 API-SCN). */
+/** 시나리오 조회와 [수정하기] 초안의 새 판 만들기·고치기·판정·폐기. 계약은 contracts/api/v1/scenarios 에 있다. */
 @RestController
 public class ScenarioController {
     private final ScenarioDraftService drafts;
