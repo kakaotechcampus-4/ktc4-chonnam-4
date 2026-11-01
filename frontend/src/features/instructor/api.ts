@@ -240,7 +240,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -512,4 +512,105 @@ export type QuizResult = {
 /** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
 export function getQuizResult(activityId: string): Promise<QuizResult> {
   return readRequest<QuizResult>(`/activities/${activityId}/quiz-result`)
+}
+
+export type ScenarioStatus = 'DRAFT' | 'REVISION_REQUIRED' | 'REJECTED' | 'APPROVED'
+
+export type ScenarioMicroGoal = {
+  microGoalId: string
+  description: string
+  requiredEvidence: string[]
+}
+
+/** 강사가 검토하는 시나리오 한 판. 공용 승인본만 따로 조회하면 goalId·scenarioSource 가 null 이다. */
+export type Scenario = {
+  scenarioId: string
+  version: number
+  goalId: string | null
+  scenarioSource: 'REUSED' | 'NEWLY_GENERATED' | null
+  status: ScenarioStatus
+  scenarioLevel: string
+  title: string
+  summary: string | null
+  scenarioFacts: string[]
+  prohibitedInferences: string[]
+  characters: { id?: string; role?: string }[]
+  microGoals: ScenarioMicroGoal[]
+  openingPrompts: Record<string, unknown>
+}
+
+export type ScenarioApprovalState = 'DRAFT_IN_PROGRESS' | 'CANDIDATE_AVAILABLE' | 'NO_CANDIDATE'
+
+/** 승인 대기함의 한 줄. 시나리오를 기다리는 최초 결합 활동 하나다. */
+export type ScenarioApprovalItem = {
+  activityId: string
+  childId: string
+  childName: string
+  classId: string
+  className: string
+  goalId: string
+  goalTitle: string
+  scenarioLevel: string
+  waitingSince: string
+  state: ScenarioApprovalState
+  draftScenarioId: string | null
+  draftVersion: number | null
+}
+
+export type ScenarioCandidate = {
+  /** 후보가 없으면 null */
+  scenario: Scenario | null
+  hasNext: boolean
+}
+
+export type DraftMicroGoalPatch = {
+  microGoalId: string
+  description: string
+  requiredEvidence: string[]
+}
+
+export type ScenarioReview = {
+  version: number
+  status?: 'DRAFT' | 'APPROVED' | 'REJECTED'
+  title?: string
+  summary?: string
+  microGoals?: DraftMicroGoalPatch[]
+}
+
+/** 내 학급에서 시나리오 승인을 기다리는 활동. 기다린 순서대로 온다. */
+export function listScenarioApprovals(): Promise<ScenarioApprovalItem[]> {
+  return readRequest<ScenarioApprovalItem[]>('/scenario-approvals')
+}
+
+/** 재사용 후보 하나. after 를 주면 그 다음 후보다. 넘긴 후보는 서버에 남지 않는다. */
+export function getScenarioCandidate(activityId: string, after?: string): Promise<ScenarioCandidate> {
+  const query = after ? `?after=${encodeURIComponent(after)}` : ''
+  return readRequest<ScenarioCandidate>(`/activities/${activityId}/scenario-candidate${query}`)
+}
+
+/** [승인]: 재사용 후보를 활동에 붙인다. 같은 후보로 다시 보내도 결과가 같다. */
+export function attachActivityScenario(activityId: string, scenarioId: string): Promise<Scenario> {
+  return writeRequest<Scenario>('PUT', `/activities/${activityId}/scenario`, { scenarioId })
+}
+
+/**
+ * [수정하기]: 승인된 후보를 이 목표에 맞게 고칠 새 판(초안)을 만든다.
+ * 같은 목표·같은 원본으로 다시 보내면 만든 초안을 그대로 준다.
+ */
+export function createScenarioVersion(scenarioId: string, version: number, goalId: string): Promise<Scenario> {
+  return writeRequest<Scenario>('POST', `/scenarios/${scenarioId}/versions`, { version, goalId })
+}
+
+export function getScenario(scenarioId: string): Promise<Scenario> {
+  return readRequest<Scenario>(`/scenarios/${scenarioId}`)
+}
+
+/** 초안의 칸을 고치고, status 가 있으면 판정한다(APPROVED 면 그 목표의 활동에 붙는다). */
+export function reviewScenario(scenarioId: string, review: ScenarioReview): Promise<Scenario> {
+  return writeRequest<Scenario>('PATCH', `/scenarios/${scenarioId}`, review)
+}
+
+/** [폐기]: 초안만 지운다. */
+export function deleteScenario(scenarioId: string): Promise<void> {
+  return writeRequest<void>('DELETE', `/scenarios/${scenarioId}`)
 }
