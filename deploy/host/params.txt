@@ -43,3 +43,15 @@ TTS_VOICE_ID?=tts/voice-id
 TTS_LANGUAGE?=tts/language
 TTS_AUDIO_FORMAT?=tts/audio-format
 TTS_TIMEOUT?=tts/timeout
+
+# 역할극. 설정이 없으면 HTTP API 는 꺼진다. 켜려면 합의된 턴·업로드·작업자 정책과 구현 빈이 필요하다.
+ROLEPLAY_HTTP_ENABLED?=roleplay/http/enabled
+ROLEPLAY_SPOOL_DIRECTORY?=roleplay/http/spool-directory
+ROLEPLAY_UPLOAD_MAX_BYTES?=roleplay/http/maximum-upload-bytes
+ROLEPLAY_REQUEST_MAX_BYTES?=roleplay/http/maximum-request-bytes
+ROLEPLAY_ALLOWED_FORMATS?=roleplay/http/allowed-formats
+ROLEPLAY_WORKER_COUNT?=roleplay/http/worker-count
+ROLEPLAY_QUEUE_CAPACITY?=roleplay/http/queue-capacity
+ROLEPLAY_TURN_BUDGET?=roleplay/http/turn-budget
+ROLEPLAY_MAXIMUM_TURN_COUNT?=roleplay/progress/maximum-turn-count
+ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL?=roleplay/progress/maximum-support-turns-per-micro-goal

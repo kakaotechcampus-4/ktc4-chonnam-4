@@ -209,7 +209,8 @@ public final class RoleplayPromptFactory {
                         failedTexts,
                         MAX_RESPONSE_LENGTH,
                         characterVoice,
-                        mascotHint.isPresent()));
+                        mascotHint.isPresent(),
+                        input.state().turnCount() >= input.state().maximumTurnCount()));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */

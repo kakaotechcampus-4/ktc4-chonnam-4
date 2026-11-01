@@ -34,6 +34,8 @@ import tools.jackson.databind.json.JsonMapper;
 @TestPropertySource(
         properties = {
             "roleplay.http.enabled=true",
+            "roleplay.progress.maximum-turn-count=77",
+            "roleplay.progress.maximum-support-turns-per-micro-goal=9",
             "server.servlet.session.cookie.secure=false",
             "roleplay.http.maximum-upload-bytes=16",
             "roleplay.http.maximum-request-bytes=65536",

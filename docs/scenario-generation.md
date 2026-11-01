@@ -73,6 +73,8 @@ AiCallResult<GeneratedScenario> result = structuredLlmExecutor.execute(prompt.re
 | `FACT_COUNT_OUT_OF_RANGE`, `DUPLICATE_FACT` | 난이도별 사실 개수, 같은 사실 반복 |
 | `PROHIBITED_INFERENCE_COUNT_OUT_OF_RANGE` | 금지 추론 1\~3개 |
 | `MICRO_GOAL_COUNT_OUT_OF_RANGE`, `MICRO_GOAL_ID_INVALID`, `EVIDENCE_COUNT_OUT_OF_RANGE` | 난이도별 목표 개수, `MG-01`부터 순서대로, 필수 증거 1\~3개 |
+| `EVIDENCE_NOT_CONDITION` | 필수 증거가 현재형 동사("\~한다", "\~는다")나 명사형("\~하기", "\~함")으로 끝나지 않음. "친구가 넘어졌다." 같은 과거형 사실, "친구가 슬프다." 같은 형용사는 조건이 아니다. 끝의 괄호 보충은 빼고 본다 |
+| `EVIDENCE_COPIES_FACT` | 필수 증거가 시나리오 사실과 같은 문장(띄어쓰기·마침표 무시) |
 | `STARTING_QUESTIONS_INVALID`, `QUESTION_FORMAT_INVALID` | 시작 질문은 정확히 S0·S1·S2, 각각 물음표 하나로 끝남 |
 | `TOO_LONG` | 제목 30자, 요약 120자, 문장 60자, 시작 질문 80자 (프롬프트는 이보다 짧게 요구한다) |
 | `FORBIDDEN_EXPRESSION_USED` | 강사 금지 표현이 들어감(띄어쓰기를 무시하고 찾는다) |
@@ -143,7 +145,7 @@ API 명세(#69)와 develop 의 `learning_goal`에 맞춰 입력을 바꿨다. ca
 
 ### 아직 남은 품질 문제
 
-- 필수 증거(`required_evidence`)를 "\~을 말한다" 조건이 아니라 시나리오 사실을 그대로 나열하는 경우가 있다(예: MG-01 에 사실 세 개). 역할극 원인 판단이 "세 개를 다 말해야 달성"으로 읽으면 너무 엄격해진다. 프롬프트 예시를 더 다듬거나, 증거는 "하나라도 나타나면 달성"이라는 해석을 원인 판단 프롬프트에 명시해야 한다.
+- 필수 증거(`required_evidence`)를 "\~을 말한다" 조건이 아니라 시나리오 사실을 그대로 나열하는 경우가 있었다(예: MG-01 에 사실 세 개). 역할극 원인 판단이 "세 개를 다 말해야 달성"으로 읽으면 너무 엄격해진다. 멘토 리뷰(#82)대로 계약 검사 `EVIDENCE_NOT_CONDITION`·`EVIDENCE_COPIES_FACT`로 걸러 재시도하게 했다. 2026-10-28 출력 54개(증거 367개)에 적용해 보면 걸리는 것이 없고, 같은 날 다시 잰 27개(호출 31번)에서도 이 검사로 실패한 호출은 없었다. 드물게 생기는 경우를 막는 안전장치다.
 - 제목·요약에 정답 감정이 들어간다(예: "발표 시간, 속상한 마음"). 강사용이라 괜찮지만, 아동 화면에 제목을 보여 준다면 바꿔야 한다.
 - L3 에서 시나리오 사실을 범위(5\~6개)보다 많이 쓰는 경우가 있다. 재시도로 통과하지만 첫 시도 통과율을 낮춘다. 범위를 넓힐지(MVP 테스트) 프롬프트를 더 다듬을지 정해야 한다.
 - 교육적 적절성은 강사 관점의 검토가 필요하다. `scenarios.md`를 팀이 같이 보는 것을 권한다.

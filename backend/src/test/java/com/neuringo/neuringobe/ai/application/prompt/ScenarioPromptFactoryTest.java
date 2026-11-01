@@ -194,6 +194,31 @@ class ScenarioPromptFactoryTest {
     }
 
     @Test
+    void evidenceMustBeConditionNotScenarioFact() {
+        assertFailure(
+                "L1", json -> evidence(json, 0).set(0, "친구가 넘어졌다."), "EVIDENCE_NOT_CONDITION");
+        assertFailure("L1", json -> evidence(json, 1).add("친구가 슬프다."), "EVIDENCE_NOT_CONDITION");
+        assertFailure(
+                "L1",
+                json -> {
+                    facts(json).set(0, "친구가 미끄럼틀로 뛰어간다.");
+                    evidence(json, 0).set(0, "친구가 미끄럼틀로 뛰어 간다");
+                },
+                "EVIDENCE_COPIES_FACT");
+
+        GeneratedScenario parsed =
+                parse(
+                        "L1",
+                        scenario(
+                                json -> {
+                                    evidence(json, 0).add("넘어진 일을 말함");
+                                    evidence(json, 1).add("친구에게 기분을 묻는다");
+                                    evidence(json, 2).add("감정과 사건을 이어 말하기(이유 포함)");
+                                }));
+        assertThat(parsed.microGoals().get(0).requiredEvidence()).hasSize(2);
+    }
+
+    @Test
     void startingQuestionsAreS0ToS2WithOneQuestionEach() {
         assertFailure(
                 "L1",
@@ -445,6 +470,11 @@ class ScenarioPromptFactoryTest {
         questions(json).put("S0", "(훌쩍이며) 흐윽…");
         questions(json).put("S1", "(무릎을 감싸 쥐며) 아야… 나 방금 미끄럼틀 앞에서…");
         questions(json).put("S2", "(울먹이며) 넘어진 건지… 미끄러진 건지… 정신이 없어.");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> evidence(Map<String, Object> json, int goal) {
+        return (List<String>) goals(json).get(goal).get("required_evidence");
     }
 
     @SuppressWarnings("unchecked")

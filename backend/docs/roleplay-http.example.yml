@@ -1,8 +1,12 @@
-# 로드되지 않는 설정 예시. 실제 합의된 정책값과 구현 빈을 제공한 뒤 명시적으로 적용한다.
+# 로드되지 않는 참고 예시. 실제 환경변수 매핑은 src/main/resources/application.yml 에 있다.
+# 배포 경로와 활성화 조건은 roleplay-runtime-config.md 를 참고한다.
 # 운영 값/제공자 키를 이 파일에 저장하지 않는다.
 roleplay:
+  progress:
+    maximum-turn-count: ${ROLEPLAY_MAXIMUM_TURN_COUNT}
+    maximum-support-turns-per-micro-goal: ${ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL}
   http:
-    enabled: true
+    enabled: ${ROLEPLAY_HTTP_ENABLED:false}
     spool-directory: ${ROLEPLAY_SPOOL_DIRECTORY}
     maximum-upload-bytes: ${ROLEPLAY_UPLOAD_MAX_BYTES}
     maximum-request-bytes: ${ROLEPLAY_REQUEST_MAX_BYTES}
@@ -10,6 +14,6 @@ roleplay:
     worker-count: ${ROLEPLAY_WORKER_COUNT}
     queue-capacity: ${ROLEPLAY_QUEUE_CAPACITY}
     # 생략하면 60초. 최대 60초이며 이 값으로 제품의 시작/완료 경계를 새로 확정하지 않는다.
-    turn-budget: 60s
+    turn-budget: ${ROLEPLAY_TURN_BUDGET:60s}
     # TIMEOUT 이외에 사용할 문구는 승인 메타데이터와 함께 주입한다.
     notices: []

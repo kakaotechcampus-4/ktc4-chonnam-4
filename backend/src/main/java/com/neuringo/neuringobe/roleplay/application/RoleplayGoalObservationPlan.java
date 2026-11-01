@@ -40,11 +40,16 @@ public final class RoleplayGoalObservationPlan {
         }
 
         var available = new HashSet<EvidenceReference>();
+        var positive = new HashSet<EvidenceReference>();
         for (var prior : context.confirmedObservations()) {
             requireApproved(context.approvedCriteria(), prior.reference());
             if (prior.reference().turnId().equals(context.scope().turnId())
                     || !available.add(prior.reference())) {
                 throw invalid("기존 관찰 이력에 현재 턴 또는 중복 근거가 있습니다.");
+            }
+            if (prior.status() == ObservationStatus.EXPLICIT
+                    || prior.status() == ObservationStatus.IMPLICIT) {
+                positive.add(prior.reference());
             }
         }
         for (var observation : proposal.observations()) {
@@ -56,12 +61,21 @@ public final class RoleplayGoalObservationPlan {
             if (!available.add(reference)) {
                 throw invalid("같은 턴·목표·학습 증거의 관찰이 중복됐습니다.");
             }
+            if (observation.status() == ObservationStatus.EXPLICIT
+                    || observation.status() == ObservationStatus.IMPLICIT) {
+                positive.add(reference);
+            }
         }
         if (!available.containsAll(proposal.decisionBasis())) {
             throw invalid("활동 목표 판정에 존재하지 않는 관찰 근거가 있습니다.");
         }
         if (proposal.decision() == Decision.ACHIEVED && proposal.decisionBasis().isEmpty()) {
             throw invalid("활동 목표 달성 판정에는 관찰 근거가 필요합니다.");
+        }
+        // 관찰이 존재하는 것과 달성을 뒷받침하는 것은 다르다. 실제 판정 근거만 검사한다.
+        if (proposal.decision() == Decision.ACHIEVED
+                && proposal.decisionBasis().stream().noneMatch(positive::contains)) {
+            throw invalid("활동 목표 달성 판정에는 명시적 또는 간접 표현 근거가 필요합니다.");
         }
         if (proposal.decision() == Decision.UNAVAILABLE) {
             throw invalid("판정 불가 결과는 저장 변경안으로 확정할 수 없습니다.");

@@ -47,6 +47,16 @@ server:
         same-site: lax
 
 roleplay:
+  http:
+    # S4 승인 시나리오와 입력 처리·음성 전달 구현이 준비된 뒤 명시적으로 켠다.
+    enabled: ${ROLEPLAY_HTTP_ENABLED:false}
+    spool-directory: ${ROLEPLAY_SPOOL_DIRECTORY:}
+    maximum-upload-bytes: ${ROLEPLAY_UPLOAD_MAX_BYTES:}
+    maximum-request-bytes: ${ROLEPLAY_REQUEST_MAX_BYTES:}
+    allowed-formats: ${ROLEPLAY_ALLOWED_FORMATS:}
+    worker-count: ${ROLEPLAY_WORKER_COUNT:}
+    queue-capacity: ${ROLEPLAY_QUEUE_CAPACITY:}
+    turn-budget: ${ROLEPLAY_TURN_BUDGET:60s}
   progress:
     # 확정된 제한만 명시적으로 공급하며 미설정 시 새 대화 문맥을 만들지 않는다.
     maximum-turn-count: ${ROLEPLAY_MAXIMUM_TURN_COUNT:}

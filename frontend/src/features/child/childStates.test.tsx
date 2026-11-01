@@ -33,7 +33,7 @@ vi.mock("./api", async (importOriginal) => {
 const QUIZ_ACTIVITY = "mock-activity-1"
 const ENTRY_URL = "*/api/v1/child-access-sessions"
 const VALID_CODE = childAccessCodes.valid
-const GREETING = "안녕, 하늘아!"
+const GREETING = "안녕, 김하늘!"
 const networkError = () => new TypeError("Failed to fetch")
 
 /** 응답을 붙잡아 두었다가 원할 때 풀어 주는 약속. 로딩 중 화면을 보려고 쓴다. */
