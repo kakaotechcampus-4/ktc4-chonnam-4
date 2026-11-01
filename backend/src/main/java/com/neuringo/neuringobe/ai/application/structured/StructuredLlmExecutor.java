@@ -36,12 +36,14 @@ public final class StructuredLlmExecutor {
         } catch (InvalidLlmOutputException exception) {
             // 출력 검사 메시지는 어느 검사에서 걸렸는지만 담은 고정 문장이다(모델 출력·아동 발화는 담지 않는다).
             // 원인 문장(cause)은 모델 출력 조각을 담을 수 있어 남기지 않는다.
-            log.debug(
-                    "LLM_OUTPUT_REJECTED operation={} prompt={} attempt={} reason={}",
-                    request.operation(),
-                    request.promptVersion(),
-                    request.currentAttempt(),
-                    exception.getMessage());
+            if (log.isDebugEnabled() && request != null) {
+                log.debug(
+                        "LLM_OUTPUT_REJECTED operation={} prompt={} attempt={} reason={}",
+                        request.operation(),
+                        request.promptVersion(),
+                        request.currentAttempt(),
+                        exception.getMessage());
+            }
             AiFailure failure = new AiFailure(AiFailureType.INVALID_OUTPUT_FORMAT, null);
             return new AiCallResult.Failure<>(failure, success.metadata());
         }
