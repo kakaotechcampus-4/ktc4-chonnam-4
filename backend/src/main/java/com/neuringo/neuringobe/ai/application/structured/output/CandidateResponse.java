@@ -13,7 +13,30 @@ public record CandidateResponse(
         @JsonProperty("strategy_used") String strategyUsed,
         @JsonProperty("target_micro_goal_id") UUID targetMicroGoalId,
         @JsonProperty("support_level") String supportLevel,
-        @JsonProperty("previous_failed_candidate_ids") List<UUID> previousFailedCandidateIds) {
+        @JsonProperty("previous_failed_candidate_ids") List<UUID> previousFailedCandidateIds,
+        @JsonProperty("mascot_hint") String mascotHint) {
+
+    /** 마스코트 힌트가 없는 후보. */
+    public CandidateResponse(
+            UUID candidateId,
+            UUID turnId,
+            String text,
+            String responseType,
+            String strategyUsed,
+            UUID targetMicroGoalId,
+            String supportLevel,
+            List<UUID> previousFailedCandidateIds) {
+        this(
+                candidateId,
+                turnId,
+                text,
+                responseType,
+                strategyUsed,
+                targetMicroGoalId,
+                supportLevel,
+                previousFailedCandidateIds,
+                null);
+    }
 
     public CandidateResponse {
         Objects.requireNonNull(candidateId, "candidateId must not be null");
@@ -27,6 +50,7 @@ public record CandidateResponse(
                 previousFailedCandidateIds == null
                         ? List.of()
                         : List.copyOf(previousFailedCandidateIds);
+        mascotHint = mascotHint == null || mascotHint.isBlank() ? null : mascotHint.strip();
     }
 
     private static void requireText(String value, String fieldName) {

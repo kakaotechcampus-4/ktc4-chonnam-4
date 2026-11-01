@@ -73,7 +73,15 @@ public final class RoleplayTurnResponseMapper {
         return new RoleplayTurnResponse(
                 RoleplayDeliveryStatus.DELIVERED,
                 RoleplayDeliveryAction.NONE,
-                List.of(new Message(approved.text(), deliveredSpeech)),
+                approved.mascotHint() == null
+                        ? List.of(new Message(approved.text(), deliveredSpeech))
+                        : List.of(
+                                // 마스코트 힌트는 음성 합성 대상이 아니라 글자로만 보여 준다.
+                                new Message(
+                                        RoleplayTurnResponse.HINT,
+                                        approved.mascotHint(),
+                                        NO_SPEECH),
+                                new Message(approved.text(), deliveredSpeech)),
                 acceptedInput,
                 success.checkpointVersion(),
                 success.replayed());
@@ -120,7 +128,13 @@ public final class RoleplayTurnResponseMapper {
             String text, RoleplayDeliveryStatus status, RoleplayDeliveryAction action) {
         if (text == null) return empty(RoleplayDeliveryStatus.NOTICE_UNAVAILABLE, action);
         return new RoleplayTurnResponse(
-                status, action, List.of(new Message(text, NO_SPEECH)), null, null, false);
+                status,
+                action,
+                // 고정 안내는 캐릭터가 아니라 마스코트 자리에 보여 준다.
+                List.of(new Message(RoleplayTurnResponse.HINT, text, NO_SPEECH)),
+                null,
+                null,
+                false);
     }
 
     private RoleplayTurnResponse empty(

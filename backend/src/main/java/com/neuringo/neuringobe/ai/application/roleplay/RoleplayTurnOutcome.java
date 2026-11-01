@@ -54,10 +54,17 @@ public sealed interface RoleplayTurnOutcome {
         }
     }
 
-    record ApprovedResponse(UUID candidateId, String text) implements RoleplayTurnOutcome {
+    /** mascotHint 는 캐릭터 대사와 따로 보여 줄 마스코트 힌트다. 없으면 null. */
+    record ApprovedResponse(UUID candidateId, String text, String mascotHint)
+            implements RoleplayTurnOutcome {
+        public ApprovedResponse(UUID candidateId, String text) {
+            this(candidateId, text, null);
+        }
+
         public ApprovedResponse {
             Objects.requireNonNull(candidateId);
             if (text == null || text.isBlank()) throw new IllegalArgumentException("Text required");
+            mascotHint = mascotHint == null || mascotHint.isBlank() ? null : mascotHint;
         }
 
         @Override

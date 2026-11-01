@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -145,6 +146,8 @@ public final class RoleplayPromptFactory {
         Map<String, Object> message = turnSections(input);
         message.put("analysis_result", analysisSection(analysis));
         message.put("candidate_id", candidateId);
+        Optional<MascotHintRule.Reason> mascotHint = MascotHintRule.decide(input, analysis);
+        mascotHint.ifPresent(reason -> message.put("mascot_hint", Map.of("reason", reason.name())));
         List<UUID> failedIds = retry == null ? List.of() : retry.failedCandidateIds();
         message.put("previous_failed_candidate_ids", failedIds);
         if (retry != null) {
@@ -201,7 +204,8 @@ public final class RoleplayPromptFactory {
                         failedIds,
                         failedTexts,
                         MAX_RESPONSE_LENGTH,
-                        characterVoice));
+                        characterVoice,
+                        mascotHint.isPresent()));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */
@@ -358,6 +362,7 @@ public final class RoleplayPromptFactory {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("candidate_id", candidate.candidateId());
         section.put("text", candidate.text());
+        if (candidate.mascotHint() != null) section.put("mascot_hint", candidate.mascotHint());
         section.put("response_type", candidate.responseType());
         section.put("strategy_used", candidate.strategyUsed());
         section.put("target_micro_goal_id", candidate.targetMicroGoalId());

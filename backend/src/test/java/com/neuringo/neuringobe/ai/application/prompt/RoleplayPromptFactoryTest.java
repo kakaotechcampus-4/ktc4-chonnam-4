@@ -433,6 +433,58 @@ class RoleplayPromptFactoryTest {
         assertThat(characterEvaluation).contains("# 캐릭터 대사 검증");
     }
 
+    @Test
+    void mascotHintIsRequestedOnlyWhenTheServerRuleAsksForIt() {
+        RoleplayTurnInput character = characterInput("몰라");
+        AnalysisResult dontKnow =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(character.scenario()))
+                        .parser()
+                        .parse(
+                                analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
+                                        .replace("ANSWER_ATTEMPT", "DONT_KNOW")
+                                        .replace("PARTIAL_UNDERSTANDING", "HELP_NEEDED"));
+        var withHint =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        dontKnow,
+                        CANDIDATE_ID,
+                        null);
+        assertThat(withHint.request().userPrompt())
+                .contains("\"mascot_hint\"")
+                .contains("HELP_REQUEST");
+
+        String line = candidateJson("(훌쩍이며) 흐윽…", "GUIDING_QUESTION");
+        String hinted =
+                line.replace(
+                        "\"previous_failed_candidate_ids\":[]",
+                        "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\"친구가 무릎을 잡고 있네. 어디가 아픈지 물어볼까?\"");
+        assertThat(withHint.parser().parse(hinted).mascotHint()).startsWith("친구가 무릎을");
+        assertThatThrownBy(() -> withHint.parser().parse(line))
+                .isInstanceOf(InvalidLlmOutputException.class);
+
+        var withoutHint =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        parsedAnalysis(),
+                        CANDIDATE_ID,
+                        null);
+        assertThat(withoutHint.request().userPrompt()).doesNotContain("mascot_hint");
+        assertThatThrownBy(() -> withoutHint.parser().parse(hinted))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
     private static void assertContainsAll(String prompt, Set<String> codes) {
         codes.forEach(code -> assertThat(prompt).as("prompt lists %s", code).contains(code));
     }

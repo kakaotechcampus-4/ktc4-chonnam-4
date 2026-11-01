@@ -90,7 +90,8 @@ final class RoleplayOutputParsers {
             List<UUID> expectedFailedCandidateIds,
             Set<String> failedCandidateTexts,
             int maxTextLength,
-            boolean characterVoice) {
+            boolean characterVoice,
+            boolean mascotHintRequired) {
         LlmOutputParser<CandidateResponse> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, CandidateResponse.class);
         Set<String> normalizedFailedTexts = new HashSet<>();
@@ -120,6 +121,13 @@ final class RoleplayOutputParsers {
 
             String text = result.text().strip();
             check(text.length() <= maxTextLength, "text is too long");
+            // 마스코트 힌트는 서버 규칙이 요구한 턴에만 있다.
+            if (mascotHintRequired) {
+                check(result.mascotHint() != null, "the mascot hint is required for this turn");
+                check(result.mascotHint().length() <= maxTextLength, "the mascot hint is too long");
+            } else {
+                check(result.mascotHint() == null, "the mascot hint is not allowed for this turn");
+            }
             long questionMarks = text.chars().filter(ch -> ch == '?').count();
             if (characterVoice
                     && RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {

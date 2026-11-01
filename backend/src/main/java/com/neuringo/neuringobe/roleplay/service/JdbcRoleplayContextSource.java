@@ -172,7 +172,9 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                             currentResponses.answerRevealed(),
                             policy.turnCount(),
                             policy.maximumTurnCount(),
-                            policy.maximumSupportTurnsPerMicroGoal());
+                            policy.maximumSupportTurnsPerMicroGoal(),
+                            mascotHints(key.sessionId(), policy.currentMicroGoalId()),
+                            previousTurnHadMascotHint(key.sessionId()));
             var scenario =
                     new RoleplayTurnInput.Scenario(
                             owner.learningGoal(),
@@ -352,6 +354,26 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         owner.currentGoal(),
                         owner.support()),
                 responses);
+    }
+
+    /** 지금 목표를 다루며 보여 준 마스코트 힌트 수. 마스코트 규칙의 목표당 상한에 쓴다. */
+    private int mascotHints(UUID sessionId, UUID microGoalId) {
+        Integer count =
+                jdbc.queryForObject(
+                        "select count(*) from roleplay_turn where session_id=? and micro_goal_id=? and mascot_hint is not null",
+                        Integer.class,
+                        sessionId,
+                        microGoalId);
+        return count == null ? 0 : count;
+    }
+
+    /** 직전 턴에 마스코트 힌트를 보여 줬는지. 마스코트 규칙의 연속 금지에 쓴다. */
+    private boolean previousTurnHadMascotHint(UUID sessionId) {
+        return Boolean.TRUE.equals(
+                jdbc.query(
+                        "select mascot_hint is not null as hinted from roleplay_turn where session_id=? order by turn_number desc limit 1",
+                        rs -> rs.next() ? rs.getBoolean("hinted") : false,
+                        sessionId));
     }
 
     /** ai_role 이 등장인물 id 면 그 인물을 AI 가 연기한다. NARRATOR·빈 값이면 안내자 시나리오다. */

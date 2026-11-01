@@ -115,7 +115,32 @@ public record RoleplayTurnInput(
             boolean answerRevealed,
             int turnCount,
             int maximumTurnCount,
-            int maximumSupportTurnsPerMicroGoal) {
+            int maximumSupportTurnsPerMicroGoal,
+            int currentMicroGoalMascotHints,
+            boolean previousTurnHadMascotHint) {
+
+        /** 마스코트 힌트 기록이 없는(안내자 역할극·첫 턴) 상태. */
+        public State(
+                UUID currentMicroGoalId,
+                String currentSupportLevel,
+                int currentMicroGoalSupportTurn,
+                int currentMicroGoalPromptCount,
+                boolean answerRevealed,
+                int turnCount,
+                int maximumTurnCount,
+                int maximumSupportTurnsPerMicroGoal) {
+            this(
+                    currentMicroGoalId,
+                    currentSupportLevel,
+                    currentMicroGoalSupportTurn,
+                    currentMicroGoalPromptCount,
+                    answerRevealed,
+                    turnCount,
+                    maximumTurnCount,
+                    maximumSupportTurnsPerMicroGoal,
+                    0,
+                    false);
+        }
 
         public State {
             Objects.requireNonNull(currentMicroGoalId, "currentMicroGoalId must not be null");
@@ -125,7 +150,8 @@ public record RoleplayTurnInput(
                     || currentMicroGoalPromptCount < 0
                     || turnCount < 1
                     || maximumTurnCount < 1
-                    || maximumSupportTurnsPerMicroGoal < 1) {
+                    || maximumSupportTurnsPerMicroGoal < 1
+                    || currentMicroGoalMascotHints < 0) {
                 throw new IllegalArgumentException("invalid roleplay state counters");
             }
         }
