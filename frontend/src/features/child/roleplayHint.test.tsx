@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { router } from "@/router"
-import { enterAsChild, renderRoutes } from "@/test/render"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 import * as api from "./api"
 
 // 역할극 깡총이 힌트 표시 검사. 힌트는 다음 답을 위한 참고라 대화 기록에 쌓지 않고 마지막 힌트 1개만 남긴다.
@@ -12,7 +12,7 @@ vi.mock("./api", async (importOriginal) => {
   return { ...actual, sendRoleplayTurn: vi.fn(actual.sendRoleplayTurn) }
 })
 
-const ACTIVITY = "mock-activity-1"
+const ACTIVITY = CHILD_ACTIVITY_ID
 
 const rabbitHint = (text: string): api.RoleplayTurnResult => ({
   status: "DELIVERED",
@@ -22,6 +22,7 @@ const rabbitHint = (text: string): api.RoleplayTurnResult => ({
 
 async function openTextComposer() {
   enterAsChild()
+  seedChildActivity()
   const { user } = renderRoutes(router.routes, `/child/roleplay/${ACTIVITY}`)
   await user.click(await screen.findByRole("button", { name: "글자로 답할래요" }))
   return { user, input: screen.getByRole("textbox", { name: "답 적기" }) }
