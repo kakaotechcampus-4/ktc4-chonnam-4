@@ -42,6 +42,13 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     @Query("select a from Activity a where a.childId in :childIds order by a.activityId")
     List<Activity> findByChildIdInForUpdate(@Param("childIds") Collection<UUID> childIds);
 
+    /** 이 목표로 만든 최초 결합 활동 중 아직 시나리오가 없는 것. 활동을 만들 때마다 목표를 새로 만들어 많아야 하나다. */
+    @Query(
+            value =
+                    "select activity_id from activity where goal_id = :goalId and activity_type = 'FIRST_COMBINED' and scenario_id is null and status <> 'COMPLETED'",
+            nativeQuery = true)
+    List<UUID> findWaitingFirstCombinedByGoal(@Param("goalId") UUID goalId);
+
     /** 잠근 최초 활동의 시나리오를 한 번만 연결한다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(

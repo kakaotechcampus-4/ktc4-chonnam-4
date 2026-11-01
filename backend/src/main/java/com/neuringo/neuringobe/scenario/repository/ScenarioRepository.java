@@ -10,6 +10,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
+    /** 목표 하나에 초안은 하나뿐이다(uq_scenario_draft_per_goal). */
+    @Query(
+            "select s from Scenario s where s.goalId = :goalId and s.status = com.neuringo.neuringobe.scenario.domain.ScenarioStatus.DRAFT")
+    Optional<Scenario> findDraftForGoal(@Param("goalId") UUID goalId);
+
     @Query(
             value =
                     """

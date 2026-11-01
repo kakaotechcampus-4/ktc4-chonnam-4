@@ -7,12 +7,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 강사가 검토하는 시나리오 한 판. 시나리오는 학급·목표에 묶지 않는 공용 자료라 명세 초안의 goalId·scenarioSource 는 두지 않는다. 다른 아동이 이
- * 시나리오를 언제·몇 번 썼는지도 담지 않는다.
+ * 강사가 검토하는 시나리오 한 판(명세 DraftScenarioData). goalId 는 재사용 후보면 그 활동의 목표, 초안이면 초안의 목표다. 활동과 상관없이 공용
+ * 승인본만 조회하면 목표가 없어 null 이다. 다른 아동이 이 시나리오를 언제·몇 번 썼는지는 담지 않는다.
  */
 public record ScenarioResponse(
         UUID scenarioId,
         int version,
+        UUID goalId,
+        String scenarioSource,
         String status,
         String scenarioLevel,
         String title,
@@ -25,10 +27,19 @@ public record ScenarioResponse(
 
     public record MicroGoal(UUID microGoalId, String description, List<String> requiredEvidence) {}
 
-    public static ScenarioResponse of(Scenario scenario, List<ScenarioMicroGoal> microGoals) {
+    /** 재사용 후보로 보여 준다. */
+    public static final String REUSED = "REUSED";
+
+    /** 이 목표를 위해 새로 만든 판(초안·판정 기록). */
+    public static final String NEWLY_GENERATED = "NEWLY_GENERATED";
+
+    public static ScenarioResponse of(
+            Scenario scenario, List<ScenarioMicroGoal> microGoals, UUID goalId, String source) {
         return new ScenarioResponse(
                 scenario.getScenarioId(),
                 scenario.getScenarioVersion(),
+                goalId,
+                source,
                 scenario.getStatus().name(),
                 scenario.getScenarioLevel(),
                 scenario.getTitle(),

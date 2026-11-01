@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1349,6 +1350,290 @@ class QuizFlowIntegrationTest {
                 "UPDATE scenario SET status = 'APPROVED', approved_at = ? WHERE scenario_id = ?",
                 java.sql.Timestamp.from(approvedAt),
                 scenarioId);
+    }
+
+    @Test
+    void editingCandidateCreatesGoalBoundDraftOnceThenApprovalAttachesItAndKeepsOriginal()
+            throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "고쳐서 쓰기"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID original = candidateWithMicroGoal(activityId);
+        UUID originalGoal =
+                jdbc.queryForObject(
+                        "SELECT micro_goal_id FROM scenario_micro_goal WHERE scenario_id = ?",
+                        UUID.class,
+                        original);
+
+        String created =
+                postVersion(
+                                original,
+                                "{\"version\":1,\"goalId\":\"" + goalId + "\",\"title\":\"고친 제목\"}")
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                        .andExpect(jsonPath("$.data.version").value(2))
+                        .andExpect(jsonPath("$.data.goalId").value(goalId.toString()))
+                        .andExpect(jsonPath("$.data.scenarioSource").value("NEWLY_GENERATED"))
+                        .andExpect(jsonPath("$.data.title").value("고친 제목"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        UUID draft = UUID.fromString(JsonPath.read(created, "$.data.scenarioId"));
+        String draftGoal = JsonPath.read(created, "$.data.microGoals[0].microGoalId");
+        assertThat(draftGoal).isNotEqualTo(originalGoal.toString());
+        // 같은 목표·같은 원본으로 다시 보내면 만든 초안을 그대로 준다.
+        postVersion(original, "{\"version\":1,\"goalId\":\"" + goalId + "\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.scenarioId").value(draft.toString()));
+        // 초안은 활동에 붙지 않아 역할극이 열리지 않는다.
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+
+        patchScenario(
+                        draft,
+                        "{\"version\":2,\"summary\":\"친구가 그림을 망쳐 속상하다.\",\"microGoals\":[{\"microGoalId\":\""
+                                + draftGoal
+                                + "\",\"description\":\"위로하는 말을 한다\",\"requiredEvidence\":[\"괜찮냐고 물음\"]}]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.summary").value("친구가 그림을 망쳐 속상하다."))
+                .andExpect(jsonPath("$.data.microGoals[0].requiredEvidence[0]").value("괜찮냐고 물음"));
+        patchScenario(draft, "{\"version\":2,\"status\":\"APPROVED\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.goalId").value(goalId.toString()));
+
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isEqualTo(draft);
+        assertThat(
+                        roleplayStarts
+                                .requireForActivity(activityId, childAuthentication())
+                                .scenario()
+                                .scenarioId())
+                .isEqualTo(draft);
+        // 승인본은 공용이라 목표에서 떨어지고, 원본도 그대로 후보로 남는다.
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT goal_id FROM scenario WHERE scenario_id = ?",
+                                UUID.class,
+                                draft))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM scenario WHERE scenario_id = ?",
+                                String.class,
+                                original))
+                .isEqualTo("APPROVED");
+    }
+
+    @Test
+    void rejectedDraftStaysAsRecordAndActivityWaitsAgainWhileDiscardedDraftIsDeleted()
+            throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "반려와 폐기"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID original = candidateWithMicroGoal(activityId);
+
+        UUID discarded = draftFrom(original, goalId);
+        mvc.perform(
+                        delete("/api/v1/scenarios/{id}", discarded)
+                                .with(TestInstructors.instructor("teacher-quiz"))
+                                .with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM scenario WHERE scenario_id = ?",
+                                Long.class,
+                                discarded))
+                .isZero();
+
+        UUID rejected = draftFrom(original, goalId);
+        patchScenario(rejected, "{\"version\":2,\"status\":\"REJECTED\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+        patchScenario(rejected, "{\"version\":2,\"title\":\"다시\"}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_NOT_EDITABLE"));
+        mvc.perform(
+                        delete("/api/v1/scenarios/{id}", rejected)
+                                .with(TestInstructors.instructor("teacher-quiz"))
+                                .with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_IN_USE"));
+        // 반려 뒤에도 같은 목표로 다시 고칠 수 있다.
+        draftFrom(original, goalId);
+    }
+
+    @ParameterizedTest(name = "초안 검증: {0}")
+    @ValueSource(
+            strings = {
+                "FORBIDDEN",
+                "BLANK",
+                "UNKNOWN_GOAL",
+                "REVISION",
+                "VERSION",
+                "NO_GOAL_ID",
+                "OTHER_SOURCE"
+            })
+    void draftEditsAreValidated(String broken) throws Exception {
+        UUID activityId =
+                assignFirstActivity(
+                        childId, Map.of("title", "초안 검증", "forbiddenExpressions", List.of("바보")));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID original = candidateWithMicroGoal(activityId);
+        if (broken.equals("NO_GOAL_ID")) {
+            postVersion(original, "{\"version\":1}")
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+            return;
+        }
+        UUID draft = draftFrom(original, goalId);
+        var result =
+                switch (broken) {
+                    case "FORBIDDEN" ->
+                            patchScenario(draft, "{\"version\":2,\"title\":\"바보 같은 친구\"}");
+                    case "BLANK" -> patchScenario(draft, "{\"version\":2,\"summary\":\"   \"}");
+                    case "UNKNOWN_GOAL" ->
+                            patchScenario(
+                                    draft,
+                                    "{\"version\":2,\"microGoals\":[{\"microGoalId\":\""
+                                            + UUID.randomUUID()
+                                            + "\",\"description\":\"설명\",\"requiredEvidence\":[\"증거\"]}]}");
+                    case "REVISION" ->
+                            patchScenario(
+                                    draft, "{\"version\":2,\"status\":\"REVISION_REQUIRED\"}");
+                    case "VERSION" -> patchScenario(draft, "{\"version\":1,\"title\":\"제목\"}");
+                    default -> {
+                        UUID another = candidateWithMicroGoal(activityId);
+                        yield postVersion(another, "{\"version\":1,\"goalId\":\"" + goalId + "\"}");
+                    }
+                };
+        switch (broken) {
+            case "REVISION" ->
+                    result.andExpect(status().isConflict())
+                            .andExpect(
+                                    jsonPath("$.error.code")
+                                            .value("SCENARIO_REGENERATION_UNAVAILABLE"));
+            case "VERSION" ->
+                    result.andExpect(status().isConflict())
+                            .andExpect(jsonPath("$.error.code").value("SCENARIO_VERSION_MISMATCH"));
+            case "OTHER_SOURCE" ->
+                    result.andExpect(status().isConflict())
+                            .andExpect(jsonPath("$.error.code").value("SCENARIO_DRAFT_EXISTS"));
+            default ->
+                    result.andExpect(status().isUnprocessableContent())
+                            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        }
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM scenario WHERE scenario_id = ?",
+                                String.class,
+                                draft))
+                .isEqualTo("DRAFT");
+    }
+
+    @Test
+    void draftsAreHiddenFromOtherInstructorsAndDeletedWithTheChild() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "초안 권한"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID original = candidateWithMicroGoal(activityId);
+        UUID draft = draftFrom(original, goalId);
+
+        mvc.perform(
+                        get("/api/v1/scenarios/{id}", draft)
+                                .with(TestInstructors.instructor("teacher-other")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_NOT_FOUND"));
+        mvc.perform(
+                        patch("/api/v1/scenarios/{id}", draft)
+                                .with(TestInstructors.instructor("teacher-other"))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"version\":2,\"status\":\"APPROVED\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("SCENARIO_NOT_FOUND"));
+        mvc.perform(
+                        delete("/api/v1/scenarios/{id}", draft)
+                                .with(TestInstructors.instructor("teacher-other"))
+                                .with(csrf()))
+                .andExpect(status().isNotFound());
+        mvc.perform(
+                        post("/api/v1/scenarios/{id}/versions", original)
+                                .with(TestInstructors.instructor("teacher-other"))
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"version\":1,\"goalId\":\"" + goalId + "\"}"))
+                .andExpect(status().isNotFound());
+        // 공용 승인본은 어느 강사나 본다. 목표가 없어 goalId 는 비어 있다.
+        mvc.perform(
+                        get("/api/v1/scenarios/{id}", original)
+                                .with(TestInstructors.instructor("teacher-other")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.goalId").doesNotExist());
+        mvc.perform(
+                        get("/api/v1/scenarios/{id}", draft)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.goalId").value(goalId.toString()));
+
+        mvc.perform(
+                        delete("/api/v1/children/{id}", childId)
+                                .with(TestInstructors.instructor("teacher-quiz"))
+                                .with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM scenario WHERE scenario_id = ?",
+                                Long.class,
+                                draft))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM scenario WHERE scenario_id = ?",
+                                Long.class,
+                                original))
+                .isEqualTo(1);
+    }
+
+    /** 작은 목표가 하나 있는 재사용 후보를 만든다. 작은 목표는 초안일 때만 넣을 수 있다. */
+    private UUID candidateWithMicroGoal(UUID activityId) {
+        UUID id = saveScenarioForActivity(activityId, "DRAFT", "L3");
+        jdbc.update(
+                "INSERT INTO scenario_micro_goal (micro_goal_id, scenario_id, order_no, description, required_evidence) VALUES (?, ?, 1, '감정 말하기', '[\"슬프다고 말함\"]'::jsonb)",
+                UUID.randomUUID(),
+                id);
+        jdbc.update("UPDATE scenario SET status = 'APPROVED' WHERE scenario_id = ?", id);
+        return id;
+    }
+
+    private UUID draftFrom(UUID original, UUID goalId) throws Exception {
+        String body =
+                postVersion(original, "{\"version\":1,\"goalId\":\"" + goalId + "\"}")
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        return UUID.fromString(JsonPath.read(body, "$.data.scenarioId"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions postVersion(UUID source, String json)
+            throws Exception {
+        return mvc.perform(
+                post("/api/v1/scenarios/{id}/versions", source)
+                        .with(TestInstructors.instructor("teacher-quiz"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions patchScenario(
+            UUID scenarioId, String json) throws Exception {
+        return mvc.perform(
+                patch("/api/v1/scenarios/{id}", scenarioId)
+                        .with(TestInstructors.instructor("teacher-quiz"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json));
     }
 
     @ParameterizedTest(name = "승인 후보 제외 조건: {0}")

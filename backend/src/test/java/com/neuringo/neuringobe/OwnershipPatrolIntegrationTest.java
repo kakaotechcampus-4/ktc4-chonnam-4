@@ -85,6 +85,11 @@ class OwnershipPatrolIntegrationTest {
                             "GET /api/v1/activities/{activityId}/scenario-candidate",
                             "ACTIVITY_NOT_FOUND"),
                     Map.entry("PUT /api/v1/activities/{activityId}/scenario", "ACTIVITY_NOT_FOUND"),
+                    // 초안은 그 목표의 담당 강사만 본다. 새 판 만들기는 본문 goalId 의 담당 강사만 할 수 있다.
+                    Map.entry("GET /api/v1/scenarios/{scenarioId}", "SCENARIO_NOT_FOUND"),
+                    Map.entry("PATCH /api/v1/scenarios/{scenarioId}", "SCENARIO_NOT_FOUND"),
+                    Map.entry("DELETE /api/v1/scenarios/{scenarioId}", "SCENARIO_NOT_FOUND"),
+                    Map.entry("POST /api/v1/scenarios/{scenarioId}/versions", "SCENARIO_NOT_FOUND"),
                     Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
@@ -92,6 +97,7 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("GET /api/v1/classrooms", "LIST"));
 
     @Autowired private MockMvcTester mvc;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired private TestFixtures fixtures;
 
     @Autowired
@@ -126,7 +132,19 @@ class OwnershipPatrolIntegrationTest {
         UUID activityQuizId =
                 UUID.fromString(
                         JsonPath.read(TestFixtures.body(items), "$.data[0].activityQuizId"));
-        owned = new Owned(classId, childId, goalId, activityId, activityQuizId);
+        UUID scenarioId = UUID.randomUUID();
+        // A 의 목표에 매인 초안. 승인본은 공용이라 소유를 따지지 않는다.
+        jdbc.update(
+                """
+                insert into scenario(scenario_id, status, scenario_level, goal_content_hash, goal_id, title,
+                    scenario_facts, origin, created_at)
+                select ?, 'DRAFT', 'L1', g.content_hash, g.goal_id, '순찰 초안', '["fact"]'::jsonb,
+                    'INSTRUCTOR_EDITED', now()
+                from learning_goal g where g.goal_id = ?
+                """,
+                scenarioId,
+                goalId);
+        owned = new Owned(classId, childId, goalId, activityId, activityQuizId, scenarioId);
     }
 
     @Test
@@ -276,6 +294,38 @@ class OwnershipPatrolIntegrationTest {
                                                                                 ids.activityId())),
                                                 "{\"scenarioId\":\"" + UUID.randomUUID() + "\"}")),
                 get(
+                        "GET /api/v1/scenarios/{scenarioId}",
+                        "/api/v1/scenarios/%s",
+                        Owned::scenarioId),
+                Arguments.of(
+                        "PATCH /api/v1/scenarios/{scenarioId}",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.patch()
+                                                        .uri(
+                                                                "/api/v1/scenarios/%s"
+                                                                        .formatted(
+                                                                                ids.scenarioId())),
+                                                "{\"version\":1,\"status\":\"APPROVED\"}")),
+                delete(
+                        "DELETE /api/v1/scenarios/{scenarioId}",
+                        "/api/v1/scenarios/%s",
+                        Owned::scenarioId),
+                Arguments.of(
+                        "POST /api/v1/scenarios/{scenarioId}/versions",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.post()
+                                                        .uri(
+                                                                "/api/v1/scenarios/%s/versions"
+                                                                        .formatted(
+                                                                                ids.scenarioId())),
+                                                "{\"version\":1,\"goalId\":\""
+                                                        + ids.goalId()
+                                                        + "\"}")),
+                get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                         "/api/v1/activity-quiz-items/%s/attempt",
                         Owned::activityQuizId));
@@ -317,9 +367,16 @@ class OwnershipPatrolIntegrationTest {
         return TestFixtures.bearer(request, other.accessToken()).exchange();
     }
 
-    record Owned(UUID classId, UUID childId, UUID goalId, UUID activityId, UUID activityQuizId) {
+    record Owned(
+            UUID classId,
+            UUID childId,
+            UUID goalId,
+            UUID activityId,
+            UUID activityQuizId,
+            UUID scenarioId) {
         static Owned unknown() {
             return new Owned(
+                    UUID.randomUUID(),
                     UUID.randomUUID(),
                     UUID.randomUUID(),
                     UUID.randomUUID(),

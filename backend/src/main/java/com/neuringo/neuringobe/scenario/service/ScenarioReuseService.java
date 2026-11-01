@@ -58,7 +58,7 @@ public class ScenarioReuseService {
             return new ScenarioCandidateResponse(null, false);
         }
         return new ScenarioCandidateResponse(
-                view(candidates.get(index)), index + 1 < candidates.size());
+                view(candidates.get(index), preparation), index + 1 < candidates.size());
     }
 
     /** 담당 강사가 승인한 후보를 붙인다. 같은 후보로 다시 요청하면 같은 결과를 준다. */
@@ -71,7 +71,7 @@ public class ScenarioReuseService {
         children.findByIdForUpdate(activity.getChildId()).orElseThrow(this::notFound);
         if (activity.getScenarioId() != null) {
             if (activity.getScenarioId().equals(scenarioId)) {
-                return view(scenarioId);
+                return view(scenarioId, preparation);
             }
             throw alreadyAttached();
         }
@@ -83,7 +83,7 @@ public class ScenarioReuseService {
         if (activities.attachScenarioIfEmpty(activityId, scenarioId) != 1) {
             throw alreadyAttached();
         }
-        return view(scenarioId);
+        return view(scenarioId, preparation);
     }
 
     private List<UUID> candidatesFor(InitialScenarioPreparation preparation) {
@@ -100,9 +100,13 @@ public class ScenarioReuseService {
         }
     }
 
-    private ScenarioResponse view(UUID scenarioId) {
+    private ScenarioResponse view(UUID scenarioId, InitialScenarioPreparation preparation) {
         var scenario = scenarios.findById(scenarioId).orElseThrow(this::notFound);
-        return ScenarioResponse.of(scenario, microGoals.findByScenarioIdOrderByOrderNo(scenarioId));
+        return ScenarioResponse.of(
+                scenario,
+                microGoals.findByScenarioIdOrderByOrderNo(scenarioId),
+                preparation.learningGoal().goalId(),
+                ScenarioResponse.REUSED);
     }
 
     private ApiException alreadyAttached() {

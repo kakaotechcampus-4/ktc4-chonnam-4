@@ -35,6 +35,25 @@ public class Scenario {
     @Column(name = "goal_content_hash")
     private String goalContentHash;
 
+    // 초안과 판정 기록만 그 아동의 학습 목표에 매인다. 승인하면 비운다.
+    @Column(name = "goal_id")
+    private UUID goalId;
+
+    @Column(name = "source_scenario_id")
+    private UUID sourceScenarioId;
+
+    @Column(name = "ai_role")
+    private String aiRole;
+
+    @Column(name = "origin", nullable = false)
+    private String origin;
+
+    @Column(name = "prompt_version")
+    private String promptVersion;
+
+    @Column(name = "policy_version")
+    private String policyVersion;
+
     @Column(name = "title", nullable = false)
     private String title;
 
@@ -67,6 +86,63 @@ public class Scenario {
 
     protected Scenario() {}
 
+    /**
+     * 승인본을 이 목표에 맞게 고칠 새 판(초안)을 만든다. 내용은 원본을 그대로 옮기고, 번호는 원본 +1 이다. 작은 목표와 첫 질문 목표 연결은 호출하는 쪽이 옮긴다.
+     */
+    public static Scenario editedFrom(Scenario source, UUID scenarioId, UUID goalId, Instant now) {
+        Scenario draft = new Scenario();
+        draft.scenarioId = scenarioId;
+        draft.scenarioVersion = source.scenarioVersion + 1;
+        draft.status = ScenarioStatus.DRAFT;
+        draft.scenarioLevel = source.scenarioLevel;
+        draft.goalContentHash = source.goalContentHash;
+        draft.goalId = goalId;
+        draft.sourceScenarioId = source.scenarioId;
+        draft.title = source.title;
+        draft.summary = source.summary;
+        draft.aiRole = source.aiRole;
+        draft.characters = source.characters;
+        draft.scenarioFacts = source.scenarioFacts;
+        draft.prohibitedInferences = source.prohibitedInferences;
+        draft.openingPrompts = source.openingPrompts;
+        draft.origin = "INSTRUCTOR_EDITED";
+        draft.promptVersion = source.promptVersion;
+        draft.policyVersion = source.policyVersion;
+        draft.createdAt = now;
+        return draft;
+    }
+
+    public boolean isDraft() {
+        return status == ScenarioStatus.DRAFT;
+    }
+
+    /** 초안의 제목·요약을 고친다. 빈 값은 그대로 둔다. */
+    public void edit(String newTitle, String newSummary) {
+        requireDraft();
+        if (newTitle != null) title = newTitle;
+        if (newSummary != null) summary = newSummary;
+    }
+
+    /** 승인하면 공용 재사용 후보가 되고 아동의 목표에서 떨어진다. */
+    public void approve(Instant now) {
+        requireDraft();
+        status = ScenarioStatus.APPROVED;
+        approvedAt = now;
+        goalId = null;
+    }
+
+    /** 쓰지 않기로 판정한다. 그 목표의 기록으로 남는다. */
+    public void reject() {
+        requireDraft();
+        status = ScenarioStatus.REJECTED;
+    }
+
+    private void requireDraft() {
+        if (status != ScenarioStatus.DRAFT) {
+            throw new IllegalStateException("판정이 끝난 시나리오는 바꿀 수 없습니다.");
+        }
+    }
+
     public UUID getScenarioId() {
         return scenarioId;
     }
@@ -85,6 +161,14 @@ public class Scenario {
 
     public String getTitle() {
         return title;
+    }
+
+    public UUID getGoalId() {
+        return goalId;
+    }
+
+    public UUID getSourceScenarioId() {
+        return sourceScenarioId;
     }
 
     public int getScenarioVersion() {
