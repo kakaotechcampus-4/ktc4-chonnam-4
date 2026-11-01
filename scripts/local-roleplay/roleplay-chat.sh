@@ -125,7 +125,7 @@ echo "== 역할극 시작"
 start=$(call "$CHILD_JAR" POST "/api/v1/activities/$activity_id/roleplay-sessions" '')
 session_id=$(jq -r .data.sessionId <<<"$start")
 echo
-jq -r '.data.delivery.messages[] | "AI: " + .text' <<<"$start"
+jq -r '.data.delivery.messages[] | (if .speakerRole == "HINT" then "마스코트: " else "친구: " end) + .text' <<<"$start"
 
 # 아이 문장 하나를 "음성" 파일로 보낸다. 서버가 같은 말을 다시 보내 달라고 하면(RETRY_TURN) 한 번 더 보낸다.
 send() {
@@ -133,7 +133,8 @@ send() {
   local res attempt
   for attempt in 1 2; do
     res=$(call "$CHILD_JAR" POST "/api/v1/roleplay-sessions/$session_id/voice-inputs" '' -F "audio=@$(win "$WORK/utterance.wav");type=audio/wav")
-    jq -r '(.data.messages // [])[] | "AI: " + .text' <<<"$res"
+    # 마스코트 힌트·안내(HINT)와 캐릭터 대사(DIALOGUE)를 나눠 보여 준다.
+    jq -r '(.data.messages // [])[] | (if .speakerRole == "HINT" then "마스코트: " else "친구: " end) + .text' <<<"$res"
     jq -r '"    (" + ([.data.status, .data.action] | map(select(. != null and . != "NONE")) | join(" · ")) + ")"' <<<"$res"
     [ "$(jq -r .data.action <<<"$res")" = RETRY_TURN ] && [ "$attempt" = 1 ] || break
     echo "    (같은 말을 다시 보낸다)"
