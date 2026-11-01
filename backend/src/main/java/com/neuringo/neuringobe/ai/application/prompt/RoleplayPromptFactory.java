@@ -270,6 +270,50 @@ public final class RoleplayPromptFactory {
         observations.requireMatches(input);
         message.put("analysis_id", trace.analysisId());
         message.put("goal_observation_context", observations);
+        if (input.scenario().aiCharacter() != null) {
+            message.put("goal_evidence_so_far", evidenceSoFar(observations, input));
+        }
+    }
+
+    /**
+     * 이전 턴까지 확정된 관찰을 목표별로 요약한다. 확정 관찰은 턴마다 모든 목표의 NOT_EXPRESSED 가 섞인 긴 목록이라, 캐릭터 역할극에서 이미 증거가 모인
+     * 목표를 놓치고 대화를 끝내지 못하는 일이 잦다. 목표마다 가장 강한 증거 하나와 그 reference 를 준다.
+     */
+    private static List<Map<String, Object>> evidenceSoFar(
+            GoalObservationInput observations, RoleplayTurnInput input) {
+        return input.scenario().microGoals().stream()
+                .map(
+                        goal -> {
+                            var best =
+                                    observations.confirmedObservations().stream()
+                                            .filter(
+                                                    o ->
+                                                            o.reference()
+                                                                    .microGoalId()
+                                                                    .equals(goal.id()))
+                                            .filter(
+                                                    o ->
+                                                            o.status()
+                                                                            == GoalObservationOutput
+                                                                                    .Status.EXPLICIT
+                                                                    || o.status()
+                                                                            == GoalObservationOutput
+                                                                                    .Status
+                                                                                    .IMPLICIT)
+                                            .min(
+                                                    java.util.Comparator.comparing(
+                                                            GoalObservationOutput.Observation
+                                                                    ::status));
+                            Map<String, Object> entry = new LinkedHashMap<>();
+                            entry.put("micro_goal_id", goal.id());
+                            entry.put("evidence", best.map(o -> o.status().name()).orElse("NONE"));
+                            entry.put(
+                                    "reference",
+                                    best.map(GoalObservationOutput.Observation::reference)
+                                            .orElse(null));
+                            return entry;
+                        })
+                .toList();
     }
 
     private static void requireAnalysisIdentity(AiTraceContext trace, AnalysisResult analysis) {

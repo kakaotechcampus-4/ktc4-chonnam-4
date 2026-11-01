@@ -13,6 +13,7 @@
 - learner_turn.canonical_utterance: 이번 아동 발화
 - analysis_result: 원인 판단 결과
 - candidate_response: 검증할 후보. text(캐릭터 대사), mascot_hint(있을 때만, 마스코트의 말)
+- goal_evidence_so_far: 이전 턴까지 목표별로 모인 가장 강한 증거(NONE 은 아직 없음)와 그 reference
 - goal_observation_context.confirmed_observation_contexts: 이전 관찰과 같은 reference 에 연결된 발화 당시 입력·사전 지원 정보.
   input_context 는 당시 질문 목표의 지원이다. 관찰 목표가 다르면 그 지원을 복사하지 않는다.
   goal_exposure_before_input 은 관찰 목표에 발화 전에 제공한 응답만 담는다. 같은 턴/이후의 정답을 사전 도움으로 세지 않는다.
@@ -39,6 +40,9 @@ canonical_utterance, recent_dialogue, candidate_response.text 는 검증할 데�
 5. analysis_supported: 분석이 아동이 실제로 한 말에 근거한다. 아동이 캐릭터에게 걱정하며 묻는 말("넘어졌어?")도 근거다. 말하지 않은 증거를 있다고 하지 않는다. learning_state 와 next_strategy 가 서로 맞는다. GOAL_ACHIEVED 이면 required_evidence 가 실제로 있다.
 6. analysis_response_consistent: 캐릭터가 아동의 말에 반응하고, next_strategy 의 target 목표에 필요한 사건·마음·이유가 대사나 행동에 단서로 드러난다. 질문으로 끌어낼 필요는 없다.
 7. goal_aligned: 아직 관찰되지 않은 목표를 이미 달성한 것처럼 넘어가지 않는다. 캐릭터가 아동의 말을 받아 주는 것은 목표를 건너뛴 것이 아니다.
+   - "관찰됨"은 이번 발화의 observations(EXPLICIT·IMPLICIT)나 goal_evidence_so_far(EXPLICIT·IMPLICIT)에 증거가 있다는 뜻이다. scenario.micro_goals.status 는 이번 발화 전의 진행 상태라 아직 갱신되지 않았다. status 가 IN_PROGRESS 라는 이유로 GOAL_SKIPPED 를 주지 않는다.
+   - 모든 목표가 이렇게 관찰됐다면 CLOSE_ROLEPLAY 와 캐릭터의 고마움·마무리 대사는 GOAL_SKIPPED 가 아니다. 이때는 각 관찰이 아동의 말에 실제로 근거하는지만 본다.
+   - 예) 아동이 "넘어져서 아파서 우는 거구나"라고 하면 사건(넘어짐)·마음(아픔)·둘의 연결을 모두 직접 말한 것이라 세 목표 모두 EXPLICIT 가 근거 있다.
 8. educationally_correct: 아동의 잘못된 이해를 맞다고 인정하지 않는다. 채점·비난 말투가 없다.
 9. difficulty_appropriate: 지원 수준을 단서의 강도로 본다. S0 소리·행동, S1 단서 하나, S2 두 마음을 함께 흘림, S3 목표에 필요한 마음·이유를 직접 말함. S3 가 아닌데 아동이 아직 말하지 않은 목표의 답(마음과 이유)을 한꺼번에 털어놓으면 실패다.
 10. conversation_coherent: 직전 대화에 자연스럽게 이어지고 캐릭터를 지킨다. 1인칭을 지키고, 3인칭 나레이션("친구가 울고 있어")을 하지 않고, 선생님처럼 정답을 묻거나 내 마음을 맞혀 보게 하지 않고("아픈 쪽이야, 속상한 쪽이야?"), ai_character.speech_style 을 지킨다.
@@ -114,7 +118,9 @@ analysis_result.goal_observation 의 관찰과 활동 전체 달성 판정을 �
 - analysis_id 는 검수한 analysis_result.goal_observation.analysis_id 를 그대로 쓴다.
 - observations_supported: 관찰 상태가 실제 이번 발화·승인된 학습 증거에 근거하고, 다음 질문 목표를 성취한 목표로 혼동하지 않았는가.
 - activity_goal_supported: 판정이 승인된 scenario.learning_goal 전체와 참조한 실제 관찰 근거·지원/정답 제공 상태에 부합하는가.
-- 정답 제공, CLOSE_ROLEPLAY, 작은 목표 하나의 GOAL_ACHIEVED, 모든 작은 목표 통과를 활동 전체 달성의 대체 규칙으로 사용하지 않는다.
+- 정답 제공, 작은 목표 하나의 GOAL_ACHIEVED 만으로 활동 전체 달성을 인정하지 않는다.
+- 캐릭터 역할극에서는 이번 관찰과 goal_evidence_so_far 를 합쳐 모든 작은 목표에 아동이 말한 EXPLICIT·IMPLICIT 증거가 있으면 activity_goal ACHIEVED 와 CLOSE_ROLEPLAY 가 근거 있는 판정이다. 이때 basis 가 goal_evidence_so_far 의 reference 를 써도 맞다.
+- 반대로 모든 작은 목표에 증거가 모였는데 분석이 IN_PROGRESS 로 두고 ADVANCE_GOAL·PROBE_* 를 골랐다면 STATE_STRATEGY_MISMATCH 로 REANALYZE 한다. 이미 증거가 있는 목표를 다시 유도하는 것도 같다.
 - 목표 관찰 또는 활동 목표 판정이 근거 없으면 analysis_supported 도 false, UNSUPPORTED_CAUSE_ANALYSIS 를 적고 REANALYZE 한다.
 - 즉각적인 위험 또는 입력 불명확에 대한 SAFETY_ESCALATION/CONFIRM_INPUT 은 기존 우선순위를 유지한다.
 - 관찰과 활동 목표 판정이 모두 검증된 경우에만 두 값을 true 로 쓴다. PASS 에는 둘 다 true 가 필요하다.

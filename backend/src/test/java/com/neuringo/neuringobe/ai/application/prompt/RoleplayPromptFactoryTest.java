@@ -352,6 +352,96 @@ class RoleplayPromptFactoryTest {
     }
 
     @Test
+    void analysisRepairsAMiscopiedTurnIdAndAMissingClosingSupportLevel() {
+        RoleplayTurnInput character = characterInput("넘어져서 아파서 우는 거구나");
+        var observations = RoleplayObservationTestPlans.inputForScenario(character.scenario());
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .parser();
+        String expected = TURN_ID.toString();
+        String miscopied = expected.substring(0, 9) + "ffff-ffff-ffff-ffffffffffff";
+
+        AnalysisResult repaired =
+                parser.parse(
+                        analysisJson("CLOSE_ROLEPLAY", MG_EMOTION, "S1")
+                                .replace(expected, miscopied)
+                                .replace(",\"recommended_support_level\":\"S1\"", ""));
+
+        assertThat(repaired.turnId()).isEqualTo(TURN_ID);
+        assertThat(repaired.nextStrategy().recommendedSupportLevel()).isEqualTo("S1");
+        assertThatThrownBy(
+                        () ->
+                                parser.parse(
+                                        analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
+                                                .replace(expected, UUID.randomUUID().toString())))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
+    @Test
+    void characterScenarioSummarizesEvidenceSoFarPerGoal() {
+        RoleplayTurnInput character = characterInput("넘어져서 아파서 우는 거구나");
+        RoleplayTurnInput narrator = input("넘어져서 아파서 우는 거구나");
+        var base = RoleplayObservationTestPlans.inputForScenario(character.scenario());
+        var criterion = base.approvedCriteria().getFirst();
+        var earlier =
+                new com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput
+                        .Reference(
+                        UUID.randomUUID(), criterion.microGoalId(), criterion.reference());
+        var later =
+                new com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput
+                        .Reference(
+                        UUID.randomUUID(), criterion.microGoalId(), criterion.reference());
+        var observations =
+                RoleplayObservationTestPlans.withSyntheticObservationContexts(
+                        base.approvedCriteria(),
+                        List.of(
+                                new com.neuringo.neuringobe.ai.application.structured.output
+                                        .GoalObservationOutput.Observation(
+                                        earlier,
+                                        com.neuringo.neuringobe.ai.application.structured.output
+                                                .GoalObservationOutput.Status.NOT_EXPRESSED),
+                                new com.neuringo.neuringobe.ai.application.structured.output
+                                        .GoalObservationOutput.Observation(
+                                        later,
+                                        com.neuringo.neuringobe.ai.application.structured.output
+                                                .GoalObservationOutput.Status.IMPLICIT)));
+
+        String characterPrompt =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .request()
+                        .userPrompt();
+        String narratorPrompt =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                narrator,
+                                null,
+                                observations)
+                        .request()
+                        .userPrompt();
+
+        assertThat(characterPrompt)
+                .contains("goal_evidence_so_far")
+                .contains("IMPLICIT")
+                .contains("NONE")
+                .contains(later.turnId().toString());
+        assertThat(narratorPrompt).doesNotContain("goal_evidence_so_far");
+    }
+
+    @Test
     void characterScenarioUsesCharacterPromptsAndAllowsLinesWithoutQuestion() {
         RoleplayTurnInput character = characterInput("괜찮아?");
         RoleplayTurnInput narrator = input("괜찮아?");

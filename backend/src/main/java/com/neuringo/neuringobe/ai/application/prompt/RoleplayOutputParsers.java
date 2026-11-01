@@ -50,8 +50,19 @@ final class RoleplayOutputParsers {
             RoleplayTurnInput.State state) {
         LlmOutputParser<AnalysisResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, AnalysisResult.class);
+        Set<String> knownTurnIds = new HashSet<>();
+        if (observationInput != null) {
+            observationInput
+                    .confirmedObservations()
+                    .forEach(o -> knownTurnIds.add(o.reference().turnId().toString()));
+        }
         return content -> {
-            AnalysisResult result = delegate.parse(stripCodeFence(content));
+            AnalysisResult result =
+                    withClosingSupportLevelFilled(
+                            delegate.parse(
+                                    withMiscopiedTurnIdFixed(
+                                            stripCodeFence(content), expectedTurnId, knownTurnIds)),
+                            state);
             check(result.turnId().equals(expectedTurnId), "turn_id does not match the request");
             check(oneOf(RoleplayCodes.RESPONSE_ACTS, result.responseAct()), "unknown response_act");
             check(oneOf(RoleplayCodes.RELEVANCE, result.relevance()), "unknown relevance");
@@ -81,6 +92,54 @@ final class RoleplayOutputParsers {
             }
             return result;
         };
+    }
+
+    private static final Pattern TURN_ID_FIELD =
+            Pattern.compile("\"turn_id\"\\s*:\\s*\"([^\"]+)\"");
+
+    /**
+     * 모델이 긴 turn_id 를 옮겨 적다 가운데 몇 글자를 틀리는 일이 잦다(앞 8자는 같고 뒤가 다른 값). 이번 턴 말고는 쓸 수 없는 자리라, 앞 8자가 같고 이전
+     * 턴 id 도 아닌 값이면 이번 턴 id 를 잘못 옮긴 것으로 보고 모두 바로잡는다. 그 밖의 값은 그대로 두어 검증에서 걸러진다.
+     */
+    static String withMiscopiedTurnIdFixed(
+            String content, UUID expectedTurnId, Set<String> knownTurnIds) {
+        if (content == null) return null;
+        String expected = expectedTurnId.toString();
+        Matcher matcher = TURN_ID_FIELD.matcher(content);
+        if (!matcher.find()) return content;
+        String written = matcher.group(1);
+        if (written.equals(expected)
+                || knownTurnIds.contains(written)
+                || written.length() < 8
+                || !written.regionMatches(true, 0, expected, 0, 8)) {
+            return content;
+        }
+        return content.replace("\"" + written + "\"", "\"" + expected + "\"");
+    }
+
+    /** 마무리(CLOSE_ROLEPLAY)는 지원 수준을 현재 수준 그대로 둔다. 모델이 빠뜨리면 그 값으로 채운다. */
+    private static AnalysisResult withClosingSupportLevelFilled(
+            AnalysisResult result, RoleplayTurnInput.State state) {
+        AnalysisResult.NextStrategy strategy = result.nextStrategy();
+        if (!"CLOSE_ROLEPLAY".equals(strategy.type())
+                || (strategy.recommendedSupportLevel() != null
+                        && !strategy.recommendedSupportLevel().isBlank())
+                || state == null) {
+            return result;
+        }
+        return new AnalysisResult(
+                result.turnId(),
+                result.responseAct(),
+                result.relevance(),
+                result.learningState(),
+                result.primaryGap(),
+                new AnalysisResult.NextStrategy(
+                        strategy.type(),
+                        strategy.targetMicroGoalId(),
+                        strategy.purpose(),
+                        state.currentSupportLevel()),
+                result.analysisConfidence(),
+                result.goalObservation());
     }
 
     static LlmOutputParser<CandidateResponse> candidate(
