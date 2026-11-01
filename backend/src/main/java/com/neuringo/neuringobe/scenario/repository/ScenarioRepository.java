@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.scenario.repository;
 
 import com.neuringo.neuringobe.scenario.domain.Scenario;
 import com.neuringo.neuringobe.scenario.dto.ApprovedScenarioVersion;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -65,7 +66,17 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
             @Param("goalHash") String goalHash,
             @Param("level") String level);
 
-    /** 배정 이력이 없는 동일 조건 승인본을 고르고, 연결이 끝날 때까지 승인 상태를 잠근다. */
+    /**
+     * 이 아동의 활동에 붙일 수 있는 재사용 후보를 보여 줄 순서대로 돌려준다.
+     *
+     * <ul>
+     *   <li>조건: 승인본, 같은 목표 내용·난이도, 이 아동이 그 시나리오로 배정받은 적 없음(완료·진행 중 모두 제외).
+     *   <li>순서: 그 시나리오가 붙은 활동의 가장 늦은 배정 시각이 오래된 것부터. 한 번도 붙지 않은 것이 맨 앞이다. 같으면 최근 승인본, 그래도 같으면 ID
+     *       순이다.
+     * </ul>
+     *
+     * 사용 시각은 순서를 정하는 데만 쓰고 돌려주지 않는다. 다른 반 아동의 활동 시점이 드러나지 않게 하기 위해서다.
+     */
     @Query(
             value =
                     """
@@ -75,14 +86,15 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                       and s.scenario_level = :level
                       and s.scenario_version > 0
                       and not exists (
-                          select 1 from activity a
-                          where a.child_id = :childId and a.scenario_id = s.scenario_id)
-                    order by s.created_at, s.scenario_id
-                    limit 1
-                    for share of s
+                          select 1 from activity mine
+                          where mine.child_id = :childId and mine.scenario_id = s.scenario_id)
+                    order by (select max(used.assigned_at) from activity used
+                              where used.scenario_id = s.scenario_id) asc nulls first,
+                             s.approved_at desc,
+                             s.scenario_id
                     """,
             nativeQuery = true)
-    Optional<UUID> findFirstUnusedApproved(
+    List<UUID> findReuseCandidates(
             @Param("goalHash") String goalHash,
             @Param("level") String level,
             @Param("childId") UUID childId);
