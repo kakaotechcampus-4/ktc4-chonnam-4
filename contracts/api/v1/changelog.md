@@ -3,8 +3,8 @@
 ## 2026-11-01 — 시나리오 재사용 승인과 [수정하기]
 
 - 기준은 `feature/scenario-reuse-approval` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
-- API 목차는 59개 ID 중 구현 36개·조건부 구현 1개·설계 20개·미제공 2개입니다.
-- 추가: [API-ACT-05](./activities/get-scenario-candidate.md) 재사용 후보 하나 조회(`after`로 다음 후보), [API-ACT-06](./activities/attach-activity-scenario.md) 재사용 후보 승인(활동에 붙이기). 최초 결합 활동만 대상입니다.
+- API 목차는 60개 ID 중 구현 37개·조건부 구현 1개·설계 20개·미제공 2개입니다.
+- 추가: [API-ACT-05](./activities/get-scenario-candidate.md) 재사용 후보 하나 조회(`after`로 다음 후보), [API-ACT-06](./activities/attach-activity-scenario.md) 재사용 후보 승인(활동에 붙이기), [API-SCN-08](./scenarios/list-scenario-approvals.md) 승인 대기 활동 목록(콘텐츠·승인 → 승인 대기함). 최초 결합 활동만 대상입니다.
 - 구현으로 변경: [API-SCN-03](./scenarios/get-scenario.md) 조회, [API-SCN-04](./scenarios/review-scenario.md) 초안 수정·판정, [API-SCN-05](./scenarios/create-scenario-version.md) 새 판 만들기, [API-SCN-06](./scenarios/delete-scenario.md) 초안 폐기.
 - 호환성 변경
   - 퀴즈를 마쳐도 시나리오가 자동으로 붙지 않습니다. 재사용하는 시나리오도 담당 강사가 승인해야 활동에 붙습니다.
@@ -14,7 +14,7 @@
   - API-SCN-05 요청에 `goalId`를 더했습니다. 원본이 공용 승인본이면 필수입니다. `Idempotency-Key`는 저장하지 않고, 같은 목표·같은 원본의 재전송은 기존 초안(200)을 돌려줍니다.
   - API-SCN-04는 판정 이유·수정 지시 문장을 받지 않습니다. `REVISION_REQUIRED`(다시 만들기)는 시나리오 생성이 들어오기 전까지 409입니다.
 - 새 오류 코드: `SCENARIO_NOT_FOUND`·`SCENARIO_ALREADY_ATTACHED`·`SCENARIO_NOT_REUSABLE`·`SCENARIO_NOT_APPROVED`·`SCENARIO_VERSION_MISMATCH`·`SCENARIO_DRAFT_EXISTS`·`SCENARIO_NOT_EDITABLE`·`SCENARIO_REGENERATION_UNAVAILABLE`·`SCENARIO_NO_WAITING_ACTIVITY`·`SCENARIO_IN_USE`.
-- 이 6개 API의 공유 예제(`examples/endpoints.ts`·`types.ts`·`fixtures.json`)는 아직 설계 함수 그대로입니다. 이어서 동기화합니다. 문서의 TypeScript 블록이 현재 계약입니다.
+- 이 7개 API의 공유 예제(`examples/endpoints.ts`·`types.ts`·`fixtures.json`)는 아직 설계 함수 그대로입니다. 이어서 동기화합니다. 문서의 TypeScript 블록이 현재 계약입니다.
 
 ## 2026-10-28 — PR #80과 develop 충돌 해결
 

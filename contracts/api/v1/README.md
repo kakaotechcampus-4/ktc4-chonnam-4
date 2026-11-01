@@ -3,12 +3,12 @@
 > 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
 > 통합 갱신: 2026-10-28 · PR #80 `c306bd1` + develop `565beb6`의 충돌 해결 작업본. 위 기존 계약 기준에 API-RPL-01 시작·복원과 API-ACT-04 활동 상태 조회의 실제 구현을 반영했습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
-> 시나리오 갱신: 2026-11-01 · `feature/scenario-reuse-approval`. 재사용 후보 조회·승인(API-ACT-05·06)을 더하고 시나리오 조회·새 판·검토·폐기(API-SCN-03~06)를 구현으로 바꿨습니다. 이 6개의 공유 예제(`examples/`) 동기화는 이어서 진행합니다.
+> 시나리오 갱신: 2026-11-01 · `feature/scenario-reuse-approval`. 재사용 후보 조회·승인(API-ACT-05·06)을 더하고 시나리오 조회·새 판·검토·폐기(API-SCN-03~06)를 구현으로 바꾸고 승인 대기 활동 목록(API-SCN-08)을 더했습니다. 이 7개의 공유 예제(`examples/`) 동기화는 이어서 진행합니다.
 > API-ACT-04 상태 조회와 API-RPL-01 시작·복원은 `examples/endpoints.ts`에 반영돼 있습니다. 시작·복원 응답 타입·모의 데이터도 현재 계약으로 동기화했습니다. 실제 프론트엔드 연동·운영 배포는 별도입니다.
 
 ## 현재 제공 범위
 
-이 작업 브랜치 기준 59개 API ID 중 **구현36개 · 조건부 구현1개 · 설계20개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
+이 작업 브랜치 기준 60개 API ID 중 **구현37개 · 조건부 구현1개 · 설계20개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -107,6 +107,7 @@
 | [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 구현 | createScenarioVersion |
 | [API-SCN-06 · 미사용 시나리오 초안 폐기](./scenarios/delete-scenario.md) | DELETE | `/api/v1/scenarios/{scenarioId}` | 구현 | deleteScenario |
 | [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 설계 | listScenarioMicroGoals |
+| [API-SCN-08 · 시나리오 승인 대기 활동 목록 조회](./scenarios/list-scenario-approvals.md) | GET | `/api/v1/scenario-approvals` | 구현 | listScenarioApprovals |
 ### 역할극
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |

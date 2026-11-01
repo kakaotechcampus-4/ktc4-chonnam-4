@@ -1636,6 +1636,75 @@ class QuizFlowIntegrationTest {
                         .content(json));
     }
 
+    @Test
+    void approvalInboxListsOwnWaitingActivitiesWithTheirState() throws Exception {
+        // 같은 강사로 도는 다른 테스트의 활동도 목록에 있으므로 이 테스트의 활동만 골라 본다.
+        UUID secondChild = UUID.randomUUID();
+        children.save(
+                new Child(
+                        secondChild,
+                        children.findById(childId).orElseThrow().getClassId(),
+                        "두 번째 아동",
+                        ChildStatus.ACTIVE));
+        UUID beforeQuiz = assignFirstActivity(secondChild, Map.of("title", "후보 있음"));
+        UUID waiting = assignFirstActivity(childId, Map.of("title", "후보 있음"));
+        completeAssignedQuiz(waiting, true);
+        UUID candidate = candidateWithMicroGoal(waiting);
+
+        // 퀴즈를 마치지 않은 활동은 아직 기다리는 활동이 아니다.
+        assertThat(inboxRow(beforeQuiz, "teacher-quiz")).isEmpty();
+        Map<String, Object> row = inboxRow(waiting, "teacher-quiz").orElseThrow();
+        assertThat(row)
+                .containsEntry("childName", "퀴즈 아동")
+                .containsEntry("goalTitle", "후보 있음")
+                .containsEntry("scenarioLevel", "L3")
+                .containsEntry("state", "CANDIDATE_AVAILABLE");
+        assertThat(row.get("draftScenarioId")).isNull();
+
+        UUID goalId = activities.findById(waiting).orElseThrow().getGoalId();
+        UUID draft = draftFrom(candidate, goalId);
+        assertThat(inboxRow(waiting, "teacher-quiz").orElseThrow())
+                .containsEntry("state", "DRAFT_IN_PROGRESS")
+                .containsEntry("draftScenarioId", draft.toString())
+                .containsEntry("draftVersion", 2);
+        mvc.perform(
+                        delete("/api/v1/scenarios/{id}", draft)
+                                .with(TestInstructors.instructor("teacher-quiz"))
+                                .with(csrf()))
+                .andExpect(status().isNoContent());
+        assertThat(inboxRow(waiting, "teacher-quiz").orElseThrow())
+                .containsEntry("state", "CANDIDATE_AVAILABLE");
+
+        // 다른 강사에게는 보이지 않는다.
+        assertThat(inboxRow(waiting, "teacher-other")).isEmpty();
+
+        putScenario(waiting, candidate, "teacher-quiz").andExpect(status().isOk());
+        assertThat(inboxRow(waiting, "teacher-quiz")).isEmpty();
+    }
+
+    @Test
+    void approvalInboxShowsActivityWithoutAnyCandidate() throws Exception {
+        UUID waiting = assignFirstActivity(childId, Map.of("title", "후보 없음"));
+        completeAssignedQuiz(waiting, true);
+        assertThat(inboxRow(waiting, "teacher-quiz").orElseThrow())
+                .containsEntry("state", "NO_CANDIDATE");
+    }
+
+    private java.util.Optional<Map<String, Object>> inboxRow(UUID activityId, String instructor)
+            throws Exception {
+        String body =
+                mvc.perform(
+                                get("/api/v1/scenario-approvals")
+                                        .with(TestInstructors.instructor(instructor)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        List<Map<String, Object>> rows =
+                JsonPath.read(body, "$.data[?(@.activityId == '" + activityId + "')]");
+        return rows.stream().findFirst();
+    }
+
     @ParameterizedTest(name = "승인 후보 제외 조건: {0}")
     @ValueSource(
             strings = {

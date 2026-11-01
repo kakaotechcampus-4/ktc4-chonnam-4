@@ -41,6 +41,9 @@ class OwnershipPatrolIntegrationTest {
     private static final Map<String, String> NOT_INSTRUCTOR_OWNED =
             Map.ofEntries(
                     Map.entry("GET /api/v1/csrf", "공개: CSRF 토큰"),
+                    Map.entry(
+                            "GET /api/v1/scenario-approvals",
+                            "내 학급의 활동만 모은다. 다른 강사 활동이 안 보이는지는 퀴즈 흐름 테스트에서 본다"),
                     Map.entry("POST /api/v1/users", "공개: 가입"),
                     Map.entry("POST /api/v1/auth/sessions", "공개: 로그인"),
                     Map.entry("GET /api/v1/auth/session", "자기 세션만 본다"),
