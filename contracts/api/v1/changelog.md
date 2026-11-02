@@ -1,5 +1,17 @@
 # API v1 변경 이력
 
+## 2026-11-02 — 학급·아동 이름 수정과 목표 조건 정리·모순 거절
+
+- 기준은 `feature/goal-lineage-edit` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 57개 ID 중 구현 32개·조건부 구현 1개·설계 22개·미제공 2개입니다.
+- 구현으로 변경: [API-CLS-04](./classrooms-children/update-classroom.md) 학급명 수정, [API-CLS-09](./classrooms-children/update-child.md) 아동 이름 수정. 이름만 받고, 공유 예제 함수는 `examples/endpoints.ts`로 옮겼습니다.
+- 호환성 변경([API-GOAL-01](./learning-goals/create-learning-goal.md), [API-ACT-01](./activities/create-activity.md)의 goal)
+  - `characters`는 `{id, role}` 객체 배열입니다. role은 인물 설명(최대50자)이고 실제 이름을 넣지 않습니다. id는 영문 대문자로 시작하는 관계 종류이며 비우면 `OTHER`, 겹치면 `FRIEND_2`처럼 번호가 붙습니다. `LEARNER`는 거부합니다. role이 없거나 id 형식이 다르면 422 `VALIDATION_FAILED`입니다.
+  - 저장 전에 문자열 공백을 정리하고 목록 중복을 지웁니다. `situationType`·`category`가 공백뿐이면 빈 문자열이 아니라 null로 저장합니다.
+  - 피할 표현이 필수 요소나 등장인물 role 안에 들어 있으면 422 `INVALID_GOAL_CONDITIONS`이고 `fieldErrors`가 그 피할 표현을 가리킵니다(ACT-01은 `goal.` 접두).
+  - `contentHash`는 목록을 정렬해 계산합니다. 칩 순서만 다른 목표는 같은 해시입니다. 이미 저장된 목표는 다시 계산하지 않습니다.
+- `situationType`은 상황 설명 문장(최대200자)으로 씁니다. 공유 예제 `types.ts`에 `GoalCharacter`·`GoalCharacterData`를 더했습니다.
+
 ## 2026-10-28 — PR #80과 develop 충돌 해결
 
 - 기준은 PR #80 `c306bd1`과 develop `565beb6`의 통합 작업본입니다. 아래는 코드·문서 통합 내역이며 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.

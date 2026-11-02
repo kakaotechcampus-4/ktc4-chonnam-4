@@ -223,8 +223,8 @@ await check("All 57 stable IDs have exactly one status and exported active funct
   assert.equal(new Set(fixtures.map(f=>f.id)).size, 57);
   assert.equal(fixtures.filter(f=>f.unavailable).length, 2);
   assert.equal(fixtures.filter(f=>f.conditional).length, 1);
-  assert.equal(fixtures.filter(f=>f.draft).length, 24);
-  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 30);
+  assert.equal(fixtures.filter(f=>f.draft).length, 22);
+  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 32);
   const expectedLive = fixtures.filter(f=>!f.draft && !f.unavailable).map(f=>f.fn).sort();
   const expectedDraft = fixtures.filter(f=>f.draft).map(f=>f.fn).sort();
   assert.deepEqual(Object.keys(live).sort(), expectedLive);

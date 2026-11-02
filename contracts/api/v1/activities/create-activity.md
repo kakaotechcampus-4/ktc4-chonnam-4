@@ -1,6 +1,6 @@
 # API-ACT-01 · 활동·목표 원자 생성 및 문항 배정
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-02 / 브랜치 `feature/goal-lineage-edit`. 학급·아동 이름 수정과 목표 조건 정리·모순 거절의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -22,6 +22,7 @@
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
 - ROLEPLAY는 enum에 있지만 현재 422 ACTIVITY_TYPE_NOT_AVAILABLE로 거부합니다. 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
+- goal 내용의 정리·등장인물 `{id, role}`·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
 - 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
 
 ## 3. 요청
@@ -133,7 +134,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 422 | GOAL_NOT_ALLOWED | 독립 퀴즈에 목표 입력 |
 | 422 | ACTIVITY_TYPE_NOT_AVAILABLE | 현재 ROLEPLAY 배정 불가 |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
-| 422 | INVALID_GOAL_CONDITIONS | 목표 조건 배열의 null/공백 원소 |
+| 422 | INVALID_GOAL_CONDITIONS | 빈 원소, LEARNER id, 피할 표현이 필수 요소·등장인물 role과 겹침. `fieldErrors`의 `goal.` 경로로 칸 표시 |
 | 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |
 | 404 | GOAL_NOT_FOUND | 부모 목표 없음/다른 아동 |
 | 400 | INVALID_REQUEST | UUID/필수 헤더·파트/Query 형식 |
@@ -166,18 +167,25 @@ export type UUID = string;
 
 export type ActivityType = 'FIRST_COMBINED' | 'SELF_EMOTION_QUIZ' | 'OTHER_EMOTION_QUIZ' | 'ROLEPLAY';
 
+export interface GoalCharacter {
+  /** 아이와의 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 비우면 OTHER, LEARNER 불가 */
+  id?: string | null;
+  /** 인물 설명(예: 넘어진 친구), 최대50자. 실제 이름 금지 */
+  role: string;
+}
+
 export interface GoalBody {
   /** 최대200자 */
   title: string;
-  /** 최대30자, 선택 */
+  /** 상황 설명 문장, 최대200자, 선택. 공백만이면 null */
   situationType?: string | null;
-  /** 목표 분류, 최대30자. 별도 enum 아님 */
+  /** 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null */
   category?: string | null;
-  /** 추가 등장인물; 누락/null은 현재 [] 정리 */
-  characters?: Record<string, unknown>[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 추가 등장인물; 누락/null은 [] */
+  characters?: GoalCharacter[] | null;
+  /** 아이가 대화에서 해 볼 행동. 빈/공백/null 원소는 조건 오류 */
   requiredElements?: string[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 역할극에 나오면 안 되는 말. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 */
   forbiddenExpressions?: string[] | null;
   /** 접근 가능한 동일 아동의 이전 목표 */
   parentGoalId?: UUID | null;

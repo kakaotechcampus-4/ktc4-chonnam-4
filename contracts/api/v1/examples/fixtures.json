@@ -372,7 +372,7 @@
   {
     "id": "API-CLS-04",
     "fn": "updateClassroom",
-    "draft": true,
+    "draft": false,
     "method": "PATCH",
     "route": "/api/v1/classrooms/{classId}",
     "args": {
@@ -520,7 +520,7 @@
   {
     "id": "API-CLS-09",
     "fn": "updateChild",
-    "draft": true,
+    "draft": false,
     "method": "PATCH",
     "route": "/api/v1/children/{childId}",
     "args": {
