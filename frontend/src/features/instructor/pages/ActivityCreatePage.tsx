@@ -8,10 +8,13 @@ import {
   listChildActivities,
   listChildren,
   listClassrooms,
+  listRoleplayScenarios,
   type Activity,
   type ActivityType,
   type Child,
   type Classroom,
+  type RoleplayScenarioCandidate,
+  type RoleplayScenarioChoice,
 } from '../api'
 import { SUPPORT_LABELS } from '../lib/reportLabels'
 import { describeError } from '../errorMessage'
@@ -74,7 +77,7 @@ const COMPOSITION_TEXT: Record<ActivityType, string> = {
   FIRST_COMBINED: '검증된 문항 중에서 유형별로 1개씩, 3문항이 자동으로 준비돼요. 역할극은 준비되는 대로 이어져요.',
   SELF_EMOTION_QUIZ: '내 감정 상황 문항 10개가 자동으로 준비돼요.',
   OTHER_EMOTION_QUIZ: '상대 감정 상황 문항 7개와 표정 그림 문항 3개가 자동으로 준비돼요.',
-  ROLEPLAY: '문항 없이 역할극만 해요. 지난 역할극으로 정한 다음 난이도에 맞는 승인 시나리오가 아동이 시작할 때 붙어요.',
+  ROLEPLAY: '문항 없이 역할극만 해요. 아래에서 고른 승인 시나리오로 시작해요.',
 }
 
 /**
@@ -144,6 +147,11 @@ const ASSIGN_ERROR_MESSAGES: Record<string, string> = {
   QUIZ_ITEMS_UNAVAILABLE: '배정할 수 있는 승인된 퀴즈 문항이 모자라요. 운영 담당자에게 문항 등록을 요청해 주세요.',
   ROLEPLAY_DIFFICULTY_NOT_READY: '아직 마친 역할극이 없어 다음 역할극 난이도가 없어요. 최초 결합 활동의 역할극을 먼저 마쳐 주세요.',
   GOAL_NOT_FOUND: '이어받을 이전 목표를 찾을 수 없어요. 목표를 다시 골라 주세요.',
+  SCENARIO_REQUIRED: '역할극 시나리오를 골라 주세요.',
+  UNAPPROVED_SCENARIO: '고른 시나리오가 지금은 승인 상태가 아니에요. 목록을 새로 불러와 다시 골라 주세요.',
+  SCENARIO_NOT_MATCHED: '고른 시나리오가 이 목표나 다음 난이도와 맞지 않아요. 목록을 새로 불러와 다시 골라 주세요.',
+  SCENARIO_ALREADY_USED: '이 아동이 이미 해 본 시나리오예요. 다른 시나리오를 골라 주세요.',
+  SCENARIO_REUSE_NOT_APPROVED: '다른 아동이 쓴 시나리오예요. 재사용을 승인해야 배정할 수 있어요.',
 }
 
 /**
@@ -214,6 +222,26 @@ function ActivityCreatePage() {
         ? { title: customTitle.trim(), category: customCategory }
         : null
 
+  // 역할극 단독은 강사가 상황과 작은 목표를 보고 승인 시나리오를 고른다. 대상·목표가 바뀌면 고른 것은 버린다.
+  const scenarioKey = `${childId}|${goal?.title}|${goal?.category}`
+  const [scenarioPick, setScenarioPick] = useState<{ key: string; scenarioId: string; reuseApproved: boolean } | null>(
+    null
+  )
+  const scenariosQuery = useQuery({
+    queryKey: ['children', childId, 'roleplay-scenarios', goal?.title, goal?.category ?? null],
+    queryFn: () => listRoleplayScenarios(childId!, goal!),
+    enabled: !!child && activityType === 'ROLEPLAY' && !!goal,
+  })
+  const pickedScenario =
+    scenarioPick?.key === scenarioKey
+      ? scenariosQuery.data?.items.find((item) => item.scenarioId === scenarioPick.scenarioId)
+      : undefined
+  const scenarioChoice: RoleplayScenarioChoice | null =
+    pickedScenario && (!pickedScenario.reuseApprovalRequired || scenarioPick?.reuseApproved)
+      ? { scenarioId: pickedScenario.scenarioId, reuseApproved: !!scenarioPick?.reuseApproved }
+      : null
+  const needsScenario = activityType === 'ROLEPLAY'
+
   // 주소의 단계가 앞 단계 입력 없이 열리면(새로고침 등) 채워야 할 단계로 돌려보낸다.
   const requestedStep = searchParams.get('step')
   let step: StepKey = 'target'
@@ -253,12 +281,22 @@ function ActivityCreatePage() {
 
   // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 목표와 활동을 하나만 남긴다(ADR D4).
   // 대상·유형·목표가 바뀌면 다른 배정이므로 새 키를 쓴다.
-  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${parentGoalId}` : ''}`
+  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${parentGoalId}` : ''}|${scenarioChoice?.scenarioId ?? ''}|${scenarioChoice?.reuseApproved ?? ''}`
   const attemptRef = useRef<{ submission: string; requestKey: string } | null>(null)
   const isSubmittingRef = useRef(false)
 
   const assignMutation = useMutation({
-    mutationFn: ({ target, type, choice }: { target: Child; type: ActivityType; choice: GoalChoice | null }) => {
+    mutationFn: ({
+      target,
+      type,
+      choice,
+      scenario,
+    }: {
+      target: Child
+      type: ActivityType
+      choice: GoalChoice | null
+      scenario: RoleplayScenarioChoice | null
+    }) => {
       if (attemptRef.current?.submission !== submission) {
         attemptRef.current = { submission, requestKey: crypto.randomUUID() }
       }
@@ -273,6 +311,7 @@ function ActivityCreatePage() {
             }
           : null,
         attemptRef.current.requestKey,
+        scenario ?? undefined,
       )
     },
     // 아동 캐시는 화면을 떠났어도 갱신한다(활동은 이미 배정됐다).
@@ -282,13 +321,24 @@ function ActivityCreatePage() {
   })
 
   function handleAssign() {
-    if (!child || !activityType || (needsGoal && !goal) || isSubmittingRef.current) {
+    if (
+      !child ||
+      !activityType ||
+      (needsGoal && !goal) ||
+      (needsScenario && !scenarioChoice) ||
+      isSubmittingRef.current
+    ) {
       return
     }
     isSubmittingRef.current = true
     setSent({ childId: child.childId, type: activityType })
     assignMutation.mutate(
-      { target: child, type: activityType, choice: needsGoal ? goal : null },
+      {
+        target: child,
+        type: activityType,
+        choice: needsGoal ? goal : null,
+        scenario: needsScenario ? scenarioChoice : null,
+      },
       {
         // 아동 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 배정 중 사이드바·뒤로가기로
         // 다른 화면에 간 뒤 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
@@ -552,6 +602,22 @@ function ActivityCreatePage() {
             </dl>
           </section>
 
+          {needsScenario && goal && (
+            <ScenarioPicker
+              loading={scenariosQuery.isLoading}
+              error={scenariosQuery.error}
+              items={scenariosQuery.data?.items ?? null}
+              selectedId={pickedScenario?.scenarioId ?? null}
+              reuseApproved={scenarioPick?.key === scenarioKey && scenarioPick.reuseApproved}
+              onSelect={(scenarioId) => setScenarioPick({ key: scenarioKey, scenarioId, reuseApproved: false })}
+              onReuseApprovedChange={(approved) => {
+                if (pickedScenario) {
+                  setScenarioPick({ key: scenarioKey, scenarioId: pickedScenario.scenarioId, reuseApproved: approved })
+                }
+              }}
+            />
+          )}
+
           {assignMutation.isError && (
             <Notice tone="error" role="alert">
               {assignErrorMessage}
@@ -570,7 +636,7 @@ function ActivityCreatePage() {
             <button
               type="button"
               onClick={handleAssign}
-              disabled={assignMutation.isPending}
+              disabled={assignMutation.isPending || (needsScenario && !scenarioChoice)}
               className={primaryButtonClass}
             >
               <ButtonLabel pending={assignMutation.isPending} label="배정하기" pendingLabel="배정 중..." />
@@ -580,6 +646,108 @@ function ActivityCreatePage() {
       )}
     </InstructorLayout>
   )
+}
+
+/**
+ * 역할극 단독 배정의 시나리오 고르기. 서버가 정한 순서(마지막으로 쓰인 지 오래된 것, 안 쓰인 것이 맨 앞 → 최근 승인본)대로 보인다.
+ * 다른 아동이 쓴 승인본은 강사가 재사용을 승인해야 배정 버튼이 열린다.
+ */
+function ScenarioPicker({
+  loading,
+  error,
+  items,
+  selectedId,
+  reuseApproved,
+  onSelect,
+  onReuseApprovedChange,
+}: {
+  loading: boolean
+  error: unknown
+  items: RoleplayScenarioCandidate[] | null
+  selectedId: string | null
+  reuseApproved: boolean
+  onSelect: (scenarioId: string) => void
+  onReuseApprovedChange: (approved: boolean) => void
+}) {
+  const selected = items?.find((item) => item.scenarioId === selectedId)
+  return (
+    <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-label="역할극 시나리오">
+      <div>
+        <h2 className="text-sm font-semibold">역할극 시나리오</h2>
+        <p className="text-xs text-[var(--instructor-text-muted)]">
+          이 목표와 다음 난이도에 맞게 승인된 시나리오예요. 상황과 작은 목표를 보고 하나를 골라 주세요.
+        </p>
+      </div>
+      {loading ? (
+        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+      ) : error ? (
+        <Notice tone="error">
+          {error instanceof ApiError && error.code === 'ROLEPLAY_DIFFICULTY_NOT_FOUND'
+            ? '아직 마친 역할극이 없어 다음 난이도가 없어요. 시나리오를 고를 수 없어요.'
+            : describeError(error, '시나리오 목록을 불러오지 못했습니다.')}
+        </Notice>
+      ) : !items || items.length === 0 ? (
+        <p className="text-sm text-[var(--instructor-warning-fg)]">
+          이 목표와 난이도에 맞는 승인 시나리오가 없어요. 시나리오를 먼저 준비·승인해 주세요.
+        </p>
+      ) : (
+        <fieldset className="flex flex-col rounded-[var(--instructor-radius-control)] border border-[var(--instructor-border)]">
+          <legend className="sr-only">역할극 시나리오</legend>
+          {items.map((item) => (
+            <label
+              key={item.scenarioId}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 border-b border-[var(--instructor-border-subtle)] px-4 py-4 last:border-b-0',
+                selectedId === item.scenarioId && 'bg-[var(--instructor-surface-muted)]'
+              )}
+            >
+              <input
+                type="radio"
+                name="roleplay-scenario"
+                checked={selectedId === item.scenarioId}
+                onChange={() => onSelect(item.scenarioId)}
+              />
+              <span className="flex flex-col gap-1">
+                <span className={cn('text-sm', selectedId === item.scenarioId && 'font-semibold')}>
+                  {item.title}
+                  <span className={cn(badgeClass, 'ml-2')}>
+                    {item.usedByOtherChildren > 0 ? `다른 아동 ${item.usedByOtherChildren}명 사용` : '아직 안 쓰임'}
+                  </span>
+                </span>
+                {item.summary && <span className="text-xs">{item.summary}</span>}
+                {item.microGoals.length > 0 && (
+                  <ul className="list-disc pl-4 text-xs text-[var(--instructor-text-muted)]">
+                    {item.microGoals.map((microGoal, index) => (
+                      <li key={index}>{microGoal}</li>
+                    ))}
+                  </ul>
+                )}
+                <span className="text-xs text-[var(--instructor-text-muted)]">
+                  {item.scenarioLevel}
+                  {item.approvedAt && ` · 승인 ${formatDay(item.approvedAt)}`}
+                  {item.lastUsedAt && ` · 마지막 사용 ${formatDay(item.lastUsedAt)}`}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {selected?.reuseApprovalRequired && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={reuseApproved} onChange={(e) => onReuseApprovedChange(e.target.checked)} />
+          <span>
+            다른 아동이 쓴 시나리오를 이 아동에게 다시 쓰는 것을 승인합니다.
+            <span className="block text-xs text-[var(--instructor-text-muted)]">승인해야 배정할 수 있어요.</span>
+          </span>
+        </label>
+      )}
+    </section>
+  )
+}
+
+/** 서버 시각(+09:00)의 날짜 부분. */
+function formatDay(value: string): string {
+  return value.slice(0, 10)
 }
 
 function TargetStep({

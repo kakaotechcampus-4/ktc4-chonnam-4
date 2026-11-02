@@ -488,14 +488,23 @@ export function createActivity(
   activityType: ActivityType,
   goal: LearningGoalInput | null,
   requestKey: string,
+  scenario?: RoleplayScenarioChoice,
 ): Promise<Activity> {
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, activityType, ...(goal ? { goal } : {}) },
+    {
+      childId,
+      activityType,
+      ...(goal ? { goal } : {}),
+      ...(scenario ? { scenarioId: scenario.scenarioId, reuseApproved: scenario.reuseApproved } : {}),
+    },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }
+
+/** 역할극 단독 배정에서 강사가 고른 승인 시나리오. 다른 아동이 쓴 승인본이면 reuseApproved 로 재사용을 승인한다. */
+export type RoleplayScenarioChoice = { scenarioId: string; reuseApproved: boolean }
 
 export type QuizResult = {
   activityId: string
@@ -689,4 +698,40 @@ export function decideRecommendation(
 /** 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다. */
 export function getRoleplayDifficulty(childId: string): Promise<RoleplayDifficulty> {
   return readRequest<RoleplayDifficulty>(`/children/${childId}/roleplay-difficulty`)
+}
+
+export type RoleplayScenarioCandidate = {
+  scenarioId: string
+  scenarioVersion: number
+  scenarioLevel: ScenarioLevel
+  title: string
+  summary: string | null
+  // 보여 주는 순서일 뿐 통과 순서가 아니다.
+  microGoals: string[]
+  approvedAt: string | null
+  // 이 시나리오가 붙은 활동이 마지막으로 배정된 시각. 쓰인 적이 없으면 null.
+  lastUsedAt: string | null
+  usedByOtherChildren: number
+  reuseApprovalRequired: boolean
+}
+
+export type RoleplayScenarioCandidates = {
+  childId: string
+  scenarioLevel: ScenarioLevel
+  initialSupportLevel: SupportLevel
+  // 마지막으로 쓰인 지 오래된 것(안 쓰인 것이 맨 앞) → 최근 승인본 순.
+  items: RoleplayScenarioCandidate[]
+}
+
+/**
+ * 역할극 단독 배정에서 고를 승인 시나리오. 배정할 목표와 같은 내용·다음 역할극 난이도 레벨의 승인본 중 이 아동이 아직 쓰지 않은 것이다.
+ * 학급은 보지 않는다. 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다.
+ */
+export function listRoleplayScenarios(
+  childId: string,
+  goal: { title: string; category?: string | null },
+): Promise<RoleplayScenarioCandidates> {
+  const params = new URLSearchParams({ goalTitle: goal.title })
+  if (goal.category) params.set('goalCategory', goal.category)
+  return readRequest<RoleplayScenarioCandidates>(`/children/${childId}/roleplay-scenarios?${params}`)
 }

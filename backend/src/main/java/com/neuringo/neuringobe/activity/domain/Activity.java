@@ -157,6 +157,12 @@ public class Activity {
         return true;
     }
 
+    /** 역할극 단독 활동은 강사가 배정할 때 고른 승인 시나리오를 처음부터 붙인다. */
+    public void selectScenario(UUID selectedScenarioId) {
+        scenarioId = selectedScenarioId;
+        scenarioSource = "INSTRUCTOR_SELECTED";
+    }
+
     public void applyInitialDifficulty(String supportLevel, boolean fallbackApplied) {
         initialSupportLevel = supportLevel;
         difficultyFallbackApplied = fallbackApplied;

@@ -1,7 +1,6 @@
 package com.neuringo.neuringobe.roleplay.service;
 
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
-import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
@@ -13,7 +12,6 @@ import com.neuringo.neuringobe.roleplay.dto.RoleplayStartResponse;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayStartRequestRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioRepository;
-import com.neuringo.neuringobe.scenario.service.StandaloneRoleplayScenarioService;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,7 +35,6 @@ public class RoleplayStartService {
     private final ScenarioRepository scenarios;
     private final TransactionTemplate transaction;
     private final RoleplayStartDeliveryService delivery;
-    private final StandaloneRoleplayScenarioService standaloneScenarios;
 
     public RoleplayStartService(
             RoleplayRequestScopeService scopes,
@@ -48,7 +45,6 @@ public class RoleplayStartService {
             RoleplayStartRequestRepository requests,
             ScenarioRepository scenarios,
             RoleplayStartDeliveryService delivery,
-            StandaloneRoleplayScenarioService standaloneScenarios,
             PlatformTransactionManager manager) {
         this.scopes = scopes;
         this.initialInputs = initialInputs;
@@ -58,7 +54,6 @@ public class RoleplayStartService {
         this.requests = requests;
         this.scenarios = scenarios;
         this.delivery = delivery;
-        this.standaloneScenarios = standaloneScenarios;
         transaction = new TransactionTemplate(manager);
     }
 
@@ -140,12 +135,6 @@ public class RoleplayStartService {
                     HttpStatus.CONFLICT,
                     "INITIAL_ROLEPLAY_NOT_READY",
                     "현재 활동 상태에서는 역할극을 시작할 수 없습니다.");
-        }
-        // 역할극 단독 활동은 퀴즈가 없어 시작할 때 고정 난이도의 승인 시나리오를 붙인다. 연결 쿼리가 영속성 문맥을 비우므로 활동을 다시 읽는다.
-        if (activity.getActivityType() == ActivityType.ROLEPLAY
-                && activity.getScenarioId() == null
-                && standaloneScenarios.attachIfMissing(activityId)) {
-            activity = activities.findByIdForUpdate(activityId).orElseThrow(this::hidden);
         }
         var input = initialInputs.requireForActivity(activityId, authentication);
         scenarios

@@ -111,7 +111,7 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         join child c on c.child_id=?
                         join learning_goal g on g.goal_id=? and g.child_id=c.child_id
                         where s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
-                          and s.class_id=c.class_id and s.goal_content_hash=g.content_hash
+                          and s.goal_content_hash=g.content_hash
                         """,
                         key.childId(),
                         key.goalId(),

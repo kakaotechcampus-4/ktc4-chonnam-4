@@ -68,7 +68,8 @@ class ActivityAssignmentServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
+                                        new CreateActivityRequest(
+                                                childId, null, GOAL_REQUEST, null, null),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)
@@ -92,7 +93,8 @@ class ActivityAssignmentServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
+                                        new CreateActivityRequest(
+                                                childId, null, GOAL_REQUEST, null, null),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)

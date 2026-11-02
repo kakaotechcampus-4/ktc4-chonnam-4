@@ -1,5 +1,14 @@
 # API v1 변경 이력
 
+## 2026-11-02 — 역할극 단독의 시나리오는 강사가 배정 때 고른다(PR #90 리뷰)
+
+- 기준은 `feature/roleplay-report-integration` 작업 브랜치입니다. develop 병합·운영 배포를 뜻하지 않습니다.
+- API-ACT-01: ROLEPLAY 배정에 `scenarioId`(필수)·`reuseApproved`를 더했습니다. 서버가 승인 상태·목표 내용·고정 레벨을 확인하고 422 `SCENARIO_REQUIRED`·`UNAPPROVED_SCENARIO`·`SCENARIO_NOT_MATCHED`·`SCENARIO_REUSE_NOT_APPROVED`, 409 `SCENARIO_ALREADY_USED`로 막습니다. 다른 유형의 `scenarioId`는 422 `SCENARIO_NOT_ALLOWED`입니다. 응답 `scenarioSource`는 `INSTRUCTOR_SELECTED`입니다.
+- API-RPL-01: 역할극 단독 활동은 시작할 때 서버가 시나리오를 고르지 않고, 배정 때 고른 승인본만 씁니다.
+- API-SCN-08(`GET /api/v1/children/{childId}/roleplay-scenarios`)을 더했습니다. 순서는 마지막으로 쓰인 지 오래된 것(안 쓰인 것이 맨 앞) → 최근 승인본입니다. 승인 시각은 V27 `scenario.approved_at`(승인 순간 트리거가 채움, 그 전 승인본은 만든 시각)입니다. 목차는 59개 ID 중 구현 37개입니다.
+- 학급은 보지 않습니다(팀 결정). 후보·배정 검사와 역할극 시작·진행의 승인본 확인(`findApprovedOpening`·`JdbcRoleplayContextSource`·`JdbcRoleplayProgressSource`)에서 `class_id` 조건을 뺐습니다. 최초 결합이 퀴즈를 마칠 때 자동으로 고르는 쿼리(`findFirstUnusedApproved`)는 아직 같은 학급 조건이 남아 있습니다.
+- `contracts/api-v1.json`에 시나리오 3개(다른 유형의 scenarioId 422, 후보 404 두 가지)를 더했습니다.
+
 ## 2026-10-31 — 리포트·추천·다음 역할극 난이도 구현(작업 브랜치)
 
 - 기준은 develop `ccfdff0` 위 `feature/roleplay-report-integration` 작업 브랜치입니다. develop 병합·운영 배포를 뜻하지 않습니다.

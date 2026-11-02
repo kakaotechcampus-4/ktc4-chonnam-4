@@ -1,6 +1,6 @@
 -- 로컬 끝까지 돌려 보기용 승인 시나리오. 시나리오를 저장하는 서버 API 가 아직 없어서(contracts/api/v1/scenarios 는 설계) 직접 넣는다.
--- 한 번 실행하면 같은 학급·같은 목표 내용(content_hash)에 L1·L2·L3 승인본이 하나씩 생긴다. 역할극은 이 아동이 아직 쓰지 않은
--- 승인본을 고르므로, 같은 목표로 역할극을 두 번 하려면 tag 를 바꿔 한 번 더 실행한다.
+-- 한 번 실행하면 같은 목표 내용(content_hash)에 L1·L2·L3 승인본이 하나씩 생긴다. 최초 결합은 이 아동이 아직 쓰지 않은 승인본을
+-- 서버가 고르고, 역할극 단독은 강사가 활동 만들기에서 고른다. 같은 목표로 역할극을 두 번 하려면 tag 를 바꿔 한 번 더 실행한다.
 --
 --   psql -v class_id=<학급 UUID> -v goal_hash=<learning_goal.content_hash> -v tag=<구분 글자> -f seed-approved-scenarios.sql
 --   (scripts/local/seed-scenarios.ps1 가 활동 ID 로 두 값을 찾아 부른다)

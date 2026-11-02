@@ -8,6 +8,7 @@ import {
   handlers,
   seedActivity,
   seedRoleplayLearning,
+  seedRoleplayScenario,
   storedGoals,
 } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
@@ -36,8 +37,14 @@ function renderWizard(search = "") {
 describe("활동 만들기 화면", () => {
   beforeEach(() => signIn())
 
-  it("추천에서 넘어오면 목표가 채워진 역할극을 다음 난이도로 배정하고 지난 목표를 이어받는다", async () => {
+  it("추천에서 넘어오면 목표가 채워진 역할극을, 강사가 고른 승인 시나리오로 다음 난이도에 배정하고 지난 목표를 이어받는다", async () => {
     const { activity } = seedRoleplayLearning({ childId: CHILD.childId })
+    const goalTitle = "놀이터에서 위로하는 말 하기"
+    // 다른 아동이 쓴 것, 안 쓴 것 둘(승인 시각이 다르다), 레벨이 맞지 않는 것.
+    seedRoleplayScenario({ goalTitle, title: "다른 아동이 쓴 놀이터", usedByOtherAt: "2026-10-25T10:00:00+09:00" })
+    seedRoleplayScenario({ goalTitle, title: "먼저 승인한 놀이터", approvedAt: "2026-10-18T10:00:00+09:00" })
+    const newer = seedRoleplayScenario({ goalTitle, title: "최근 승인한 놀이터", approvedAt: "2026-10-28T10:00:00+09:00" })
+    seedRoleplayScenario({ goalTitle, title: "어려운 놀이터", level: "L3" })
     let body: unknown
     server.events.on("request:start", async ({ request }) => {
       if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
@@ -61,17 +68,65 @@ describe("활동 만들기 화면", () => {
     const summary = await screen.findByRole("region", { name: "배정 내용" })
     expect(await within(summary).findByText("L2 · 시작 지원 상황 단서")).toBeInTheDocument()
     expect(within(summary).getByText("이어받는 목표")).toBeInTheDocument()
+
+    // 시나리오를 고르기 전에는 배정할 수 없다. 안 쓴 것이 앞(최근 승인본 먼저), 다른 아동이 쓴 것이 뒤다.
+    const picker = await screen.findByRole("region", { name: "역할극 시나리오" })
+    const options = await within(picker).findAllByRole("radio")
+    expect(options.map((option) => option.closest("label")?.textContent)).toEqual([
+      expect.stringContaining("최근 승인한 놀이터"),
+      expect.stringContaining("먼저 승인한 놀이터"),
+      expect.stringContaining("다른 아동이 쓴 놀이터"),
+    ])
+    expect(within(picker).getAllByText("친구의 속상한 마음 알아보기")).toHaveLength(3)
+    expect(screen.getByRole("button", { name: "배정하기" })).toBeDisabled()
+    await user.click(options[0])
     await user.click(screen.getByRole("button", { name: "배정하기" }))
 
     await vi.waitFor(() => expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`))
     expect(body).toEqual({
       childId: CHILD.childId,
       activityType: "ROLEPLAY",
-      goal: { title: "놀이터에서 위로하는 말 하기", parentGoalId: activity.goalId },
+      goal: { title: goalTitle, parentGoalId: activity.goalId },
+      scenarioId: newer.scenarioId,
+      reuseApproved: false,
     })
   })
 
-  it("마친 역할극이 없어 다음 난이도가 없으면 확인 단계에서 알리고 배정 오류를 풀어 보인다", async () => {
+  it("다른 아동이 쓴 시나리오는 강사가 재사용을 승인해야 배정한다", async () => {
+    seedRoleplayLearning({ childId: CHILD.childId })
+    const used = seedRoleplayScenario({
+      goalTitle: "친구 위로하기",
+      title: "다른 아동이 쓴 놀이터",
+      usedByOtherAt: "2026-10-25T10:00:00+09:00",
+    })
+    let body: unknown
+    server.events.on("request:start", async ({ request }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
+        body = await request.clone().json()
+      }
+    })
+    const params = new URLSearchParams({
+      step: "goal",
+      classId: A1,
+      childId: CHILD.childId,
+      type: "ROLEPLAY",
+      goalTitle: "친구 위로하기",
+    })
+    const { user, router } = renderWizard(`?${params.toString()}`)
+
+    await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
+    const picker = await screen.findByRole("region", { name: "역할극 시나리오" })
+    expect(await within(picker).findByText("다른 아동 1명 사용")).toBeInTheDocument()
+    await user.click(within(picker).getByRole("radio"))
+    expect(screen.getByRole("button", { name: "배정하기" })).toBeDisabled()
+    await user.click(within(picker).getByRole("checkbox", { name: /다시 쓰는 것을 승인합니다/ }))
+    await user.click(screen.getByRole("button", { name: "배정하기" }))
+
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe(`/classrooms/${A1}/children/${CHILD.childId}`))
+    expect(body).toMatchObject({ scenarioId: used.scenarioId, reuseApproved: true })
+  })
+
+  it("마친 역할극이 없어 다음 난이도가 없으면 확인 단계에서 알리고 시나리오를 고를 수 없어 배정하지 않는다", async () => {
     seedActivity({ childId: CHILD.childId, goalTitle: "표정에서 기쁨·슬픔·화남을 구분한다", status: "COMPLETED" })
     const params = new URLSearchParams({
       step: "goal",
@@ -83,9 +138,10 @@ describe("활동 만들기 화면", () => {
     const { user } = renderWizard(`?${params.toString()}`)
 
     await user.click(await screen.findByRole("button", { name: "다음 · 확인" }))
-    expect(await screen.findByText(/아직 마친 역할극이 없어 다음 난이도가 없어요/)).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "배정하기" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("최초 결합 활동의 역할극을 먼저 마쳐 주세요")
+    expect(await screen.findByText(/아직 마친 역할극이 없어 다음 난이도가 없어요\. 배정할 수 없어요/)).toBeInTheDocument()
+    const picker = await screen.findByRole("region", { name: "역할극 시나리오" })
+    expect(await within(picker).findByText(/시나리오를 고를 수 없어요/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "배정하기" })).toBeDisabled()
   })
 
   it("아동과 목표를 고르고 배정하면, 그 아동의 활동 이력에 시작 전 활동으로 보인다", async () => {

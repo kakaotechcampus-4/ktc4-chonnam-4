@@ -32,7 +32,7 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                 join child c on c.child_id = a.child_id
                 join learning_goal g on g.goal_id = a.goal_id and g.child_id = c.child_id
             where s.scenario_id = :id and s.scenario_version = :version and s.status = 'APPROVED'
-                and s.class_id = c.class_id and s.goal_content_hash = g.content_hash
+                and s.goal_content_hash = g.content_hash
                 and jsonb_typeof(s.opening_prompts) = 'object'
                 and jsonb_typeof(s.opening_prompts -> cast(:support as text)) = 'string'
             for share of s
@@ -63,6 +63,21 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
     Optional<ApprovedScenarioVersion> findMatchingApprovedVersion(
             @Param("scenarioId") UUID scenarioId,
             @Param("classId") UUID classId,
+            @Param("goalHash") String goalHash,
+            @Param("level") String level);
+
+    /** 역할극 단독 활동의 시나리오. 강사가 고른 승인본이라 학급은 보지 않고 목표 내용·고정 레벨만 다시 확인한다. */
+    @Query(
+            """
+            select new com.neuringo.neuringobe.scenario.dto.ApprovedScenarioVersion(s.scenarioId, s.scenarioVersion)
+            from Scenario s
+            where s.scenarioId = :scenarioId
+                and s.status = com.neuringo.neuringobe.scenario.domain.ScenarioStatus.APPROVED
+                and s.goalContentHash = :goalHash
+                and s.scenarioLevel = :level and s.scenarioVersion > 0
+            """)
+    Optional<ApprovedScenarioVersion> findApprovedVersionForGoal(
+            @Param("scenarioId") UUID scenarioId,
             @Param("goalHash") String goalHash,
             @Param("level") String level);
 

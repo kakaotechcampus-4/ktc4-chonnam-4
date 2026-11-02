@@ -20,9 +20,10 @@
 - childId와 activityType, 필요한 경우 goal 내용을 함께 전달합니다. 기존 goalId 필드는 현재 계약이 아닙니다. 목표 저장·활동 생성·문항 배정은 한 트랜잭션이며 실패 시 함께 롤백됩니다.
 - Idempotency-Key(UUID)는 필수입니다. 같은 키·같은 아동/유형/목표 내용이면 기존 활동을 200, 새 배정은 201로 반환합니다. 동일 키의 다른 요청은 409입니다.
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
-- ROLEPLAY(역할극 단독)는 최초 결합 완료 뒤에 배정하고 goal이 필수입니다. 이 아동의 다음 역할극 난이도(API-REC-06)가 있어야 하며, 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY입니다. 배정 때 그 레벨·시작 지원을 활동에 고정하고(`initialSupportLevel`), 퀴즈 문항은 붙이지 않습니다. 시나리오는 아동이 시작할 때 고정 레벨의 승인본에서 붙입니다(2026-10-31 작업 브랜치). 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
+- ROLEPLAY(역할극 단독)는 최초 결합 완료 뒤에 배정하고 goal이 필수입니다. 이 아동의 다음 역할극 난이도(API-REC-06)가 있어야 하며, 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY입니다. 배정 때 그 레벨·시작 지원을 활동에 고정하고(`initialSupportLevel`), 퀴즈 문항은 붙이지 않습니다(2026-10-31 작업 브랜치). 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
-- 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
+- ROLEPLAY는 강사가 고른 승인 시나리오(`scenarioId`)가 필수입니다(2026-11-02 작업 브랜치, PR #90 리뷰). 후보는 [API-SCN-08](../scenarios/list-roleplay-scenario-candidates.md)로 보여 줍니다. 서버는 `APPROVED`인지, 목표 내용(content_hash)·고정 레벨과 맞는지 확인하고, 아니면 422 `UNAPPROVED_SCENARIO`·`SCENARIO_NOT_MATCHED`입니다. 학급은 보지 않습니다. 이 아동이 이미 쓴 승인본은 409 `SCENARIO_ALREADY_USED`, 다른 아동이 쓴 승인본은 `reuseApproved: true`가 없으면 422 `SCENARIO_REUSE_NOT_APPROVED`입니다. 고른 시나리오는 응답의 `scenarioId`에 바로 붙고 `scenarioSource`는 `INSTRUCTOR_SELECTED`입니다. 아동이 시작할 때 서버가 시나리오를 고르지 않습니다.
+- 다른 유형에 `scenarioId`를 보내면 422 `SCENARIO_NOT_ALLOWED`입니다. 최초 결합의 시나리오는 지금처럼 퀴즈를 마칠 때 서버가 붙입니다.
 
 ## 3. 요청
 
@@ -52,6 +53,8 @@
 | childId | UUID | 예 | 아니오 | 담당 아동 UUID |
 | activityType | ActivityType \| null | 아니오 | 예 | 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) |
 | goal | GoalBody \| null | 아니오 | 예 | FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 |
+| scenarioId | UUID \| null | 아니오 | 예 | ROLEPLAY 필수. API-SCN-08 후보에서 고른 승인 시나리오. 다른 유형은 422 |
+| reuseApproved | boolean \| null | 아니오 | 예 | 다른 아동이 쓴 승인본을 고를 때 true(재사용 승인). 생략은 false |
 
 ~~~json
 {
@@ -100,8 +103,8 @@ HTTP 201 / 200.
 | data.childId | UUID | 예 | 아니오 | 아동 |
 | data.goalId | UUID \| null | 예 | 예 | 목표. 독립 퀴즈는 null |
 | data.activityType | ActivityType | 예 | 아니오 | 활동 유형 |
-| data.scenarioId | UUID \| null | 예 | 예 | 현재 생성 시 null |
-| data.scenarioSource | string \| null | 예 | 예 | 현재 null; 연결 방식 보완 |
+| data.scenarioId | UUID \| null | 예 | 예 | ROLEPLAY는 강사가 고른 시나리오, 그 밖에는 생성 시 null |
+| data.scenarioSource | string \| null | 예 | 예 | ROLEPLAY는 INSTRUCTOR_SELECTED, 그 밖에는 null |
 | data.initialSupportLevel | SupportLevel \| null | 예 | 예 | 초기 지원; 아동 평가 projection 합의 필요 |
 | data.difficultyFallbackApplied | boolean | 예 | 아니오 | 기본값 적용 |
 | data.status | ActivityStatus | 예 | 아니오 | 수행 상태; 준비상태와 구분 |
@@ -132,6 +135,12 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 422 | GOAL_REQUIRED | 최초 결합/역할극 목표 누락 |
 | 422 | GOAL_NOT_ALLOWED | 독립 퀴즈에 목표 입력 |
 | 409 | ROLEPLAY_DIFFICULTY_NOT_READY | 마친 역할극이 없어 다음 역할극 난이도가 없음. 역할극 단독 배정 불가 |
+| 422 | SCENARIO_REQUIRED | 역할극 단독인데 scenarioId 없음 |
+| 422 | UNAPPROVED_SCENARIO | 없거나 승인 상태가 아닌 시나리오. 후보를 다시 불러옴 |
+| 422 | SCENARIO_NOT_MATCHED | 목표 내용·고정 레벨과 맞지 않는 시나리오. 후보를 다시 불러옴 |
+| 409 | SCENARIO_ALREADY_USED | 이 아동이 이미 쓴 시나리오 |
+| 422 | SCENARIO_REUSE_NOT_APPROVED | 다른 아동이 쓴 시나리오인데 reuseApproved 없음 |
+| 422 | SCENARIO_NOT_ALLOWED | 역할극 단독이 아닌 유형에 scenarioId |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
 | 422 | INVALID_GOAL_CONDITIONS | 목표 조건 배열의 null/공백 원소 |
 | 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |
@@ -190,6 +199,10 @@ export interface ActivityBody {
   activityType?: ActivityType | null;
   /** FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 */
   goal?: GoalBody | null;
+  /** ROLEPLAY 필수. 강사가 API-SCN-08 후보에서 고른 승인 시나리오. 다른 유형은 422 SCENARIO_NOT_ALLOWED */
+  scenarioId?: UUID | null;
+  /** 다른 아동이 쓴 승인본을 고를 때 true(강사의 재사용 승인). 없으면 false */
+  reuseApproved?: boolean | null;
 }
 
 export type SupportLevel = 'S0' | 'S1' | 'S2' | 'S3';

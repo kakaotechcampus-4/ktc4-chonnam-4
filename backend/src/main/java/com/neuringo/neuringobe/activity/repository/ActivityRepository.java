@@ -42,11 +42,11 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     @Query("select a from Activity a where a.childId in :childIds order by a.activityId")
     List<Activity> findByChildIdInForUpdate(@Param("childIds") Collection<UUID> childIds);
 
-    /** 잠근 최초 활동이나 역할극 단독 활동의 시나리오를 한 번만 연결한다. 영속성 문맥을 비우므로 부른 쪽은 활동을 다시 읽어야 한다. */
+    /** 잠근 최초 활동의 시나리오를 한 번만 연결한다. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(
             value =
-                    "update activity set scenario_id = :scenarioId where activity_id = :activityId and scenario_id is null and activity_type in ('FIRST_COMBINED', 'ROLEPLAY')",
+                    "update activity set scenario_id = :scenarioId where activity_id = :activityId and scenario_id is null and activity_type = 'FIRST_COMBINED'",
             nativeQuery = true)
     int attachScenarioIfEmpty(
             @Param("activityId") UUID activityId, @Param("scenarioId") UUID scenarioId);

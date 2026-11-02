@@ -7,7 +7,7 @@
 
 ## 현재 제공 범위
 
-이 통합 작업 브랜치 기준 58개 API ID 중 **구현36개 · 조건부 구현1개 · 설계19개 · 미제공2개**입니다. 리포트·추천 6개(API-REC-01~06)는 2026-10-31 `feature/roleplay-report-integration` 작업 브랜치에서 구현했고 develop에는 아직 없습니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
+이 통합 작업 브랜치 기준 59개 API ID 중 **구현37개 · 조건부 구현1개 · 설계19개 · 미제공2개**입니다. 리포트·추천 6개(API-REC-01~06)는 2026-10-31, 역할극 단독 배정 시나리오 후보(API-SCN-08)는 2026-11-02 `feature/roleplay-report-integration` 작업 브랜치에서 구현했고 develop에는 아직 없습니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -104,6 +104,7 @@
 | [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 설계 | createScenarioVersion |
 | [API-SCN-06 · 미사용 시나리오 초안 폐기](./scenarios/delete-scenario.md) | DELETE | `/api/v1/scenarios/{scenarioId}` | 설계 | deleteScenario |
 | [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 설계 | listScenarioMicroGoals |
+| [API-SCN-08 · 역할극 단독 배정 시나리오 후보 조회](./scenarios/list-roleplay-scenario-candidates.md) | GET | `/api/v1/children/{childId}/roleplay-scenarios` | 구현(작업 브랜치) | listRoleplayScenarios |
 ### 역할극
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
@@ -138,6 +139,6 @@
 node --experimental-strip-types v1/examples/verify-examples.mjs
 ~~~
 
-검사는 JSON·58개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
+검사는 JSON·59개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
 
 [fixtures.json](./examples/fixtures.json)은 합성 예제이며 DB seed가 아닙니다. 본문/실명/토큰/비밀번호/원본 음성은 Git·Issue·로그에 올리지 않습니다.

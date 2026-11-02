@@ -9,11 +9,22 @@ import java.util.UUID;
 /**
  * 목표 내용을 같이 받아 목표 저장과 활동 배정을 한 트랜잭션에서 한다. 배정이 실패하면 목표도 남지 않는다. activityType 을 비우면 최초 결합이다(유형이 생기기 전
  * 요청과 같은 뜻). 최초 결합·역할극은 goal 이 있어야 하고, 독립 퀴즈는 없어야 한다.
+ *
+ * <p>역할극 단독은 강사가 고른 승인 시나리오(scenarioId)가 있어야 한다. 다른 아동이 쓴 승인본이면 reuseApproved 로 재사용을 승인한다. 다른 유형은
+ * scenarioId 를 받지 않는다.
  */
 public record CreateActivityRequest(
-        @NotNull UUID childId, ActivityType activityType, @Valid CreateLearningGoalRequest goal) {
+        @NotNull UUID childId,
+        ActivityType activityType,
+        @Valid CreateLearningGoalRequest goal,
+        UUID scenarioId,
+        Boolean reuseApproved) {
 
     public ActivityType type() {
         return activityType == null ? ActivityType.FIRST_COMBINED : activityType;
+    }
+
+    public boolean reuseApprovedOrFalse() {
+        return Boolean.TRUE.equals(reuseApproved);
     }
 }

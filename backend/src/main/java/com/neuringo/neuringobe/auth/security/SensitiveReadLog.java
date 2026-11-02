@@ -38,7 +38,8 @@ public class SensitiveReadLog {
         LEARNING_REPORT,
         CHILD_LEARNING_REPORTS,
         RECOMMENDATION,
-        ROLEPLAY_DIFFICULTY
+        ROLEPLAY_DIFFICULTY,
+        ROLEPLAY_SCENARIOS
     }
 
     /** 강사 조회를 실행하고 결과를 남긴다. 막힌 조회는 남긴 뒤 같은 예외를 다시 던진다. */

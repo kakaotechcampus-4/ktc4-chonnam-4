@@ -182,6 +182,10 @@ export interface ActivityBody {
   activityType?: ActivityType | null;
   /** FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 */
   goal?: GoalBody | null;
+  /** ROLEPLAY 필수. 강사가 API-SCN-08 후보에서 고른 승인 시나리오. 다른 유형은 422 SCENARIO_NOT_ALLOWED */
+  scenarioId?: UUID | null;
+  /** 다른 아동이 쓴 승인본을 고를 때 true(강사의 재사용 승인). 없으면 false */
+  reuseApproved?: boolean | null;
 }
 
 export interface ActivityData {
@@ -715,6 +719,32 @@ export interface RoleplayDifficultyData {
   /** 그 활동의 학습 기록. 리포트가 404여도 추천을 읽을 수 있다 */
   sourceRecordId: UUID | null;
   decidedAt: ISODateTime;
+}
+
+export interface RoleplayScenarioCandidateData {
+  scenarioId: UUID;
+  scenarioVersion: number;
+  scenarioLevel: ScenarioLevel;
+  title: string;
+  summary: string | null;
+  /** 작은 목표 설명. 보여 주는 순서일 뿐 통과 순서가 아니다 */
+  microGoals: string[];
+  /** 승인 시각. 2026-11-02 이전 승인본은 만든 시각 */
+  approvedAt: ISODateTime | null;
+  /** 이 시나리오가 붙은 활동이 마지막으로 배정된 시각. 쓰인 적 없으면 null */
+  lastUsedAt: ISODateTime | null;
+  usedByOtherChildren: number;
+  /** true 면 배정할 때 reuseApproved: true 가 필요 */
+  reuseApprovalRequired: boolean;
+}
+
+export interface RoleplayScenarioCandidatesData {
+  childId: UUID;
+  /** 지금 배정하면 활동에 고정될 다음 역할극 난이도 */
+  scenarioLevel: ScenarioLevel;
+  initialSupportLevel: SupportLevel;
+  /** 마지막으로 쓰인 지 오래된 것(안 쓰인 것이 맨 앞) → 최근 승인본 순 */
+  items: RoleplayScenarioCandidateData[];
 }
 
 

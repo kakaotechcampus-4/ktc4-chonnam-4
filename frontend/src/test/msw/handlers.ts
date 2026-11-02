@@ -14,6 +14,7 @@ import type {
   Recommendation,
   RecommendationDecision,
   RoleplayDifficulty,
+  ScenarioLevel,
   User,
 } from "@/features/instructor/api"
 
@@ -206,6 +207,19 @@ let learningRecords = new Map<string, { activityId: string; childId: string }>()
 let reports = new Map<string, LearningReport>()
 let recommendations: Recommendation[] = []
 let difficulties: RoleplayDifficulty[] = []
+// 승인 시나리오. 서버처럼 목표 내용(contentHash)·레벨이 같은 승인본만 역할극 단독 배정의 후보다. uses 는 다른 아동이 쓴 기록이다.
+type StoredScenario = {
+  scenarioId: string
+  status: "DRAFT" | "APPROVED" | "RETIRED"
+  scenarioLevel: ScenarioLevel
+  goalHash: string
+  title: string
+  summary: string | null
+  microGoals: string[]
+  approvedAt: string | null
+  uses: { childId: string; assignedAt: string }[]
+}
+let scenarios: StoredScenario[] = []
 // 결정 요청 키 → 그 결정. 같은 키·같은 입력이면 앞 결과, 다른 입력이면 409 다.
 let decisionKeys = new Map<string, { recommendationId: string; input: string }>()
 
@@ -215,6 +229,7 @@ export function resetMswData() {
   reports = new Map()
   recommendations = []
   difficulties = []
+  scenarios = []
   decisionKeys = new Map()
   accounts = [instructors.a, instructors.b]
   sessions = new Map([
@@ -393,6 +408,70 @@ export function seedRoleplayLearning({
     },
   ]
   return { activity, recordId, report, recommendations: seeded }
+}
+
+/**
+ * 역할극 단독 배정의 후보가 될 승인 시나리오를 넣는다. 목표 제목·분류가 배정할 목표와 같아야 후보다(서버의 content_hash 와 같은 뜻).
+ * usedByOtherAt 을 주면 다른 아동이 그 시각에 쓴 것으로 둔다.
+ */
+export function seedRoleplayScenario({
+  goalTitle,
+  category,
+  title,
+  level = "L2",
+  status = "APPROVED",
+  approvedAt = "2026-10-20T10:00:00+09:00",
+  usedByOtherAt,
+}: {
+  goalTitle: string
+  category?: string
+  title: string
+  level?: ScenarioLevel
+  status?: StoredScenario["status"]
+  approvedAt?: string
+  usedByOtherAt?: string
+}): StoredScenario {
+  const scenario: StoredScenario = {
+    scenarioId: crypto.randomUUID(),
+    status,
+    scenarioLevel: level,
+    goalHash: `${goalTitle.trim()}|${category?.trim() ?? ""}`,
+    title,
+    summary: "쉬는 시간에 친구가 놀이터에서 넘어졌다.",
+    microGoals: ["친구의 속상한 마음 알아보기", "위로하는 말 하기"],
+    approvedAt: status === "DRAFT" ? null : approvedAt,
+    uses: usedByOtherAt ? [{ childId: fixtures.childB1_1.childId, assignedAt: usedByOtherAt }] : [],
+  }
+  scenarios = [...scenarios, scenario]
+  return scenario
+}
+
+/** 서버 RoleplayScenarioCandidateStore 처럼 그 시나리오를 쓴 활동(시드한 사용 기록 포함)을 모은다. */
+function scenarioUses(scenario: StoredScenario): { childId: string; assignedAt: string }[] {
+  return [
+    ...scenario.uses,
+    ...activities
+      .filter((a) => a.scenarioId === scenario.scenarioId)
+      .map((a) => ({ childId: a.childId, assignedAt: a.assignedAt })),
+  ]
+}
+
+function scenarioCandidate(scenario: StoredScenario, childId: string) {
+  const uses = scenarioUses(scenario)
+  const others = new Set(uses.filter((u) => u.childId !== childId).map((u) => u.childId)).size
+  const lastUsedAt = uses.map((u) => u.assignedAt).sort().at(-1) ?? null
+  return {
+    scenarioId: scenario.scenarioId,
+    scenarioVersion: 1,
+    scenarioLevel: scenario.scenarioLevel,
+    title: scenario.title,
+    summary: scenario.summary,
+    microGoals: scenario.microGoals,
+    approvedAt: scenario.approvedAt,
+    lastUsedAt,
+    usedByOtherChildren: others,
+    reuseApprovalRequired: others > 0,
+  }
 }
 
 /** 화면 테스트에서 그 아동에게 저장된 목표를 본다. */
@@ -933,6 +1012,8 @@ export const handlers = [
     const activityType = (body.activityType ?? "FIRST_COMBINED") as ActivityType
     if (!(activityType in COMPOSITION)) return invalidRequest(path)
     const goalBody = typeof body.goal === "object" && body.goal !== null ? (body.goal as Record<string, unknown>) : null
+    const scenarioId = typeof body.scenarioId === "string" ? body.scenarioId : null
+    const reuseApproved = body.reuseApproved === true
     const errors: FieldError[] = [
       ...(UUID_FORMAT.test(childId) ? [] : [{ field: "childId", message: "널이어서는 안됩니다" }]),
       ...(goalBody ? goalFieldErrors(goalBody, "goal.") : []),
@@ -947,6 +1028,9 @@ export const handlers = [
     if (!requiresGoal && goalBody) {
       return apiError(422, "GOAL_NOT_ALLOWED", "표정 퀴즈 활동에는 학습 목표를 붙이지 않습니다.", path)
     }
+    if (activityType !== "ROLEPLAY" && scenarioId) {
+      return apiError(422, "SCENARIO_NOT_ALLOWED", "시나리오는 역할극 활동을 배정할 때만 고릅니다.", path)
+    }
     const input = goalBody ? goalInput(goalBody) : null
     if (input?.parentGoalId && !goals.some((g) => g.goalId === input.parentGoalId && g.childId === childId)) {
       return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
@@ -959,7 +1043,8 @@ export const handlers = [
       if (
         prior.childId !== childId ||
         prior.activityType !== activityType ||
-        priorGoal?.contentHash !== goal?.contentHash
+        priorGoal?.contentHash !== goal?.contentHash ||
+        (activityType === "ROLEPLAY" && prior.scenarioId !== scenarioId)
       ) {
         return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 배정 요청에 사용한 키입니다.", path)
       }
@@ -989,9 +1074,29 @@ export const handlers = [
       if (!difficulty) {
         return apiError(409, "ROLEPLAY_DIFFICULTY_NOT_READY", "마친 역할극이 없어 다음 역할극 난이도를 정하지 못했습니다.", path)
       }
+      // 강사가 고른 승인 시나리오를 확인한다(서버 RoleplayScenarioSelectionService 와 같은 순서).
+      if (!scenarioId) {
+        return apiError(422, "SCENARIO_REQUIRED", "역할극 활동에는 승인된 시나리오를 골라야 합니다.", path)
+      }
+      const scenario = scenarios.find((sc) => sc.scenarioId === scenarioId && sc.status === "APPROVED")
+      if (!scenario) {
+        return apiError(422, "UNAPPROVED_SCENARIO", "승인된 시나리오만 배정할 수 있습니다.", path)
+      }
+      if (scenario.scenarioLevel !== difficulty.scenarioLevel || scenario.goalHash !== goal?.contentHash) {
+        return apiError(422, "SCENARIO_NOT_MATCHED", "고른 시나리오가 이 목표나 다음 역할극 난이도와 맞지 않습니다.", path)
+      }
+      const uses = scenarioUses(scenario)
+      if (uses.some((u) => u.childId === childId)) {
+        return apiError(409, "SCENARIO_ALREADY_USED", "이 아동이 이미 쓴 시나리오입니다.", path)
+      }
+      if (!reuseApproved && uses.some((u) => u.childId !== childId)) {
+        return apiError(422, "SCENARIO_REUSE_NOT_APPROVED", "다른 아동이 쓴 시나리오는 재사용을 승인해야 배정할 수 있습니다.", path)
+      }
       if (goal) goals = [...goals, goal]
       const roleplay = newActivity(childId, activityType, goal?.goalId ?? null, key)
       roleplay.initialSupportLevel = difficulty.initialSupportLevel
+      roleplay.scenarioId = scenario.scenarioId
+      roleplay.scenarioSource = "INSTRUCTOR_SELECTED"
       activities = [...activities, roleplay]
       return HttpResponse.json(envelope(toActivity(roleplay)), {
         status: 201,
@@ -1161,6 +1266,49 @@ export const handlers = [
       return apiError(404, "ROLEPLAY_DIFFICULTY_NOT_FOUND", "아직 마친 역할극이 없어 다음 난이도가 없습니다.", path)
     }
     return HttpResponse.json(envelope(difficulty))
+  }),
+
+  http.get("*/api/v1/children/:childId/roleplay-scenarios", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const childId = String(params.childId)
+    const url = new URL(request.url)
+    const path = url.pathname
+    if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+    if (!ownedChild(childId, session)) return childNotFound(path)
+    const goalTitle = url.searchParams.get("goalTitle")
+    if (!goalTitle?.trim()) {
+      return apiError(422, "GOAL_REQUIRED", "이 활동에는 학습 목표가 필요합니다.", path)
+    }
+    const difficulty = difficulties.find((d) => d.childId === childId)
+    if (!difficulty) {
+      return apiError(404, "ROLEPLAY_DIFFICULTY_NOT_FOUND", "아직 마친 역할극이 없어 다음 난이도가 없습니다.", path)
+    }
+    const goalHash = `${goalTitle.trim()}|${url.searchParams.get("goalCategory")?.trim() ?? ""}`
+    // 학급은 보지 않는다. 마지막으로 쓰인 지 오래된 것(안 쓰인 것이 맨 앞) → 최근 승인본 순.
+    const items = scenarios
+      .filter(
+        (sc) =>
+          sc.status === "APPROVED" &&
+          sc.goalHash === goalHash &&
+          sc.scenarioLevel === difficulty.scenarioLevel &&
+          !scenarioUses(sc).some((u) => u.childId === childId),
+      )
+      .map((sc) => scenarioCandidate(sc, childId))
+      .sort(
+        (a, b) =>
+          (a.lastUsedAt ?? "").localeCompare(b.lastUsedAt ?? "") ||
+          (b.approvedAt ?? "").localeCompare(a.approvedAt ?? "") ||
+          a.scenarioId.localeCompare(b.scenarioId),
+      )
+    return HttpResponse.json(
+      envelope({
+        childId,
+        scenarioLevel: difficulty.scenarioLevel,
+        initialSupportLevel: difficulty.initialSupportLevel,
+        items,
+      }),
+    )
   }),
 ]
 

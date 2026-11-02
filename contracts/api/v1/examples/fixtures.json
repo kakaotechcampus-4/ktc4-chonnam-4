@@ -1612,6 +1612,70 @@
     "unavailable": false
   },
   {
+    "id": "API-SCN-08",
+    "fn": "listRoleplayScenarios",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/children/{childId}/roleplay-scenarios",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001",
+      "query": {
+        "goalTitle": "친구 마음 공감하기"
+      }
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "scenarioLevel": "L2",
+        "initialSupportLevel": "S1",
+        "items": [
+          {
+            "scenarioId": "80000000-0000-4000-8000-000000000002",
+            "scenarioVersion": 1,
+            "scenarioLevel": "L2",
+            "title": "놀이터에서 넘어진 친구",
+            "summary": "쉬는 시간에 친구가 놀이터에서 넘어졌다.",
+            "microGoals": [
+              "친구의 속상한 마음 알아보기",
+              "위로하는 말 하기"
+            ],
+            "approvedAt": "2026-10-28T10:00:00+09:00",
+            "lastUsedAt": null,
+            "usedByOtherChildren": 0,
+            "reuseApprovalRequired": false
+          },
+          {
+            "scenarioId": "80000000-0000-4000-8000-000000000001",
+            "scenarioVersion": 1,
+            "scenarioLevel": "L2",
+            "title": "교실에서 넘어진 친구",
+            "summary": "교실에서 친구가 의자에 걸려 넘어졌다.",
+            "microGoals": [
+              "친구의 속상한 마음 알아보기",
+              "넘어진 이유 말하기"
+            ],
+            "approvedAt": "2026-10-20T10:00:00+09:00",
+            "lastUsedAt": "2026-10-30T09:10:00+09:00",
+            "usedByOtherChildren": 1,
+            "reuseApprovalRequired": true
+          }
+        ]
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
     "id": "API-RPL-01",
     "fn": "startRoleplay",
     "draft": false,

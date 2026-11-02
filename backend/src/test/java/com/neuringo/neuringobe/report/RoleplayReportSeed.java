@@ -150,6 +150,12 @@ public final class RoleplayReportSeed {
      * 활동이 시작할 때 이 시나리오가 붙는다.
      */
     public UUID approvedScenario(UUID classId, String goalContentHash, String level) {
+        return approvedScenario(classId, goalContentHash, level, null);
+    }
+
+    /** approvedAt 을 주면 승인 시각을 그 값으로 남긴다(후보 정렬 확인용). null 이면 트리거가 승인 순간으로 채운다. */
+    public UUID approvedScenario(
+            UUID classId, String goalContentHash, String level, Instant approvedAt) {
         UUID scenario = UUID.randomUUID();
         jdbc.update(
                 """
@@ -172,7 +178,10 @@ public final class RoleplayReportSeed {
                     support,
                     first);
         }
-        jdbc.update("update scenario set status='APPROVED' where scenario_id=?", scenario);
+        jdbc.update(
+                "update scenario set status='APPROVED', approved_at=? where scenario_id=?",
+                approvedAt == null ? null : Timestamp.from(approvedAt),
+                scenario);
         return scenario;
     }
 

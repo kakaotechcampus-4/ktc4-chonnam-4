@@ -650,3 +650,24 @@ export function getRoleplayDifficulty(
     signal: options.signal
   });
 }
+
+export interface ListRoleplayScenariosArgs {
+  childId: T.UUID;
+  query: {
+    goalTitle: string;
+    goalCategory?: string;
+  };
+}
+
+export function listRoleplayScenarios(
+  api: ApiClient,
+  args: ListRoleplayScenariosArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RoleplayScenarioCandidatesData>> {
+  return api.request<T.RoleplayScenarioCandidatesData>("/api/v1/children/" + encodeURIComponent(args.childId) + "/roleplay-scenarios" + queryString(args.query), {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
