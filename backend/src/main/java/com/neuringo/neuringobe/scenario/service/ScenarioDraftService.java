@@ -181,9 +181,13 @@ public class ScenarioDraftService {
             throw conflict(
                     "SCENARIO_REGENERATION_UNAVAILABLE", "다시 만들기는 아직 쓸 수 없습니다. 칸을 직접 고쳐 저장해 주세요.");
         }
+        // 승인할 때는 초안을 고쳐 저장하기 전에 활동·아동부터 잠근다. 아동 삭제가 활동 → 아동 → 초안(목표 CASCADE) 순서로 잠그므로,
+        // 초안을 먼저 잡으면 두 요청이 서로를 기다리다 멈출 수 있다.
+        UUID approvingActivity =
+                "APPROVED".equals(status) ? lockWaitingActivity(goal.goalId()) : null;
         applyEdits(scenario, request.title(), request.summary(), request.microGoals(), goal);
-        if ("APPROVED".equals(status)) {
-            approve(scenario, goal);
+        if (approvingActivity != null) {
+            approve(scenario, approvingActivity);
             // 승인하면 공용이 되어 목표에서 떨어지지만, 응답은 이 목표의 활동에 붙은 결과로 보여 준다.
             return view(scenarios.findById(scenarioId).orElseThrow(this::notFound), goal.goalId());
         } else if ("REJECTED".equals(status)) {
@@ -205,19 +209,23 @@ public class ScenarioDraftService {
         scenarios.flush();
     }
 
-    private void approve(Scenario scenario, LearningGoalResponse goal) {
+    /** 이 목표로 시나리오를 기다리는 활동을 잠근다. 퀴즈 저장·삭제와 같은 활동 → 아동 잠금 순서를 지킨다. */
+    private UUID lockWaitingActivity(UUID goalId) {
+        UUID activityId = waitingActivity(goalId);
+        var activity = activities.findByIdForUpdate(activityId).orElseThrow(this::notFound);
+        children.findByIdForUpdate(activity.getChildId()).orElseThrow(this::notFound);
+        if (activity.getScenarioId() != null) {
+            throw conflict("SCENARIO_ALREADY_ATTACHED", "이미 시나리오가 정해진 활동입니다.");
+        }
+        return activityId;
+    }
+
+    private void approve(Scenario scenario, UUID activityId) {
         List<ScenarioMicroGoal> goalsOfDraft =
                 microGoals.findByScenarioIdOrderByOrderNo(scenario.getScenarioId());
         if (goalsOfDraft.isEmpty()
                 || goalsOfDraft.stream().anyMatch(g -> g.getRequiredEvidence().isEmpty())) {
             throw invalid("작은 목표와 필요 증거가 있어야 승인할 수 있습니다.");
-        }
-        UUID activityId = waitingActivity(goal.goalId());
-        // 퀴즈 저장·삭제와 같은 활동 → 아동 잠금 순서를 지킨다.
-        var activity = activities.findByIdForUpdate(activityId).orElseThrow(this::notFound);
-        children.findByIdForUpdate(activity.getChildId()).orElseThrow(this::notFound);
-        if (activity.getScenarioId() != null) {
-            throw conflict("SCENARIO_ALREADY_ATTACHED", "이미 시나리오가 정해진 활동입니다.");
         }
         scenario.approve(clock.instant());
         scenarios.saveAndFlush(scenario);

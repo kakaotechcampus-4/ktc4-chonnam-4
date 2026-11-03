@@ -1595,6 +1595,103 @@ class QuizFlowIntegrationTest {
                 .isEqualTo(1);
     }
 
+    /**
+     * 고치며 승인하는 요청과 아동 삭제가 겹쳐도 서로 기다리다 멈추지 않는다. 삭제는 활동 → 아동 → (목표 CASCADE 로) 초안 순서로 잠그므로, 승인도 활동을 먼저
+     * 잡고 나서 초안을 고쳐야 한다.
+     */
+    @Test
+    void approvingWithEditsLocksActivityBeforeDraftSoChildDeletionDoesNotDeadlock()
+            throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "승인과 삭제"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID draft = draftFrom(candidateWithMicroGoal(activityId), goalId);
+
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        List<Future<Integer>> responses = new ArrayList<>();
+        try {
+            new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(
+                            holding -> {
+                                jdbc.queryForObject(
+                                        "SELECT activity_id FROM activity WHERE activity_id = ? FOR UPDATE",
+                                        UUID.class,
+                                        activityId);
+                                responses.add(
+                                        pool.submit(
+                                                () ->
+                                                        patchScenario(
+                                                                        draft,
+                                                                        "{\"version\":2,\"title\":\"삭제와 겹친 승인\",\"status\":\"APPROVED\"}")
+                                                                .andReturn()
+                                                                .getResponse()
+                                                                .getStatus()));
+                                awaitActivityLockWaiters(1);
+                                // 승인은 활동을 기다리는 동안 초안 행을 아직 잡지 않았다.
+                                assertThat(scenarioRowIsFree(pool, draft)).isTrue();
+                                responses.add(
+                                        pool.submit(
+                                                () ->
+                                                        mvc.perform(
+                                                                        delete(
+                                                                                        "/api/v1/children/{id}",
+                                                                                        childId)
+                                                                                .with(
+                                                                                        TestInstructors
+                                                                                                .instructor(
+                                                                                                        "teacher-quiz"))
+                                                                                .with(csrf()))
+                                                                .andReturn()
+                                                                .getResponse()
+                                                                .getStatus()));
+                                awaitActivityLockWaiters(2);
+                            });
+            // 승인이 먼저 잡으면 승인 뒤 삭제되고, 삭제가 먼저 잡으면 승인은 사라진 활동을 404 로 받는다.
+            assertThat(responses.get(0).get(20, TimeUnit.SECONDS)).isIn(200, 404);
+            assertThat(responses.get(1).get(20, TimeUnit.SECONDS)).isEqualTo(204);
+        } finally {
+            pool.shutdownNow();
+            assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private void awaitActivityLockWaiters(int expected) {
+        awaitLockWaiters("%from activity %", expected);
+    }
+
+    private void awaitLockWaiters(String queryPattern, int expected) {
+        await().atMost(10, TimeUnit.SECONDS)
+                .until(
+                        () ->
+                                jdbc.queryForObject(
+                                        "SELECT count(*) FROM pg_stat_activity"
+                                                + " WHERE datname = current_database()"
+                                                + " AND wait_event_type = 'Lock'"
+                                                + " AND query LIKE ?",
+                                        Integer.class,
+                                        queryPattern),
+                        waiting -> waiting == expected);
+    }
+
+    /** 다른 연결에서 초안 행을 잠글 수 있는지 본다. 이미 누가 잡고 있으면 건너뛰어 0 행이 된다. */
+    private boolean scenarioRowIsFree(ExecutorService pool, UUID scenarioId) {
+        try {
+            return pool.submit(
+                                    () ->
+                                            new TransactionTemplate(transactionManager)
+                                                    .execute(
+                                                            probe ->
+                                                                    jdbc.queryForObject(
+                                                                            "SELECT count(*) FROM (SELECT 1 FROM scenario WHERE scenario_id = ? FOR UPDATE SKIP LOCKED) s",
+                                                                            Integer.class,
+                                                                            scenarioId)))
+                            .get(10, TimeUnit.SECONDS)
+                    == 1;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** 작은 목표가 하나 있는 재사용 후보를 만든다. 작은 목표는 초안일 때만 넣을 수 있다. */
     private UUID candidateWithMicroGoal(UUID activityId) {
         UUID id = saveScenarioForActivity(activityId, "DRAFT", "L3");
