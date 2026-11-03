@@ -264,6 +264,48 @@ class RoleplayCanonicalRetentionIntegrationTest {
     }
 
     @Test
+    void failureOnlySessionsAreDeletedAtTwentyFourHoursAndRecentFailuresRemain() {
+        var expired = fixture();
+        var recent = fixture();
+        for (var f : List.of(expired, recent)) {
+            jdbc.update(
+                    "insert into roleplay_voice_input_state(session_id,failure_count) values(?,1)",
+                    f.session);
+            jdbc.update(
+                    "insert into roleplay_voice_input_failure(session_id,idempotency_key,input_fingerprint,checkpoint_version,failure_reason,failure_count_after,recorded_at) values(?,?,?,0,'NO_SPEECH',1,?)",
+                    f.session,
+                    UUID.randomUUID(),
+                    "c".repeat(64),
+                    Timestamp.from(NOW));
+            jdbc.update(
+                    "update roleplay_turn set canonical_utterance=null, input_quality=null where session_id=?",
+                    f.session);
+        }
+        activity(expired, NOW.minus(Duration.ofHours(24)), "IN_PROGRESS");
+        activity(recent, NOW.minus(Duration.ofHours(24)).plusSeconds(1), "IN_PROGRESS");
+
+        assertThat(retention.purgeExpiredCanonicalUtterances()).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_state where session_id=?",
+                                Long.class,
+                                expired.session))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_failure where session_id=?",
+                                Long.class,
+                                expired.session))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_state where session_id=?",
+                                Long.class,
+                                recent.session))
+                .isEqualTo(1);
+    }
+
+    @Test
     void deletionFailureRollsBackCompletionStatusAndLeavesOriginalData() {
         var f = fixture();
         String constraint = "test_retention_" + UUID.randomUUID().toString().replace("-", "");
