@@ -110,6 +110,30 @@ describe("초안 수정", () => {
     expect(patches).toEqual([{ version: 2, title: "고친 제목", status: "APPROVED" }])
   })
 
+  it("저장하지 않고 고친 작은 목표도 확인 화면에 보인 그대로 승인한다", async () => {
+    const { patches } = serveDraft()
+    const { user } = renderEdit()
+
+    const description = await screen.findByRole("textbox", { name: /작은 목표 1/ })
+    await user.clear(description)
+    await user.type(description, "친구에게 괜찮냐고 묻는다.")
+    await user.click(screen.getByRole("button", { name: "승인으로 이동" }))
+    const confirm = screen.getByRole("region", { name: "시나리오 승인 확인" })
+    expect(confirm).toHaveTextContent("친구에게 괜찮냐고 묻는다. (1개)")
+    expect(confirm).not.toHaveTextContent("친구의 감정을 말한다.")
+
+    await user.click(screen.getByRole("checkbox", { name: "아동에게 노출되는 내용을 검토했습니다." }))
+    await user.click(screen.getByRole("button", { name: "승인" }))
+    expect(await screen.findByText(/승인했습니다/)).toBeInTheDocument()
+    expect(patches).toEqual([
+      {
+        version: 2,
+        microGoals: [{ microGoalId: MICRO_GOAL_ID, description: "친구에게 괜찮냐고 묻는다.", requiredEvidence: ["속상하다고 말함"] }],
+        status: "APPROVED",
+      },
+    ])
+  })
+
   it("반려하면 기록으로 남아 더 고칠 수 없다", async () => {
     const { patches } = serveDraft()
     const { user } = renderEdit()

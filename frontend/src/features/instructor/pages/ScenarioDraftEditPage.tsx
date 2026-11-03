@@ -69,6 +69,19 @@ function toReview(scenario: Scenario, form: DraftForm): ScenarioReview {
   return review
 }
 
+/** 승인 확인 화면에 보여 줄 모습. 승인 요청에 실을 고친 칸을 그대로 덮어, 보이는 내용과 승인되는 내용이 같게 한다. */
+function withReview(scenario: Scenario, review: ScenarioReview): Scenario {
+  return {
+    ...scenario,
+    title: review.title ?? scenario.title,
+    summary: review.summary ?? scenario.summary,
+    microGoals: scenario.microGoals.map((goal) => {
+      const edited = review.microGoals?.find((g) => g.microGoalId === goal.microGoalId)
+      return edited ? { ...goal, description: edited.description, requiredEvidence: edited.requiredEvidence } : goal
+    }),
+  }
+}
+
 /**
  * 시나리오 수정(시안 T-SCN-03 배치). [수정하기]로 만든 이 목표용 새 판(초안)을 고친다.
  * 명세대로 제목·상황(요약)·작은 목표(설명·필요 증거)만 직접 고치고, 고정 사실·금지 추론·시작 질문은 읽기만 한다.
@@ -106,7 +119,8 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<DraftForm>(() => toForm(scenario))
-  const [confirming, setConfirming] = useState(false)
+  // [승인으로 이동]을 누른 순간의 고친 내용. 확인 화면과 승인 요청이 이 하나를 같이 쓴다.
+  const [confirming, setConfirming] = useState<ScenarioReview | null>(null)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
   const [savedNotice, setSavedNotice] = useState(false)
@@ -131,7 +145,7 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
     },
   })
   const approve = useMutation({
-    mutationFn: () => reviewScenario(scenario.scenarioId, { ...toReview(scenario, form), status: 'APPROVED' }),
+    mutationFn: (review: ScenarioReview) => reviewScenario(scenario.scenarioId, { ...review, status: 'APPROVED' }),
     onSuccess: refresh,
   })
   const reject = useMutation({
@@ -164,14 +178,14 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
   if (confirming) {
     return (
       <ApprovalConfirmPanel
-        scenario={{ ...scenario, title: form.title }}
+        scenario={withReview(scenario, confirming)}
         goal={goalQuery.data}
         change={`v${scenario.version - 1}에서 고친 판`}
         backLabel="수정으로 돌아가기"
         isPending={approve.isPending}
         error={approve.isError ? describeError(approve.error, '승인하지 못했습니다.') : null}
-        onBack={() => setConfirming(false)}
-        onApprove={() => approve.mutate()}
+        onBack={() => setConfirming(null)}
+        onApprove={() => approve.mutate(confirming)}
       />
     )
   }
@@ -307,7 +321,7 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
                 <button type="button" disabled={pending} onClick={() => save.mutate()} className={outlineButtonClass}>
                   <ButtonLabel pending={save.isPending} label="저장" pendingLabel="저장 중..." />
                 </button>
-                <button type="button" disabled={pending} onClick={() => setConfirming(true)} className={primaryButtonClass}>
+                <button type="button" disabled={pending} onClick={() => setConfirming(toReview(scenario, form))} className={primaryButtonClass}>
                   승인으로 이동
                 </button>
                 <button type="button" disabled={pending} onClick={() => setRejectOpen(true)} className={outlineButtonClass}>
