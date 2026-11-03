@@ -30,6 +30,7 @@
 
 - 이 브랜치에서 `./backend/gradlew -p backend --offline --no-daemon spotlessCheck build` 통과. 실제 FFmpeg·FFprobe 검사 12개를 포함한 1,625개 검사에서 실패·오류·건너뜀 0개. 패키징·포맷 검사 통과.
 - 이후 보완한 실패 기록만 남은 활동의 24시간 정리, 완료 시 실패 기록 롤백, 삭제 중 입력 차단 등은 `RoleplayCanonicalRetentionIntegrationTest` 16개 검사로 재검증했다. 전체 빌드 수치는 보완 전 실행 결과다.
+- `backend/scripts/verify-roleplay-media.sh --offline --no-daemon`으로 Docker의 실제 FFmpeg·FFprobe를 사용한 음성 검사 18개를 다시 통과했다.
 - 지원 조정 브랜치와 양쪽 순서로 자동 결합한 결과가 동일한 Git 트리임을 확인했다. 결합 브랜치의 1,746개 검사도 통과했다.
 - develop 자동 배포에서 어느 PR이 먼저 머지돼도 마이그레이션 순서가 바뀌지 않도록 두 PR에 동일한 V25~V31 파일을 포함한다. 먼저 배포된 PR이 전체를 적용하고 다음 PR은 같은 체크섬을 재사용한다.
 - 브라우저·프록시 제한 시간, 외부 STT·LLM·TTS 종단 흐름, 다중 서버 조정은 확인하지 않았다.
