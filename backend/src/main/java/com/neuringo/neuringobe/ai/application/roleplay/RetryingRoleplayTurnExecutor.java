@@ -88,7 +88,9 @@ public final class RetryingRoleplayTurnExecutor {
             if (state.candidateCount >= MAX_ATTEMPTS) {
                 return recovery(AiOperation.RESPONSE_GENERATION, RecoveryReason.LIMIT_REACHED);
             }
-            state.rejections.add(new RejectedCandidate(state.candidate.data(), evaluation));
+            state.rejections.add(
+                    new RejectedCandidate(
+                            state.analysis.data(), state.candidate.data(), evaluation));
             if (target == RetryTarget.CAUSE_ANALYSIS) state.analysis = null;
             state.nextCandidate();
         }

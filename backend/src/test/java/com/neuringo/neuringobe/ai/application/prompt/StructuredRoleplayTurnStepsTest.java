@@ -172,7 +172,30 @@ class StructuredRoleplayTurnStepsTest {
         assertThat(body(reanalysis).get("retry").get("focus").get(0).asText()).isEqualTo("shorten");
         assertThat(body(reanalysis).get("retry").get("do_not_assume").get(0).asText())
                 .isEqualTo("invented facts");
+        assertThat(body(reanalysis).path("retry").path("failed_analysis"))
+                .isEqualTo(body(provider.requests.get(1)).path("analysis_result"));
+        assertThat(
+                        body(reanalysis)
+                                .path("retry")
+                                .path("failed_analysis")
+                                .path("goal_observation")
+                                .path("analysis_id")
+                                .asText())
+                .isEqualTo(provider.requests.getFirst().traceContext().analysisId().toString());
         assertThat(body(provider.requests.get(4)).has("retry")).isFalse();
+    }
+
+    @Test
+    void repeatedReanalysisReceivesTheLatestRejectedAnalysis() {
+        provider.decisions.addAll(
+                List.of(EvaluationDecision.REANALYZE, EvaluationDecision.REANALYZE));
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+
+        var latest = body(provider.requests.get(6)).path("retry").path("failed_analysis");
+        assertThat(latest).isEqualTo(body(provider.requests.get(4)).path("analysis_result"));
+        assertThat(latest.path("goal_observation").path("analysis_id").asText())
+                .isNotEqualTo(provider.requests.getFirst().traceContext().analysisId().toString());
     }
 
     @Test
@@ -202,6 +225,10 @@ class StructuredRoleplayTurnStepsTest {
                         AiOperation.CAUSE_ANALYSIS,
                         AiOperation.CAUSE_ANALYSIS,
                         AiOperation.CAUSE_ANALYSIS);
+        for (var request : provider.requests) {
+            assertThat(body(request).path("retry").has("failed_analysis")).isFalse();
+            assertThat(request.userPrompt()).doesNotContain("not JSON");
+        }
     }
 
     @Test
