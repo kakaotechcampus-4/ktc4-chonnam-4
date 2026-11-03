@@ -47,6 +47,8 @@ class RoleplayCanonicalRetentionIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired DataSource dataSource;
     @Autowired RoleplayCanonicalRetentionService retention;
+    @Autowired com.neuringo.neuringobe.roleplay.service.RoleplayVoiceFailureStore failures;
+    @Autowired com.neuringo.neuringobe.roleplay.service.RoleplayRetentionGate retentionGate;
     @Autowired RoleplayCheckpointStore store;
     @Autowired RoleplayRequestGuard guard;
     @Autowired PlatformTransactionManager transactions;
@@ -59,15 +61,13 @@ class RoleplayCanonicalRetentionIntegrationTest {
     @Test
     void normalCompletionDeletesImmediatelyAndKeepsApprovedResponseAndCheckpoint() {
         var f = fixture();
+        seedQuality(f);
+        seedFailure(f);
         assertThat(retention.completeNormallyAndDelete(f.session, f.child, f.activity))
                 .isEqualTo(1);
         assertThat(canonical(f)).isNull();
-        assertThat(
-                        jdbc.queryForObject(
-                                "select input_quality::text from roleplay_turn where session_id=?",
-                                String.class,
-                                f.session))
-                .isNull();
+        assertThat(hasQuality(f)).isFalse();
+        assertThat(failureStateCount(f)).isZero();
         assertThat(
                         jdbc.queryForObject(
                                 "select status from roleplay_session where session_id=?",
@@ -108,8 +108,27 @@ class RoleplayCanonicalRetentionIntegrationTest {
     }
 
     @Test
+    void databasePreventsQualityFromOutlivingCanonicalUtterance() {
+        var f = fixture();
+        seedQuality(f);
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        "update roleplay_turn set canonical_utterance=null where session_id=?",
+                                        f.session))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(canonical(f)).isEqualTo("synthetic canonical input");
+        assertThat(hasQuality(f)).isTrue();
+        assertThat(retention.completeNormallyAndDelete(f.session, f.child, f.activity))
+                .isEqualTo(1);
+        assertThat(canonical(f)).isNull();
+        assertThat(hasQuality(f)).isFalse();
+    }
+
+    @Test
     void parentCompletionTransactionRollsBackAndCanRetryWithoutPartialDeletion() {
         var f = fixture();
+        seedQuality(f);
         var before =
                 jdbc.queryForMap(
                         "select status, completed_at, reward_issued_at from activity where activity_id=?",
@@ -126,6 +145,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
                                                                     f.session, f.child, f.activity))
                                                     .isEqualTo(1);
                                             assertThat(canonical(f)).isNull();
+                                            assertThat(hasQuality(f)).isFalse();
                                             throw new IllegalStateException(
                                                     "synthetic parent completion failure");
                                         }))
@@ -137,6 +157,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
                                 f.activity))
                 .isEqualTo(before);
         assertThat(canonical(f)).isEqualTo("synthetic canonical input");
+        assertThat(hasQuality(f)).isTrue();
         assertThat(
                         jdbc.queryForObject(
                                 "select status from roleplay_session where session_id=?",
@@ -157,6 +178,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
                             .isEqualTo(1);
                 });
         assertThat(canonical(f)).isNull();
+        assertThat(hasQuality(f)).isFalse();
         assertThat(
                         jdbc.queryForObject(
                                 "select status from activity where activity_id=?",
@@ -229,6 +251,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
         var old = fixture();
         var recent = fixture();
         var paused = fixture();
+        for (var f : List.of(exact, old, recent, paused)) seedQuality(f);
         activity(exact, NOW.minus(Duration.ofHours(24)), "IN_PROGRESS");
         activity(old, NOW.minus(Duration.ofHours(24)).minusSeconds(1), "IN_PROGRESS");
         activity(recent, NOW.minus(Duration.ofHours(24)).plusSeconds(1), "IN_PROGRESS");
@@ -238,20 +261,10 @@ class RoleplayCanonicalRetentionIntegrationTest {
         assertThat(canonical(old)).isNull();
         assertThat(canonical(paused)).isNull();
         assertThat(canonical(recent)).isEqualTo("synthetic canonical input");
-        for (var expired : List.of(exact, old, paused)) {
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select input_quality::text from roleplay_turn where session_id=?",
-                                    String.class,
-                                    expired.session))
-                    .isNull();
-        }
-        assertThat(
-                        jdbc.queryForObject(
-                                "select input_quality->>'input_type' from roleplay_turn where session_id=?",
-                                String.class,
-                                recent.session))
-                .isEqualTo("TEXT");
+        assertThat(hasQuality(exact)).isFalse();
+        assertThat(hasQuality(old)).isFalse();
+        assertThat(hasQuality(paused)).isFalse();
+        assertThat(hasQuality(recent)).isTrue();
         assertThat(retention.purgeExpiredCanonicalUtterances()).isZero();
     }
 
@@ -268,41 +281,62 @@ class RoleplayCanonicalRetentionIntegrationTest {
         var expired = fixture();
         var recent = fixture();
         for (var f : List.of(expired, recent)) {
-            jdbc.update(
-                    "insert into roleplay_voice_input_state(session_id,failure_count) values(?,1)",
-                    f.session);
-            jdbc.update(
-                    "insert into roleplay_voice_input_failure(session_id,idempotency_key,input_fingerprint,checkpoint_version,failure_reason,failure_count_after,recorded_at) values(?,?,?,0,'NO_SPEECH',1,?)",
-                    f.session,
-                    UUID.randomUUID(),
-                    "c".repeat(64),
-                    Timestamp.from(NOW));
+            seedFailure(f);
             jdbc.update(
                     "update roleplay_turn set canonical_utterance=null, input_quality=null where session_id=?",
                     f.session);
         }
         activity(expired, NOW.minus(Duration.ofHours(24)), "IN_PROGRESS");
         activity(recent, NOW.minus(Duration.ofHours(24)).plusSeconds(1), "IN_PROGRESS");
-
-        assertThat(retention.purgeExpiredCanonicalUtterances()).isZero();
-        assertThat(
-                        jdbc.queryForObject(
-                                "select count(*) from roleplay_voice_input_state where session_id=?",
-                                Long.class,
-                                expired.session))
-                .isZero();
+        retention.purgeExpiredCanonicalUtterances();
+        assertThat(failureStateCount(expired)).isZero();
+        assertThat(failureStateCount(recent)).isEqualTo(1);
         assertThat(
                         jdbc.queryForObject(
                                 "select count(*) from roleplay_voice_input_failure where session_id=?",
                                 Long.class,
                                 expired.session))
                 .isZero();
+    }
+
+    @Test
+    void newFailureUpdatesLastActivityWithoutChangingCheckpointAndReplayDoesNotExtendIt() {
+        var f = fixture();
+        activity(f, NOW.minus(Duration.ofHours(25)), "IN_PROGRESS");
+        var version =
+                jdbc.queryForObject(
+                        "select row_version from roleplay_session where session_id=?",
+                        Long.class,
+                        f.session);
+        var id =
+                new com.neuringo.neuringobe.ai.application.roleplay.RoleplayRequestIdentity(
+                        trace(f), UUID.randomUUID(), "b".repeat(64), version, 2);
+        failures.recordFailure(
+                id, RoleplayTurnResult.InputFailure.NO_SPEECH, RoleplayTurnDeadline.start());
         assertThat(
                         jdbc.queryForObject(
-                                "select count(*) from roleplay_voice_input_state where session_id=?",
+                                "select last_activity_at from roleplay_session where session_id=?",
+                                Timestamp.class,
+                                f.session))
+                .isEqualTo(Timestamp.from(NOW));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select row_version from roleplay_session where session_id=?",
                                 Long.class,
-                                recent.session))
-                .isEqualTo(1);
+                                f.session))
+                .isEqualTo(version);
+        when(clock.instant()).thenReturn(NOW.plusSeconds(20));
+        failures.recordFailure(
+                id, RoleplayTurnResult.InputFailure.NO_SPEECH, RoleplayTurnDeadline.start());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select last_activity_at from roleplay_session where session_id=?",
+                                Timestamp.class,
+                                f.session))
+                .isEqualTo(Timestamp.from(NOW));
+        retention.purgeExpiredCanonicalUtterances();
+        assertThat(failureStateCount(f)).isEqualTo(1);
+        assertThat(canonical(f)).isEqualTo("synthetic canonical input");
     }
 
     @Test
@@ -330,6 +364,41 @@ class RoleplayCanonicalRetentionIntegrationTest {
                     .isEqualTo("IN_PROGRESS");
         } finally {
             jdbc.execute("alter table roleplay_turn drop constraint " + constraint);
+        }
+    }
+
+    @Test
+    void failureLedgerDeletionErrorRollsBackCompletionAndCanonicalDeletion() {
+        var f = fixture();
+        seedFailure(f);
+        var table = "retention_guard_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc.execute(
+                "create table "
+                        + table
+                        + " (session_id uuid references roleplay_voice_input_state(session_id))");
+        try {
+            jdbc.update("insert into " + table + "(session_id) values (?)", f.session);
+            assertThatThrownBy(
+                            () ->
+                                    retention.completeNormallyAndDelete(
+                                            f.session, f.child, f.activity))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            assertThat(canonical(f)).isEqualTo("synthetic canonical input");
+            assertThat(failureStateCount(f)).isEqualTo(1);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select status from roleplay_session where session_id=?",
+                                    String.class,
+                                    f.session))
+                    .isEqualTo("IN_PROGRESS");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select count(*) from roleplay_voice_input_failure where session_id=?",
+                                    Long.class,
+                                    f.session))
+                    .isEqualTo(1);
+        } finally {
+            jdbc.execute("drop table " + table);
         }
     }
 
@@ -396,6 +465,51 @@ class RoleplayCanonicalRetentionIntegrationTest {
         }
         assertThat(retention.purgeExpiredCanonicalUtterances()).isZero();
         assertThat(canonical(f)).isEqualTo("synthetic canonical input");
+    }
+
+    @Test
+    void cleanupHoldsGateUntilItsEnclosingTransactionCommits() throws Exception {
+        var f = fixture();
+        activity(f, NOW.minus(Duration.ofHours(25)), "IN_PROGRESS");
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            var cleanup =
+                    workers.submit(
+                            () ->
+                                    new TransactionTemplate(transactions)
+                                            .execute(
+                                                    status -> {
+                                                        retention.purgeExpiredCanonicalUtterances();
+                                                        entered.countDown();
+                                                        try {
+                                                            if (!release.await(
+                                                                    3,
+                                                                    java.util.concurrent.TimeUnit
+                                                                            .SECONDS))
+                                                                throw new IllegalStateException();
+                                                        } catch (InterruptedException ex) {
+                                                            Thread.currentThread().interrupt();
+                                                            throw new IllegalStateException(ex);
+                                                        }
+                                                        return true;
+                                                    }));
+            try {
+                assertThat(entered.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(
+                                () ->
+                                        retentionGate.enterInput(
+                                                f.session,
+                                                RoleplayTurnDeadline.start(Duration.ofMillis(100))))
+                        .isInstanceOf(RoleplayTurnDeadline.Expired.class);
+            } finally {
+                release.countDown();
+            }
+            assertThat(cleanup.get(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            try (var input = retentionGate.enterInput(f.session, RoleplayTurnDeadline.start())) {
+                assertThat(input).isNotNull();
+            }
+        }
     }
 
     @Test
@@ -496,6 +610,39 @@ class RoleplayCanonicalRetentionIntegrationTest {
                 f.activity);
     }
 
+    private void seedQuality(Fixture f) {
+        jdbc.update(
+                "update roleplay_turn set input_quality = '{\"status\":\"ANALYZABLE\"}'::jsonb where session_id=?",
+                f.session);
+    }
+
+    private void seedFailure(Fixture f) {
+        jdbc.update(
+                "insert into roleplay_voice_input_state(session_id,failure_count) values(?,1)",
+                f.session);
+        jdbc.update(
+                "insert into roleplay_voice_input_failure(session_id,idempotency_key,input_fingerprint,checkpoint_version,failure_reason,failure_count_after,recorded_at) values(?,?,?,0,'NO_SPEECH',1,?)",
+                f.session,
+                UUID.randomUUID(),
+                "c".repeat(64),
+                Timestamp.from(NOW));
+    }
+
+    private long failureStateCount(Fixture f) {
+        return jdbc.queryForObject(
+                "select count(*) from roleplay_voice_input_state where session_id=?",
+                Long.class,
+                f.session);
+    }
+
+    private boolean hasQuality(Fixture f) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "select input_quality is not null from roleplay_turn where session_id=?",
+                        Boolean.class,
+                        f.session));
+    }
+
     private String canonical(Fixture f) {
         return jdbc.queryForObject(
                 "select canonical_utterance from roleplay_turn where session_id=?",
@@ -554,11 +701,7 @@ class RoleplayCanonicalRetentionIntegrationTest {
         return new RoleplayTurnResult.SpokenReady(
                 new RoleplayTurnResult.Ready(analysis, response, evaluation),
                 "synthetic canonical input",
-                null,
-                null,
-                null,
-                new com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput.InputQuality(
-                        "TEXT", null, null, 0.93, false));
+                null);
     }
 
     private Fixture fixture() {
