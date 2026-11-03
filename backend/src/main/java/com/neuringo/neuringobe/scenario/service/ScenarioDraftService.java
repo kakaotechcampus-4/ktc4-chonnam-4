@@ -16,6 +16,9 @@ import com.neuringo.neuringobe.scenario.dto.ReviewScenarioRequest;
 import com.neuringo.neuringobe.scenario.dto.ScenarioResponse;
 import com.neuringo.neuringobe.scenario.repository.ScenarioMicroGoalRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.OptimisticLockException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
@@ -26,6 +29,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -50,6 +54,7 @@ public class ScenarioDraftService {
     private final ActivityRepository activities;
     private final ChildRepository children;
     private final JdbcTemplate jdbc;
+    private final EntityManager entityManager;
     private final Clock clock;
 
     public ScenarioDraftService(
@@ -60,6 +65,7 @@ public class ScenarioDraftService {
             ActivityRepository activities,
             ChildRepository children,
             JdbcTemplate jdbc,
+            EntityManager entityManager,
             Clock clock) {
         this.scenarios = scenarios;
         this.microGoals = microGoals;
@@ -68,6 +74,7 @@ public class ScenarioDraftService {
         this.activities = activities;
         this.children = children;
         this.jdbc = jdbc;
+        this.entityManager = entityManager;
         this.clock = clock;
     }
 
@@ -171,6 +178,10 @@ public class ScenarioDraftService {
         if (request.version() != scenario.getScenarioVersion()) {
             throw versionMismatch();
         }
+        // 화면이 읽은 뒤 다른 곳에서 저장했으면, 이 화면은 그 내용을 보지 못했다. 덮어쓰거나 보지 못한 내용을 승인하지 않는다.
+        if (!request.editRevision().equals(scenario.getRowVersion())) {
+            throw editConflict();
+        }
         String status = request.status();
         if (status != null
                 && !List.of("DRAFT", "APPROVED", "REJECTED", "REVISION_REQUIRED")
@@ -185,14 +196,21 @@ public class ScenarioDraftService {
         // 초안을 먼저 잡으면 두 요청이 서로를 기다리다 멈출 수 있다.
         UUID approvingActivity =
                 "APPROVED".equals(status) ? lockWaitingActivity(goal.goalId()) : null;
-        applyEdits(scenario, request.title(), request.summary(), request.microGoals(), goal);
-        if (approvingActivity != null) {
-            approve(scenario, approvingActivity);
-            // 승인하면 공용이 되어 목표에서 떨어지지만, 응답은 이 목표의 활동에 붙은 결과로 보여 준다.
-            return view(scenarios.findById(scenarioId).orElseThrow(this::notFound), goal.goalId());
-        } else if ("REJECTED".equals(status)) {
-            scenario.reject();
-            scenarios.saveAndFlush(scenario);
+        try {
+            applyEdits(scenario, request.title(), request.summary(), request.microGoals(), goal);
+            if (approvingActivity != null) {
+                approve(scenario, approvingActivity);
+                // 승인하면 공용이 되어 목표에서 떨어지지만, 응답은 이 목표의 활동에 붙은 결과로 보여 준다.
+                return view(
+                        scenarios.findById(scenarioId).orElseThrow(this::notFound), goal.goalId());
+            } else if ("REJECTED".equals(status)) {
+                scenario.reject();
+                scenarios.saveAndFlush(scenario);
+            }
+        } catch (OptimisticLockingFailureException | OptimisticLockException raced) {
+            // 같은 수정 번호를 읽은 요청이 동시에 들어와 다른 쪽이 먼저 저장했다. 저장소를 거친 갱신은 Spring 예외로, 직접 올린 수정 번호는 JPA
+            // 예외로 온다.
+            throw editConflict();
         }
         return view(scenario);
     }
@@ -242,34 +260,61 @@ public class ScenarioDraftService {
             LearningGoalResponse goal) {
         requireText(title, "title", goal);
         requireText(summary, "summary", goal);
+        List<MicroGoalEdit> goalEdits = microGoalEdits(scenario, patches, goal);
+
+        // 시나리오 행을 먼저 고치고 작은 목표를 고친다. 아동 삭제의 CASCADE 와 같은 순서다.
+        long revisionBefore = scenario.getRowVersion();
         scenario.edit(title == null ? null : title.trim(), summary == null ? null : summary.trim());
-        if (patches != null && !patches.isEmpty()) {
-            Map<UUID, ScenarioMicroGoal> current =
-                    microGoals.findByScenarioIdOrderByOrderNo(scenario.getScenarioId()).stream()
-                            .collect(
-                                    Collectors.toMap(
-                                            ScenarioMicroGoal::getMicroGoalId,
-                                            Function.identity()));
-            if (patches.stream().map(DraftMicroGoalPatch::microGoalId).distinct().count()
-                    != patches.size()) {
-                throw invalid("같은 작은 목표를 두 번 고칠 수 없습니다.");
-            }
-            for (DraftMicroGoalPatch patch : patches) {
-                ScenarioMicroGoal target = current.get(patch.microGoalId());
-                if (target == null) {
-                    throw invalid("이 시나리오의 작은 목표만 고칠 수 있습니다.");
-                }
-                requireText(patch.description(), "microGoals.description", goal);
-                for (String evidence : patch.requiredEvidence()) {
-                    requireText(evidence, "microGoals.requiredEvidence", goal);
-                }
-                target.edit(
-                        patch.description().trim(),
-                        patch.requiredEvidence().stream().map(String::trim).toList());
-            }
-        }
         scenarios.saveAndFlush(scenario);
+        // 제목·요약이 바뀌었으면 위 저장에서 수정 번호가 이미 올랐다. 작은 목표만 바뀌면 시나리오 행은 그대로라 직접 올린다.
+        boolean microGoalsChanged = goalEdits.stream().anyMatch(MicroGoalEdit::changes);
+        if (microGoalsChanged && scenario.getRowVersion() == revisionBefore) {
+            entityManager.lock(scenario, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        }
+        for (MicroGoalEdit edit : goalEdits) {
+            edit.target().edit(edit.description(), edit.requiredEvidence());
+        }
         microGoals.flush();
+    }
+
+    private record MicroGoalEdit(
+            ScenarioMicroGoal target, String description, List<String> requiredEvidence) {
+        boolean changes() {
+            return !description.equals(target.getDescription())
+                    || !requiredEvidence.equals(target.getRequiredEvidence());
+        }
+    }
+
+    /** 작은 목표 수정 요청을 검사해 고칠 내용으로 바꾼다. 아직 고치지 않는다. */
+    private List<MicroGoalEdit> microGoalEdits(
+            Scenario scenario, List<DraftMicroGoalPatch> patches, LearningGoalResponse goal) {
+        if (patches == null || patches.isEmpty()) return List.of();
+        Map<UUID, ScenarioMicroGoal> current =
+                microGoals.findByScenarioIdOrderByOrderNo(scenario.getScenarioId()).stream()
+                        .collect(
+                                Collectors.toMap(
+                                        ScenarioMicroGoal::getMicroGoalId, Function.identity()));
+        if (patches.stream().map(DraftMicroGoalPatch::microGoalId).distinct().count()
+                != patches.size()) {
+            throw invalid("같은 작은 목표를 두 번 고칠 수 없습니다.");
+        }
+        return patches.stream()
+                .map(
+                        patch -> {
+                            ScenarioMicroGoal target = current.get(patch.microGoalId());
+                            if (target == null) {
+                                throw invalid("이 시나리오의 작은 목표만 고칠 수 있습니다.");
+                            }
+                            requireText(patch.description(), "microGoals.description", goal);
+                            for (String evidence : patch.requiredEvidence()) {
+                                requireText(evidence, "microGoals.requiredEvidence", goal);
+                            }
+                            return new MicroGoalEdit(
+                                    target,
+                                    patch.description().trim(),
+                                    patch.requiredEvidence().stream().map(String::trim).toList());
+                        })
+                .toList();
     }
 
     /** 강사가 쓴 문장은 생성 결과 검사를 거치지 않으므로 빈 값·보이지 않는 문자·목표의 피할 표현을 여기서 막는다. */
@@ -352,6 +397,10 @@ public class ScenarioDraftService {
 
     private ApiException versionMismatch() {
         return conflict("SCENARIO_VERSION_MISMATCH", "다른 판의 시나리오입니다. 새로 불러와 주세요.");
+    }
+
+    private ApiException editConflict() {
+        return conflict("VERSION_CONFLICT", "다른 곳에서 먼저 고쳤습니다. 새로 불러와 주세요.");
     }
 
     private ApiException draftExists() {

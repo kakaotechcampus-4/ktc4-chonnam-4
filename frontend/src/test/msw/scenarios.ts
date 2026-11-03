@@ -24,6 +24,7 @@ export function scenario(overrides: Partial<Scenario> = {}): Scenario {
   return {
     scenarioId: "80000000-0000-4000-8000-000000000001",
     version: 1,
+    editRevision: 0,
     goalId: GOAL.goalId,
     scenarioSource: "REUSED",
     status: "APPROVED",

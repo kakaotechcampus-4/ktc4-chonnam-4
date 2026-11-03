@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ApiError,
   deleteScenario,
   getLearningGoal,
   getScenario,
@@ -49,7 +50,7 @@ function toForm(scenario: Scenario): DraftForm {
 
 /** 고친 칸만 보낸다. 필요 증거는 한 줄에 하나다. */
 function toReview(scenario: Scenario, form: DraftForm): ScenarioReview {
-  const review: ScenarioReview = { version: scenario.version }
+  const review: ScenarioReview = { version: scenario.version, editRevision: scenario.editRevision }
   if (form.title !== scenario.title) review.title = form.title
   if (form.summary !== (scenario.summary ?? '')) review.summary = form.summary
   const changed = form.microGoals.filter((goal) => {
@@ -67,6 +68,11 @@ function toReview(scenario: Scenario, form: DraftForm): ScenarioReview {
     }))
   }
   return review
+}
+
+/** 화면을 연 뒤 다른 곳(다른 탭·기기)에서 먼저 저장해 수정 번호가 달라졌다. */
+function isEditConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'VERSION_CONFLICT'
 }
 
 /** 승인 확인 화면에 보여 줄 모습. 승인 요청에 실을 고친 칸을 그대로 덮어, 보이는 내용과 승인되는 내용이 같게 한다. */
@@ -139,6 +145,7 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
 
   const save = useMutation({
     mutationFn: () => reviewScenario(scenario.scenarioId, toReview(scenario, form)),
+    onMutate: () => setSavedNotice(false),
     onSuccess: (updated) => {
       refresh(updated)
       setSavedNotice(true)
@@ -147,14 +154,38 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
   const approve = useMutation({
     mutationFn: (review: ScenarioReview) => reviewScenario(scenario.scenarioId, { ...review, status: 'APPROVED' }),
     onSuccess: refresh,
+    // 확인 화면은 보지 못한 내용으로 바뀐 초안을 보여 주고 있다. 편집 화면으로 돌아가 새로 불러오게 한다.
+    onError: (error) => {
+      if (isEditConflict(error)) setConfirming(null)
+    },
   })
   const reject = useMutation({
-    mutationFn: () => reviewScenario(scenario.scenarioId, { version: scenario.version, status: 'REJECTED' }),
+    mutationFn: () =>
+      reviewScenario(scenario.scenarioId, {
+        version: scenario.version,
+        editRevision: scenario.editRevision,
+        status: 'REJECTED',
+      }),
     onSuccess: (updated) => {
       setRejectOpen(false)
       refresh(updated)
     },
+    onError: (error) => {
+      if (isEditConflict(error)) setRejectOpen(false)
+    },
   })
+  // 저장된 내용으로 칸을 다시 채운다. 저장하지 않은 입력은 버린다.
+  const reload = useMutation({
+    mutationFn: () => getScenario(scenario.scenarioId),
+    onSuccess: (fresh) => {
+      refresh(fresh)
+      setForm(toForm(fresh))
+      save.reset()
+      approve.reset()
+      reject.reset()
+    },
+  })
+  const conflict = [save, approve, reject].some((mutation) => isEditConflict(mutation.error))
   const discard = useMutation({
     mutationFn: () => deleteScenario(scenario.scenarioId),
     onSuccess: () => {
@@ -191,7 +222,7 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
   }
 
   const editing = isDraft
-  const pending = save.isPending || approve.isPending || reject.isPending || discard.isPending
+  const pending = save.isPending || approve.isPending || reject.isPending || discard.isPending || reload.isPending
 
   return (
     <div className="flex flex-col gap-4">
@@ -207,10 +238,20 @@ function DraftEditor({ scenario }: { scenario: Scenario }) {
           저장했습니다.
         </Notice>
       )}
-      {save.isError && (
+      {conflict ? (
         <Notice tone="error" role="alert">
-          {describeError(save.error, '저장하지 못했습니다.')}
+          <span>다른 곳에서 먼저 고쳤습니다. 새로 불러오면 저장하지 않은 입력은 사라지고 저장된 내용이 보입니다.</span>
+          <button type="button" disabled={pending} onClick={() => reload.mutate()} className={cn(outlineButtonClass, 'ml-3')}>
+            <ButtonLabel pending={reload.isPending} label="새로 불러오기" pendingLabel="불러오는 중..." />
+          </button>
+          {reload.isError && <span className="mt-2 block">{describeError(reload.error, '불러오지 못했습니다.')}</span>}
         </Notice>
+      ) : (
+        save.isError && (
+          <Notice tone="error" role="alert">
+            {describeError(save.error, '저장하지 못했습니다.')}
+          </Notice>
+        )
       )}
 
       <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-4">

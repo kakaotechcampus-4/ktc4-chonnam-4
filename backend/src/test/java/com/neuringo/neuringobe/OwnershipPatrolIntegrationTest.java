@@ -310,7 +310,7 @@ class OwnershipPatrolIntegrationTest {
                                                                 "/api/v1/scenarios/%s"
                                                                         .formatted(
                                                                                 ids.scenarioId())),
-                                                "{\"version\":1,\"status\":\"APPROVED\"}")),
+                                                "{\"version\":1,\"editRevision\":0,\"status\":\"APPROVED\"}")),
                 delete(
                         "DELETE /api/v1/scenarios/{scenarioId}",
                         "/api/v1/scenarios/%s",

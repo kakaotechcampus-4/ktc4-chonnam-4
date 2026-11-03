@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,12 @@ public class Scenario {
     // 승인본만 값이 있다. 재사용 후보 순서에서 최근 승인본을 앞에 두는 데 쓴다.
     @Column(name = "approved_at")
     private Instant approvedAt;
+
+    // 수정 번호(응답 editRevision). 행이 바뀔 때마다 JPA 가 올린다. 판 번호와 달리 같은 초안을 저장해도 오른다.
+    // 새 판은 비어 있어 새 행으로 저장되고 0 이 된다.
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private Long rowVersion;
 
     protected Scenario() {}
 
@@ -201,5 +208,10 @@ public class Scenario {
 
     public Instant getApprovedAt() {
         return approvedAt;
+    }
+
+    /** 저장 전 새 판은 null 이다. Spring Data 가 이 값으로 새 행인지 판단한다. */
+    public Long getRowVersion() {
+        return rowVersion;
     }
 }

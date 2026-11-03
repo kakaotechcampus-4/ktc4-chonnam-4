@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
-import { envelope } from "@/test/msw/handlers"
+import { apiError, envelope } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { GOAL, goalHandler, scenario } from "@/test/msw/scenarios"
 import { renderRoutes, signIn } from "@/test/render"
@@ -34,8 +34,12 @@ function serveDraft() {
     http.patch("*/api/v1/scenarios/:scenarioId", async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>
       patches.push(body)
+      if (body.editRevision !== current.editRevision) {
+        return apiError(409, "VERSION_CONFLICT", "다른 곳에서 먼저 고쳤습니다.", new URL(request.url).pathname)
+      }
       current = {
         ...current,
+        editRevision: current.editRevision + 1,
         ...(typeof body.title === "string" ? { title: body.title } : {}),
         ...(typeof body.summary === "string" ? { summary: body.summary } : {}),
         ...(body.status === "APPROVED" ? { status: "APPROVED" as const } : {}),
@@ -48,7 +52,11 @@ function serveDraft() {
       return new HttpResponse(null, { status: 204 })
     }),
   )
-  return { patches, deletes }
+  // 다른 탭이 먼저 저장한 것처럼 서버의 초안을 바꾼다.
+  function changeElsewhere(title: string) {
+    current = { ...current, title, editRevision: current.editRevision + 1 }
+  }
+  return { patches, deletes, changeElsewhere }
 }
 
 function renderEdit() {
@@ -85,6 +93,7 @@ describe("초안 수정", () => {
     expect(patches).toEqual([
       {
         version: 2,
+        editRevision: 0,
         summary: "친구가 넘어져 울고 있다.",
         microGoals: [
           { microGoalId: MICRO_GOAL_ID, description: "친구의 감정을 말한다.", requiredEvidence: ["괜찮냐고 물음", "속상하겠다고 말함"] },
@@ -107,7 +116,7 @@ describe("초안 수정", () => {
     await user.click(screen.getByRole("checkbox", { name: "아동에게 노출되는 내용을 검토했습니다." }))
     await user.click(screen.getByRole("button", { name: "승인" }))
     expect(await screen.findByText(/승인했습니다/)).toBeInTheDocument()
-    expect(patches).toEqual([{ version: 2, title: "고친 제목", status: "APPROVED" }])
+    expect(patches).toEqual([{ version: 2, editRevision: 0, title: "고친 제목", status: "APPROVED" }])
   })
 
   it("저장하지 않고 고친 작은 목표도 확인 화면에 보인 그대로 승인한다", async () => {
@@ -128,6 +137,7 @@ describe("초안 수정", () => {
     expect(patches).toEqual([
       {
         version: 2,
+        editRevision: 0,
         microGoals: [{ microGoalId: MICRO_GOAL_ID, description: "친구에게 괜찮냐고 묻는다.", requiredEvidence: ["속상하다고 말함"] }],
         status: "APPROVED",
       },
@@ -141,8 +151,37 @@ describe("초안 수정", () => {
     await user.click(await screen.findByRole("button", { name: "반려" }))
     await user.click(await screen.findByRole("button", { name: "반려" }))
     expect(await screen.findByText("판정이 끝난 시나리오라 고칠 수 없습니다.")).toBeInTheDocument()
-    expect(patches).toEqual([{ version: 2, status: "REJECTED" }])
+    expect(patches).toEqual([{ version: 2, editRevision: 0, status: "REJECTED" }])
     expect(screen.queryByRole("button", { name: "저장" })).not.toBeInTheDocument()
+  })
+
+  it("다른 곳에서 먼저 고쳤으면 승인하지 않고, 새로 불러와 저장된 내용으로 다시 확인하게 한다", async () => {
+    const { patches, changeElsewhere } = serveDraft()
+    const { user } = renderEdit()
+
+    await screen.findByRole("textbox", { name: "제목" })
+    changeElsewhere("다른 탭에서 고친 제목")
+    await user.click(screen.getByRole("button", { name: "승인으로 이동" }))
+    await user.click(screen.getByRole("checkbox", { name: "아동에게 노출되는 내용을 검토했습니다." }))
+    await user.click(screen.getByRole("button", { name: "승인" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("다른 곳에서 먼저 고쳤습니다.")
+    expect(screen.queryByRole("region", { name: "시나리오 승인 확인" })).not.toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "제목" })).toHaveValue("그림을 망친 친구 위로하기")
+
+    await user.click(screen.getByRole("button", { name: "새로 불러오기" }))
+    expect(await screen.findByDisplayValue("다른 탭에서 고친 제목")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "승인으로 이동" }))
+    expect(screen.getByRole("heading", { name: "다른 탭에서 고친 제목" })).toBeInTheDocument()
+    await user.click(screen.getByRole("checkbox", { name: "아동에게 노출되는 내용을 검토했습니다." }))
+    await user.click(screen.getByRole("button", { name: "승인" }))
+    expect(await screen.findByText(/승인했습니다/)).toBeInTheDocument()
+    expect(patches).toEqual([
+      { version: 2, editRevision: 0, status: "APPROVED" },
+      { version: 2, editRevision: 1, status: "APPROVED" },
+    ])
   })
 
   it("폐기하면 지우고 승인 대기함으로 돌아간다", async () => {

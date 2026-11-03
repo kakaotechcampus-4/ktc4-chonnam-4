@@ -1,5 +1,12 @@
 # API v1 변경 이력
 
+## 2026-11-03 — 시나리오 초안 수정 번호(`editRevision`)
+
+- 기준은 `feature/scenario-reuse-approval` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- 호환성 변경: [API-SCN-04](./scenarios/review-scenario.md) 요청에 `editRevision`이 필수입니다. 화면이 읽은 수정 번호와 지금 번호가 다르면(다른 탭·기기에서 먼저 저장) 409 `VERSION_CONFLICT`이고 아무것도 바뀌지 않습니다.
+- 시나리오 응답(API-SCN-03·04·05, API-ACT-05·06)에 `editRevision`을 더했습니다. 같은 초안을 저장할 때마다 오르고, 작은 목표만 고쳐도 오릅니다. 판 번호 `version`은 그대로 [수정하기]로 새 판을 만들 때만 오릅니다.
+- 새 오류 코드: `VERSION_CONFLICT`(API-SCN-04).
+
 ## 2026-11-01 — 시나리오 재사용 승인과 [수정하기]
 
 - 기준은 `feature/scenario-reuse-approval` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.

@@ -8,11 +8,13 @@ import java.util.UUID;
 
 /**
  * 강사가 검토하는 시나리오 한 판(명세 DraftScenarioData). goalId 는 재사용 후보면 그 활동의 목표, 초안이면 초안의 목표다. 활동과 상관없이 공용
- * 승인본만 조회하면 목표가 없어 null 이다. 다른 아동이 이 시나리오를 언제·몇 번 썼는지는 담지 않는다.
+ * 승인본만 조회하면 목표가 없어 null 이다. 다른 아동이 이 시나리오를 언제·몇 번 썼는지는 담지 않는다. version 은 판 번호, editRevision 은 초안을
+ * 저장할 때마다 오르는 수정 번호다. 초안을 고치거나 판정할 때 editRevision 을 그대로 돌려보낸다.
  */
 public record ScenarioResponse(
         UUID scenarioId,
         int version,
+        long editRevision,
         UUID goalId,
         String scenarioSource,
         String status,
@@ -38,6 +40,7 @@ public record ScenarioResponse(
         return new ScenarioResponse(
                 scenario.getScenarioId(),
                 scenario.getScenarioVersion(),
+                scenario.getRowVersion(),
                 goalId,
                 source,
                 scenario.getStatus().name(),

@@ -525,7 +525,10 @@ export type ScenarioMicroGoal = {
 /** 강사가 검토하는 시나리오 한 판. 공용 승인본만 따로 조회하면 goalId·scenarioSource 가 null 이다. */
 export type Scenario = {
   scenarioId: string
+  /** 판 번호(v1·v2). [수정하기]로 새 판을 만들 때만 오른다 */
   version: number
+  /** 수정 번호. 초안을 저장할 때마다 오른다. 고치거나 판정할 때 읽은 값을 그대로 돌려보낸다 */
+  editRevision: number
   goalId: string | null
   scenarioSource: 'REUSED' | 'NEWLY_GENERATED' | null
   status: ScenarioStatus
@@ -571,6 +574,8 @@ export type DraftMicroGoalPatch = {
 
 export type ScenarioReview = {
   version: number
+  /** 화면이 읽은 수정 번호. 그사이 다른 곳에서 저장했으면 409 VERSION_CONFLICT */
+  editRevision: number
   status?: 'DRAFT' | 'APPROVED' | 'REJECTED'
   title?: string
   summary?: string

@@ -55,6 +55,7 @@ HTTP 200. 초안 예시입니다. 공용 승인본은 `goalId`·`scenarioSource`
   "data": {
     "scenarioId": "80000000-0000-4000-8000-000000000002",
     "version": 2,
+    "editRevision": 0,
     "goalId": "30000000-0000-4000-8000-000000000001",
     "scenarioSource": "NEWLY_GENERATED",
     "status": "DRAFT",
@@ -105,6 +106,7 @@ HTTP 200. 초안 예시입니다. 공용 승인본은 `goalId`·`scenarioSource`
 |---|---|---|---|---|
 | data.scenarioId | UUID | 예 | 아니오 | 시나리오 판 ID. 고친 판은 새 ID |
 | data.version | number | 예 | 아니오 | 판 번호. 고친 판은 원본 +1 |
+| data.editRevision | number | 예 | 아니오 | 수정 번호. 같은 초안을 저장할 때마다 오르고 판 번호는 그대로다. 초안을 고치거나 판정할 때 그대로 보낸다 |
 | data.goalId | UUID | 예 | 예 | 재사용 후보면 그 활동의 목표, 초안·판정 기록이면 초안의 목표. 활동과 상관없이 공용 승인본만 조회하면 null |
 | data.scenarioSource | string | 예 | 예 | `REUSED`(재사용 후보) · `NEWLY_GENERATED`(이 목표를 위해 만든 판). 공용 승인본만 조회하면 null |
 | data.status | ScenarioStatus | 예 | 아니오 | `DRAFT` · `REVISION_REQUIRED` · `REJECTED` · `APPROVED` |
@@ -170,6 +172,8 @@ export interface ScenarioData {
   scenarioId: UUID;
   /** 고친 판은 원본 +1 */
   version: number;
+  /** 수정 번호. 초안을 저장할 때마다 오른다. 고치거나 판정할 때 그대로 보낸다 */
+  editRevision: number;
   /** 공용 승인본만 조회하면 null */
   goalId: UUID | null;
   /** REUSED · NEWLY_GENERATED. 공용 승인본만 조회하면 null */

@@ -19,6 +19,7 @@
 
 - 그 학습 목표의 담당 강사만 초안(`DRAFT`)을 고치고 판정한다. 판정이 끝난 판은 바꿀 수 없다(409 `SCENARIO_NOT_EDITABLE`, DB도 막음).
 - `version`은 초안의 판 번호와 같아야 한다.
+- `editRevision`은 화면이 읽은 수정 번호다. 그사이 다른 탭·기기에서 저장해 지금 번호와 다르면 아무것도 바꾸지 않고 409 `VERSION_CONFLICT`다. 같은 번호로 동시에 들어온 요청도 하나만 받는다. 수정 번호는 제목·요약·작은 목표 중 무엇이 바뀌어도 오르고, 바뀐 것이 없으면 그대로다. 판 번호는 오르지 않는다.
 - 칸 수정: `title`·`summary`·`microGoals`(있는 작은 목표의 설명·필요 증거만). 고정 사실·금지 추론·시작 질문은 직접 고치지 않는다. 강사가 쓴 문장은 생성 결과 검사를 거치지 않으므로 빈 값·보이지 않는 문자·목표의 피할 표현을 서버가 거절한다.
 - 판정 `status`: 칸을 먼저 고친 뒤 판정한다. `APPROVED`면 작은 목표·필요 증거가 있어야 하고, 그 목표로 만든 최초 결합 활동에 붙으며 공용 재사용 후보가 된다(원본은 그대로). 승인본은 목표에서 떨어지지만 응답의 `goalId`는 붙은 활동의 목표다.
 - `REJECTED`는 기록으로 남고 활동은 계속 시나리오를 기다린다. 자동으로 다시 만들지 않는다.
@@ -52,6 +53,7 @@
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
 | version | number | 예 | 아니오 | 초안의 판 번호 |
+| editRevision | number | 예 | 아니오 | 화면이 읽은 수정 번호(0 이상). 응답의 `editRevision`을 그대로 보낸다 |
 | status | string | 아니오 | 아니오 | `APPROVED` · `REJECTED` · `DRAFT`(그대로). `REVISION_REQUIRED`는 아직 409 |
 | title | string | 아니오 | 아니오 | 1~200자 |
 | summary | string | 아니오 | 아니오 | 1~1000자 |
@@ -60,6 +62,7 @@
 ~~~json
 {
   "version": 2,
+  "editRevision": 0,
   "status": "APPROVED"
 }
 ~~~
@@ -73,6 +76,7 @@ HTTP 200. 승인한 예시입니다.
   "data": {
     "scenarioId": "80000000-0000-4000-8000-000000000002",
     "version": 2,
+    "editRevision": 1,
     "goalId": "30000000-0000-4000-8000-000000000001",
     "scenarioSource": "NEWLY_GENERATED",
     "status": "APPROVED",
@@ -123,6 +127,7 @@ HTTP 200. 승인한 예시입니다.
 |---|---|---|---|---|
 | data.scenarioId | UUID | 예 | 아니오 | 시나리오 판 ID. 고친 판은 새 ID |
 | data.version | number | 예 | 아니오 | 판 번호. 고친 판은 원본 +1 |
+| data.editRevision | number | 예 | 아니오 | 수정 번호. 같은 초안을 저장할 때마다 오르고 판 번호는 그대로다. 초안을 고치거나 판정할 때 그대로 보낸다 |
 | data.goalId | UUID | 예 | 예 | 재사용 후보면 그 활동의 목표, 초안·판정 기록이면 초안의 목표. 활동과 상관없이 공용 승인본만 조회하면 null |
 | data.scenarioSource | string | 예 | 예 | `REUSED`(재사용 후보) · `NEWLY_GENERATED`(이 목표를 위해 만든 판). 공용 승인본만 조회하면 null |
 | data.status | ScenarioStatus | 예 | 아니오 | `DRAFT` · `REVISION_REQUIRED` · `REJECTED` · `APPROVED` |
@@ -149,6 +154,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 409 | SCENARIO_NOT_EDITABLE | 판정이 끝난 판 |
 | 404 | SCENARIO_NOT_FOUND | 없는 ID, 남의 초안 |
 | 409 | SCENARIO_VERSION_MISMATCH | 판 번호가 다름. 새로 불러오기 |
+| 409 | VERSION_CONFLICT | 화면을 연 뒤 다른 곳에서 먼저 저장함. 저장된 내용을 새로 불러와 다시 확인 |
 | 409 | SCENARIO_REGENERATION_UNAVAILABLE | 다시 만들기는 아직 없음 |
 | 409 | SCENARIO_NO_WAITING_ACTIVITY | 승인해 붙일 활동이 없음 |
 | 409 | SCENARIO_ALREADY_ATTACHED | 활동에 이미 다른 시나리오가 붙음 |
@@ -195,6 +201,8 @@ export interface ScenarioData {
   scenarioId: UUID;
   /** 고친 판은 원본 +1 */
   version: number;
+  /** 수정 번호. 초안을 저장할 때마다 오른다. 고치거나 판정할 때 그대로 보낸다 */
+  editRevision: number;
   /** 공용 승인본만 조회하면 null */
   goalId: UUID | null;
   /** REUSED · NEWLY_GENERATED. 공용 승인본만 조회하면 null */
@@ -221,6 +229,8 @@ export interface DraftMicroGoalPatch {
 
 export interface ReviewScenarioRequest {
   version: number;
+  /** 응답에서 받은 수정 번호 그대로 */
+  editRevision: number;
   status?: 'DRAFT' | 'APPROVED' | 'REJECTED';
   title?: string;
   summary?: string;
@@ -265,7 +275,7 @@ curl -i -X PATCH "$NEURINGO_API_ORIGIN/api/v1/scenarios/${scenarioId}" \
   -H "Authorization: Bearer $NEURINGO_ACCESS_TOKEN" \
   -H "$NEURINGO_CSRF_HEADER: $NEURINGO_CSRF_TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"version":2,"status":"APPROVED"}'
+  --data '{"version":2,"editRevision":0,"status":"APPROVED"}'
 ~~~
 
 ## 8. 연결 Task·미정·검증

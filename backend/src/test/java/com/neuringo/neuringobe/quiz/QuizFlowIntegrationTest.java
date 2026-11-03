@@ -1549,7 +1549,8 @@ class QuizFlowIntegrationTest {
                                 .with(TestInstructors.instructor("teacher-other"))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"version\":2,\"status\":\"APPROVED\"}"))
+                                .content(
+                                        "{\"version\":2,\"editRevision\":0,\"status\":\"APPROVED\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("SCENARIO_NOT_FOUND"));
         mvc.perform(
@@ -1723,14 +1724,147 @@ class QuizFlowIntegrationTest {
                         .content(json));
     }
 
+    /** 초안을 고치거나 판정한다. 수정 번호를 시험하지 않는 요청은 지금 번호를 실어 보낸다. */
     private org.springframework.test.web.servlet.ResultActions patchScenario(
             UUID scenarioId, String json) throws Exception {
+        String body =
+                json.contains("\"editRevision\"")
+                        ? json
+                        : "{\"editRevision\":" + editRevision(scenarioId) + "," + json.substring(1);
         return mvc.perform(
                 patch("/api/v1/scenarios/{id}", scenarioId)
                         .with(TestInstructors.instructor("teacher-quiz"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json));
+                        .content(body));
+    }
+
+    private long editRevision(UUID scenarioId) {
+        return jdbc
+                .queryForList(
+                        "SELECT row_version FROM scenario WHERE scenario_id = ?",
+                        Long.class,
+                        scenarioId)
+                .stream()
+                .findFirst()
+                .orElse(0L);
+    }
+
+    /** 두 탭이 같은 초안을 열고 한쪽이 작은 목표만 고쳐 저장하면, 다른 탭은 예전 수정 번호로 승인하거나 덮어쓸 수 없다. 판 번호는 그대로다. */
+    @Test
+    void staleEditRevisionCannotApproveOrOverwriteAfterAnotherTabSaved() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "두 탭"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID draft = draftFrom(candidateWithMicroGoal(activityId), goalId);
+        String opened =
+                mvc.perform(
+                                get("/api/v1/scenarios/{id}", draft)
+                                        .with(TestInstructors.instructor("teacher-quiz")))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        int seen = JsonPath.read(opened, "$.data.editRevision");
+        String microGoalId = JsonPath.read(opened, "$.data.microGoals[0].microGoalId");
+
+        // 바뀐 것이 없는 저장은 수정 번호를 올리지 않는다.
+        patchScenario(draft, "{\"version\":2,\"editRevision\":" + seen + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.editRevision").value(seen));
+        // B 탭: 작은 목표만 고친다. 시나리오 행이 그대로여도 수정 번호가 오른다.
+        patchScenario(
+                        draft,
+                        "{\"version\":2,\"editRevision\":"
+                                + seen
+                                + ",\"microGoals\":[{\"microGoalId\":\""
+                                + microGoalId
+                                + "\",\"description\":\"B 탭이 고친 목표\",\"requiredEvidence\":[\"괜찮냐고 물음\"]}]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(2))
+                .andExpect(jsonPath("$.data.editRevision").value(seen + 1));
+
+        // A 탭: 예전 번호로 승인하거나 저장하면 거절된다.
+        patchScenario(
+                        draft,
+                        "{\"version\":2,\"editRevision\":" + seen + ",\"status\":\"APPROVED\"}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("VERSION_CONFLICT"));
+        patchScenario(draft, "{\"version\":2,\"editRevision\":" + seen + ",\"title\":\"A 탭 제목\"}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("VERSION_CONFLICT"));
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT status, title FROM scenario WHERE scenario_id = ?", draft))
+                .containsEntry("status", "DRAFT")
+                .doesNotContainEntry("title", "A 탭 제목");
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
+
+        // 새로 불러온 번호로는 승인된다.
+        patchScenario(
+                        draft,
+                        "{\"version\":2,\"editRevision\":"
+                                + (seen + 1)
+                                + ",\"status\":\"APPROVED\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.microGoals[0].description").value("B 탭이 고친 목표"));
+    }
+
+    /** 같은 수정 번호를 읽은 두 저장이 동시에 들어오면 하나만 저장되고 다른 하나는 409 다. 작은 목표만 고친 저장도 같다. */
+    @Test
+    void concurrentSavesWithSameEditRevisionKeepOnlyOne() throws Exception {
+        UUID activityId = assignFirstActivity(childId, Map.of("title", "동시 저장"));
+        completeAssignedQuiz(activityId, true);
+        UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
+        UUID draft = draftFrom(candidateWithMicroGoal(activityId), goalId);
+        long seen = editRevision(draft);
+        String microGoalId =
+                jdbc.queryForObject(
+                        "SELECT micro_goal_id::text FROM scenario_micro_goal WHERE scenario_id = ?",
+                        String.class,
+                        draft);
+
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        List<Future<Integer>> responses = new ArrayList<>();
+        try {
+            new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(
+                            holding -> {
+                                // 두 요청이 수정 번호 비교를 지나, 수정 번호를 올리는 갱신 앞에서 함께 기다리게 한다.
+                                jdbc.queryForObject(
+                                        "SELECT scenario_id FROM scenario WHERE scenario_id = ? FOR UPDATE",
+                                        UUID.class,
+                                        draft);
+                                for (String description : List.of("첫 번째 저장", "두 번째 저장")) {
+                                    String json =
+                                            "{\"version\":2,\"editRevision\":"
+                                                    + seen
+                                                    + ",\"microGoals\":[{\"microGoalId\":\""
+                                                    + microGoalId
+                                                    + "\",\"description\":\""
+                                                    + description
+                                                    + "\",\"requiredEvidence\":[\"괜찮냐고 물음\"]}]}";
+                                    responses.add(
+                                            pool.submit(
+                                                    () ->
+                                                            patchScenario(draft, json)
+                                                                    .andReturn()
+                                                                    .getResponse()
+                                                                    .getStatus()));
+                                }
+                                awaitLockWaiters("update scenario set%", 2);
+                            });
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> response : responses) {
+                statuses.add(response.get(20, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+            assertThat(editRevision(draft)).isEqualTo(seen + 1);
+        } finally {
+            pool.shutdownNow();
+            assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     @Test
