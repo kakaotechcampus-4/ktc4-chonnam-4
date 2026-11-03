@@ -1,6 +1,6 @@
 # API-RPL-05 · 역할극 텍스트 입력 제출
 
-> 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 조건부 구현 — S6-JIN-01 입력 흐름 브랜치 기준. 배포·외부 모델·입력 정제 운영 포트·FE 연동 완료와 구분합니다.
 
 ## 1. Endpoint
 
@@ -8,203 +8,64 @@
 |---|---|
 | Method | POST |
 | Path | /api/v1/roleplay-sessions/{sessionId}/text-inputs |
-| 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
-| 인증 | 본인 아동 HttpOnly 세션 + CSRF + Idempotency-Key |
-| 성공 | 202 — 설계 예시 |
-| 반환 | ApiResponse<DraftInputAccepted> |
-| FE 함수 | submitTextInput |
-| 구현·협업 | 진미나·윤상현 |
+| 인증 | 본인 아동 세션 + CSRF + Idempotency-Key |
+| 요청 | application/json |
+| 응답 | 음성과 같은 ApiResponse<RoleplayTurnResponse> |
+| 등록 조건 | roleplay.http.enabled=true 및 roleplay.text.enabled=true |
+| 처리 상한 | roleplay.text.maximum-characters 필수, 제품 기본값 없음 |
 
-## 2. 용도·중요 규칙
+환경변수 ROLEPLAY_TEXT_ENABLED는 기본 false입니다. 활성화 시 ROLEPLAY_TEXT_MAXIMUM_CHARACTERS를 명시해야 합니다. Unicode 코드 포인트 단위이며 FE의 200자를 서버 정책으로 자동 채택하지 않았습니다.
 
-- 서버최소정제/개인정보마스킹/의미보존후표준발화하나만분석.
-- 새입력은새키,유실재전송은같은키. 현재202접수/조회방식은미정.
-
-## 3. 요청
-
-### Path parameters
-
-| 이름 | 타입 | 필수 | 설명 |
-|---|---|---|---|
-| sessionId | UUID string | 예 | 경로 식별자 |
-
-### Query parameters
-
-없음. 지원되지 않는 page/size/sort를 보내도 적용된다고 가정하지 않습니다.
-
-### Headers·쿠키
-
-| 이름 | 값/타입 | 필수 | 주의 |
-|---|---|---|---|
-| Accept | application/json | 예 | 공통 envelope |
-| Cookie | credentials: include | 예 | 브라우저 관리; HttpOnly 쿠키 직접 읽기 금지 |
-| CSRF Header | GET /api/v1/csrf의 headerName:token | 예 | 쿠키와 함께 전송 |
-| Idempotency-Key | UUID string | 예 | 동일 행동 재전송은 같은 키/같은 입력 |
-| Content-Type | application/json; charset=utf-8 | 예 | JSON body |
-
-### Request Body
-
-| 필드 | 타입 | 필수 | null 허용 | 설명 |
-|---|---|---|---|---|
-| clientInputId | UUID | 예 | 아니오 | 한 새 입력, 재전송 유지 |
-| text | string | 예 | 아니오 | 원문 입력; 길이/세부 검증 미정 |
+## 2. 요청
 
 ~~~json
-{
-  "clientInputId": "84000000-0000-4000-8000-000000000001",
-  "text": "친구가 아프고 속상할 것 같아요."
-}
+{"text": "친구가 아프고 속상할 것 같아요."}
 ~~~
 
-## 4. 성공 응답
+- 본문은 필수 문자열 text 하나입니다. 아동/활동/시나리오/지원/학습 판정은 서버에서 조회합니다.
+- 새 입력은 새 UUID 요청 키, 네트워크 재전송은 같은 Idempotency-Key/텍스트를 사용합니다.
+- 빈 문자열·공백·정제 거절·길이 초과는 재입력 안내입니다. 누락/null·잘못된 JSON·필수 헤더는 요청 검증 오류입니다.
+- 초안의 clientInputId·inputId·turnId·일괄 202 접수 방식은 채택하지 않았습니다. 기존 음성 계약을 재사용합니다.
 
-HTTP 202 — 설계 예시.
+## 3. 처리
 
-~~~json
-{
-  "data": {
-    "inputId": "84000000-0000-4000-8000-000000000001",
-    "turnId": "85000000-0000-4000-8000-000000000001",
-    "status": "PROCESSING"
-  },
-  "meta": {
-    "traceId": "90000000-0000-4000-8000-000000000001"
-  }
-}
-~~~
+처음부터 텍스트를 제출할 수 있으며 음성 3회 실패는 사용 권한 조건이 아닙니다. STT·미디어 검증·파일 spool을 건너뛰고 기존 RoleplayInputProcessor의 최소 정제/개인정보 마스킹/의미 보존/안전 검사 뒤 표준 발화 하나를 분석·생성·검수·응답 TTS·목표 평가·확정 저장에 전달합니다. 운영 입력 처리 포트의 실제 공급·품질 검증은 별도입니다.
 
-### response schema
+음성과 같은 작업자·요청 가드·체크포인트·기한을 사용합니다. 생성/검수 중 DB 트랜잭션을 유지하지 않습니다. 입력 종류와 정제 전 문자열의 UTF-16 코드 단위를 포함한 버전 지문으로 요청을 구분합니다. 원문은 저장/응답/toString에 직접 노출하지 않고, 표준 발화는 기존 보관/삭제 정책을 따릅니다.
 
-| 필드 | 타입 | 필수 | null 허용 | 설명 |
-|---|---|---|---|---|
-| data.inputId | UUID | 예 | 아니오 | 입력 ID |
-| data.turnId | UUID | 예 | 아니오 | 조회할 턴 |
-| data.status | 'PROCESSING' | 예 | 아니오 | 접수 제안, 전달/완료 성공 아님 |
+처리 중 또는 확정된 같은 키의 내용 변경·음성↔텍스트 키 재사용은 409입니다. 확정 재전송은 입력 처리·AI·TTS를 재호출하지 않고 acceptedInput=null·음성 미제공으로 원래 결과를 복원합니다.
 
-meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
+잘못된 텍스트는 음성 실패 원장에 기록하지 않습니다. 정상 텍스트도 기존 음성 실패 수를 자동 초기화하지 않습니다. 위험 입력은 기존 안전 중단 경로를 유지합니다.
 
-## 5. 오류·FE 처리
+입력 정제·안전 검사기가 검사 불가를 반환하거나 예외/결과 누락이 발생하면 HTTP 200 / RETRY_REQUIRED / RETRY_TURN으로 안내합니다. 승인된 SAFETY_CHECK_ERROR 문구가 없으면 공통 “다시 한 번만 말해줄래?”를 제공합니다. 분석·TTS·학습 저장·음성 실패 집계를 수행하지 않으며 같은 요청 키/본문으로 다시 시도할 수 있습니다. 전체 기한 초과는 기존 REINPUT_REQUIRED가 우선합니다.
 
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
+검사기가 정상 결과에 정제 신뢰도·의미 보존·안전·개인정보 마스킹 여부를 제공해야 분석을 시작합니다. 의미 보존이 확인되지 않으면 재입력, 위험 판정은 안전 중단, 필수 판정이 없거나 유효하지 않으면 턴 재시도입니다. 검증된 품질/안전 값은 내부 분석·검수에만 전달합니다.
 
-| HTTP | code | 상황·FE 행동 |
-|---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
-| 403 | ACCESS_DENIED | 역할 권한 |
-| 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
-| 404 | RESOURCE_NOT_FOUND | 리소스/소유권 코드 제안 |
-| 422 | VALIDATION_FAILED | 검증 코드 제안 |
-| 409 | IDEMPOTENCY_KEY_REUSED | 범용 키 충돌 제안 |
-| 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
+## 4. 응답
 
-공통 오류 envelope 예시(message/traceId는 동적):
+기존 음성 응답의 status/action/messages/acceptedInput/checkpointVersion/replayed와 공통 meta.traceId를 사용합니다. no-store이며 HTTP 200만으로 학습 진행 성공을 판정하지 않습니다.
 
-~~~json
-{
-  "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
-    "path": "/api/v1/roleplay-sessions/{sessionId}/text-inputs",
-    "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
-  }
-}
-~~~
+| HTTP/status | 의미 |
+|---|---|
+| 200 / DELIVERED | 검수·DB 확정 완료. acceptedInput은 정제된 표준 발화 |
+| 200 / REINPUT_REQUIRED | 현재 입력 방식에서 다시 입력. text 모드를 음성으로 강제 전환하지 않음 |
+| 200 / RETRY_REQUIRED | 기존 평가 오류의 턴 재시도 |
+| 200 / STOPPED 또는 NOTICE_UNAVAILABLE + STOP_DIALOGUE | 안전 경로 유지 |
+| 202 / PROCESSING + WAIT | 같은 키가 처리 중. 신규 비동기 접수 API가 아니며 inputId/turnId 없음 |
+| 400/422 | 필수 헤더·본문·JSON 등 요청 검증 |
+| 401/403/404 | 인증·CSRF·본인 소유 확인 |
+| 409 / ROLEPLAY_CONFLICT | 키/입력 종류/체크포인트 충돌 |
+| 503 / ROLEPLAY_BUSY 또는 ROLEPLAY_CONTEXT_UNAVAILABLE | 기존 용량·승인 문맥 오류 |
+| 500 | 기존 예상하지 못한 저장/내부 장애 |
 
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+컨트롤러 진입 후 동일한 최대60초 기한을 사용합니다. 본문 수신/파싱은 그 이전 경계입니다. 초과 시 “다시 한 번만 말해줄래?”로 안내하며 늦은 결과를 차단합니다.
 
-## 6. 복사 가능한 TypeScript
+## 5. FE 후속 작업·검증 경계
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
+현재 ChildRoleplayPage → sendRoleplayTurn은 mock입니다. 공유 예제 submitTextInput도 draft-endpoints.ts의 DraftInputAccepted 계약이므로 새 본문/응답/기능 설정에 맞춰 별도 동기화해야 합니다. 이번에는 FE·공유 TypeScript/JSON 예제를 수정하지 않았습니다.
 
-### 요청·응답 타입
+텍스트는 처음부터 선택할 수 있고 3회 권유 후에도 음성을 유지합니다. 성공/재입력마다 입력 모드를 강제 변경하지 않습니다. 새 답은 새 키, 응답 유실 재전송은 기존 키/입력으로 처리합니다.
 
-~~~ts
-export type UUID = string;
+실제 PostgreSQL·아동 세션/CSRF·MockMvc와 합성 입력/모델/TTS 포트로 정상·재전송·내용/종류 충돌·텍스트/음성 전환·3회 권유 후 텍스트·입력 거절·안전·음성 실패 미집계·동시 요청을 검증합니다. 실제 외부 모델·운영 개인정보 정제·브라우저 연결은 별도입니다.
 
-export interface DraftTextBody {
-  /** 한 새 입력, 재전송 유지 */
-  clientInputId: UUID;
-  /** 원문 입력; 길이/세부 검증 미정 */
-  text: string;
-}
-
-export interface DraftInputAccepted {
-  /** 입력 ID */
-  inputId: UUID;
-  /** 조회할 턴 */
-  turnId: UUID;
-  /** 접수 제안, 전달/완료 성공 아님 */
-  status: 'PROCESSING';
-}
-~~~
-
-### 호출 함수
-
-~~~ts
-import type { ApiClient, CallOptions } from "./api-client.ts";
-import { queryString } from "./api-client.ts";
-import type * as T from "./types.ts";
-
-export interface SubmitTextInputArgs {
-  sessionId: T.UUID;
-  body: T.DraftTextBody;
-  idempotencyKey: T.UUID;
-}
-
-export function submitTextInput(
-  api: ApiClient,
-  args: SubmitTextInputArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftInputAccepted>> {
-  return api.request<T.DraftInputAccepted>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [202],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
-  });
-}
-~~~
-
-### 사용 예시
-
-~~~ts
-import { submitTextInput } from "./draft-endpoints.ts";
-
-const response = await submitTextInput(api, {
-  "sessionId": "82000000-0000-4000-8000-000000000001",
-  "body": {
-    "clientInputId": "84000000-0000-4000-8000-000000000001",
-    "text": "친구가 아프고 속상할 것 같아요."
-  },
-  "idempotencyKey": "89000000-0000-4000-8000-000000000001"
-});
-const data = response.data;
-// 개인정보·원본·토큰·응답 전문을 로그에 출력하지 않습니다.
-~~~
-
-## 7. cURL 계약 확인
-
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
-
-~~~bash
-curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/roleplay-sessions/${sessionId}/text-inputs" \
-  --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
-  -H 'Accept: application/json' \
-  -H "$NEURINGO_CSRF_HEADER: $NEURINGO_CSRF_TOKEN" \
-  -H "Idempotency-Key: $NEURINGO_REQUEST_KEY" \
-  -H 'Content-Type: application/json; charset=utf-8' \
-  --data '{"clientInputId":"84000000-0000-4000-8000-000000000001","text":"친구가 아프고 속상할 것 같아요."}'
-~~~
-
-## 8. 연결 Task·미정·검증
-
-- 관련 Task ID: `S6-JIN-01` · `S6-YOON-01`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
-- [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
-- 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
+저장 실패 시 턴·세션·목표 평가·학습 기록이 함께 롤백되며 같은 키로 재시도할 수 있습니다. 활동 완료 뒤 표준 발화가 삭제되어도 확정된 같은 요청은 복원하고 새 입력은 409로 차단합니다.
