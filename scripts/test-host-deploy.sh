@@ -259,6 +259,31 @@ preview_password() { sed -n "s/^APP_DB_PASSWORD='\(.*\)'$/\1/p" "$tmp/home/state
 
 echo "deploy.sh · status.sh · backup.sh · restore-check.sh · release-bundle.sh 자체 검사"
 
+# 역할극 Parameter Store 값이 실제 backend env 파일로 전달된다(테스트 전용 정책).
+new_case
+export FAKE_GOOD_TAGS="aaaaaaa"
+cat >> "$tmp/fake/params" <<'PARAMS'
+/neuringo/dev/roleplay/http/enabled	true
+/neuringo/dev/roleplay/http/spool-directory	/tmp/roleplay-test
+/neuringo/dev/roleplay/http/maximum-upload-bytes	16
+/neuringo/dev/roleplay/http/maximum-request-bytes	65536
+/neuringo/dev/roleplay/http/allowed-formats	WEBM,WAV
+/neuringo/dev/roleplay/http/worker-count	2
+/neuringo/dev/roleplay/http/queue-capacity	3
+/neuringo/dev/roleplay/http/turn-budget	45s
+/neuringo/dev/roleplay/progress/maximum-turn-count	77
+/neuringo/dev/roleplay/progress/maximum-support-turns-per-micro-goal	9
+PARAMS
+deploy aaaaaaa
+check "역할극 설정을 포함한 배포가 성공한다" same "$code" 0
+for entry in "ROLEPLAY_HTTP_ENABLED=true" "ROLEPLAY_SPOOL_DIRECTORY=/tmp/roleplay-test" \
+  "ROLEPLAY_UPLOAD_MAX_BYTES=16" "ROLEPLAY_REQUEST_MAX_BYTES=65536" "ROLEPLAY_ALLOWED_FORMATS=WEBM,WAV" \
+  "ROLEPLAY_WORKER_COUNT=2" "ROLEPLAY_QUEUE_CAPACITY=3" "ROLEPLAY_TURN_BUDGET=45s" \
+  "ROLEPLAY_MAXIMUM_TURN_COUNT=77" "ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL=9"; do
+  check "역할극 설정 ${entry%%=*} 전달" file_has "$tmp/home/state/dev.env" "${entry%%=*}='${entry#*=}'"
+done
+check "역할극 설정 전달 중에도 비밀값을 출력하지 않는다" no_leak
+
 # ── develop ────────────────────────────────────────────
 new_case
 export FAKE_GOOD_TAGS="aaaaaaa bbbbbbb"
@@ -274,6 +299,7 @@ check ".env 에 필수 설정값을 넣는다" file_has "$tmp/home/state/dev.env
 check ".env 에 아동 입장 코드 비밀키를 넣는다" file_has "$tmp/home/state/dev.env" "CHILD_ACCESS_HMAC_SECRET='$HMAC'"
 check ".env 에 있는 선택 설정값만 넣는다" file_has "$tmp/home/state/dev.env" "AI_MODEL='claude-haiku'"
 check ".env 에 없는 선택 설정값은 넣지 않는다" bash -c "! grep -q '^AI_API_KEY=' '$tmp/home/state/dev.env'"
+check "역할극 설정이 없으면 활성화 값도 만들지 않는다" file_lacks "$tmp/home/state/dev.env" "ROLEPLAY_"
 check "develop 에는 미리보기 DB 설정이 없다" file_lacks "$tmp/home/state/dev.env" "APP_DB_"
 check "Flyway 버전을 알려 준다" has "$out" "FLYWAY_VERSION=V5"
 check "출력에 비밀값·계정 ID·로그인 결과가 없다" no_leak

@@ -92,6 +92,8 @@ AI 호출 대기 중 처리권 때문에 DB 연결을 점유하지 않는다. �
 `roleplay.http.enabled=true`일 때만 컨트롤러와 실행 설정을 등록한다. 기본은 비활성이다.
 활성화한 상태에서 필수 정책이나 구현이 없으면 Spring 시작 단계에서 실패한다.
 테스트용 구현을 운영 기본값으로 등록하지 않는다.
+배포 환경변수와 Parameter Store 경로는 [역할극 운영 설정 전달](roleplay-runtime-config.md)을 따른다.
+활성화 시 `roleplay.progress.maximum-turn-count`와 `maximum-support-turns-per-micro-goal`을 모두 양수로 공급해야 한다.
 
 필수 설정:
 

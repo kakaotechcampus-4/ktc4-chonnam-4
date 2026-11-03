@@ -363,6 +363,23 @@ export function createChild(classId: string, displayName: string): Promise<Child
   return writeRequest<Child>('POST', `/classrooms/${classId}/children`, { displayName })
 }
 
+export type AccessCode = {
+  // 숫자 4자리 문자열. 앞자리 0 이 있으니 숫자로 바꾸지 않는다.
+  accessCode: string
+  expiresAt: string
+}
+
+/**
+ * 아동 입장 코드 발급. 새로 받으면 그 아동의 이전 코드는 바로 못 쓰게 된다.
+ * 서버는 코드 원문을 저장하지 않아 나중에 다시 조회할 수 없다. 받은 응답이 코드를 볼 수 있는 유일한 때다.
+ * requestKey 는 "코드 받기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때 같은 키를 쓰면 같은 코드가 돌아온다.
+ */
+export function issueChildCode(childId: string, requestKey: string): Promise<AccessCode> {
+  return writeRequest<AccessCode>('POST', `/children/${childId}/access-codes`, undefined, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
 
 export type LearningGoal = {
   goalId: string

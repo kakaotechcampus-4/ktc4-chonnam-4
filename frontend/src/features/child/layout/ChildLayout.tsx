@@ -26,7 +26,7 @@ function ChildLayout({
 }: {
   activityTitle?: string
   stepLabel?: string
-  /** 헤더 가운데에 activityTitle 대신 넣을 요소 (예: 내 활동의 "서연이의 활동" 제목) */
+  /** 헤더 가운데에 activityTitle 대신 넣을 요소 (예: 내 활동의 "김서연의 활동" 제목) */
   headerCenter?: React.ReactNode
   /** 화면 전체 배경 이미지 URL (예: 내 활동 열기구 배경) */
   backgroundImage?: string

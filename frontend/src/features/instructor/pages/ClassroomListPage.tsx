@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { listClassrooms, type ClassroomStatus } from '../api'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { listChildren, listClassrooms, type ClassroomStatus } from '../api'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
 import { SearchInput } from '../components/SearchInput'
@@ -23,10 +23,8 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'ARCHIVED', label: '보관' },
 ]
 
-// 시안(T-CLS-01)의 열 중 목록 API가 아직 주지 않는 값. 데이터가 생기면 "—" 대신 값을 채운다.
-// 시안 순서(학급명·아동 수·진행중 활동·승인 대기·상태·최근 학습)를 지키려고 상태 열 앞뒤로 나눈다.
-const PENDING_COLUMNS_BEFORE_STATUS = ['아동 수', '진행중 활동', '승인 대기']
-const PENDING_COLUMNS_AFTER_STATUS = ['최근 학습']
+// 시안(T-CLS-01)의 열 중 진행중 활동·승인 대기·최근 학습은 아직 값을 줄 API 가 없어 열을 숨긴다.
+// 빈 열이 많으면 처음 보는 강사에게 미완성으로 보이고, 대시는 0 과 구분되지 않는다. 값이 생기면 시안 순서대로 다시 넣는다.
 
 function ClassroomListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -41,6 +39,17 @@ function ClassroomListPage() {
     queryKey: ['classrooms'],
     queryFn: listClassrooms,
   })
+
+  // 목록 API 가 아동 수를 주지 않아 학급마다 아동 목록을 받아 센다. 학급 상세의 아동 목록 탭과 같은 키라 같은 수가 보인다.
+  // 담당 학급이 몇 개뿐이라 요청 수는 부담이 없다. 학급이 많아지면 목록 API 에 아동 수를 싣는 쪽으로 옮긴다.
+  const childCounts = useQueries({
+    queries: (classrooms ?? []).map((classroom) => ({
+      queryKey: ['classrooms', classroom.classId, 'children'],
+      queryFn: () => listChildren(classroom.classId),
+    })),
+    combine: (results) => results.map((result) => result.data?.length),
+  })
+  const childCountById = new Map((classrooms ?? []).map((classroom, index) => [classroom.classId, childCounts[index]]))
 
   // 담당 학급 수가 적어 전체를 받아 화면에서 거른다. 학급이 많아지면 API 의 status 조회 조건으로 옮긴다.
   const keyword = search.trim()
@@ -98,19 +107,12 @@ function ClassroomListPage() {
                   <th scope="col" className="px-2 py-2.5 font-normal">
                     학급명
                   </th>
-                  {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
-                    <th key={column} scope="col" className="px-2 py-2.5 font-normal">
-                      {column}
-                    </th>
-                  ))}
+                  <th scope="col" className="px-2 py-2.5 font-normal">
+                    아동 수
+                  </th>
                   <th scope="col" className="px-2 py-2.5 font-normal">
                     상태
                   </th>
-                  {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
-                    <th key={column} scope="col" className="px-2 py-2.5 font-normal">
-                      {column}
-                    </th>
-                  ))}
                   <th scope="col" className="px-2 py-2.5">
                     <span className="sr-only">상세</span>
                   </th>
@@ -126,19 +128,12 @@ function ClassroomListPage() {
                       className={cn(tableRowClass, 'text-[var(--instructor-text-muted)]')}
                     >
                       <td className={cn('px-2 py-3', !isArchived && 'text-[var(--instructor-text)]')}>{classroom.name}</td>
-                      {PENDING_COLUMNS_BEFORE_STATUS.map((column) => (
-                        <td key={column} className="px-2 py-3 text-[var(--instructor-text-disabled)]">
-                          —
-                        </td>
-                      ))}
+                      <td className="px-2 py-3">
+                        <ChildCount count={childCountById.get(classroom.classId)} />
+                      </td>
                       <td className="px-2 py-3">
                         <ClassroomStatusBadge status={classroom.status} />
                       </td>
-                      {PENDING_COLUMNS_AFTER_STATUS.map((column) => (
-                        <td key={column} className="px-2 py-3 text-[var(--instructor-text-disabled)]">
-                          —
-                        </td>
-                      ))}
                       <td className="px-2 py-3 text-right">
                         <Link
                           to={`/classrooms/${classroom.classId}`}
@@ -163,6 +158,22 @@ function ClassroomListPage() {
         </>
       )}
     </InstructorLayout>
+  )
+}
+
+/**
+ * 아동 수 칸. 아직 못 받았으면(불러오는 중·실패) 0 과 헷갈리지 않게 대시를 두고, 화면 낭독기에는 "확인 중"으로 읽힌다.
+ * 활동 만들기 화면처럼 대시 자체는 aria-hidden 이다.
+ */
+function ChildCount({ count }: { count: number | undefined }) {
+  if (count !== undefined) return <>{count}</>
+  return (
+    <>
+      <span aria-hidden className="text-[var(--instructor-text-disabled)]">
+        —
+      </span>
+      <span className="sr-only">확인 중</span>
+    </>
   )
 }
 

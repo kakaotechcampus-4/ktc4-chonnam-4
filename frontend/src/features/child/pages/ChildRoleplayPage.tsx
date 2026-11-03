@@ -20,7 +20,6 @@ import {
   type RoleplaySpeaker,
 } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
-import { withNameSuffix } from "../lib/childName"
 
 type ThreadMessage = {
   id: string
@@ -82,7 +81,7 @@ function RoleplayWrapUpView({
         <div className="flex flex-col gap-1">
           <p className="font-child-display font-extrabold text-3xl text-[var(--child-text)]">정말 잘 이야기했어!</p>
           <p className="text-lg text-[var(--child-text-muted)]">
-            친구 마음을 헤아려서 말해준 게 {withNameSuffix(childName)}는 참 멋있었어
+            {childName}, 친구 마음을 헤아려서 말해준 게 참 멋있었어
           </p>
         </div>
         {lastReply ? (

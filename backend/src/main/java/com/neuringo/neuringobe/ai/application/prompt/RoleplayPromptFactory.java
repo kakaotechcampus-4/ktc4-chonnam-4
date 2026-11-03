@@ -172,7 +172,8 @@ public final class RoleplayPromptFactory {
                         analysis,
                         failedIds,
                         failedTexts,
-                        MAX_RESPONSE_LENGTH));
+                        MAX_RESPONSE_LENGTH,
+                        input.state().turnCount() >= input.state().maximumTurnCount()));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */

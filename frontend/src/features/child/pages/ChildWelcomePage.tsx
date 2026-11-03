@@ -8,7 +8,6 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import { getMyActivities, myActivitiesQueryKey } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
-import { withVocative } from "../lib/childName"
 
 /**
  * C-ACC-02 본인 활동 확인 (VS-003).
@@ -37,7 +36,7 @@ function ChildWelcomePage() {
         <section className="flex flex-col items-center gap-3 text-center">
           <Character name="turtle" size="lg" mood="wave" />
           <p className="font-child-display font-extrabold text-3xl break-keep text-[var(--child-text)]">
-            안녕, {withVocative(childName)}!
+            안녕, {childName}!
           </p>
           <p className="text-lg text-[var(--child-text-muted)]">오늘도 만나서 반가워</p>
         </section>

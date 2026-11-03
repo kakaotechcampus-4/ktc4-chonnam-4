@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { CHILD_GIVEN_NAME, enterChild, MOCK_ACTIVITY } from "./support/child.js"
+import { enterChild, MOCK_ACTIVITY } from "./support/child.js"
 
 // 아동 흐름 종단 검사(VS-003, 07 "Chrome PC·태블릿에서 기본 화면이 열림"). playwright.config.ts 의 chromium(PC)·tablet
 // 두 프로젝트에서 같은 흐름을 돈다. 입장·사용 종료는 실제 API 이고, 코드는 강사 API 로 발급받는다(support/child.ts).
@@ -12,11 +12,11 @@ test("아동이 코드로 입장해 퀴즈 화면까지 가고, 사용 종료하
   await page.goto("/")
   await page.getByRole("link", { name: "아동 화면 진입" }).click()
   await expect(page).toHaveURL(/\/child$/)
-  await enterChild(page)
+  const child = await enterChild(page)
 
   await page.getByRole("button", { name: "시작할래요!" }).click()
   await expect(page).toHaveURL(/\/child\/activities$/)
-  await expect(page.getByText(`${CHILD_GIVEN_NAME}이의 활동`)).toBeVisible()
+  await expect(page.getByText(`${child.name}의 활동`)).toBeVisible()
 
   await page.getByRole("button", { name: /친구 마음 알아보기/ }).click()
   await expect(page).toHaveURL(new RegExp(`/child/activities/${MOCK_ACTIVITY}$`))
@@ -44,9 +44,9 @@ for (const path of [
 }
 
 test("사용 종료한 뒤 뒤로 가기를 눌러도 활동 화면이 다시 열리지 않는다", async ({ page }) => {
-  await enterChild(page)
+  const child = await enterChild(page)
   await page.getByRole("button", { name: "시작할래요!" }).click()
-  await expect(page.getByText(`${CHILD_GIVEN_NAME}이의 활동`)).toBeVisible()
+  await expect(page.getByText(`${child.name}의 활동`)).toBeVisible()
   await page.getByRole("button", { name: "사용 종료" }).click()
   // 사람처럼 코드 입력 화면이 뜬 것을 본 뒤에 뒤로 간다. 사용 종료 직후 몇 ms 안에 누르면 가드의 이동과 겹친다.
   await expect(page).toHaveURL(/\/child$/)
@@ -56,7 +56,7 @@ test("사용 종료한 뒤 뒤로 가기를 눌러도 활동 화면이 다시 �
 
   await expect(page).toHaveURL(/\/child$/)
   await expect(page.getByText("입장 코드를 입력해줘!")).toBeVisible()
-  await expect(page.getByText(`${CHILD_GIVEN_NAME}이의 활동`)).toHaveCount(0)
+  await expect(page.getByText(`${child.name}의 활동`)).toHaveCount(0)
 })
 
 test("활동 중 창을 닫으려 하면 확인창이 뜬다", async ({ page }) => {

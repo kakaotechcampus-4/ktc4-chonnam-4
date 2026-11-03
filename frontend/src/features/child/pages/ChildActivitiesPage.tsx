@@ -9,7 +9,6 @@ import { NextActivityDialog } from "../components/NextActivityDialog"
 import { ErrorState, LoadingState, StateDialog } from "../components/state"
 import { getMyActivities, myActivitiesQueryKey, type ChildActivityStatus } from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
-import { withNameSuffix } from "../lib/childName"
 
 const BALLOON_COLOR_ORDER: BalloonColor[] = ["pink", "yellow", "purple"]
 // 원본 시안처럼 가운데 열기구가 가장 높이 뜨도록 높이를 번갈아 준다. 한 줄로 쌓이는 모바일에서는 주지 않는다.
@@ -89,7 +88,7 @@ function ChildActivitiesPage() {
     <ChildLayout
       headerCenter={
         <p className="rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-6 py-2 font-child-display font-extrabold text-2xl text-[var(--child-text)] shadow-sm">
-          {withNameSuffix(childName)}의 활동
+          {childName}의 활동
         </p>
       }
       backgroundImage={homeBackgroundUrl}
