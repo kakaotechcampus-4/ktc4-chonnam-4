@@ -2,8 +2,8 @@
 
 - Base: `kakaotechcampus-4/ktc4-chonnam-4:develop`
 - Head: `pado0711/ktc4-chonnam-4:feat/roleplay-support-adjustment`
-- 기준: `ccfdff0`, 검증 대상 `c14a1c1` (제품 코드 `2d307bd`)
-- 상태: 로컬 초안, 작업 브랜치 push·PR 생성 전
+- 기준: 원본 develop `ccfdff0`; PR 생성 시 브랜치의 최신 HEAD를 확인한다.
+- 상태: fork 브랜치 게시, PR 미생성
 
 ## 연결 Task
 
