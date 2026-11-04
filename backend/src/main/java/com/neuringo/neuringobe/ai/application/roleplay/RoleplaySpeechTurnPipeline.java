@@ -120,7 +120,10 @@ public final class RoleplaySpeechTurnPipeline {
                         trace.turnId(),
                         null,
                         ready.candidate().candidateId());
-        SynthesizedSpeech speech = synthesize(synthesisTrace, ready.candidate().text(), deadline);
+        // 괄호 속 행동 묘사는 화면에만 보이고 소리로 읽지 않는다. 읽을 말이 없으면 음성을 만들지 않는다.
+        String spoken = SpokenText.of(ready.candidate().text());
+        SynthesizedSpeech speech =
+                spoken.isEmpty() ? null : synthesize(synthesisTrace, spoken, deadline);
         return new RoleplayTurnResult.SpokenReady(ready, canonical, speech);
     }
 

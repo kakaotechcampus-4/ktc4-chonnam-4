@@ -54,6 +54,8 @@ class RoleplaySpeechTurnPipelineTest {
     private boolean invalid;
     private boolean rejectCandidate;
     private String expireAt;
+    private String candidateText = "친구는 어떤 기분일까?";
+    private String candidateType = "GUIDING_QUESTION";
 
     @Test
     void voicePipelineReturnsCanonicalInputAndAudioForTheSameApprovedCandidate() {
@@ -207,6 +209,29 @@ class RoleplaySpeechTurnPipelineTest {
     }
 
     @Test
+    void stageDirectionsInParenthesesAreShownButNotSpoken() {
+        candidateText = "(훌쩍이며) 친구는 어떤 기분일까?";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(훌쩍이며) 친구는 어떤 기분일까?");
+        assertThat(ttsRequests)
+                .singleElement()
+                .extracting(SpeechSynthesisRequest::text)
+                .isEqualTo("친구는 어떤 기분일까?");
+        assertThat(result.speech()).isNotNull();
+    }
+
+    @Test
+    void aLineWithOnlyStageDirectionsHasNoSpeech() {
+        candidateText = "(고개를 끄덕이며)";
+        candidateType = "ANSWER_REVEAL";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(고개를 끄덕이며)");
+        assertThat(ttsRequests).isEmpty();
+        assertThat(calls).doesNotContain("TTS");
+        assertThat(result.speech()).isNull();
+    }
+
+    @Test
     void candidateRejectedByEvaluatorNeverReachesTts() {
         rejectCandidate = true;
         assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.Recovery.class);
@@ -278,8 +303,8 @@ class RoleplaySpeechTurnPipelineTest {
                                                                 "S1");
                                                 case RESPONSE_GENERATION ->
                                                         RoleplayFixtures.candidateJson(
-                                                                        "친구는 어떤 기분일까?",
-                                                                        "GUIDING_QUESTION")
+                                                                        candidateText,
+                                                                        candidateType)
                                                                 .replace(
                                                                         RoleplayFixtures
                                                                                 .CANDIDATE_ID
