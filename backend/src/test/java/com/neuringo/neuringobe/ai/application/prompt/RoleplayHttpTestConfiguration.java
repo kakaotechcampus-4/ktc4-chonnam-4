@@ -24,6 +24,11 @@ import tools.jackson.databind.ObjectMapper;
 /** 외부 통신 없이 음성 요청을 검증하는 테스트용 제공자다. */
 @TestConfiguration(proxyBeanMethods = false)
 public class RoleplayHttpTestConfiguration {
+    @Bean
+    public RoleplayAudioInspector roleplayAudioInspector() {
+        return (file, format, deadline) -> deadline.requireActive();
+    }
+
     public static class State {
         public final List<String> calls = new CopyOnWriteArrayList<>();
         public final List<LlmRequest> llmRequests = new CopyOnWriteArrayList<>();
@@ -31,7 +36,16 @@ public class RoleplayHttpTestConfiguration {
                 new ConcurrentHashMap<>();
         private final Queue<String> candidateTexts = new ConcurrentLinkedQueue<>();
         private final Queue<String> evaluations = new ConcurrentLinkedQueue<>();
-        public boolean unavailable, unsafe, lowConfidence, blockStt;
+        public boolean unavailable, unsafe, lowConfidence, blockStt, blockInput;
+        public boolean noSpeech, unknownConfidence, invalidInput, inspectionUnavailable;
+        public boolean inspectionTooLong;
+        public String inputFailure;
+        public RoleplayInputProcessor.Assessment inputAssessment =
+                new RoleplayInputProcessor.Assessment(0.93, true, true, false);
+        public int sttFailuresRemaining;
+        public Double sttConfidence;
+        public com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput.InputQuality
+                lastInputQuality;
         public boolean activityGoalAchieved, goalDecisionUnavailable, goalCalledInTransaction;
         public boolean useServerGoalEvaluator, changeContextAfterSpeech;
         public GoalObservationInput contextObservations;
@@ -69,7 +83,18 @@ public class RoleplayHttpTestConfiguration {
             unavailable = false;
             unsafe = false;
             lowConfidence = false;
+            noSpeech = false;
+            inspectionUnavailable = false;
+            inspectionTooLong = false;
+            unknownConfidence = false;
+            invalidInput = false;
+            inputFailure = null;
+            inputAssessment = new RoleplayInputProcessor.Assessment(0.93, true, true, false);
+            sttFailuresRemaining = 0;
+            sttConfidence = null;
+            lastInputQuality = null;
             blockStt = false;
+            blockInput = false;
             activityGoalAchieved = false;
             goalDecisionUnavailable = false;
             goalCalledInTransaction = false;
@@ -97,6 +122,7 @@ public class RoleplayHttpTestConfiguration {
             State state, ServerRoleplayActivityGoalEvaluator server) {
         return (command, approved, deadline) -> {
             state.goalDecisions.incrementAndGet();
+            state.lastInputQuality = command.inputQuality();
             state.goalCalledInTransaction =
                     org.springframework.transaction.support.TransactionSynchronizationManager
                             .isActualTransactionActive();
@@ -185,9 +211,27 @@ public class RoleplayHttpTestConfiguration {
     RoleplayInputProcessor httpInput(State state) {
         return text -> {
             state.calls.add("INPUT");
+            if ("EXCEPTION".equals(state.inputFailure))
+                throw new IllegalStateException("synthetic-private-input-and-provider-detail");
+            if ("NULL".equals(state.inputFailure)) return null;
+            if ("UNAVAILABLE".equals(state.inputFailure))
+                return new RoleplayInputProcessor.Unavailable();
+            if (state.blockInput) {
+                state.entered.countDown();
+                try {
+                    if (!state.release.await(5, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Synthetic input release timed out");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Synthetic input interrupted");
+                }
+            }
             return state.unsafe
                     ? new RoleplayInputProcessor.Unsafe()
-                    : new RoleplayInputProcessor.Accepted("친구가 울고 있어");
+                    : state.invalidInput
+                            ? new RoleplayInputProcessor.Invalid()
+                            : new RoleplayInputProcessor.Accepted(
+                                    "친구가 울고 있어", state.inputAssessment);
         };
     }
 

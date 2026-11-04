@@ -13,7 +13,8 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 @Order(-1)
-@RestControllerAdvice(assignableTypes = RoleplayVoiceController.class)
+@RestControllerAdvice(
+        assignableTypes = {RoleplayVoiceController.class, RoleplayTextController.class})
 @ConditionalOnProperty(name = "roleplay.http.enabled", havingValue = "true")
 public class RoleplayVoiceErrorAdvice {
     @ExceptionHandler(RoleplayUploadSpoolFactory.Rejected.class)
@@ -36,6 +37,16 @@ public class RoleplayVoiceErrorAdvice {
                                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
                                     "VOICE_UPLOAD_FORMAT",
                                     "지원하지 않는 음성 형식입니다.");
+                    case INVALID_AUDIO ->
+                            new ApiException(
+                                    HttpStatus.BAD_REQUEST,
+                                    "VOICE_UPLOAD_INVALID",
+                                    "음성 파일을 확인할 수 없습니다.");
+                    case TOO_LONG ->
+                            new ApiException(
+                                    HttpStatus.BAD_REQUEST,
+                                    "VOICE_UPLOAD_TOO_LONG",
+                                    "음성 파일 길이가 허용 범위를 초과했습니다.");
                 };
         return response(error, request);
     }

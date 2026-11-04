@@ -1,13 +1,11 @@
 package com.neuringo.neuringobe.roleplay.controller;
 
-import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ApiResponse;
-import com.neuringo.neuringobe.roleplay.config.RoleplayHttpProperties;
 import com.neuringo.neuringobe.roleplay.dto.RoleplayTurnResponse;
 import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceInputService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
@@ -20,12 +18,9 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/v1/roleplay-sessions")
 public class RoleplayVoiceController {
     private final RoleplayVoiceInputService service;
-    private final Duration budget;
 
-    public RoleplayVoiceController(
-            RoleplayVoiceInputService service, RoleplayHttpProperties properties) {
+    public RoleplayVoiceController(RoleplayVoiceInputService service) {
         this.service = service;
-        this.budget = properties.turnBudget();
     }
 
     @PostMapping(
@@ -35,9 +30,10 @@ public class RoleplayVoiceController {
             @PathVariable UUID sessionId,
             @RequestHeader("Idempotency-Key") UUID key,
             @RequestPart("audio") MultipartFile audio,
-            Authentication authentication)
+            Authentication authentication,
+            HttpServletRequest request)
             throws IOException {
-        var deadline = RoleplayTurnDeadline.start(budget);
+        var deadline = RoleplayUploadDeadlineFilter.deadline(request);
         var response =
                 service.submitVoice(
                         authentication,
@@ -46,6 +42,11 @@ public class RoleplayVoiceController {
                         audio.getInputStream(),
                         audio.getContentType(),
                         deadline);
+        return response(response);
+    }
+
+    static ResponseEntity<ApiResponse<RoleplayTurnResponse>> response(
+            RoleplayTurnResponse response) {
         HttpStatus status =
                 switch (response.status()) {
                     case CONFLICT ->

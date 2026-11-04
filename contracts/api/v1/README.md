@@ -7,12 +7,12 @@
 
 ## 현재 제공 범위
 
-이 통합 작업 브랜치 기준 57개 API ID 중 **구현30개 · 조건부 구현1개 · 설계24개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다.
+S6-JIN-01 입력 흐름 브랜치 기준 57개 API ID 중 **구현30개 · 조건부 구현2개 · 설계23개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성이며, 공유 TypeScript 예제와 FE 연동은 아직 현재 서버 계약으로 동기화되지 않았습니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
 | 구현 | 기준 커밋에 Controller/DTO가 존재 | endpoints.ts. 환경별 주소·쿠키/권한 확인 필요 |
-| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | endpoints.ts의 음성 입력. allowConditional 기본 차단 |
+| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | 음성·텍스트 입력. 음성 예제는 allowConditional 기본 차단, 텍스트 예제는 구 계약으로 미동기화 |
 | 설계 | 공개 Controller 없음. 경로/필드/상태는 제안 | draft-endpoints.ts, allowDrafts 기본 차단 |
 | 미제공 | 과거 공개 문항 풀 API가 제거됨. ID만 추적용 유지 | 함수 없음. 호출하지 않음 |
 
@@ -112,7 +112,7 @@
 | [API-RPL-02 · 역할극 세션·체크포인트 조회](./roleplay/get-roleplay-session.md) | GET | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | getRoleplaySession |
 | [API-RPL-03 · 역할극 일시정지·재개](./roleplay/update-roleplay-session.md) | PATCH | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | updateRoleplaySession |
 | [API-RPL-04 · 역할극 음성 입력 제출](./roleplay/submit-voice-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/voice-inputs` | 조건부 구현 | submitVoiceInput |
-| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 설계 | submitTextInput |
+| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 조건부 구현 | submitTextInput 예제는 미동기화 |
 | [API-RPL-06 · 역할극 처리 결과·검증 응답 조회](./roleplay/get-roleplay-turn.md) | GET | `/api/v1/turns/{turnId}` | 설계 | getRoleplayTurn |
 | [API-RPL-07 · 역할극 실제 전달 대화 이력 조회](./roleplay/list-roleplay-turns.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/turns` | 설계 | listRoleplayTurns |
 | [API-RPL-08 · 강사용 목표별 관찰 결과 조회](./roleplay/list-roleplay-goal-statuses.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/goal-statuses` | 설계 | listRoleplayGoalStatuses |

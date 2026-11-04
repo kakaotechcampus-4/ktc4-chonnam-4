@@ -23,6 +23,7 @@ public final class RoleplayTurnResponseMapper {
         Objects.requireNonNull(result);
         return switch (result) {
             case RoleplayCheckpointedTurnExecutor.Success success -> mapSuccess(success);
+            case RoleplayCheckpointedTurnExecutor.InputRecovery input -> mapInputRecovery(input);
             case RoleplayCheckpointedTurnExecutor.Recovery recovery ->
                     mapRecovery(recovery.outcome());
             case RoleplayCheckpointedTurnExecutor.Conflict ignored ->
@@ -34,6 +35,20 @@ public final class RoleplayTurnResponseMapper {
                             RoleplayDeliveryStatus.BUSY,
                             RoleplayDeliveryAction.RESUBMIT_SAME_REQUEST);
         };
+    }
+
+    private RoleplayTurnResponse mapInputRecovery(
+            RoleplayCheckpointedTurnExecutor.InputRecovery input) {
+        var recovery = mapRecovery(input.outcome());
+        return new RoleplayTurnResponse(
+                recovery.status(),
+                input.textRecommended()
+                        ? RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE
+                        : recovery.action(),
+                recovery.messages(),
+                null,
+                null,
+                input.replayed());
     }
 
     private RoleplayTurnResponse mapSuccess(RoleplayCheckpointedTurnExecutor.Success success) {
@@ -84,6 +99,8 @@ public final class RoleplayTurnResponseMapper {
             throw new IllegalArgumentException("Recovery must not contain an approved candidate");
         return switch (recovery) {
             case RoleplayTurnOutcome.InputRetry input ->
+                    recoveryResponse(input.notice().text(), input.action());
+            case RoleplayTurnOutcome.InputCheckRetry input ->
                     recoveryResponse(input.notice().text(), input.action());
             case RoleplayTurnOutcome.Guidance guidance ->
                     recoveryResponse(guidance.notice().text(), guidance.action());

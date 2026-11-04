@@ -94,6 +94,22 @@ public sealed interface RoleplayTurnOutcome {
         }
     }
 
+    record InputCheckRetry(ApprovedNotice notice) implements Recovery {
+        public InputCheckRetry {
+            Objects.requireNonNull(notice);
+        }
+
+        @Override
+        public Action action() {
+            return Action.RETRY_TURN;
+        }
+
+        @Override
+        public Retention retention() {
+            return Retention.DO_NOT_STORE;
+        }
+    }
+
     record InputNoticeUnavailable() implements Recovery {
         @Override
         public Action action() {

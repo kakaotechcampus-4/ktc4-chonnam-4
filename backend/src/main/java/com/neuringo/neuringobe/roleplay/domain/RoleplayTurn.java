@@ -6,7 +6,11 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "roleplay_turn")
@@ -66,6 +70,10 @@ public class RoleplayTurn {
     @Column(name = "canonical_utterance", columnDefinition = "text")
     private String canonicalUtterance;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "input_quality", columnDefinition = "jsonb")
+    private Map<String, Object> inputQuality;
+
     @Column(name = "checkpoint_version", nullable = false)
     private long checkpointVersion;
 
@@ -96,6 +104,23 @@ public class RoleplayTurn {
         }
         responseText = command.responseText();
         canonicalUtterance = command.canonicalUtterance();
+        var quality = command.inputQuality();
+        if (quality != null) {
+            inputQuality = new LinkedHashMap<>();
+            inputQuality.put("input_type", quality.inputType());
+            inputQuality.put("status", "ANALYZABLE");
+            inputQuality.put("stt_confidence", quality.sttConfidence());
+            inputQuality.put("stt_confidence_threshold", quality.sttConfidenceThreshold());
+            inputQuality.put("normalization_confidence", quality.normalizationConfidence());
+            inputQuality.put("meaning_preserved", true);
+            inputQuality.put("personal_information_masked", quality.personalInformationMasked());
+            if (quality.recoverySnapshot() != null) {
+                inputQuality.put(
+                        "low_confidence_retry_count", quality.recoverySnapshot().failureCount());
+                inputQuality.put(
+                        "text_input_suggested", quality.recoverySnapshot().textRecommended());
+            }
+        }
         checkpointVersion = version;
         committedAt = now;
     }

@@ -15,6 +15,11 @@ public final class RoleplayTurnOutcomeResolver {
         this.notices = Objects.requireNonNull(notices);
     }
 
+    /** 공통 재입력 안내를 만들며 실패 집계와 학습 판정은 호출 경계에서 처리한다. */
+    public RoleplayTurnOutcome.Recovery inputRecovery() {
+        return new RoleplayTurnOutcome.InputRetry(notices.find(Kind.INPUT_RECOVERY).orElseThrow());
+    }
+
     public RoleplayTurnOutcome resolve(RoleplayTurnResult result) {
         Objects.requireNonNull(result);
         return switch (result) {
@@ -23,6 +28,12 @@ public final class RoleplayTurnOutcomeResolver {
                             approved(spoken.ready()), spoken.canonicalUtterance(), spoken.speech());
             case RoleplayTurnResult.Ready ready -> approved(ready);
             case RoleplayTurnResult.InputRejected rejected -> inputRetry(rejected);
+            case RoleplayTurnResult.InputUnsafe ignored -> safetyStop();
+            case RoleplayTurnResult.InputCheckUnavailable ignored ->
+                    new RoleplayTurnOutcome.InputCheckRetry(
+                            notices.find(Kind.SAFETY_CHECK_ERROR)
+                                    .orElseGet(
+                                            () -> notices.find(Kind.INPUT_RECOVERY).orElseThrow()));
             case RoleplayTurnResult.TimedOut ignored ->
                     guidance(Kind.TIMEOUT, Action.REQUEST_NEW_INPUT);
             case RoleplayTurnResult.RecoveryRequired recovery -> recover(recovery);
@@ -41,13 +52,23 @@ public final class RoleplayTurnOutcomeResolver {
     }
 
     private RoleplayTurnOutcome.Recovery inputRetry(RoleplayTurnResult.InputRejected rejected) {
+        if (switch (rejected.reason()) {
+            case EMPTY_UPLOAD,
+                            UNSUPPORTED_AUDIO,
+                            INVALID_AUDIO,
+                            AUDIO_INSPECTION_UNAVAILABLE,
+                            UPLOAD_TOO_LARGE,
+                            AUDIO_TOO_LONG ->
+                    true;
+            default -> false;
+        }) return inputRecovery();
         Kind kind =
                 rejected.reason() == RoleplayTurnResult.InputFailure.TRANSCRIPTION_FAILED
                         ? Kind.SAFE_FALLBACK
                         : Kind.INPUT_QUALITY;
         return notices.find(kind)
                 .<RoleplayTurnOutcome.Recovery>map(RoleplayTurnOutcome.InputRetry::new)
-                .orElseGet(RoleplayTurnOutcome.InputNoticeUnavailable::new);
+                .orElseGet(this::inputRecovery);
     }
 
     private RoleplayTurnOutcome.Recovery recover(RoleplayTurnResult.RecoveryRequired recovery) {
@@ -80,7 +101,11 @@ public final class RoleplayTurnOutcomeResolver {
         return notices.find(kind)
                 .<RoleplayTurnOutcome.Recovery>map(
                         notice -> new RoleplayTurnOutcome.Guidance(notice, action))
-                .orElseGet(() -> new RoleplayTurnOutcome.NoticeUnavailable(action));
+                .orElseGet(
+                        () ->
+                                action == Action.REQUEST_NEW_INPUT
+                                        ? inputRecovery()
+                                        : new RoleplayTurnOutcome.NoticeUnavailable(action));
     }
 
     private RoleplayTurnOutcome.Recovery safetyStop() {

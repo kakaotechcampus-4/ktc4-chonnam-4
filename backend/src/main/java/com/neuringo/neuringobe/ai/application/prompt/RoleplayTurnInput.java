@@ -103,7 +103,62 @@ public record RoleplayTurnInput(
         }
     }
 
-    public record LearnerTurn(UUID turnId, String canonicalUtterance) {
+    public record InputRecoverySnapshot(int failureCount, boolean textRecommended) {
+        public InputRecoverySnapshot {
+            if (failureCount < 0) throw new IllegalArgumentException("음성 실패 횟수는 음수일 수 없습니다.");
+        }
+    }
+
+    public record InputQuality(
+            String inputType,
+            Double sttConfidence,
+            Double sttConfidenceThreshold,
+            double normalizationConfidence,
+            boolean personalInformationMasked,
+            InputRecoverySnapshot recoverySnapshot) {
+        public InputQuality(
+                String inputType,
+                Double sttConfidence,
+                Double sttConfidenceThreshold,
+                double normalizationConfidence,
+                boolean personalInformationMasked) {
+            this(
+                    inputType,
+                    sttConfidence,
+                    sttConfidenceThreshold,
+                    normalizationConfidence,
+                    personalInformationMasked,
+                    null);
+        }
+
+        public InputQuality {
+            if (!Double.isFinite(normalizationConfidence)
+                    || normalizationConfidence < 0
+                    || normalizationConfidence > 1)
+                throw new IllegalArgumentException("정제 신뢰도가 올바르지 않습니다.");
+            if ("VOICE".equals(inputType)) {
+                if (sttConfidence == null
+                        || sttConfidenceThreshold == null
+                        || !Double.isFinite(sttConfidence)
+                        || !Double.isFinite(sttConfidenceThreshold)
+                        || sttConfidence > 1
+                        || sttConfidenceThreshold < 0
+                        || sttConfidenceThreshold > 1
+                        || sttConfidence <= sttConfidenceThreshold)
+                    throw new IllegalArgumentException("음성 입력의 신뢰도 근거가 올바르지 않습니다.");
+            } else if (!"TEXT".equals(inputType)
+                    || sttConfidence != null
+                    || sttConfidenceThreshold != null) {
+                throw new IllegalArgumentException("입력 방식과 신뢰도 근거가 일치하지 않습니다.");
+            }
+        }
+    }
+
+    public record LearnerTurn(UUID turnId, String canonicalUtterance, InputQuality inputQuality) {
+
+        public LearnerTurn(UUID turnId, String canonicalUtterance) {
+            this(turnId, canonicalUtterance, null);
+        }
 
         public LearnerTurn {
             Objects.requireNonNull(turnId, "turnId must not be null");

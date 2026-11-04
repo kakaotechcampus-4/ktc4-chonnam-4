@@ -467,7 +467,9 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         var turn = UUID.randomUUID();
         var factory =
                 new RoleplayUploadSpoolFactory(
-                        uploadDirectory, new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)));
+                        uploadDirectory,
+                        new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)),
+                        (file, format, limit) -> limit.requireActive());
         var deadline = RoleplayTurnDeadline.start();
         var audio =
                 factory.create(
@@ -566,17 +568,17 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     service(
                             workers,
                             new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
-            assertThatThrownBy(
-                            () ->
-                                    service.submitVoice(
+            assertThat(
+                            service.submitVoice(
                                             auth(f),
                                             f.activity,
                                             f.session,
                                             UUID.randomUUID(),
                                             source,
                                             "audio/webm",
-                                            RoleplayTurnDeadline.start()))
-                    .isInstanceOf(RoleplayUploadSpoolFactory.Rejected.class);
+                                            RoleplayTurnDeadline.start())
+                                    .status())
+                    .isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
             assertThat(source.closes).isEqualTo(1);
             assertThat(calls).isEmpty();
             assertThat(count(f)).isZero();
@@ -755,7 +757,9 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         return new RoleplayVoiceInputService(
                 scopes,
                 new RoleplayUploadSpoolFactory(
-                        uploadDirectory, new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM))),
+                        uploadDirectory,
+                        new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)),
+                        (file, format, limit) -> limit.requireActive()),
                 executor(workers, this::approved),
                 mapper,
                 new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of())));
@@ -910,7 +914,9 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                         },
                         text -> {
                             calls.add("INPUT");
-                            return new RoleplayInputProcessor.Accepted("친구가 울고 있어");
+                            return new RoleplayInputProcessor.Accepted(
+                                    "친구가 울고 있어",
+                                    new RoleplayInputProcessor.Assessment(0.93, true, true, false));
                         },
                         new RoleplayPromptFactory(mapper, null),
                         new StructuredLlmExecutor(

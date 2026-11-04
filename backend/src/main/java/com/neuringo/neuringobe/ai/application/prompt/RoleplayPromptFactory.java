@@ -274,6 +274,31 @@ public final class RoleplayPromptFactory {
         learnerTurn.put("turn_id", input.learnerTurn().turnId());
         learnerTurn.put("canonical_utterance", input.learnerTurn().canonicalUtterance());
 
+        var quality = input.learnerTurn().inputQuality();
+        if (quality != null) {
+            learnerTurn.put("input_type", quality.inputType());
+            Map<String, Object> qualitySection = new LinkedHashMap<>();
+            qualitySection.put("status", "ANALYZABLE");
+            qualitySection.put("stt_confidence", quality.sttConfidence());
+            qualitySection.put("stt_confidence_threshold", quality.sttConfidenceThreshold());
+            if (quality.recoverySnapshot() != null) {
+                qualitySection.put(
+                        "low_confidence_retry_count", quality.recoverySnapshot().failureCount());
+                qualitySection.put(
+                        "text_input_suggested", quality.recoverySnapshot().textRecommended());
+            }
+            qualitySection.put("normalization_confidence", quality.normalizationConfidence());
+            qualitySection.put("meaning_preserved", true);
+            learnerTurn.put("input_quality", qualitySection);
+            learnerTurn.put(
+                    "safety_result",
+                    Map.of(
+                            "status",
+                            "SAFE",
+                            "personal_information_masked",
+                            quality.personalInformationMasked()));
+        }
+
         Map<String, Object> message = new LinkedHashMap<>();
         message.put("scenario", scenario);
         message.put("state", stateSection);

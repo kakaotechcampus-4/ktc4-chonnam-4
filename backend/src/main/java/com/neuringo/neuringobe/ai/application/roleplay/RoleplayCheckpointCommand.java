@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayCodes;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -27,6 +28,7 @@ public final class RoleplayCheckpointCommand {
     private final String canonicalUtterance;
     private final String approvedContextFingerprint;
     private final RoleplayInputContext inputContext;
+    private final RoleplayTurnInput.InputQuality inputQuality;
 
     private RoleplayCheckpointCommand(
             AiTraceContext trace,
@@ -71,6 +73,7 @@ public final class RoleplayCheckpointCommand {
         this.canonicalUtterance = result.canonicalUtterance();
         this.approvedContextFingerprint = result.approvedContextFingerprint();
         this.inputContext = result.inputContext();
+        this.inputQuality = result.inputQuality();
     }
 
     public static RoleplayCheckpointCommand fromApproved(
@@ -162,6 +165,10 @@ public final class RoleplayCheckpointCommand {
 
     public RoleplayInputContext inputContext() {
         return inputContext;
+    }
+
+    public RoleplayTurnInput.InputQuality inputQuality() {
+        return inputQuality;
     }
 
     @Override
