@@ -214,6 +214,11 @@ type RequestOptions = {
   headers?: Record<string, string>
 }
 
+// API 명세(contracts/api/v1 의 각 API 문서 "Headers·쿠키" 표)의 공통 헤더. 모든 요청은 공통 envelope(JSON)을 받겠다고 알리고,
+// JSON 본문은 charset 을 밝혀 보낸다. 경로의 ID 는 명세 예제(examples/endpoints.ts)처럼 encodeURIComponent 로 넣는다.
+const JSON_TYPE = 'application/json'
+const JSON_BODY_TYPE = 'application/json; charset=utf-8'
+
 type CsrfToken = {
   headerName: string
   token: string
@@ -222,7 +227,7 @@ type CsrfToken = {
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 재사용하지 않고 변경 요청 직전에 받아온다.
 // 서버가 헤더 이름도 함께 내려주므로 프론트에 하드코딩하지 않는다.
 async function fetchCsrfToken(signal: AbortSignal): Promise<CsrfToken> {
-  const res = await send(`${API_BASE_URL}/csrf`, { credentials: 'include', signal })
+  const res = await send(`${API_BASE_URL}/csrf`, { credentials: 'include', headers: { Accept: JSON_TYPE }, signal })
   return parseApiResponse<CsrfToken>(res)
 }
 
@@ -232,7 +237,7 @@ function readRequest<T>(path: string): Promise<T> {
     // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
     const res = await send(`${API_BASE_URL}${path}`, {
       credentials: 'include',
-      headers: authHeaders(session),
+      headers: { Accept: JSON_TYPE, ...authHeaders(session) },
       signal,
     })
     redirectToLoginOnUnauthorized(res, session)
@@ -260,7 +265,8 @@ function writeRequest<T>(
       method,
       credentials: 'include',
       headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        Accept: JSON_TYPE,
+        ...(body === undefined ? {} : { 'Content-Type': JSON_BODY_TYPE }),
         ...headers,
         [csrf.headerName]: csrf.token,
         ...authHeaders(session),
@@ -339,39 +345,39 @@ export function createClassroom(name: string): Promise<Classroom> {
 }
 
 export function getClassroom(classId: string): Promise<Classroom> {
-  return readRequest<Classroom>(`/classrooms/${classId}`)
+  return readRequest<Classroom>(`/classrooms/${encodeURIComponent(classId)}`)
 }
 
 /** 학급명만 고친다. */
 export function updateClassroom(classId: string, name: string): Promise<Classroom> {
-  return writeRequest<Classroom>('PATCH', `/classrooms/${classId}`, { name })
+  return writeRequest<Classroom>('PATCH', `/classrooms/${encodeURIComponent(classId)}`, { name })
 }
 
 /** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
 export function deleteClassroom(classId: string): Promise<void> {
-  return writeRequest<void>('DELETE', `/classrooms/${classId}`)
+  return writeRequest<void>('DELETE', `/classrooms/${encodeURIComponent(classId)}`)
 }
 
 export function listChildren(classId: string): Promise<Child[]> {
-  return readRequest<Child[]>(`/classrooms/${classId}/children`)
+  return readRequest<Child[]>(`/classrooms/${encodeURIComponent(classId)}/children`)
 }
 
 export function getChild(childId: string): Promise<Child> {
-  return readRequest<Child>(`/children/${childId}`)
+  return readRequest<Child>(`/children/${encodeURIComponent(childId)}`)
 }
 
 /** 아동 이름만 고친다. 학급은 옮기지 않는다. */
 export function updateChild(childId: string, displayName: string): Promise<Child> {
-  return writeRequest<Child>('PATCH', `/children/${childId}`, { displayName })
+  return writeRequest<Child>('PATCH', `/children/${encodeURIComponent(childId)}`, { displayName })
 }
 
 /** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
 export function deleteChild(childId: string): Promise<void> {
-  return writeRequest<void>('DELETE', `/children/${childId}`)
+  return writeRequest<void>('DELETE', `/children/${encodeURIComponent(childId)}`)
 }
 
 export function createChild(classId: string, displayName: string): Promise<Child> {
-  return writeRequest<Child>('POST', `/classrooms/${classId}/children`, { displayName })
+  return writeRequest<Child>('POST', `/classrooms/${encodeURIComponent(classId)}/children`, { displayName })
 }
 
 export type AccessCode = {
@@ -386,7 +392,7 @@ export type AccessCode = {
  * requestKey 는 "코드 받기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때 같은 키를 쓰면 같은 코드가 돌아온다.
  */
 export function issueChildCode(childId: string, requestKey: string): Promise<AccessCode> {
-  return writeRequest<AccessCode>('POST', `/children/${childId}/access-codes`, undefined, {
+  return writeRequest<AccessCode>('POST', `/children/${encodeURIComponent(childId)}/access-codes`, undefined, {
     headers: { 'Idempotency-Key': requestKey },
   })
 }
@@ -400,7 +406,8 @@ export type LearningGoal = {
   title: string
   situationType: string | null
   category: string | null
-  characters: Record<string, unknown>[]
+  // 서버가 정리해 저장한 등장인물. 비운 id 는 OTHER, 겹친 id 는 FRIEND_2 처럼 번호가 붙는다(API-GOAL-01).
+  characters: { id: string; role: string }[]
   requiredElements: string[]
   forbiddenExpressions: string[]
   contentHash: string
@@ -418,11 +425,11 @@ export type LearningGoalInput = {
 }
 
 export function listLearningGoals(childId: string): Promise<LearningGoal[]> {
-  return readRequest<LearningGoal[]>(`/children/${childId}/learning-goals`)
+  return readRequest<LearningGoal[]>(`/children/${encodeURIComponent(childId)}/learning-goals`)
 }
 
 export function getLearningGoal(goalId: string): Promise<LearningGoal> {
-  return readRequest<LearningGoal>(`/learning-goals/${goalId}`)
+  return readRequest<LearningGoal>(`/learning-goals/${encodeURIComponent(goalId)}`)
 }
 
 
@@ -481,7 +488,7 @@ export async function listChildActivities(childId: string): Promise<Activity[]> 
   const all: Activity[] = []
   for (let page = 0; ; page++) {
     const batch = await readRequest<Activity[]>(
-      `/children/${childId}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
+      `/children/${encodeURIComponent(childId)}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
     )
     all.push(...batch)
     if (batch.length < ACTIVITY_PAGE_SIZE) return all
@@ -489,7 +496,7 @@ export async function listChildActivities(childId: string): Promise<Activity[]> 
 }
 
 export function getActivity(activityId: string): Promise<ActivityDetail> {
-  return readRequest<ActivityDetail>(`/activities/${activityId}`)
+  return readRequest<ActivityDetail>(`/activities/${encodeURIComponent(activityId)}`)
 }
 
 /**
@@ -527,5 +534,5 @@ export type QuizResult = {
 
 /** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
 export function getQuizResult(activityId: string): Promise<QuizResult> {
-  return readRequest<QuizResult>(`/activities/${activityId}/quiz-result`)
+  return readRequest<QuizResult>(`/activities/${encodeURIComponent(activityId)}/quiz-result`)
 }

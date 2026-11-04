@@ -70,7 +70,7 @@ type CsrfToken = { headerName: string; token: string }
 
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 변경 요청 직전에 받는다. 헤더 이름도 서버가 정한다.
 async function fetchCsrfToken(): Promise<CsrfToken> {
-  return parseResponse<CsrfToken>(await send(`${API_BASE_URL}/csrf`, {}))
+  return parseResponse<CsrfToken>(await send(`${API_BASE_URL}/csrf`, { headers: { Accept: "application/json" } }))
 }
 
 /**
@@ -83,7 +83,7 @@ export async function childWriteRequest<T>(method: "POST" | "DELETE", path: stri
     method,
     headers: {
       Accept: "application/json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(body === undefined ? {} : { "Content-Type": "application/json; charset=utf-8" }),
       [csrf.headerName]: csrf.token,
     },
     body: body === undefined ? undefined : JSON.stringify(body),

@@ -589,6 +589,10 @@ export const handlers = [
     const path = new URL(request.url).pathname
     const body = await readJson(request)
     if (!body) return invalidRequest(path)
+    // 서버 DTO 는 @Pattern 만 있어 누락/null 은 검증을 지나 서비스에서 401 INVALID_ACCESS_CODE 다(명세 API-IAM-08).
+    if (body.accessCode === undefined || body.accessCode === null) {
+      return apiError(401, "INVALID_ACCESS_CODE", "입장 코드가 올바르지 않습니다.", path)
+    }
     if (typeof body.accessCode !== "string" || !/^\d{4}$/.test(body.accessCode)) {
       return validationFailed(path, [{ field: "accessCode", message: "숫자 4자리여야 합니다" }])
     }
@@ -894,9 +898,13 @@ export const handlers = [
     const session = authenticate(request)
     if (session instanceof Response) return session
     const path = new URL(request.url).pathname
-    const goal = goals.find((g) => g.goalId === String(params.goalId))
-    if (!goal) return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
-    if (!ownedChild(goal.childId, session)) return childNotFound(path)
+    const goalId = String(params.goalId)
+    if (!UUID_FORMAT.test(goalId)) return invalidRequest(path)
+    // 담당 범위 밖 목표도 없는 목표와 같은 404 GOAL_NOT_FOUND 다(명세 API-GOAL-03, 서버 LearningGoalService.get).
+    const goal = goals.find((g) => g.goalId === goalId)
+    if (!goal || !ownedChild(goal.childId, session)) {
+      return apiError(404, "GOAL_NOT_FOUND", "학습 목표를 찾을 수 없습니다.", path)
+    }
     return HttpResponse.json(envelope(goal))
   }),
 
