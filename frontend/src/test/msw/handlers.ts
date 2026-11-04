@@ -100,32 +100,68 @@ export const fixtures = {
   },
 } satisfies Record<string, Classroom | Child>
 
+// 문항의 정답·힌트. 서버처럼 아동에게 주는 문항 응답에는 싣지 않고 판정·힌트 발급에만 쓴다.
+type ItemSecret = { answer: string; hints: { type: string; text: string }[] }
+const itemSecrets = new Map<string, ItemSecret>()
+
+function withSecret<T extends { itemId: string }>(item: T, secret: ItemSecret): T {
+  itemSecrets.set(item.itemId, secret)
+  return item
+}
+
 // 서버의 승인 문항 풀(V6 시드와 같은 유형 3개). 배정하면 이 순서로 활동에 붙는다(ADR 2026-10-03 D4).
 const QUIZ_POOL: Omit<AssignedQuizItem, "activityQuizId" | "activityId" | "questionOrder">[] = [
-  {
-    itemId: "5eed0000-0000-4000-8000-000000000001",
-    itemVersion: 1,
-    quizType: "SELF_EMOTION_SITUATION",
-    questionText: "생일에 친구가 선물을 줬어. 너는 어떤 기분이 들까?",
-    imageUrl: null,
-    choices: ["기쁨", "슬픔", "화남"],
-  },
-  {
-    itemId: "5eed0000-0000-4000-8000-000000000002",
-    itemVersion: 1,
-    quizType: "OTHER_EMOTION_SITUATION",
-    questionText: "친구가 좋아하던 풍선이 하늘로 날아가 버렸어. 친구는 지금 어떤 기분일까?",
-    imageUrl: null,
-    choices: ["기쁨", "슬픔", "놀람"],
-  },
-  {
-    itemId: "5eed0000-0000-4000-8000-000000000003",
-    itemVersion: 1,
-    quizType: "OTHER_EMOTION_IMAGE",
-    questionText: "이 친구는 지금 어떤 기분일까?",
-    imageUrl: "/quiz-images/sample-anger.svg",
-    choices: ["화남", "기쁨", "슬픔"],
-  },
+  withSecret(
+    {
+      itemId: "5eed0000-0000-4000-8000-000000000001",
+      itemVersion: 1,
+      quizType: "SELF_EMOTION_SITUATION",
+      questionText: "생일에 친구가 선물을 줬어. 너는 어떤 기분이 들까?",
+      imageUrl: null,
+      choices: ["기쁨", "슬픔", "화남"],
+    },
+    {
+      answer: "기쁨",
+      hints: [
+        { type: "OBSERVABLE_BODY_CUE", text: "선물을 받으면 웃음이 나요." },
+        { type: "CHOICE_REDUCTION", text: "기쁨과 슬픔 중에서 골라 봐요." },
+      ],
+    },
+  ),
+  withSecret(
+    {
+      itemId: "5eed0000-0000-4000-8000-000000000002",
+      itemVersion: 1,
+      quizType: "OTHER_EMOTION_SITUATION",
+      questionText: "친구가 좋아하던 풍선이 하늘로 날아가 버렸어. 친구는 지금 어떤 기분일까?",
+      imageUrl: null,
+      choices: ["기쁨", "슬픔", "놀람"],
+    },
+    {
+      answer: "슬픔",
+      hints: [
+        { type: "OBSERVABLE_FACE_CUE", text: "좋아하던 것을 잃으면 눈물이 날 수 있어요." },
+        { type: "CHOICE_REDUCTION", text: "기쁨과 슬픔 중에서 골라 봐요." },
+      ],
+    },
+  ),
+  withSecret(
+    {
+      itemId: "5eed0000-0000-4000-8000-000000000003",
+      itemVersion: 1,
+      quizType: "OTHER_EMOTION_IMAGE",
+      questionText: "이 친구는 지금 어떤 기분일까?",
+      imageUrl: "/quiz-images/sample-anger.svg",
+      choices: ["화남", "기쁨", "슬픔"],
+    },
+    {
+      answer: "화남",
+      hints: [
+        { type: "OBSERVABLE_FACE_CUE", text: "눈썹이 아래로 모이고 입이 꾹 다물려 있어요." },
+        { type: "CHOICE_REDUCTION", text: "화남과 기쁨 중에서 골라 봐요." },
+      ],
+    },
+  ),
 ]
 
 type PoolItem = Omit<AssignedQuizItem, "activityQuizId" | "activityId" | "questionOrder">
@@ -133,14 +169,19 @@ type PoolItem = Omit<AssignedQuizItem, "activityQuizId" | "activityId" | "questi
 // 독립 퀴즈 10문항(내 감정 10 / 상대 감정 상황 7 + 이미지 3)을 채울 만큼 가짜 서버에만 더 둔 승인 문항.
 // 실제 서버의 시드는 이보다 적어 로컬에서는 독립 퀴즈 배정이 422 다.
 function fillerItems(quizType: QuizType, count: number): PoolItem[] {
-  return Array.from({ length: count }, (_, index) => ({
-    itemId: crypto.randomUUID(),
-    itemVersion: 1,
-    quizType,
-    questionText: `채움 문항 ${index + 1}. 어떤 기분일까?`,
-    imageUrl: quizType === "OTHER_EMOTION_IMAGE" ? "/quiz-images/sample-anger.svg" : null,
-    choices: ["기쁨", "슬픔", "화남"],
-  }))
+  return Array.from({ length: count }, (_, index) =>
+    withSecret(
+      {
+        itemId: crypto.randomUUID(),
+        itemVersion: 1,
+        quizType,
+        questionText: `채움 문항 ${index + 1}. 어떤 기분일까?`,
+        imageUrl: quizType === "OTHER_EMOTION_IMAGE" ? "/quiz-images/sample-anger.svg" : null,
+        choices: ["기쁨", "슬픔", "화남"],
+      },
+      { answer: "기쁨", hints: [{ type: "OBSERVABLE_FACE_CUE", text: "입꼬리를 살펴봐요." }] },
+    ),
+  )
 }
 
 const FULL_POOL: PoolItem[] = [
@@ -198,6 +239,53 @@ let issuedCodes = new Map<string, { childId: string; code: AccessCode }>()
 let quizPool = FULL_POOL
 // 브라우저의 아동 세션 쿠키(JSESSIONID). 입장하면 그 아동 ID, 사용 종료하면 null 이다.
 let childSession: string | null = null
+// 배정 문항(activityQuizId)별 답안과 발급한 힌트(API-QUIZ-04·06).
+let quizAttempts = new Map<string, StoredAttempt>()
+// 활동별 역할극 세션(API-RPL-01·05).
+let roleplaySessions = new Map<string, StoredRoleplaySession>()
+
+type StoredAttempt = {
+  attemptId: string
+  activityQuizId: string
+  firstResponse: string | null
+  firstResponseCorrect: boolean
+  expressionMatchResult: string | null
+  cameraModelVersion: string | null
+  technicalFailureReason: string | null
+  finalResponse: string | null
+  resolvedAfterHint: boolean
+  itemCorrect: boolean
+  excludedFromScoring: boolean
+  status: "DRAFT" | "FINALIZED"
+  respondedAt: string
+  hints: { key: string; hintId: string; hintOrder: number; type: string; text: string }[]
+}
+
+type RoleplayTurnBody = {
+  status: string
+  action: string
+  messages: { speakerRole: "DIALOGUE" | "HINT"; text: string; speech: { available: false; url: null } }[]
+  acceptedInput: string | null
+  checkpointVersion: number | null
+  replayed: boolean
+}
+
+type StoredRoleplaySession = {
+  sessionId: string
+  activityId: string
+  scenarioId: string
+  status: "IN_PROGRESS" | "PAUSED" | "COMPLETED"
+  openingId: string
+  turns: { key: string; text: string; turnId: string; response: RoleplayTurnBody }[]
+}
+
+/** 역할극 첫 질문(승인 시나리오 opening_prompts 대신). 대본은 두 번째 답에서 목표를 달성해 활동이 완료된다. */
+export const ROLEPLAY_OPENING = "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?"
+export const ROLEPLAY_SCRIPT = [
+  "친구 눈썹이 아래로 축 처져 있어. 어떤 마음일 때 이런 표정이 될까?",
+  "맞아, 넘어지면 아프고 속상하지. 친구 마음을 잘 알아줬어!",
+]
+export const ROLEPLAY_REINPUT_NOTICE = "다시 한 번만 말해줄래?"
 
 export function resetMswData() {
   childSession = null
@@ -214,6 +302,8 @@ export function resetMswData() {
   quizResults = new Map()
   issuedCodes = new Map()
   quizPool = FULL_POOL
+  quizAttempts = new Map()
+  roleplaySessions = new Map()
 }
 
 /** 아동이 이미 입장해 서버에 아동 세션이 있는 상태로 만든다(사용 종료 요청이 204 가 된다). */
@@ -238,6 +328,7 @@ export function seedActivity({
   activityType = "FIRST_COMBINED",
   status = "NOT_STARTED",
   result,
+  quizFinished = false,
 }: {
   /** 테스트가 주소에 미리 넣어 둘 고정 ID. 없으면 새로 만든다. */
   activityId?: string
@@ -247,6 +338,11 @@ export function seedActivity({
   activityType?: ActivityType
   status?: ActivityStatus
   result?: Omit<QuizResult, "activityId">
+  /**
+   * 아동이 배정 문항을 맞혀 확정한 상태로 둔다. true 면 모두(최초 결합이면 역할극을 바로 시작할 수 있다),
+   * 숫자면 앞에서부터 그 수만큼이다. 활동 완료는 실제 마지막 답에서 일어나므로 여기서는 하지 않는다.
+   */
+  quizFinished?: boolean | number
 }): StoredActivity {
   let goalId: string | null = null
   if (activityType === "FIRST_COMBINED" || activityType === "ROLEPLAY") {
@@ -267,8 +363,100 @@ export function seedActivity({
   if (status === "COMPLETED") activity.completedAt = activity.assignedAt
   activities = [...activities, activity]
   attachQuizzes(activity.activityId, activityType)
+  if (quizFinished) finishQuizzes(activity.activityId, quizFinished === true ? undefined : quizFinished)
   if (result) quizResults.set(activity.activityId, { activityId: activity.activityId, ...result })
   return activity
+}
+
+/** 화면 테스트용: 활동의 배정 문항을 앞에서부터 count 개(없으면 모두) 맞혀 확정한 상태로 둔다. */
+export function finishQuizzes(activityId: string, count?: number) {
+  const quizzes = storedQuizItems(activityId)
+  for (const quiz of quizzes.slice(0, count ?? quizzes.length)) {
+    const answer = itemSecrets.get(quiz.itemId)?.answer ?? quiz.choices[0]
+    const attempt = newAttempt(quiz.activityQuizId, answer, true, {}, false)
+    finalizeAttempt(attempt, answer, true, false)
+    quizAttempts.set(quiz.activityQuizId, attempt)
+  }
+}
+
+function newAttempt(
+  activityQuizId: string,
+  firstResponse: string | null,
+  firstResponseCorrect: boolean,
+  camera: { expressionMatchResult?: string | null; cameraModelVersion?: string | null; technicalFailureReason?: string | null },
+  excludedFromScoring: boolean,
+): StoredAttempt {
+  return {
+    attemptId: crypto.randomUUID(),
+    activityQuizId,
+    firstResponse,
+    firstResponseCorrect,
+    expressionMatchResult: camera.expressionMatchResult ?? null,
+    cameraModelVersion: camera.cameraModelVersion ?? null,
+    technicalFailureReason: camera.technicalFailureReason ?? null,
+    finalResponse: null,
+    resolvedAfterHint: false,
+    itemCorrect: firstResponseCorrect,
+    excludedFromScoring,
+    status: "DRAFT",
+    respondedAt: new Date().toISOString(),
+    hints: [],
+  }
+}
+
+function finalizeAttempt(attempt: StoredAttempt, finalResponse: string | null, correct: boolean, resolvedAfterHint: boolean) {
+  attempt.finalResponse = finalResponse
+  attempt.itemCorrect = correct
+  attempt.resolvedAfterHint = resolvedAfterHint
+  attempt.status = "FINALIZED"
+}
+
+/** 응답에 싣는 답안. 서버 QuizAttemptResponse 와 같은 키만 남긴다. */
+function toAttemptBody(attempt: StoredAttempt) {
+  return {
+    attemptId: attempt.attemptId,
+    activityQuizId: attempt.activityQuizId,
+    firstResponse: attempt.firstResponse,
+    firstResponseCorrect: attempt.firstResponseCorrect,
+    expressionMatchResult: attempt.expressionMatchResult,
+    cameraModelVersion: attempt.cameraModelVersion,
+    usedHintTypes: attempt.hints.map((hint) => hint.type),
+    finalResponse: attempt.finalResponse,
+    resolvedAfterHint: attempt.resolvedAfterHint,
+    itemCorrect: attempt.itemCorrect,
+    excludedFromScoring: attempt.excludedFromScoring,
+    status: attempt.status,
+    respondedAt: attempt.respondedAt,
+  }
+}
+
+/** 화면 테스트에서 그 배정 문항에 저장된 답안을 본다. */
+export function storedQuizAttempt(activityQuizId: string) {
+  return quizAttempts.get(activityQuizId)
+}
+
+/** 화면 테스트에서 활동에 붙은 배정 문항을 본다. */
+export function storedQuizItems(activityId: string) {
+  return activityQuizzes.filter((q) => q.activityId === activityId).sort((a, b) => a.questionOrder - b.questionOrder)
+}
+
+/** 화면 테스트에서 활동의 현재 상태를 본다. */
+export function storedActivity(activityId: string) {
+  return activities.find((a) => a.activityId === activityId)
+}
+
+/** 화면 테스트에서 활동의 역할극 세션을 본다. */
+export function storedRoleplaySession(activityId: string) {
+  return roleplaySessions.get(activityId)
+}
+
+/** 서버 ActivityCompletionService 처럼 완료·스탬프 지급 시각을 한 번만 남긴다. */
+function completeActivity(activity: StoredActivity) {
+  if (activity.status === "COMPLETED") return
+  const now = new Date().toISOString()
+  activity.status = "COMPLETED"
+  activity.completedAt = now
+  activity.rewardIssuedAt = now
 }
 
 /** 화면 테스트에서 그 아동에게 저장된 목표를 본다. */
@@ -578,6 +766,102 @@ async function readJson(request: Request): Promise<Record<string, unknown> | nul
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
+}
+
+// 아동 전용 경로(퀴즈 답·힌트, 역할극). 서버 SecurityConfig 처럼 아동 세션이 없으면 401, 강사 토큰이면 403 이다.
+function requireChild(request: Request): string | Response {
+  const path = new URL(request.url).pathname
+  if (request.headers.get("Authorization") !== null) {
+    return apiError(403, "ACCESS_DENIED", "접근 권한이 없습니다.", path)
+  }
+  if (childSession === null) return apiError(401, "AUTHENTICATION_REQUIRED", "아동 입장이 필요합니다.", path)
+  return childSession
+}
+
+// 아동·강사 둘 다 읽는 활동 경로(문항 목록·완료 상태). 본인 아동·담당 강사가 아니면 없는 활동과 같은 404 다.
+function readableActivity(request: Request, activityId: string): StoredActivity | Response {
+  const path = new URL(request.url).pathname
+  const notFound = () => apiError(404, "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.", path)
+  const asChild = request.headers.get("Authorization") === null && childSession !== null
+  if (!asChild) {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    if (!UUID_FORMAT.test(activityId)) return invalidRequest(path)
+    const activity = activities.find((a) => a.activityId === activityId)
+    return activity && ownedChild(activity.childId, session) ? activity : notFound()
+  }
+  if (!UUID_FORMAT.test(activityId)) return invalidRequest(path)
+  const activity = activities.find((a) => a.activityId === activityId)
+  return activity && activity.childId === childSession ? activity : notFound()
+}
+
+function quizItemNotFound(path: string) {
+  return apiError(404, "ACTIVITY_QUIZ_NOT_FOUND", "배정 문항을 찾을 수 없습니다.", path)
+}
+
+function invalidQuizResult(path: string) {
+  return apiError(422, "INVALID_QUIZ_RESULT", "퀴즈 응답이 올바르지 않습니다.", path)
+}
+
+// 본인 활동의 배정 문항만 찾는다. 다른 아동의 문항도 없는 문항과 같은 404 다.
+function ownedQuizItem(activityQuizId: string, childId: string) {
+  const quiz = activityQuizzes.find((q) => q.activityQuizId === activityQuizId)
+  const activity = quiz && activities.find((a) => a.activityId === quiz.activityId)
+  return quiz && activity && activity.childId === childId ? { quiz, activity } : undefined
+}
+
+/** 서버 QuizJudgement: 보기 안의 답이어야 하고, 내 감정 문항은 표정 판정이 MATCH 여야 맞다. */
+function judge(quiz: AssignedQuizItem, response: string, expressionMatchResult: string | null) {
+  const answer = itemSecrets.get(quiz.itemId)?.answer
+  return response === answer && (quiz.quizType !== "SELF_EMOTION_SITUATION" || expressionMatchResult === "MATCH")
+}
+
+/** 서버 snapshotIfComplete: 모든 문항을 확정하면 결과를 남기고, 독립 퀴즈는 그 요청에서 활동을 완료한다. */
+function snapshotIfComplete(activity: StoredActivity) {
+  const quizzes = activityQuizzes.filter((q) => q.activityId === activity.activityId)
+  if (!quizzes.every((q) => quizAttempts.get(q.activityQuizId)?.status === "FINALIZED")) return
+  const counted = quizzes.map((q) => quizAttempts.get(q.activityQuizId)!).filter((a) => !a.excludedFromScoring)
+  const correct = counted.filter((a) => a.firstResponseCorrect).length
+  quizResults.set(activity.activityId, {
+    activityId: activity.activityId,
+    validQuestionCount: counted.length,
+    correctQuestionCount: correct,
+    overallAccuracy: counted.length ? Number((correct / counted.length).toFixed(6)) : null,
+    totalHintCount: counted.reduce((sum, a) => sum + a.hints.length, 0),
+    resolvedAfterHintCount: counted.filter((a) => a.resolvedAfterHint).length,
+    scenarioLevel: null,
+    initialSupportLevel: null,
+    difficultyFallbackApplied: false,
+    initialDifficultyUsed: activity.activityType === "FIRST_COMBINED",
+    policyVersion: "test",
+  })
+  if (activity.activityType !== "FIRST_COMBINED") completeActivity(activity)
+}
+
+function roleplayMessage(speakerRole: "DIALOGUE" | "HINT", text: string) {
+  return { speakerRole, text, speech: { available: false as const, url: null } }
+}
+
+function roleplayStartBody(session: StoredRoleplaySession, activity: StoredActivity) {
+  const canContinue = session.status === "IN_PROGRESS" && activity.status === "IN_PROGRESS"
+  const lastTurn = session.turns.filter((t) => t.response.status === "DELIVERED").at(-1)
+  const lastDialogue = lastTurn?.response.messages.filter((m) => m.speakerRole === "DIALOGUE").at(-1)
+  const messages = !canContinue
+    ? []
+    : lastTurn && lastDialogue
+      ? [{ messageId: lastTurn.turnId, purpose: "RESUME", ...roleplayMessage("DIALOGUE", lastDialogue.text) }]
+      : [{ messageId: session.openingId, purpose: "QUESTION", ...roleplayMessage("DIALOGUE", ROLEPLAY_OPENING) }]
+  return {
+    sessionId: session.sessionId,
+    activityId: session.activityId,
+    scenarioId: session.scenarioId,
+    scenarioVersion: 1,
+    status: session.status,
+    activityStatus: activity.status,
+    lastDeliveredTurnId: lastTurn?.turnId ?? null,
+    checkpointVersion: session.turns.length,
+    delivery: { messages },
+  }
 }
 
 export const handlers = [
@@ -1049,5 +1333,246 @@ export const handlers = [
     const result = quizResults.get(activityId)
     if (!result) return apiError(409, "QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다.", path)
     return HttpResponse.json(envelope(result))
+  }),
+
+  // 활동에 고정된 문항(API-QUIZ-03). 정답·힌트 원문은 싣지 않는다.
+  http.get("*/api/v1/activities/:activityId/quiz-items", ({ params, request }) => {
+    const activity = readableActivity(request, String(params.activityId))
+    if (activity instanceof Response) return activity
+    return HttpResponse.json(envelope(storedQuizItems(activity.activityId)))
+  }),
+
+  // 활동 완료 상태(API-ACT-04). 읽기만 하고 완료를 실행하지 않는다.
+  http.get("*/api/v1/activities/:activityId/status", ({ params, request }) => {
+    const activity = readableActivity(request, String(params.activityId))
+    if (activity instanceof Response) return activity
+    return HttpResponse.json(envelope({ status: activity.status }))
+  }),
+
+  // 답안 조회(API-QUIZ-05). 아직 답을 내지 않았으면 404 ATTEMPT_NOT_FOUND 다.
+  http.get("*/api/v1/activity-quiz-items/:activityQuizId/attempt", ({ params, request }) => {
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const activityQuizId = String(params.activityQuizId)
+    if (!UUID_FORMAT.test(activityQuizId)) return invalidRequest(path)
+    if (!ownedQuizItem(activityQuizId, childId)) return quizItemNotFound(path)
+    const attempt = quizAttempts.get(activityQuizId)
+    if (!attempt) return apiError(404, "ATTEMPT_NOT_FOUND", "응답을 찾을 수 없습니다.", path)
+    return HttpResponse.json(envelope(toAttemptBody(attempt)))
+  }),
+
+  // 답안 제출(API-QUIZ-04). 서버 QuizAttemptService.put 과 같은 순서로 판정·확정한다.
+  http.put("*/api/v1/activity-quiz-items/:activityQuizId/attempt", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const activityQuizId = String(params.activityQuizId)
+    if (!UUID_FORMAT.test(activityQuizId)) return invalidRequest(path)
+    const body = await readJson(request)
+    if (!body) return invalidRequest(path)
+    const owned = ownedQuizItem(activityQuizId, childId)
+    if (!owned) return quizItemNotFound(path)
+    const { quiz, activity } = owned
+    const str = (value: unknown) => (typeof value === "string" ? value : null)
+    const firstResponse = str(body.firstResponse)
+    const finalResponse = str(body.finalResponse)
+    const expressionMatchResult = str(body.expressionMatchResult)
+    const cameraModelVersion = str(body.cameraModelVersion)
+    const technicalFailureReason = str(body.technicalFailureReason)
+    // validateCameraFields
+    if (quiz.quizType === "SELF_EMOTION_SITUATION") {
+      if (expressionMatchResult && !cameraModelVersion?.trim()) return invalidQuizResult(path)
+      if (technicalFailureReason === "IMAGE_LOAD_FAILED") return invalidQuizResult(path)
+    } else {
+      if (expressionMatchResult || cameraModelVersion) return invalidQuizResult(path)
+      if (technicalFailureReason && !(quiz.quizType === "OTHER_EMOTION_IMAGE" && technicalFailureReason === "IMAGE_LOAD_FAILED")) {
+        return invalidQuizResult(path)
+      }
+    }
+    const existing = quizAttempts.get(activityQuizId)
+    if (existing) {
+      if (
+        existing.firstResponse !== firstResponse ||
+        existing.expressionMatchResult !== expressionMatchResult ||
+        existing.cameraModelVersion !== cameraModelVersion ||
+        existing.technicalFailureReason !== technicalFailureReason
+      ) {
+        return apiError(409, "FIRST_RESPONSE_IMMUTABLE", "첫 응답은 변경할 수 없습니다.", path)
+      }
+      if (existing.status === "FINALIZED") {
+        const same =
+          existing.finalResponse === finalResponse ||
+          (finalResponse === null && existing.finalResponse === existing.firstResponse)
+        if (same) return HttpResponse.json(envelope(toAttemptBody(existing)))
+        return apiError(409, "ATTEMPT_FINALIZED", "확정된 응답은 변경할 수 없습니다.", path)
+      }
+      if (finalResponse === null) return HttpResponse.json(envelope(toAttemptBody(existing)))
+      if (existing.hints.length === 0 && finalResponse !== firstResponse) return invalidQuizResult(path)
+      if (!quiz.choices.includes(finalResponse)) return invalidQuizResult(path)
+      const correct = judge(quiz, finalResponse, expressionMatchResult)
+      finalizeAttempt(existing, finalResponse, correct, correct && !existing.firstResponseCorrect && existing.hints.length > 0)
+      snapshotIfComplete(activity)
+      return HttpResponse.json(envelope(toAttemptBody(existing)))
+    }
+    const excluded = technicalFailureReason !== null || expressionMatchResult === "NOT_ANALYZABLE"
+    if (!excluded) {
+      if (!firstResponse?.trim() || !quiz.choices.includes(firstResponse)) return invalidQuizResult(path)
+      if (quiz.quizType === "SELF_EMOTION_SITUATION" && !expressionMatchResult) return invalidQuizResult(path)
+    }
+    const correct = !excluded && judge(quiz, firstResponse ?? "", expressionMatchResult)
+    const attempt = newAttempt(
+      activityQuizId,
+      firstResponse,
+      correct,
+      { expressionMatchResult, cameraModelVersion, technicalFailureReason },
+      excluded,
+    )
+    if (activity.status === "NOT_STARTED") {
+      activity.status = "IN_PROGRESS"
+      activity.startedAt = new Date().toISOString()
+    }
+    if (correct || excluded || finalResponse !== null) {
+      if (finalResponse !== null && finalResponse !== firstResponse) return invalidQuizResult(path)
+      quizAttempts.set(activityQuizId, attempt)
+      finalizeAttempt(attempt, firstResponse, correct, false)
+      snapshotIfComplete(activity)
+    } else {
+      quizAttempts.set(activityQuizId, attempt)
+    }
+    return HttpResponse.json(envelope(toAttemptBody(attempt)), { status: 201 })
+  }),
+
+  // 힌트 발급(API-QUIZ-06). 첫 답이 틀린 DRAFT 답안에만, 최대 2개다. 같은 키는 같은 힌트를 201 로 돌려준다.
+  http.post("*/api/v1/activity-quiz-items/:activityQuizId/hints", ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const activityQuizId = String(params.activityQuizId)
+    const key = request.headers.get("Idempotency-Key")
+    if (!UUID_FORMAT.test(activityQuizId) || !key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    const owned = ownedQuizItem(activityQuizId, childId)
+    if (!owned) return quizItemNotFound(path)
+    const attempt = quizAttempts.get(activityQuizId)
+    if (!attempt) return apiError(404, "ATTEMPT_NOT_FOUND", "첫 응답을 먼저 제출해야 합니다.", path)
+    const toHintBody = (hint: StoredAttempt["hints"][number]) => ({
+      hintId: hint.hintId,
+      hintOrder: hint.hintOrder,
+      type: hint.type,
+      text: hint.text,
+    })
+    for (const stored of quizAttempts.values()) {
+      const previous = stored.hints.find((hint) => hint.key === key)
+      if (!previous) continue
+      if (stored !== attempt) return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 힌트 요청에 사용한 키입니다.", path)
+      return HttpResponse.json(envelope(toHintBody(previous)), { status: 201 })
+    }
+    if (attempt.status === "FINALIZED" || attempt.excludedFromScoring || attempt.firstResponseCorrect) {
+      return apiError(409, "ATTEMPT_FINALIZED", "이 응답에는 힌트를 발급할 수 없습니다.", path)
+    }
+    const next = attempt.hints.length + 1
+    const spec = itemSecrets.get(owned.quiz.itemId)?.hints[next - 1]
+    if (next > 2 || !spec) return apiError(409, "NO_MORE_HINTS", "제공 가능한 힌트가 없습니다.", path)
+    const hint = { key, hintId: crypto.randomUUID(), hintOrder: next, ...spec }
+    attempt.hints.push(hint)
+    return HttpResponse.json(envelope(toHintBody(hint)), { status: 201 })
+  }),
+
+  // 역할극 시작·이어 하기(API-RPL-01). 활동에 세션이 있으면 새 키여도 그 세션을 200 으로 돌려준다.
+  http.post("*/api/v1/activities/:activityId/roleplay-sessions", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const activityId = String(params.activityId)
+    const key = request.headers.get("Idempotency-Key")
+    if (!UUID_FORMAT.test(activityId) || !key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    if ((await request.text()) !== "") return invalidRequest(path)
+    const activity = activities.find((a) => a.activityId === activityId && a.childId === childId)
+    if (!activity) return apiError(404, "ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.", path)
+    const existing = roleplaySessions.get(activityId)
+    if (existing) return HttpResponse.json(envelope(roleplayStartBody(existing, activity)))
+    // 신규 시작은 최초 결합에서 퀴즈를 모두 확정해 최초 난이도가 정해진 뒤에만 된다.
+    const quizzes = activityQuizzes.filter((q) => q.activityId === activityId)
+    const quizDone = quizzes.length > 0 && quizzes.every((q) => quizAttempts.get(q.activityQuizId)?.status === "FINALIZED")
+    // 신규 시작은 지금 최초 결합만 지원한다(서버 RoleplayStartService).
+    if (activity.activityType !== "FIRST_COMBINED") {
+      return apiError(409, "INITIAL_ROLEPLAY_NOT_READY", "역할극을 시작할 준비가 되지 않았습니다.", path)
+    }
+    if (!quizDone) {
+      return apiError(409, "INITIAL_DIFFICULTY_NOT_READY", "최초 퀴즈 결과가 아직 준비되지 않았습니다.", path)
+    }
+    if (activity.status === "NOT_STARTED") {
+      activity.status = "IN_PROGRESS"
+      activity.startedAt = new Date().toISOString()
+    }
+    const session: StoredRoleplaySession = {
+      sessionId: crypto.randomUUID(),
+      activityId,
+      scenarioId: crypto.randomUUID(),
+      status: "IN_PROGRESS",
+      openingId: crypto.randomUUID(),
+      turns: [],
+    }
+    roleplaySessions.set(activityId, session)
+    return HttpResponse.json(envelope(roleplayStartBody(session, activity)), { status: 201 })
+  }),
+
+  // 글자로 답하기(API-RPL-05). 대본(ROLEPLAY_SCRIPT)대로 답하고 마지막 답에서 활동을 완료한다.
+  // 같은 키·같은 글자는 저장된 결과를 replayed=true 로 돌려주고, 같은 키에 다른 글자는 409 다.
+  http.post("*/api/v1/roleplay-sessions/:sessionId/text-inputs", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const sessionId = String(params.sessionId)
+    const key = request.headers.get("Idempotency-Key")
+    if (!UUID_FORMAT.test(sessionId) || !key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    const body = await readJson(request)
+    if (!body) return invalidRequest(path)
+    if (typeof body.text !== "string") return validationFailed(path, [{ field: "text", message: "널이어서는 안됩니다" }])
+    const session = [...roleplaySessions.values()].find((s) => s.sessionId === sessionId)
+    const activity = session && activities.find((a) => a.activityId === session.activityId && a.childId === childId)
+    if (!session || !activity) return apiError(404, "ROLEPLAY_NOT_FOUND", "역할극을 찾을 수 없습니다.", path)
+    const previous = session.turns.find((turn) => turn.key === key)
+    if (previous) {
+      if (previous.text !== body.text) return apiError(409, "ROLEPLAY_CONFLICT", "다른 입력에 사용한 키입니다.", path)
+      return HttpResponse.json(envelope({ ...previous.response, acceptedInput: null, replayed: true }))
+    }
+    if (session.status !== "IN_PROGRESS") {
+      return apiError(409, "ROLEPLAY_CONFLICT", "진행 중인 역할극이 아닙니다.", path)
+    }
+    const text = body.text.trim().replace(/\s+/g, " ")
+    let response: RoleplayTurnBody
+    if (!text) {
+      response = {
+        status: "REINPUT_REQUIRED",
+        action: "REQUEST_NEW_INPUT",
+        messages: [roleplayMessage("HINT", ROLEPLAY_REINPUT_NOTICE)],
+        acceptedInput: null,
+        checkpointVersion: null,
+        replayed: false,
+      }
+    } else {
+      const delivered = session.turns.filter((turn) => turn.response.status === "DELIVERED").length
+      const reply = ROLEPLAY_SCRIPT[Math.min(delivered, ROLEPLAY_SCRIPT.length - 1)]
+      response = {
+        status: "DELIVERED",
+        action: "NONE",
+        messages: [roleplayMessage("DIALOGUE", reply)],
+        acceptedInput: text,
+        checkpointVersion: session.turns.length + 1,
+        replayed: false,
+      }
+      // 마지막 대본 답에서 목표를 달성해 활동·세션을 완료한다(서버 RoleplayCompletionService).
+      if (delivered + 1 >= ROLEPLAY_SCRIPT.length) {
+        completeActivity(activity)
+        session.status = "COMPLETED"
+      }
+    }
+    session.turns.push({ key, text: body.text, turnId: crypto.randomUUID(), response })
+    return HttpResponse.json(envelope(response))
   }),
 ]

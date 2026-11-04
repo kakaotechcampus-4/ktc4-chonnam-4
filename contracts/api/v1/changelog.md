@@ -17,7 +17,11 @@
   - [API-QUIZ-04](./quizzes/put-quiz-attempt.md): `firstResponse`·`expressionMatchResult`·`finalResponse`·`technicalFailureReason`의 유형별 필수·허용 규칙, NOT_ANALYZABLE·기술 실패는 첫 PUT에서 바로 채점 제외 확정, 201/200 구분을 적었습니다.
   - 이름 칸(API-IAM-02·CLS-01·CLS-06)의 보이는 글자·제어 문자 규칙, 등장인물 id 공백만 422·role 실명 미검사(API-GOAL-01), 역할극 기능 켜기에 필요한 필수 설정을 적었습니다.
 - 예시 값 정정: 퀴즈 결과 `overallAccuracy`는 소수 6자리(`0.666667`), 힌트 `type`은 `OBSERVABLE_FACE_CUE`·`OBSERVABLE_BODY_CUE`·`CHOICE_REDUCTION` 중 하나입니다.
-- 프론트엔드: MSW로 테스트하는 강사·아동 입장/활동 요청이 명세의 공통 헤더(`Accept: application/json`, `Content-Type: application/json; charset=utf-8`)와 경로 인코딩(`encodeURIComponent`)을 따르게 했습니다. MSW 가짜 서버도 위 오류 코드 정정에 맞췄습니다.
+- 프론트엔드: 강사·아동 요청이 명세의 공통 헤더(`Accept: application/json`, `Content-Type: application/json; charset=utf-8`)와 경로 인코딩(`encodeURIComponent`)을 따르게 했습니다. MSW 가짜 서버도 위 오류 코드 정정에 맞췄습니다.
+- 프론트엔드 아동 화면의 화면 내 가짜 응답을 실제 API로 바꿨습니다.
+  - 표정 퀴즈: 문항 [API-QUIZ-03](./quizzes/list-assigned-quiz-items.md), 답 [API-QUIZ-04](./quizzes/put-quiz-attempt.md), 이어 풀기 [API-QUIZ-05](./quizzes/get-quiz-attempt.md), 힌트 [API-QUIZ-06](./quizzes/issue-quiz-hint.md). 첫 답 → (틀리면) 힌트 최대 2개 → 최종 답 1번 흐름입니다. 내 감정 문항은 카메라를 아직 켜지 않아 `expressionMatchResult=NOT_ANALYZABLE`, `cameraModelVersion=camera-not-connected`로 보내며 서버가 점수에서 뺍니다.
+  - 완료: 화면이 완료를 요청하지 않고 [API-ACT-04](./activities/get-activity-status.md)로 COMPLETED를 확인한 뒤 스탬프 화면으로 갑니다(독립 퀴즈는 마지막 답 뒤, 역할극은 대화가 이어질 때마다).
+  - 역할극: 시작·이어 하기 [API-RPL-01](./roleplay/start-roleplay.md), 글자 답 [API-RPL-05](./roleplay/submit-text-input.md). `speakerRole`로 거북이(DIALOGUE)·깡총이(HINT) 말풍선을 나눕니다. 말로 답하기(API-RPL-04)는 아직 연결하지 않았습니다.
 
 ## 2026-11-02 — 학급·아동 이름 수정과 목표 조건 정리·모순 거절
 

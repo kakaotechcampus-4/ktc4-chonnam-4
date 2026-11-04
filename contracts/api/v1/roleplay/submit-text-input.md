@@ -103,7 +103,7 @@ export function submitTextInput(
 
 ## 6. FE 후속 작업·검증 경계
 
-현재 ChildRoleplayPage → sendRoleplayTurn은 mock입니다. 공유 예제 submitTextInput은 2026-11-04에 위 본문/응답/기능 설정으로 동기화해 `examples/endpoints.ts`의 조건부 함수(allowConditional 기본 차단)로 옮겼습니다. 실제 FE 화면 연동은 별도입니다.
+FE ChildRoleplayPage는 2026-11-04부터 sendRoleplayText(`frontend/src/features/child/api.ts`)로 이 API를 부릅니다. 서버에서 roleplay.text.enabled가 꺼져 있으면 404라 화면은 오류 안내를 보여 줍니다. 공유 예제 submitTextInput도 위 본문/응답/기능 설정으로 동기화해 `examples/endpoints.ts`의 조건부 함수(allowConditional 기본 차단)로 옮겼습니다.
 
 텍스트는 처음부터 선택할 수 있고 3회 권유 후에도 음성을 유지합니다. 성공/재입력마다 입력 모드를 강제 변경하지 않습니다. 새 답은 새 키, 응답 유실 재전송은 기존 키/입력으로 처리합니다.
 

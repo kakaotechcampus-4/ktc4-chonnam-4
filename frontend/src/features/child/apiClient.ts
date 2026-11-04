@@ -75,15 +75,21 @@ async function fetchCsrfToken(): Promise<CsrfToken> {
 
 /**
  * CSRF 토큰을 붙인 변경 요청. 실패해도 자동으로 다시 보내지 않는다(CSRF 403 포함).
- * 다시 보낼지는 화면이 아이에게 "다시 하기"를 보여 주고 정한다.
+ * 다시 보낼지는 화면이 아이에게 "다시 하기"를 보여 주고 정한다. 다시 보낼 때는 같은 본문·같은 Idempotency-Key 를 쓴다.
  */
-export async function childWriteRequest<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function childWriteRequest<T>(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+  { idempotencyKey }: { idempotencyKey?: string } = {}
+): Promise<T> {
   const csrf = await fetchCsrfToken()
   const res = await send(`${API_BASE_URL}${path}`, {
     method,
     headers: {
       Accept: "application/json",
       ...(body === undefined ? {} : { "Content-Type": "application/json; charset=utf-8" }),
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       [csrf.headerName]: csrf.token,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
