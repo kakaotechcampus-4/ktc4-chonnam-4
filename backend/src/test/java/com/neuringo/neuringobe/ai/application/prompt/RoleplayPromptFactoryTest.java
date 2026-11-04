@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.LlmRequest;
+import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
@@ -348,6 +349,284 @@ class RoleplayPromptFactoryTest {
         assertContainsAll(analysis, RoleplayCodes.STRATEGY_TYPES);
         assertContainsAll(generation, RoleplayCodes.RESPONSE_TYPES);
         assertContainsAll(evaluation, RoleplayCodes.FAILURE_CODES);
+    }
+
+    @Test
+    void analysisRepairsAMiscopiedTurnIdAndAMissingClosingSupportLevel() {
+        RoleplayTurnInput character = characterInput("넘어져서 아파서 우는 거구나");
+        var observations = RoleplayObservationTestPlans.inputForScenario(character.scenario());
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .parser();
+        String expected = TURN_ID.toString();
+        String miscopied = expected.substring(0, 9) + "ffff-ffff-ffff-ffffffffffff";
+
+        AnalysisResult repaired =
+                parser.parse(
+                        analysisJson("CLOSE_ROLEPLAY", MG_EMOTION, "S1")
+                                .replace(expected, miscopied)
+                                .replace(",\"recommended_support_level\":\"S1\"", ""));
+
+        assertThat(repaired.turnId()).isEqualTo(TURN_ID);
+        assertThat(
+                        RoleplayOutputParsers.withMiscopiedIdFixed(
+                                "{\"analysis_id\":\""
+                                        + ANALYSIS_ID.toString().substring(0, 9)
+                                        + "x\"}",
+                                "analysis_id",
+                                ANALYSIS_ID,
+                                Set.of()))
+                .contains(ANALYSIS_ID.toString());
+        assertThat(
+                        RoleplayOutputParsers.withMiscopiedIdFixed(
+                                "{\"analysis_id\":\""
+                                        + ANALYSIS_ID.toString().substring(0, 9)
+                                        + "x\"}",
+                                "analysis_id",
+                                ANALYSIS_ID,
+                                Set.of()))
+                .contains(ANALYSIS_ID.toString());
+        assertThat(repaired.nextStrategy().recommendedSupportLevel()).isEqualTo("S1");
+        assertThatThrownBy(
+                        () ->
+                                parser.parse(
+                                        analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
+                                                .replace(expected, UUID.randomUUID().toString())))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
+    @Test
+    void characterScenarioSummarizesEvidenceSoFarPerGoal() {
+        RoleplayTurnInput character = characterInput("넘어져서 아파서 우는 거구나");
+        RoleplayTurnInput narrator = input("넘어져서 아파서 우는 거구나");
+        var base = RoleplayObservationTestPlans.inputForScenario(character.scenario());
+        var criterion = base.approvedCriteria().getFirst();
+        var earlier =
+                new com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput
+                        .Reference(
+                        UUID.randomUUID(), criterion.microGoalId(), criterion.reference());
+        var later =
+                new com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput
+                        .Reference(
+                        UUID.randomUUID(), criterion.microGoalId(), criterion.reference());
+        var observations =
+                RoleplayObservationTestPlans.withSyntheticObservationContexts(
+                        base.approvedCriteria(),
+                        List.of(
+                                new com.neuringo.neuringobe.ai.application.structured.output
+                                        .GoalObservationOutput.Observation(
+                                        earlier,
+                                        com.neuringo.neuringobe.ai.application.structured.output
+                                                .GoalObservationOutput.Status.NOT_EXPRESSED),
+                                new com.neuringo.neuringobe.ai.application.structured.output
+                                        .GoalObservationOutput.Observation(
+                                        later,
+                                        com.neuringo.neuringobe.ai.application.structured.output
+                                                .GoalObservationOutput.Status.IMPLICIT)));
+
+        String characterPrompt =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .request()
+                        .userPrompt();
+        String narratorPrompt =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                narrator,
+                                null,
+                                observations)
+                        .request()
+                        .userPrompt();
+
+        assertThat(characterPrompt)
+                .contains("goal_evidence_so_far")
+                .contains("IMPLICIT")
+                .contains("NONE")
+                .contains(later.turnId().toString());
+        assertThat(narratorPrompt).doesNotContain("goal_evidence_so_far");
+    }
+
+    @Test
+    void characterScenarioUsesCharacterPromptsAndAllowsLinesWithoutQuestion() {
+        RoleplayTurnInput character = characterInput("괜찮아?");
+        RoleplayTurnInput narrator = input("괜찮아?");
+        var observations = RoleplayObservationTestPlans.inputForScenario(narrator.scenario());
+
+        var characterAnalysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                observations)
+                        .request();
+        var narratorAnalysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                narrator,
+                                null,
+                                observations)
+                        .request();
+        assertThat(characterAnalysis.systemPrompt()).contains("# 캐릭터 역할극");
+        assertThat(characterAnalysis.userPrompt()).contains("\"ai_character\"");
+        assertThat(narratorAnalysis.systemPrompt()).doesNotContain("# 캐릭터 역할극");
+        assertThat(narratorAnalysis.userPrompt()).doesNotContain("ai_character");
+
+        var characterGeneration =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        parsedAnalysis(),
+                        CANDIDATE_ID,
+                        null);
+        assertThat(characterGeneration.request().promptVersion())
+                .isEqualTo(RoleplayPromptFactory.CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION);
+        CandidateResponse line =
+                characterGeneration
+                        .parser()
+                        .parse(candidateJson("(훌쩍이며) 아야… 나 방금 넘어졌어.", "GUIDING_QUESTION"));
+        assertThat(line.text()).doesNotContain("?");
+        CandidateResponse strategyNamedLine =
+                characterGeneration
+                        .parser()
+                        .parse(candidateJson("(훌쩍이며) 무릎이 욱신거려…", "PROBE_EMOTION"));
+        assertThat(strategyNamedLine.responseType()).isEqualTo("GUIDING_QUESTION");
+        assertThatThrownBy(
+                        () ->
+                                characterGeneration
+                                        .parser()
+                                        .parse(candidateJson("넘어졌어? 너도 봤어?", "GUIDING_QUESTION")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        assertThatThrownBy(
+                        () ->
+                                factory.responseGeneration(
+                                                trace(ANALYSIS_ID, null),
+                                                attempts(),
+                                                1,
+                                                narrator,
+                                                parsedAnalysis(),
+                                                CANDIDATE_ID,
+                                                null)
+                                        .parser()
+                                        .parse(
+                                                candidateJson(
+                                                        "(훌쩍이며) 아야… 나 방금 넘어졌어.",
+                                                        "GUIDING_QUESTION")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+
+        var characterEvaluationRequest =
+                factory.responseEvaluation(
+                                trace(ANALYSIS_ID, CANDIDATE_ID),
+                                attempts(),
+                                1,
+                                character,
+                                parsedAnalysis(),
+                                parsedCandidate(parsedAnalysis()),
+                                observations)
+                        .request();
+        String characterEvaluation = characterEvaluationRequest.systemPrompt();
+        assertThat(characterEvaluationRequest.promptVersion())
+                .isEqualTo(RoleplayPromptFactory.CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
+        assertThat(characterEvaluation)
+                .contains("캐릭터 대사는 질문이 아니어도 된다")
+                .doesNotContain("MISSING_QUESTION");
+        assertContainsAll(
+                characterEvaluation,
+                RoleplayCodes.FAILURE_CODES.stream()
+                        .filter(code -> !code.equals("MISSING_QUESTION"))
+                        .collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void mascotHintIsRequestedOnlyWhenTheServerRuleAsksForIt() {
+        RoleplayTurnInput character = characterInput("몰라");
+        AnalysisResult dontKnow =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                character,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(character.scenario()))
+                        .parser()
+                        .parse(
+                                analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
+                                        .replace("ANSWER_ATTEMPT", "DONT_KNOW")
+                                        .replace("PARTIAL_UNDERSTANDING", "HELP_NEEDED"));
+        var withHint =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        dontKnow,
+                        CANDIDATE_ID,
+                        null);
+        assertThat(withHint.request().userPrompt())
+                .contains("\"mascot_hint\"")
+                .contains("HELP_REQUEST");
+
+        String line = candidateJson("(훌쩍이며) 흐윽…", "GUIDING_QUESTION");
+        String hinted =
+                line.replace(
+                        "\"previous_failed_candidate_ids\":[]",
+                        "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\"친구가 무릎을 잡고 있네. 어디가 아픈지 물어볼까?\"");
+        assertThat(withHint.parser().parse(hinted).mascotHint()).startsWith("친구가 무릎을");
+        assertThatThrownBy(() -> withHint.parser().parse(line))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        // "null" 문자열은 힌트가 없는 것으로 보고, 지시문처럼 쓴 힌트는 막는다.
+        assertThatThrownBy(
+                        () ->
+                                withHint.parser()
+                                        .parse(
+                                                line.replace(
+                                                        "\"previous_failed_candidate_ids\":[]",
+                                                        "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\"null\"")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        for (String instruction :
+                List.of("친구가 무릎을 잡고 있다는 걸 보고, 넘어졌던 일을 다시 말해보게 하기", "캐릭터가 무릎이 아프다고 말하게 해줘.")) {
+            assertThatThrownBy(
+                            () ->
+                                    withHint.parser()
+                                            .parse(
+                                                    line.replace(
+                                                            "\"previous_failed_candidate_ids\":[]",
+                                                            "\"previous_failed_candidate_ids\":[],\"mascot_hint\":\""
+                                                                    + instruction
+                                                                    + "\"")))
+                    .isInstanceOf(InvalidLlmOutputException.class);
+        }
+
+        var withoutHint =
+                factory.responseGeneration(
+                        trace(ANALYSIS_ID, null),
+                        attempts(),
+                        1,
+                        character,
+                        parsedAnalysis(),
+                        CANDIDATE_ID,
+                        null);
+        assertThat(withoutHint.request().userPrompt()).doesNotContain("mascot_hint");
+        assertThatThrownBy(() -> withoutHint.parser().parse(hinted))
+                .isInstanceOf(InvalidLlmOutputException.class);
     }
 
     private static void assertContainsAll(String prompt, Set<String> codes) {

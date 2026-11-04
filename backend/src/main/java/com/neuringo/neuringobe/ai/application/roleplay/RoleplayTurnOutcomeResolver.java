@@ -48,7 +48,9 @@ public final class RoleplayTurnOutcomeResolver {
 
     private RoleplayTurnOutcome.ApprovedResponse approved(RoleplayTurnResult.Ready ready) {
         return new RoleplayTurnOutcome.ApprovedResponse(
-                ready.candidate().candidateId(), ready.candidate().text());
+                ready.candidate().candidateId(),
+                ready.candidate().text(),
+                ready.candidate().mascotHint());
     }
 
     private RoleplayTurnOutcome.Recovery inputRetry(RoleplayTurnResult.InputRejected rejected) {

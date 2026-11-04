@@ -107,7 +107,8 @@ public final class RoleplayCodes {
                     "REPEATED_QUESTION",
                     "NOT_ANSWERABLE",
                     "JUDGMENTAL_TONE",
-                    "INPUT_MEANING_UNCLEAR");
+                    "INPUT_MEANING_UNCLEAR",
+                    "CHARACTER_BREAK");
 
     static void requireOneOf(Set<String> allowed, String value, String fieldName) {
         if (value == null || !allowed.contains(value)) {

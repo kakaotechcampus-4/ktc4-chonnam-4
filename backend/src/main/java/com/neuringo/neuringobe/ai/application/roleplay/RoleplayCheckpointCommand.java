@@ -25,6 +25,7 @@ public final class RoleplayCheckpointCommand {
     private final String responseType;
     private final String strategyUsed;
     private final String responseText;
+    private final String mascotHint;
     private final String canonicalUtterance;
     private final String approvedContextFingerprint;
     private final RoleplayInputContext inputContext;
@@ -70,6 +71,7 @@ public final class RoleplayCheckpointCommand {
         this.responseType = candidate.responseType();
         this.strategyUsed = candidate.strategyUsed();
         this.responseText = candidate.text();
+        this.mascotHint = candidate.mascotHint();
         this.canonicalUtterance = result.canonicalUtterance();
         this.approvedContextFingerprint = result.approvedContextFingerprint();
         this.inputContext = result.inputContext();
@@ -141,6 +143,11 @@ public final class RoleplayCheckpointCommand {
 
     public String supportLevel() {
         return supportLevel;
+    }
+
+    /** 캐릭터 대사와 따로 보여 준 마스코트 힌트. 없으면 null. */
+    public String mascotHint() {
+        return mascotHint;
     }
 
     public String responseText() {

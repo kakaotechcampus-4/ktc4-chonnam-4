@@ -74,11 +74,7 @@ public class ServerRoleplayActivityGoalEvaluator implements RoleplayActivityGoal
                                     snapshot.recentDialogue()));
             RoleplaySupportDecisionRules.requireValidAnalysis(
                     snapshot.state(), snapshot.observations(), approvedTurn.analysis());
-            var plan =
-                    RoleplayGoalObservationMapper.toPlan(
-                            RoleplayGoalObservationMapper.contextFor(snapshot, command),
-                            command,
-                            approvedTurn);
+            var plan = RoleplayGoalObservationMapper.toPlan(snapshot, command, approvedTurn);
             deadline.requireActive();
             return plan;
         } catch (IllegalArgumentException invalidAssessment) {

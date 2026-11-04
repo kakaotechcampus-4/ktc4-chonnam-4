@@ -266,7 +266,8 @@ public final class RoleplayCheckpointedTurnExecutor {
 
     private static Result replay(RoleplayCheckpointStore.Committed saved) {
         return new Success(
-                new RoleplayTurnOutcome.ApprovedResponse(saved.candidateId(), saved.responseText()),
+                new RoleplayTurnOutcome.ApprovedResponse(
+                        saved.candidateId(), saved.responseText(), saved.mascotHint()),
                 saved.version(),
                 true);
     }

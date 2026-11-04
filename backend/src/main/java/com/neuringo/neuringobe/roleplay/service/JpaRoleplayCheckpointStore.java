@@ -66,7 +66,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                             saved.getCandidateId(),
                             saved.getCheckpointVersion(),
                             true,
-                            saved.getResponseText()));
+                            saved.getResponseText(),
+                            saved.getMascotHint()));
         }
         if (hasRecordedVoiceFailure(trace.sessionId(), identity.idempotencyKey()))
             return new Conflict();
@@ -155,7 +156,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                     saved.getCandidateId(),
                                     saved.getCheckpointVersion(),
                                     true,
-                                    saved.getResponseText());
+                                    saved.getResponseText(),
+                                    saved.getMascotHint());
                         }
                         if (hasRecordedVoiceFailure(command.sessionId(), command.idempotencyKey()))
                             return new Conflict();
@@ -187,7 +189,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                 command.candidateId(),
                                 version,
                                 false,
-                                command.responseText());
+                                command.responseText(),
+                                command.mascotHint());
                     });
         } catch (RoleplayTurnDeadline.Expired expired) {
             return new Expired();

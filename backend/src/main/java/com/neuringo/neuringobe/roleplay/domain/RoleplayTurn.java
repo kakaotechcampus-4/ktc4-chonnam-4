@@ -67,6 +67,9 @@ public class RoleplayTurn {
     @Column(name = "response_text", nullable = false, columnDefinition = "text")
     private String responseText;
 
+    @Column(name = "mascot_hint", columnDefinition = "text")
+    private String mascotHint;
+
     @Column(name = "canonical_utterance", columnDefinition = "text")
     private String canonicalUtterance;
 
@@ -103,6 +106,7 @@ public class RoleplayTurn {
             inputAnswerRevealed = input.answerRevealed();
         }
         responseText = command.responseText();
+        mascotHint = command.mascotHint();
         canonicalUtterance = command.canonicalUtterance();
         var quality = command.inputQuality();
         if (quality != null) {
@@ -139,6 +143,10 @@ public class RoleplayTurn {
 
     public String getResponseText() {
         return responseText;
+    }
+
+    public String getMascotHint() {
+        return mascotHint;
     }
 
     public long getCheckpointVersion() {

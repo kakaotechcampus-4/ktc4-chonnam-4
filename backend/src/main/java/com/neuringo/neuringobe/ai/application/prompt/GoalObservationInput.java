@@ -18,8 +18,23 @@ public record GoalObservationInput(
         @JsonProperty("confirmed_observations") List<Observation> confirmedObservations,
         @JsonProperty("confirmed_observation_contexts")
                 List<ObservationContext> confirmedObservationContexts,
-        @JsonProperty("current_goal_exposures") List<CurrentGoalExposure> currentGoalExposures) {
+        @JsonProperty("current_goal_exposures") List<CurrentGoalExposure> currentGoalExposures,
+        @JsonProperty("support_adjustment") RoleplaySupportAdjustmentContext supportAdjustment) {
+    public GoalObservationInput(
+            List<Criterion> approvedCriteria,
+            List<Observation> confirmedObservations,
+            List<ObservationContext> confirmedObservationContexts,
+            List<CurrentGoalExposure> currentGoalExposures) {
+        this(
+                approvedCriteria,
+                confirmedObservations,
+                confirmedObservationContexts,
+                currentGoalExposures,
+                RoleplaySupportAdjustmentContext.unavailable());
+    }
+
     public GoalObservationInput {
+        Objects.requireNonNull(supportAdjustment);
         approvedCriteria = List.copyOf(approvedCriteria);
         confirmedObservations = List.copyOf(confirmedObservations);
         confirmedObservationContexts = List.copyOf(confirmedObservationContexts);
@@ -85,6 +100,24 @@ public record GoalObservationInput(
         if (!contextReferences.equals(history)) {
             throw new IllegalArgumentException("확정 관찰마다 입력·지원 이력 연결이 필요합니다.");
         }
+        var supportTurns = new HashSet<UUID>();
+        int previousSupportTurn = 0;
+        long previousSupportVersion = 0;
+        for (var event : supportAdjustment.confirmedInputs()) {
+            if (!inputGoals.contains(event.microGoalId())
+                    || !supportTurns.add(event.turnId())
+                    || event.turnNumber() <= previousSupportTurn
+                    || event.checkpointVersion() <= previousSupportVersion)
+                throw new IllegalArgumentException("지원 조정 이력은 승인 목표의 중복 없는 시간순 입력이어야 합니다.");
+            for (var ref : event.basis()) {
+                if (!history.contains(ref)
+                        || !ref.turnId().equals(event.turnId())
+                        || !ref.microGoalId().equals(event.microGoalId()))
+                    throw new IllegalArgumentException("지원 조정 근거가 같은 확정 입력·목표의 관찰을 참조하지 않습니다.");
+            }
+            previousSupportTurn = event.turnNumber();
+            previousSupportVersion = event.checkpointVersion();
+        }
     }
 
     public boolean contains(UUID goalId, String reference) {
@@ -93,6 +126,11 @@ public record GoalObservationInput(
     }
 
     public void requireMatches(RoleplayTurnInput input) {
+        for (var event : supportAdjustment.confirmedInputs()) {
+            if (event.turnId().equals(input.learnerTurn().turnId())
+                    || event.turnNumber() >= input.state().turnCount())
+                throw new IllegalArgumentException("현재·미래 발화를 확정 지원 이력으로 사용할 수 없습니다.");
+        }
         for (var exposure : currentGoalExposures) {
             var prior = exposure.exposureBeforeInput().lastResponse();
             if (prior != null
@@ -164,12 +202,41 @@ public record GoalObservationInput(
         }
     }
 
-    /** 관찰된 목표에 발화 전에 제공한 응답만 요약한다. 입력 질문의 지원 수준을 대신하지 않는다. */
+    /** 목표별 사전 응답과 확인된 질문 지원을 요약한다. 다른 목표의 입력 지원을 복사하지 않는다. */
     public record GoalExposure(
             @JsonProperty("question_count") int questionCount,
             @JsonProperty("answer_revealed") boolean answerRevealed,
-            @JsonProperty("last_response") PriorResponse lastResponse) {
+            @JsonProperty("last_response") PriorResponse lastResponse,
+            @JsonProperty("highest_support_level") String highestSupportLevel,
+            @JsonProperty("mascot_hint_seen") boolean mascotHintSeen) {
+        public GoalExposure(
+                int questionCount,
+                boolean answerRevealed,
+                PriorResponse lastResponse,
+                String highestSupportLevel) {
+            this(questionCount, answerRevealed, lastResponse, highestSupportLevel, false);
+        }
+
+        public GoalExposure(int questionCount, boolean answerRevealed, PriorResponse lastResponse) {
+            this(
+                    questionCount,
+                    answerRevealed,
+                    lastResponse,
+                    lastResponse == null ? null : lastResponse.supportLevel(),
+                    false);
+        }
+
         public GoalExposure {
+            if (highestSupportLevel != null)
+                RoleplayCodes.requireOneOf(
+                        RoleplayCodes.SUPPORT_LEVELS, highestSupportLevel, "highestSupportLevel");
+            if (lastResponse != null
+                    && (highestSupportLevel == null
+                            || highestSupportLevel.compareTo(lastResponse.supportLevel()) < 0)) {
+                throw new IllegalArgumentException("관찰 이전 최대 지원 수준과 응답 이력이 일치하지 않습니다.");
+            }
+            if (mascotHintSeen && lastResponse == null)
+                throw new IllegalArgumentException("마스코트 힌트 이력에 확정 응답이 없습니다.");
             if (questionCount < 0
                     || (lastResponse == null && (questionCount != 0 || answerRevealed))
                     || (lastResponse != null
