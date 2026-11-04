@@ -1,4 +1,4 @@
-// 설계·미구현 함수 24개. 2026-10-28 통합 기준. 시작·복원은 endpoints.ts에 구현.
+// 설계·미구현 함수 22개. 2026-10-28 통합 기준. 시작·복원은 endpoints.ts에 구현.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -16,46 +16,6 @@ export function getChildSession(
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
-  });
-}
-
-export interface UpdateClassroomArgs {
-  classId: T.UUID;
-  body: T.ClassBody;
-}
-
-export function updateClassroom(
-  api: ApiClient,
-  args: UpdateClassroomArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.ClassData>> {
-  return api.request<T.ClassData>("/api/v1/classrooms/" + encodeURIComponent(args.classId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
-  });
-}
-
-export interface UpdateChildArgs {
-  childId: T.UUID;
-  body: T.ChildBody;
-}
-
-export function updateChild(
-  api: ApiClient,
-  args: UpdateChildArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.ChildData>> {
-  return api.request<T.ChildData>("/api/v1/children/" + encodeURIComponent(args.childId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
   });
 }
 

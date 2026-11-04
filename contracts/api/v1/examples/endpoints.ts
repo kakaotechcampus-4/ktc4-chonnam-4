@@ -1,4 +1,4 @@
-// 구현 함수 30개·조건부 음성 함수 1개. 2026-10-28 통합 기준.
+// 구현 함수 32개·조건부 음성 함수 1개. 2026-10-28 통합 기준.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -205,6 +205,25 @@ export function deleteClassroom(
   });
 }
 
+export interface UpdateClassroomArgs {
+  classId: T.UUID;
+  body: T.ClassBody;
+}
+
+export function updateClassroom(
+  api: ApiClient,
+  args: UpdateClassroomArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ClassData>> {
+  return api.request<T.ClassData>("/api/v1/classrooms/" + encodeURIComponent(args.classId), {
+    method: "PATCH",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    body: args.body
+  });
+}
+
 export interface CreateChildArgs {
   classId: T.UUID;
   body: T.ChildBody;
@@ -272,6 +291,25 @@ export function deleteChild(
     auth: "instructor",
     expectedStatuses: [204],
     signal: options.signal,
+  });
+}
+
+export interface UpdateChildArgs {
+  childId: T.UUID;
+  body: T.ChildBody;
+}
+
+export function updateChild(
+  api: ApiClient,
+  args: UpdateChildArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ChildData>> {
+  return api.request<T.ChildData>("/api/v1/children/" + encodeURIComponent(args.childId), {
+    method: "PATCH",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    body: args.body
   });
 }
 

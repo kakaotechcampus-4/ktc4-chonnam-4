@@ -3,11 +3,12 @@
 > 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
 > 통합 갱신: 2026-10-28 · PR #80 `c306bd1` + develop `565beb6`의 충돌 해결 작업본. 위 기존 계약 기준에 API-RPL-01 시작·복원과 API-ACT-04 활동 상태 조회의 실제 구현을 반영했습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+> 이름 수정·목표 조건 갱신: 2026-11-02 · `feature/goal-lineage-edit`. 학급·아동 이름 수정(API-CLS-04·09)을 구현으로 바꾸고 `examples/endpoints.ts`로 옮겼습니다. 목표 조건의 정리·등장인물 `{id, role}`·모순 거절을 API-GOAL-01·ACT-01에 반영했습니다.
 > API-ACT-04 상태 조회와 API-RPL-01 시작·복원은 `examples/endpoints.ts`에 반영돼 있습니다. 시작·복원 응답 타입·모의 데이터도 현재 계약으로 동기화했습니다. 실제 프론트엔드 연동·운영 배포는 별도입니다.
 
 ## 현재 제공 범위
 
-S6-JIN-01 입력 흐름 브랜치 기준 57개 API ID 중 **구현30개 · 조건부 구현2개 · 설계23개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성이며, 공유 TypeScript 예제와 FE 연동은 아직 현재 서버 계약으로 동기화되지 않았습니다.
+이 통합 작업 브랜치 기준 57개 API ID 중 **구현32개 · 조건부 구현2개 · 설계21개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성이며, 공유 TypeScript 예제와 FE 연동은 아직 현재 서버 계약으로 동기화되지 않았습니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -58,12 +59,12 @@ S6-JIN-01 입력 흐름 브랜치 기준 57개 API ID 중 **구현30개 · 조�
 | [API-CLS-01 · 학급 생성](./classrooms-children/create-classroom.md) | POST | `/api/v1/classrooms` | 구현 | createClassroom |
 | [API-CLS-02 · 담당 학급 목록 조회](./classrooms-children/list-classrooms.md) | GET | `/api/v1/classrooms` | 구현 | listClassrooms |
 | [API-CLS-03 · 학급 상세 조회](./classrooms-children/get-classroom.md) | GET | `/api/v1/classrooms/{classId}` | 구현 | getClassroom |
-| [API-CLS-04 · 학급 이름 수정](./classrooms-children/update-classroom.md) | PATCH | `/api/v1/classrooms/{classId}` | 설계 | updateClassroom |
+| [API-CLS-04 · 학급 이름 수정](./classrooms-children/update-classroom.md) | PATCH | `/api/v1/classrooms/{classId}` | 구현 | updateClassroom |
 | [API-CLS-05 · 학급 즉시 영구 삭제](./classrooms-children/delete-classroom.md) | DELETE | `/api/v1/classrooms/{classId}` | 구현 | deleteClassroom |
 | [API-CLS-06 · 아동 실명 등록](./classrooms-children/create-child.md) | POST | `/api/v1/classrooms/{classId}/children` | 구현 | createChild |
 | [API-CLS-07 · 학급 아동 목록 조회](./classrooms-children/list-children.md) | GET | `/api/v1/classrooms/{classId}/children` | 구현 | listChildren |
 | [API-CLS-08 · 아동 상세 조회](./classrooms-children/get-child.md) | GET | `/api/v1/children/{childId}` | 구현 | getChild |
-| [API-CLS-09 · 아동 실명 수정](./classrooms-children/update-child.md) | PATCH | `/api/v1/children/{childId}` | 설계 | updateChild |
+| [API-CLS-09 · 아동 실명 수정](./classrooms-children/update-child.md) | PATCH | `/api/v1/children/{childId}` | 구현 | updateChild |
 | [API-CLS-10 · 아동 즉시 영구 삭제](./classrooms-children/delete-child.md) | DELETE | `/api/v1/children/{childId}` | 구현 | deleteChild |
 ### 학습·목표
 

@@ -35,6 +35,10 @@ public class Classroom {
         this.status = status;
     }
 
+    public void rename(String name) {
+        this.name = name;
+    }
+
     public UUID getClassId() {
         return classId;
     }
