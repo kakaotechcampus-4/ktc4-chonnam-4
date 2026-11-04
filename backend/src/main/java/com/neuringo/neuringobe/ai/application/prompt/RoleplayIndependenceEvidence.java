@@ -73,7 +73,9 @@ public final class RoleplayIndependenceEvidence {
             return Eligibility.ANSWER_ALREADY_REVEALED;
         if (status != Status.EXPLICIT && status != Status.IMPLICIT)
             return Eligibility.NON_POSITIVE_OBSERVATION;
-        if ((exposure.highestSupportLevel() != null && !exposure.highestSupportLevel().equals("S0"))
+        if (exposure.mascotHintSeen()
+                || (exposure.highestSupportLevel() != null
+                        && !exposure.highestSupportLevel().equals("S0"))
                 || (inputGoal && !input.supportLevel().equals("S0")))
             return Eligibility.POSITIVE_WITH_HELP;
         // 다른 목표의 질문 지원을 복사하거나 지원 기록 부재를 S0로 간주하지 않는다.

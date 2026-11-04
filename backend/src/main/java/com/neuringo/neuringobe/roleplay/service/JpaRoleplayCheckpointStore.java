@@ -66,7 +66,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                             saved.getCandidateId(),
                             saved.getCheckpointVersion(),
                             true,
-                            saved.getResponseText()));
+                            saved.getResponseText(),
+                            saved.getMascotHint()));
         }
         return session.get().canAdvance(identity.expectedVersion(), identity.turnNumber())
                 ? new Absent()
@@ -144,7 +145,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                     saved.getCandidateId(),
                                     saved.getCheckpointVersion(),
                                     true,
-                                    saved.getResponseText());
+                                    saved.getResponseText(),
+                                    saved.getMascotHint());
                         }
                         if (child.isEmpty()
                                 || child.get().getStatus() != ChildStatus.ACTIVE
@@ -174,7 +176,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                 command.candidateId(),
                                 version,
                                 false,
-                                command.responseText());
+                                command.responseText(),
+                                command.mascotHint());
                     });
         } catch (RoleplayTurnDeadline.Expired expired) {
             return new Expired();

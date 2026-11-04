@@ -207,13 +207,23 @@ public record GoalObservationInput(
             @JsonProperty("question_count") int questionCount,
             @JsonProperty("answer_revealed") boolean answerRevealed,
             @JsonProperty("last_response") PriorResponse lastResponse,
-            @JsonProperty("highest_support_level") String highestSupportLevel) {
+            @JsonProperty("highest_support_level") String highestSupportLevel,
+            @JsonProperty("mascot_hint_seen") boolean mascotHintSeen) {
+        public GoalExposure(
+                int questionCount,
+                boolean answerRevealed,
+                PriorResponse lastResponse,
+                String highestSupportLevel) {
+            this(questionCount, answerRevealed, lastResponse, highestSupportLevel, false);
+        }
+
         public GoalExposure(int questionCount, boolean answerRevealed, PriorResponse lastResponse) {
             this(
                     questionCount,
                     answerRevealed,
                     lastResponse,
-                    lastResponse == null ? null : lastResponse.supportLevel());
+                    lastResponse == null ? null : lastResponse.supportLevel(),
+                    false);
         }
 
         public GoalExposure {
@@ -225,6 +235,8 @@ public record GoalObservationInput(
                             || highestSupportLevel.compareTo(lastResponse.supportLevel()) < 0)) {
                 throw new IllegalArgumentException("관찰 이전 최대 지원 수준과 응답 이력이 일치하지 않습니다.");
             }
+            if (mascotHintSeen && lastResponse == null)
+                throw new IllegalArgumentException("마스코트 힌트 이력에 확정 응답이 없습니다.");
             if (questionCount < 0
                     || (lastResponse == null && (questionCount != 0 || answerRevealed))
                     || (lastResponse != null

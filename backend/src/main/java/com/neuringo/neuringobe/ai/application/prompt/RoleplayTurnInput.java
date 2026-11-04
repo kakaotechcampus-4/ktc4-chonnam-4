@@ -40,7 +40,24 @@ public record RoleplayTurnInput(
             String scenarioLevel,
             List<String> scenarioFacts,
             List<String> prohibitedInferences,
-            List<MicroGoal> microGoals) {
+            List<MicroGoal> microGoals,
+            AiCharacter aiCharacter) {
+
+        /** AI 가 맡은 캐릭터가 없는(안내자) 시나리오. */
+        public Scenario(
+                String learningGoal,
+                String scenarioLevel,
+                List<String> scenarioFacts,
+                List<String> prohibitedInferences,
+                List<MicroGoal> microGoals) {
+            this(
+                    learningGoal,
+                    scenarioLevel,
+                    scenarioFacts,
+                    prohibitedInferences,
+                    microGoals,
+                    null);
+        }
 
         public Scenario {
             requireText(learningGoal, "learningGoal");
@@ -60,6 +77,17 @@ public record RoleplayTurnInput(
             if (microGoals.isEmpty()) {
                 throw new IllegalArgumentException("microGoals must not be empty");
             }
+        }
+    }
+
+    /**
+     * AI 가 1인칭으로 연기하는 등장인물(시나리오의 ai_role). personality·speechStyle 이 없는 예전 시나리오도 있어 null 을 허용한다.
+     */
+    public record AiCharacter(String id, String role, String personality, String speechStyle) {
+
+        public AiCharacter {
+            requireText(id, "aiCharacter.id");
+            requireText(role, "aiCharacter.role");
         }
     }
 
@@ -89,7 +117,9 @@ public record RoleplayTurnInput(
             int maximumTurnCount,
             int maximumSupportTurnsPerMicroGoal,
             Integer currentMicroGoalLearningSupportTurn,
-            Integer learningTurnCount) {
+            Integer learningTurnCount,
+            int currentMicroGoalMascotHints,
+            boolean previousTurnHadMascotHint) {
 
         public State(
                 UUID currentMicroGoalId,
@@ -111,9 +141,64 @@ public record RoleplayTurnInput(
                     maximumTurnCount,
                     maximumSupportTurnsPerMicroGoal,
                     currentMicroGoalLearningSupportTurn,
-                    null);
+                    null,
+                    0,
+                    false);
         }
 
+        public State(
+                UUID currentMicroGoalId,
+                String currentSupportLevel,
+                int currentMicroGoalSupportTurn,
+                int currentMicroGoalPromptCount,
+                boolean answerRevealed,
+                int turnCount,
+                int maximumTurnCount,
+                int maximumSupportTurnsPerMicroGoal,
+                Integer currentMicroGoalLearningSupportTurn,
+                Integer learningTurnCount) {
+            this(
+                    currentMicroGoalId,
+                    currentSupportLevel,
+                    currentMicroGoalSupportTurn,
+                    currentMicroGoalPromptCount,
+                    answerRevealed,
+                    turnCount,
+                    maximumTurnCount,
+                    maximumSupportTurnsPerMicroGoal,
+                    currentMicroGoalLearningSupportTurn,
+                    learningTurnCount,
+                    0,
+                    false);
+        }
+
+        public State(
+                UUID currentMicroGoalId,
+                String currentSupportLevel,
+                int currentMicroGoalSupportTurn,
+                int currentMicroGoalPromptCount,
+                boolean answerRevealed,
+                int turnCount,
+                int maximumTurnCount,
+                int maximumSupportTurnsPerMicroGoal,
+                int currentMicroGoalMascotHints,
+                boolean previousTurnHadMascotHint) {
+            this(
+                    currentMicroGoalId,
+                    currentSupportLevel,
+                    currentMicroGoalSupportTurn,
+                    currentMicroGoalPromptCount,
+                    answerRevealed,
+                    turnCount,
+                    maximumTurnCount,
+                    maximumSupportTurnsPerMicroGoal,
+                    null,
+                    null,
+                    currentMicroGoalMascotHints,
+                    previousTurnHadMascotHint);
+        }
+
+        /** 마스코트 힌트 기록이 없는(안내자 역할극·첫 턴) 상태. */
         public State(
                 UUID currentMicroGoalId,
                 String currentSupportLevel,
@@ -132,7 +217,10 @@ public record RoleplayTurnInput(
                     turnCount,
                     maximumTurnCount,
                     maximumSupportTurnsPerMicroGoal,
-                    null);
+                    null,
+                    null,
+                    0,
+                    false);
         }
 
         public State {
@@ -149,7 +237,8 @@ public record RoleplayTurnInput(
                     || (currentMicroGoalLearningSupportTurn != null
                             && (currentMicroGoalLearningSupportTurn < 1
                                     || currentMicroGoalLearningSupportTurn
-                                            > currentMicroGoalSupportTurn))) {
+                                            > currentMicroGoalSupportTurn))
+                    || currentMicroGoalMascotHints < 0) {
                 throw new IllegalArgumentException("invalid roleplay state counters");
             }
         }

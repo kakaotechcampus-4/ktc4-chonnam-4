@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplayIndependenceEvidence;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayInputContext;
 import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput.*;
 import java.util.List;
@@ -282,6 +283,38 @@ class RoleplayGoalObservationHistoryTest {
                                 .exposureBeforeInput()
                                 .highestSupportLevel())
                 .isEqualTo("S2");
+    }
+
+    @Test
+    void mascotHintBeforeAnS0AnswerCountsAsHelpForThatGoal() {
+        var first =
+                new RoleplayGoalResponseHistory.Response(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        1,
+                        1,
+                        event,
+                        "S0",
+                        "GUIDING_QUESTION",
+                        "PROBE_EVENT",
+                        input(event, "S0", 1, 0, false),
+                        true);
+        var second = response(2, event, "S0", "GUIDING_QUESTION", input(event, "S0", 2, 1, false));
+        var restored = history(first, second);
+        var observed = List.of(observation(second, event));
+        var linked = RoleplayGoalObservationHistory.link(observed, restored);
+        assertThat(linked.getFirst().goalExposureBeforeInput().mascotHintSeen()).isTrue();
+
+        var review =
+                RoleplayIndependenceEvidence.confirmed(
+                                new GoalObservationInput(
+                                        criteria(),
+                                        observed,
+                                        linked,
+                                        RoleplayGoalObservationHistory.beforeNextInput(restored)))
+                        .getFirst();
+        assertThat(review.eligibility())
+                .isEqualTo(RoleplayIndependenceEvidence.Eligibility.POSITIVE_WITH_HELP);
     }
 
     @ParameterizedTest

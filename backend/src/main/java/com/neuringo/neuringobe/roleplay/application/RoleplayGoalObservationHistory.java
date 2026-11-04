@@ -91,7 +91,8 @@ public final class RoleplayGoalObservationHistory {
                         prior.questionCount(),
                         prior.answerRevealed(),
                         prior.lastResponse(),
-                        highest(prior.highestSupportLevel(), input.supportLevel())));
+                        highest(prior.highestSupportLevel(), input.supportLevel()),
+                        prior.mascotHintSeen()));
     }
 
     private static void includeResponse(
@@ -115,7 +116,8 @@ public final class RoleplayGoalObservationHistory {
                                 response.checkpointVersion(),
                                 response.supportLevel(),
                                 response.responseType()),
-                        highest(prior.highestSupportLevel(), response.supportLevel())));
+                        highest(prior.highestSupportLevel(), response.supportLevel()),
+                        prior.mascotHintSeen() || response.mascotHintDelivered()));
     }
 
     private static String highest(String prior, String support) {

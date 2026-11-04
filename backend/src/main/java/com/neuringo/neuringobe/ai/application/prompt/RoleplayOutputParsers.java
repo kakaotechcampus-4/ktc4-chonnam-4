@@ -50,8 +50,25 @@ final class RoleplayOutputParsers {
             RoleplayTurnInput.State state) {
         LlmOutputParser<AnalysisResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, AnalysisResult.class);
+        Set<String> knownTurnIds = new HashSet<>();
+        if (observationInput != null) {
+            observationInput
+                    .confirmedObservations()
+                    .forEach(o -> knownTurnIds.add(o.reference().turnId().toString()));
+        }
         return content -> {
-            AnalysisResult result = delegate.parse(stripCodeFence(content));
+            AnalysisResult result =
+                    withClosingSupportLevelFilled(
+                            delegate.parse(
+                                    withMiscopiedIdFixed(
+                                            withMiscopiedTurnIdFixed(
+                                                    stripCodeFence(content),
+                                                    expectedTurnId,
+                                                    knownTurnIds),
+                                            "analysis_id",
+                                            expectedAnalysisId,
+                                            Set.of())),
+                            state);
             check(result.turnId().equals(expectedTurnId), "turn_id does not match the request");
             check(oneOf(RoleplayCodes.RESPONSE_ACTS, result.responseAct()), "unknown response_act");
             check(oneOf(RoleplayCodes.RELEVANCE, result.relevance()), "unknown relevance");
@@ -86,6 +103,67 @@ final class RoleplayOutputParsers {
         };
     }
 
+    /**
+     * 모델이 긴 id(turn_id·analysis_id·candidate_id)를 옮겨 적다 가운데 몇 글자를 틀리는 일이 잦다(앞 8자는 같고 뒤가 다른 값). 그
+     * 자리에는 정해진 값 하나만 올 수 있으므로, 앞 8자가 같고 다른 알려진 id 도 아닌 값이면 잘못 옮긴 것으로 보고 모두 바로잡는다. 그 밖의 값은 그대로 두어
+     * 검증에서 걸러진다.
+     */
+    static String withMiscopiedIdFixed(
+            String content, String field, UUID expectedId, Set<String> knownIds) {
+        if (content == null || expectedId == null) return content;
+        String expected = expectedId.toString();
+        Matcher matcher =
+                Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*\"([^\"]+)\"")
+                        .matcher(content);
+        if (!matcher.find()) return content;
+        String written = matcher.group(1);
+        if (written.equals(expected)
+                || knownIds.contains(written)
+                || written.length() < 8
+                || !written.regionMatches(true, 0, expected, 0, 8)) {
+            return content;
+        }
+        return content.replace("\"" + written + "\"", "\"" + expected + "\"");
+    }
+
+    static String withMiscopiedTurnIdFixed(
+            String content, UUID expectedTurnId, Set<String> knownTurnIds) {
+        return withMiscopiedIdFixed(content, "turn_id", expectedTurnId, knownTurnIds);
+    }
+
+    /** 마무리(CLOSE_ROLEPLAY)는 지원 수준을 현재 수준 그대로 둔다. 모델이 빠뜨리면 그 값으로 채운다. */
+    private static AnalysisResult withClosingSupportLevelFilled(
+            AnalysisResult result, RoleplayTurnInput.State state) {
+        AnalysisResult.NextStrategy strategy = result.nextStrategy();
+        if (!"CLOSE_ROLEPLAY".equals(strategy.type())
+                || (strategy.recommendedSupportLevel() != null
+                        && !strategy.recommendedSupportLevel().isBlank())
+                || state == null) {
+            return result;
+        }
+        return new AnalysisResult(
+                result.turnId(),
+                result.responseAct(),
+                result.relevance(),
+                result.learningState(),
+                result.primaryGap(),
+                new AnalysisResult.NextStrategy(
+                        strategy.type(),
+                        strategy.targetMicroGoalId(),
+                        strategy.purpose(),
+                        state.currentSupportLevel()),
+                result.analysisConfidence(),
+                result.goalObservation());
+    }
+
+    /** 마스코트가 아동에게 하는 말이 아니라 내부 지시처럼 쓰인 경우. 예) "넘어졌던 일을 다시 말해보게 하기", "캐릭터가 ~말하게 해줘" */
+    private static final Pattern MASCOT_INSTRUCTION =
+            Pattern.compile("(캐릭터|단서|유도|목표|힌트|역할극|지원 수준|(하|주|보|돌려주)기[.!…]*$)");
+
+    static boolean looksLikeInstruction(String mascotHint) {
+        return MASCOT_INSTRUCTION.matcher(mascotHint.strip()).find();
+    }
+
     static LlmOutputParser<CandidateResponse> candidate(
             ObjectMapper objectMapper,
             UUID expectedCandidateId,
@@ -93,13 +171,27 @@ final class RoleplayOutputParsers {
             List<UUID> expectedFailedCandidateIds,
             Set<String> failedCandidateTexts,
             int maxTextLength,
+            boolean characterVoice,
+            boolean mascotHintRequired,
             boolean maximumTurnReached) {
         LlmOutputParser<CandidateResponse> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, CandidateResponse.class);
         Set<String> normalizedFailedTexts = new HashSet<>();
         failedCandidateTexts.forEach(text -> normalizedFailedTexts.add(normalize(text)));
         return content -> {
-            CandidateResponse result = delegate.parse(stripCodeFence(content));
+            CandidateResponse parsed =
+                    delegate.parse(
+                            withMiscopiedIdFixed(
+                                    withMiscopiedIdFixed(
+                                            stripCodeFence(content),
+                                            "candidate_id",
+                                            expectedCandidateId,
+                                            Set.of()),
+                                    "turn_id",
+                                    analysis.turnId(),
+                                    Set.of()));
+            CandidateResponse result =
+                    characterVoice ? withStrategyNameAsResponseTypeFixed(parsed) : parsed;
             check(
                     result.candidateId().equals(expectedCandidateId),
                     "candidate_id does not match the request");
@@ -128,8 +220,22 @@ final class RoleplayOutputParsers {
 
             String text = result.text().strip();
             check(text.length() <= maxTextLength, "text is too long");
+            // 마스코트 힌트는 서버 규칙이 요구한 턴에만 있다.
+            if (mascotHintRequired) {
+                check(result.mascotHint() != null, "the mascot hint is required for this turn");
+                check(result.mascotHint().length() <= maxTextLength, "the mascot hint is too long");
+                check(
+                        !looksLikeInstruction(result.mascotHint()),
+                        "the mascot hint must speak to the child, not describe an instruction");
+            } else {
+                check(result.mascotHint() == null, "the mascot hint is not allowed for this turn");
+            }
             long questionMarks = text.chars().filter(ch -> ch == '?').count();
-            if (RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
+            if (characterVoice
+                    && RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
+                // 캐릭터 대사는 묻지 않고 반응만으로 유도할 수 있다. 묻는다면 한 번만.
+                check(questionMarks <= 1, "a character line must not ask more than one question");
+            } else if (RoleplayCodes.QUESTION_RESPONSE_TYPES.contains(result.responseType())) {
                 check(questionMarks == 1, "a question response must contain exactly one question");
             } else {
                 check(questionMarks == 0, "a non-question response must not ask a question");
@@ -141,12 +247,50 @@ final class RoleplayOutputParsers {
         };
     }
 
+    /**
+     * 캐릭터 대사 생성은 response_type 칸에 전략 이름(REDIRECT_TO_SCENARIO 등)을 그대로 적는 실수가 잦다. 전략과 지원 수준으로 응답 유형이
+     * 하나로 정해지므로, 전략 이름이 그대로 들어온 경우에만 그 유형으로 바꾼다.
+     */
+    private static CandidateResponse withStrategyNameAsResponseTypeFixed(CandidateResponse result) {
+        if (!result.responseType().equals(result.strategyUsed())) return result;
+        String responseType =
+                switch (result.strategyUsed()) {
+                    case "PROBE_EVENT", "PROBE_EMOTION", "PROBE_CAUSE" ->
+                            "S3".equals(result.supportLevel())
+                                    ? "ANSWER_REVEAL"
+                                    : "GUIDING_QUESTION";
+                    case "PROBE_ACTION", "ADVANCE_GOAL" -> "GUIDING_QUESTION";
+                    case "REDIRECT_TO_SCENARIO" -> "REDIRECT";
+                    case "CONFIRM_UNDERSTANDING" -> "CONFIRMATION";
+                    case "CLOSE_ROLEPLAY" -> "CLOSING";
+                    default -> null;
+                };
+        if (responseType == null) return result;
+        return new CandidateResponse(
+                result.candidateId(),
+                result.turnId(),
+                result.text(),
+                responseType,
+                result.strategyUsed(),
+                result.targetMicroGoalId(),
+                result.supportLevel(),
+                result.previousFailedCandidateIds(),
+                result.mascotHint());
+    }
+
     static LlmOutputParser<EvaluationResult> evaluation(
             ObjectMapper objectMapper, UUID expectedCandidateId, UUID expectedAnalysisId) {
         LlmOutputParser<EvaluationResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, EvaluationResult.class);
         return content -> {
-            EvaluationResult result = delegate.parse(stripCodeFence(content));
+            String repaired = stripCodeFence(content);
+            repaired =
+                    withMiscopiedIdFixed(repaired, "candidate_id", expectedCandidateId, Set.of());
+            if (expectedAnalysisId != null) {
+                repaired =
+                        withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
+            }
+            EvaluationResult result = delegate.parse(repaired);
             check(
                     result.candidateId().equals(expectedCandidateId),
                     "candidate_id does not match the request");

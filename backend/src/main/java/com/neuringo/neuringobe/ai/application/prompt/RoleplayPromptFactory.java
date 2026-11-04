@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,8 +32,17 @@ public final class RoleplayPromptFactory {
     public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v2";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
+
+    /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
+    public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
+            "roleplay-response-generation-character/v1";
+
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
             "roleplay-response-evaluation/v2";
+
+    /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
+    public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
+            "roleplay-response-evaluation-character/v2";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -45,7 +55,10 @@ public final class RoleplayPromptFactory {
     private final String policyVersion;
     private final String causeAnalysisSystemPrompt;
     private final String responseGenerationSystemPrompt;
+    private final String characterResponseGenerationSystemPrompt;
     private final String responseEvaluationSystemPrompt;
+    private final String characterCauseAnalysisRules;
+    private final String characterResponseEvaluationSystemPrompt;
 
     /**
      * @param policyVersion 지원 수준·턴 제한 정책 버전(예: SUPPORT-MVP-001). 정해지지 않았으면 null.
@@ -56,8 +69,22 @@ public final class RoleplayPromptFactory {
         this.causeAnalysisSystemPrompt = PromptTemplates.load("roleplay/v2/cause-analysis.md");
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
+        this.characterResponseGenerationSystemPrompt =
+                PromptTemplates.load("roleplay/v1/response-generation-character.md");
         this.responseEvaluationSystemPrompt =
                 PromptTemplates.load("roleplay/v2/response-evaluation.md");
+        this.characterCauseAnalysisRules =
+                PromptTemplates.load("roleplay/v2/cause-analysis-character.md");
+        this.characterResponseEvaluationSystemPrompt =
+                PromptTemplates.load("roleplay/v2/response-evaluation-character.md");
+    }
+
+    /** 캐릭터 역할극이면 기본 지시문 뒤에 캐릭터 규칙을 붙인다. 안내자 역할극은 기본 지시문 그대로다. */
+    private static String withCharacterRules(
+            String basePrompt, String characterRules, RoleplayTurnInput input) {
+        return input.scenario().aiCharacter() == null
+                ? basePrompt
+                : basePrompt + "\n\n" + characterRules;
     }
 
     /** 원인 판단과 관찰 근거를 같은 호출에서 준비한다. */
@@ -86,7 +113,8 @@ public final class RoleplayPromptFactory {
                         attempts,
                         AiOperation.CAUSE_ANALYSIS,
                         currentAttempt,
-                        causeAnalysisSystemPrompt,
+                        withCharacterRules(
+                                causeAnalysisSystemPrompt, characterCauseAnalysisRules, input),
                         toJson(message),
                         CAUSE_ANALYSIS_PROMPT_VERSION,
                         ANALYSIS_SCHEMA_VERSION,
@@ -122,6 +150,8 @@ public final class RoleplayPromptFactory {
         Map<String, Object> message = turnSections(input);
         message.put("analysis_result", analysisSection(analysis));
         message.put("candidate_id", candidateId);
+        Optional<MascotHintRule.Reason> mascotHint = MascotHintRule.decide(input, analysis);
+        mascotHint.ifPresent(reason -> message.put("mascot_hint", Map.of("reason", reason.name())));
         List<UUID> failedIds = retry == null ? List.of() : retry.failedCandidateIds();
         message.put("previous_failed_candidate_ids", failedIds);
         if (retry != null) {
@@ -147,15 +177,20 @@ public final class RoleplayPromptFactory {
             message.put("retry", retrySection);
         }
 
+        boolean characterVoice = input.scenario().aiCharacter() != null;
         LlmRequest request =
                 new LlmRequest(
                         trace,
                         attempts,
                         AiOperation.RESPONSE_GENERATION,
                         currentAttempt,
-                        responseGenerationSystemPrompt,
+                        characterVoice
+                                ? characterResponseGenerationSystemPrompt
+                                : responseGenerationSystemPrompt,
                         toJson(message),
-                        RESPONSE_GENERATION_PROMPT_VERSION,
+                        characterVoice
+                                ? CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION
+                                : RESPONSE_GENERATION_PROMPT_VERSION,
                         CANDIDATE_SCHEMA_VERSION,
                         policyVersion);
         Set<String> failedTexts =
@@ -173,6 +208,8 @@ public final class RoleplayPromptFactory {
                         failedIds,
                         failedTexts,
                         MAX_RESPONSE_LENGTH,
+                        characterVoice,
+                        mascotHint.isPresent(),
                         input.state().learningTurnCount() != null
                                 && input.state().learningTurnCount()
                                         >= input.state().maximumTurnCount()
@@ -194,6 +231,7 @@ public final class RoleplayPromptFactory {
         if (!candidate.candidateId().equals(trace.candidateId())) {
             throw new IllegalArgumentException("trace candidateId does not match the candidate");
         }
+        boolean characterVoice = input.scenario().aiCharacter() != null;
         if (!analysis.turnId().equals(input.learnerTurn().turnId())
                 || !candidate.turnId().equals(input.learnerTurn().turnId())) {
             throw new IllegalArgumentException("analysis or candidate belongs to another turn");
@@ -211,9 +249,13 @@ public final class RoleplayPromptFactory {
                         attempts,
                         AiOperation.RESPONSE_EVALUATION,
                         currentAttempt,
-                        responseEvaluationSystemPrompt,
+                        characterVoice
+                                ? characterResponseEvaluationSystemPrompt
+                                : responseEvaluationSystemPrompt,
                         toJson(message),
-                        RESPONSE_EVALUATION_PROMPT_VERSION,
+                        characterVoice
+                                ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
+                                : RESPONSE_EVALUATION_PROMPT_VERSION,
                         EVALUATION_SCHEMA_VERSION,
                         policyVersion);
         return new PreparedPrompt<>(
@@ -235,6 +277,50 @@ public final class RoleplayPromptFactory {
         message.put(
                 "independence_review_context",
                 RoleplayIndependenceEvidence.confirmed(observations));
+        if (input.scenario().aiCharacter() != null) {
+            message.put("goal_evidence_so_far", evidenceSoFar(observations, input));
+        }
+    }
+
+    /**
+     * 이전 턴까지 확정된 관찰을 목표별로 요약한다. 확정 관찰은 턴마다 모든 목표의 NOT_EXPRESSED 가 섞인 긴 목록이라, 캐릭터 역할극에서 이미 증거가 모인
+     * 목표를 놓치고 대화를 끝내지 못하는 일이 잦다. 목표마다 가장 강한 증거 하나와 그 reference 를 준다.
+     */
+    private static List<Map<String, Object>> evidenceSoFar(
+            GoalObservationInput observations, RoleplayTurnInput input) {
+        return input.scenario().microGoals().stream()
+                .map(
+                        goal -> {
+                            var best =
+                                    observations.confirmedObservations().stream()
+                                            .filter(
+                                                    o ->
+                                                            o.reference()
+                                                                    .microGoalId()
+                                                                    .equals(goal.id()))
+                                            .filter(
+                                                    o ->
+                                                            o.status()
+                                                                            == GoalObservationOutput
+                                                                                    .Status.EXPLICIT
+                                                                    || o.status()
+                                                                            == GoalObservationOutput
+                                                                                    .Status
+                                                                                    .IMPLICIT)
+                                            .min(
+                                                    java.util.Comparator.comparing(
+                                                            GoalObservationOutput.Observation
+                                                                    ::status));
+                            Map<String, Object> entry = new LinkedHashMap<>();
+                            entry.put("micro_goal_id", goal.id());
+                            entry.put("evidence", best.map(o -> o.status().name()).orElse("NONE"));
+                            entry.put(
+                                    "reference",
+                                    best.map(GoalObservationOutput.Observation::reference)
+                                            .orElse(null));
+                            return entry;
+                        })
+                .toList();
     }
 
     private static void requireAnalysisIdentity(AiTraceContext trace, AnalysisResult analysis) {
@@ -250,6 +336,15 @@ public final class RoleplayPromptFactory {
         scenario.put("scenario_level", input.scenario().scenarioLevel());
         scenario.put("scenario_facts", input.scenario().scenarioFacts());
         scenario.put("prohibited_inferences", input.scenario().prohibitedInferences());
+        RoleplayTurnInput.AiCharacter character = input.scenario().aiCharacter();
+        if (character != null) {
+            Map<String, Object> aiCharacter = new LinkedHashMap<>();
+            aiCharacter.put("id", character.id());
+            aiCharacter.put("role", character.role());
+            aiCharacter.put("personality", character.personality());
+            aiCharacter.put("speech_style", character.speechStyle());
+            scenario.put("ai_character", aiCharacter);
+        }
         scenario.put(
                 "micro_goals",
                 input.scenario().microGoals().stream()
@@ -330,6 +425,7 @@ public final class RoleplayPromptFactory {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("candidate_id", candidate.candidateId());
         section.put("text", candidate.text());
+        if (candidate.mascotHint() != null) section.put("mascot_hint", candidate.mascotHint());
         section.put("response_type", candidate.responseType());
         section.put("strategy_used", candidate.strategyUsed());
         section.put("target_micro_goal_id", candidate.targetMicroGoalId());

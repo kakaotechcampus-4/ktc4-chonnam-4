@@ -100,6 +100,21 @@ class RoleplayTurnResponseMapperTest {
     }
 
     @Test
+    void mascotHintComesFirstAsHintAndTheCharacterLineAsDialogue() {
+        var hinted =
+                new RoleplayTurnOutcome.ApprovedResponse(
+                        candidate, "synthetic character line", "synthetic mascot hint");
+        var dto = mapper.map(success(hinted, true));
+        assertThat(dto.messages())
+                .extracting(m -> m.speakerRole() + ":" + m.text())
+                .containsExactly("HINT:synthetic mascot hint", "DIALOGUE:synthetic character line");
+        assertThat(dto.messages().getFirst().speech().available()).isFalse();
+
+        var plain = mapper.map(success(approved, true));
+        assertThat(plain.messages()).extracting(m -> m.speakerRole()).containsExactly("DIALOGUE");
+    }
+
+    @Test
     void timeoutUsesConfirmedLiteralAndRequestsNewInputWithoutCheckpoint() {
         var outcome =
                 new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()))
@@ -108,6 +123,7 @@ class RoleplayTurnResponseMapperTest {
         assertThat(dto.status()).isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
         assertThat(dto.action()).isEqualTo(RoleplayDeliveryAction.REQUEST_NEW_INPUT);
         assertThat(dto.messages().getFirst().text()).isEqualTo("다시 한 번만 말해줄래?");
+        assertThat(dto.messages().getFirst().speakerRole()).isEqualTo("HINT");
         assertNoLearningResult(dto);
     }
 
