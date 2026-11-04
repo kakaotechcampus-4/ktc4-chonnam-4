@@ -323,13 +323,30 @@ public class ScenarioDraftService {
         if (!TextRules.hasVisibleCharacter(value) || TextRules.containsUnusableCharacter(value)) {
             throw invalid(field + " 를 확인해 주세요.");
         }
-        String lowered = value.toLowerCase(Locale.ROOT);
+        String text = withoutSpacing(value);
         for (String forbidden : goal.forbiddenExpressions()) {
-            if (!forbidden.isBlank()
-                    && lowered.contains(forbidden.trim().toLowerCase(Locale.ROOT))) {
+            String needle = withoutSpacing(forbidden);
+            if (!needle.isEmpty() && text.contains(needle)) {
                 throw invalid(field + " 에 목표의 피할 표현이 들어 있습니다.");
             }
         }
+    }
+
+    /**
+     * 피할 표현을 찾기 전에 양쪽에서 띄어쓰기를 지운다. 생성 결과 검사도 공백을 지우고 찾으므로 같은 기준이다. "바 보"처럼 띄어 써도, 피할 표현을 "못 해"로 적고
+     * 문장에 "못해"라고 써도 걸린다. 일반 공백 말고도 NBSP 같은 공백류와 폭 없는 공백 같은 서식 문자를 함께 지워, 눈에 안 보이는 문자를 끼워 넣어 피하지 못하게
+     * 한다.
+     */
+    private static String withoutSpacing(String value) {
+        StringBuilder kept = new StringBuilder(value.length());
+        value.codePoints()
+                .filter(
+                        cp ->
+                                !Character.isWhitespace(cp)
+                                        && !Character.isSpaceChar(cp)
+                                        && Character.getType(cp) != Character.FORMAT)
+                .forEach(kept::appendCodePoint);
+        return kept.toString().toLowerCase(Locale.ROOT);
     }
 
     private List<DraftMicroGoalPatch> remap(

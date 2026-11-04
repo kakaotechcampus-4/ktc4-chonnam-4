@@ -1466,6 +1466,11 @@ class QuizFlowIntegrationTest {
     @ValueSource(
             strings = {
                 "FORBIDDEN",
+                "FORBIDDEN_SPACED",
+                "FORBIDDEN_NBSP",
+                "FORBIDDEN_ZERO_WIDTH",
+                "FORBIDDEN_JOINED",
+                "FORBIDDEN_IN_MICRO_GOAL",
                 "BLANK",
                 "UNKNOWN_GOAL",
                 "REVISION",
@@ -1476,7 +1481,8 @@ class QuizFlowIntegrationTest {
     void draftEditsAreValidated(String broken) throws Exception {
         UUID activityId =
                 assignFirstActivity(
-                        childId, Map.of("title", "초안 검증", "forbiddenExpressions", List.of("바보")));
+                        childId,
+                        Map.of("title", "초안 검증", "forbiddenExpressions", List.of("바보", "못 해")));
         completeAssignedQuiz(activityId, true);
         UUID goalId = activities.findById(activityId).orElseThrow().getGoalId();
         UUID original = candidateWithMicroGoal(activityId);
@@ -1491,6 +1497,27 @@ class QuizFlowIntegrationTest {
                 switch (broken) {
                     case "FORBIDDEN" ->
                             patchScenario(draft, "{\"version\":2,\"title\":\"바보 같은 친구\"}");
+                    // 띄어쓰기·안 보이는 문자를 끼워도, 피할 표현 쪽에 띄어쓰기가 있어도 걸린다.
+                    case "FORBIDDEN_SPACED" ->
+                            patchScenario(draft, "{\"version\":2,\"title\":\"바 보 같은 친구\"}");
+                    case "FORBIDDEN_NBSP" ->
+                            patchScenario(draft, "{\"version\":2,\"title\":\"바\\u00A0보 같은 친구\"}");
+                    case "FORBIDDEN_ZERO_WIDTH" ->
+                            patchScenario(draft, "{\"version\":2,\"summary\":\"바\\u200B보라고 말한다\"}");
+                    case "FORBIDDEN_JOINED" ->
+                            patchScenario(draft, "{\"version\":2,\"summary\":\"나는 못해요\"}");
+                    case "FORBIDDEN_IN_MICRO_GOAL" -> {
+                        UUID microGoalId =
+                                jdbc.queryForObject(
+                                        "SELECT micro_goal_id FROM scenario_micro_goal WHERE scenario_id = ? LIMIT 1",
+                                        UUID.class,
+                                        draft);
+                        yield patchScenario(
+                                draft,
+                                "{\"version\":2,\"microGoals\":[{\"microGoalId\":\""
+                                        + microGoalId
+                                        + "\",\"description\":\"설명\",\"requiredEvidence\":[\"바 보라고 말하지 않음\"]}]}");
+                    }
                     case "BLANK" -> patchScenario(draft, "{\"version\":2,\"summary\":\"   \"}");
                     case "UNKNOWN_GOAL" ->
                             patchScenario(
