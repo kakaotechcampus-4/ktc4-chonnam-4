@@ -238,28 +238,6 @@ export function updateRoleplaySession(
   });
 }
 
-export interface SubmitTextInputArgs {
-  sessionId: T.UUID;
-  body: T.DraftTextBody;
-  idempotencyKey: T.UUID;
-}
-
-export function submitTextInput(
-  api: ApiClient,
-  args: SubmitTextInputArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftInputAccepted>> {
-  return api.request<T.DraftInputAccepted>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [202],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
-  });
-}
-
 export interface GetRoleplayTurnArgs {
   turnId: T.UUID;
   auth: "instructor" | "child";

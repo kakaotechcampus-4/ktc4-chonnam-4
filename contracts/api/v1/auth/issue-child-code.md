@@ -1,6 +1,6 @@
 # API-IAM-07 · 아동 코드 발급·재발급
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -83,7 +83,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 403 | ACCESS_DENIED | 역할 권한 |
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
 | 404 | CHILD_NOT_FOUND | 없거나 권한 밖 |
-| 409 | IDEMPOTENCY_KEY_REUSED | 다른 아동 요청에 같은 키 |
+| 409 | IDEMPOTENCY_KEY_REUSED | 다른 아동 또는 다른 강사의 요청에 같은 키 |
 | 409 | ACCESS_CODE_SPACE_EXHAUSTED | 유효 코드 공간 부족 |
 | 409 | CHILD_NOT_ACTIVE | 비활성 아동 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
@@ -178,6 +178,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/children/${childId}/access-codes" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-YOON-01` · `S8-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessCodeController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessCodeController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

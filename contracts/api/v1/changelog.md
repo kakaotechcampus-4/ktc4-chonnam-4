@@ -1,5 +1,24 @@
 # API v1 변경 이력
 
+## 2026-11-04 — develop `bab136d` 기준 재대조
+
+- 기준은 develop [`bab136d`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/bab136d86b0642fd8446b3299fe09de3e9eb4a4e)(PR #78 병합)입니다. 구현·조건부 API 34개를 Controller/DTO/Service와 다시 대조했고, 문서 상단 기준과 코드 근거 링크를 이 커밋으로 옮겼습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 그대로 57개 ID 중 구현 32개·조건부 구현 2개·설계 21개·미제공 2개입니다. [API-RPL-01](./roleplay/start-roleplay.md)의 "작업 브랜치" 표시를 지웠습니다.
+- 호환성 영향이 있는 응답 변경
+  - [API-RPL-04](./roleplay/submit-voice-input.md)·[API-RPL-05](./roleplay/submit-text-input.md): `messages[].speakerRole`(`DIALOGUE` 캐릭터 대사·`HINT` 마스코트 힌트/고정 안내)이 생겼습니다. 마스코트 힌트가 붙은 DELIVERED는 `[HINT, DIALOGUE]` 2개, 재입력·재시도·중단 안내는 HINT 1개입니다. 공유 `RoleplayDeliveryAction`에 `SUGGEST_TEXT_KEEP_VOICE`를 더했습니다.
+  - [API-RPL-05](./roleplay/submit-text-input.md): 공유 예제를 초안(`clientInputId`·202 접수)에서 실제 계약(`{text}` 본문, 200/202, 음성과 같은 응답)으로 바꾸고 `examples/endpoints.ts`의 조건부 함수로 옮겼습니다.
+- 오류 코드 정정
+  - [API-GOAL-02](./learning-goals/list-learning-goals.md)의 404는 `CHILD_NOT_FOUND`, [API-GOAL-03](./learning-goals/get-learning-goal.md)의 404는 담당 범위 밖도 `GOAL_NOT_FOUND`입니다.
+  - [API-IAM-08](./auth/enter-child.md): `accessCode` 누락/null은 422가 아니라 401 `INVALID_ACCESS_CODE`입니다.
+  - [API-ACT-03](./activities/get-activity.md)·[API-QUIZ-03](./quizzes/list-assigned-quiz-items.md)·[API-QUIZ-04](./quizzes/put-quiz-attempt.md)·[API-QUIZ-06](./quizzes/issue-quiz-hint.md): 404 `QUIZ_ITEM_NOT_FOUND`·409 `ITEM_VERSION_CONFLICT`를 더했습니다. 겹쳐 적힌 `ACTIVITY_QUIZ_NOT_FOUND` 행을 하나로 합쳤습니다.
+  - [API-IAM-04](./auth/get-instructor-session.md) 404 `USER_NOT_FOUND`(탈퇴 경합), [API-IAM-07](./auth/issue-child-code.md) 다른 강사의 같은 키도 409, 역할극 입력의 400·415·404 경우를 적었습니다.
+- 요청 규칙 보완
+  - [API-ACT-01](./activities/create-activity.md): 같은 Idempotency-Key 재전송은 `parentGoalId`까지 같아야 200입니다.
+  - [API-QUIZ-04](./quizzes/put-quiz-attempt.md): `firstResponse`·`expressionMatchResult`·`finalResponse`·`technicalFailureReason`의 유형별 필수·허용 규칙, NOT_ANALYZABLE·기술 실패는 첫 PUT에서 바로 채점 제외 확정, 201/200 구분을 적었습니다.
+  - 이름 칸(API-IAM-02·CLS-01·CLS-06)의 보이는 글자·제어 문자 규칙, 등장인물 id 공백만 422·role 실명 미검사(API-GOAL-01), 역할극 기능 켜기에 필요한 필수 설정을 적었습니다.
+- 예시 값 정정: 퀴즈 결과 `overallAccuracy`는 소수 6자리(`0.666667`), 힌트 `type`은 `OBSERVABLE_FACE_CUE`·`OBSERVABLE_BODY_CUE`·`CHOICE_REDUCTION` 중 하나입니다.
+- 프론트엔드: MSW로 테스트하는 강사·아동 입장/활동 요청이 명세의 공통 헤더(`Accept: application/json`, `Content-Type: application/json; charset=utf-8`)와 경로 인코딩(`encodeURIComponent`)을 따르게 했습니다. MSW 가짜 서버도 위 오류 코드 정정에 맞췄습니다.
+
 ## 2026-11-02 — 학급·아동 이름 수정과 목표 조건 정리·모순 거절
 
 - 기준은 `feature/goal-lineage-edit` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.

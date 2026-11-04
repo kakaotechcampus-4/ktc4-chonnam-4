@@ -1,19 +1,17 @@
 # 느링고 API v1 명세
 
-> 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
+> 계약 갱신: 2026-11-04 · develop [`bab136d`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/bab136d86b0642fd8446b3299fe09de3e9eb4a4e) (PR #78 병합 커밋). 구현·조건부 API 34개를 이 커밋의 Controller/DTO/Service와 다시 대조했습니다. 변경 내역은 [changelog](./changelog.md)의 2026-11-04 항목을 봅니다.
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
-> 통합 갱신: 2026-10-28 · PR #80 `c306bd1` + develop `565beb6`의 충돌 해결 작업본. 위 기존 계약 기준에 API-RPL-01 시작·복원과 API-ACT-04 활동 상태 조회의 실제 구현을 반영했습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
-> 이름 수정·목표 조건 갱신: 2026-11-02 · `feature/goal-lineage-edit`. 학급·아동 이름 수정(API-CLS-04·09)을 구현으로 바꾸고 `examples/endpoints.ts`로 옮겼습니다. 목표 조건의 정리·등장인물 `{id, role}`·모순 거절을 API-GOAL-01·ACT-01에 반영했습니다.
-> API-ACT-04 상태 조회와 API-RPL-01 시작·복원은 `examples/endpoints.ts`에 반영돼 있습니다. 시작·복원 응답 타입·모의 데이터도 현재 계약으로 동기화했습니다. 실제 프론트엔드 연동·운영 배포는 별도입니다.
+> 이전 갱신(2026-10-28 PR #80 통합, 2026-11-02 `feature/goal-lineage-edit`)은 모두 develop에 병합됐습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
 
 ## 현재 제공 범위
 
-이 통합 작업 브랜치 기준 57개 API ID 중 **구현32개 · 조건부 구현2개 · 설계21개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성이며, 공유 TypeScript 예제와 FE 연동은 아직 현재 서버 계약으로 동기화되지 않았습니다.
+develop `bab136d` 기준 57개 API ID 중 **구현32개 · 조건부 구현2개 · 설계21개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했고, 실제 FE의 역할극·퀴즈 화면 연동은 아직 mock입니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
 | 구현 | 기준 커밋에 Controller/DTO가 존재 | endpoints.ts. 환경별 주소·쿠키/권한 확인 필요 |
-| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | 음성·텍스트 입력. 음성 예제는 allowConditional 기본 차단, 텍스트 예제는 구 계약으로 미동기화 |
+| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | 음성·텍스트 입력. endpoints.ts에 있고 allowConditional 기본 차단 |
 | 설계 | 공개 Controller 없음. 경로/필드/상태는 제안 | draft-endpoints.ts, allowDrafts 기본 차단 |
 | 미제공 | 과거 공개 문항 풀 API가 제거됨. ID만 추적용 유지 | 함수 없음. 호출하지 않음 |
 
@@ -109,11 +107,11 @@
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-RPL-01 · 역할극 시작·동일 시작 요청 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 구현(작업 브랜치) | startRoleplay |
+| [API-RPL-01 · 역할극 시작·기존 세션 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 구현 | startRoleplay |
 | [API-RPL-02 · 역할극 세션·체크포인트 조회](./roleplay/get-roleplay-session.md) | GET | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | getRoleplaySession |
 | [API-RPL-03 · 역할극 일시정지·재개](./roleplay/update-roleplay-session.md) | PATCH | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | updateRoleplaySession |
 | [API-RPL-04 · 역할극 음성 입력 제출](./roleplay/submit-voice-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/voice-inputs` | 조건부 구현 | submitVoiceInput |
-| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 조건부 구현 | submitTextInput 예제는 미동기화 |
+| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 조건부 구현 | submitTextInput |
 | [API-RPL-06 · 역할극 처리 결과·검증 응답 조회](./roleplay/get-roleplay-turn.md) | GET | `/api/v1/turns/{turnId}` | 설계 | getRoleplayTurn |
 | [API-RPL-07 · 역할극 실제 전달 대화 이력 조회](./roleplay/list-roleplay-turns.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/turns` | 설계 | listRoleplayTurns |
 | [API-RPL-08 · 강사용 목표별 관찰 결과 조회](./roleplay/list-roleplay-goal-statuses.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/goal-statuses` | 설계 | listRoleplayGoalStatuses |

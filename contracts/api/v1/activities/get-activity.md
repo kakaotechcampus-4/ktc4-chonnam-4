@@ -1,6 +1,6 @@
 # API-ACT-03 · 활동 상세 조회
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -116,6 +116,8 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 403 | ACCESS_DENIED | 역할 권한 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 | 404 | ACTIVITY_NOT_FOUND | 없거나 소유권 밖 활동 |
+| 404 | QUIZ_ITEM_NOT_FOUND | 배정 당시 문항이 문항 풀에서 사라짐 |
+| 409 | ITEM_VERSION_CONFLICT | 배정 당시 문항 버전이 바뀜 |
 
 공통 오류 envelope 예시(message/traceId는 동적):
 
@@ -266,6 +268,6 @@ curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S6-BAE-02` · `S7-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/assignment/dto/ActivityDetailResponse.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/assignment/dto/ActivityDetailResponse.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

@@ -498,24 +498,6 @@ export interface DraftSessionPatch {
 
 
 // 설계 제안, 실제 DTO 확정 필요
-export interface DraftTextBody {
-  /** 한 새 입력, 재전송 유지 */
-  clientInputId: UUID;
-  /** 원문 입력; 길이/세부 검증 미정 */
-  text: string;
-}
-
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftInputAccepted {
-  /** 입력 ID */
-  inputId: UUID;
-  /** 조회할 턴 */
-  turnId: UUID;
-  /** 접수 제안, 전달/완료 성공 아님 */
-  status: 'PROCESSING';
-}
-
-// 설계 제안, 실제 DTO 확정 필요
 export interface DraftInputQuality {
   /** 품질 코드 제안 */
   status: string;
@@ -637,18 +619,22 @@ export interface ActivityDetailData {
   learningRecord: null;
 }
 export interface VoiceInputBody {
-  /** 실제 음성 File. MIME/크기 제한은 서버 배포 설정 확인; 현재 길이 디코딩 검증 없음 */
+  /** 실제 음성 File. MIME/크기 제한은 서버 배포 설정 확인; 실제 프레임 디코딩으로 30초 상한 검증 */
   audio: File;
 }
 export type RoleplayDeliveryStatus = 'DELIVERED' | 'REINPUT_REQUIRED' | 'RETRY_REQUIRED' | 'STOPPED' | 'NOTICE_UNAVAILABLE' | 'PROCESSING';
-export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'RETRY_TURN' | 'STOP_DIALOGUE' | 'WAIT';
+/** RESUBMIT_SAME_REQUEST는 503 ROLEPLAY_BUSY 오류로만 나가 성공 본문에는 오지 않습니다. */
+export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'SUGGEST_TEXT_KEEP_VOICE' | 'RETRY_TURN' | 'STOP_DIALOGUE' | 'WAIT';
 export interface RoleplaySpeechData {
   /** TTS 발행 URL이 있을 때만 true */
   available: boolean;
   /** 인증된 임시 음성 주소; 미제공/재전송은 null */
   url: string | null;
 }
+export type RoleplaySpeakerRole = 'DIALOGUE' | 'HINT';
 export interface RoleplayMessageData {
+  /** DIALOGUE 캐릭터 대사, HINT 마스코트 힌트·고정 안내(음성 없음) */
+  speakerRole: RoleplaySpeakerRole;
   /** 검증된 응답 또는 승인 고정 안내. 실패 후보 제외 */
   text: string;
   /** 음성 제공 정보 */
@@ -667,4 +653,8 @@ export interface RoleplayVoiceData {
   checkpointVersion: number | null;
   /** 같은 세션/키/입력의 저장 결과 재전송 여부 */
   replayed: boolean;
+}
+export interface TextInputBody {
+  /** 아이가 입력한 원문. 누락/null은 422, 빈 값·공백·길이 초과는 200 REINPUT_REQUIRED */
+  text: string;
 }

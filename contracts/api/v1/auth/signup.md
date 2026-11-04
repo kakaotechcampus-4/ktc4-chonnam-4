@@ -1,6 +1,6 @@
 # API-IAM-02 · 강사 회원가입
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -44,10 +44,10 @@
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| email | string | 예 | 아니오 | 정규화 후 유일; 현재 Email/최대254자 검증 |
+| email | string | 예 | 아니오 | 정규화 후 유일; Email 형식/최대254자, 제어 문자 불가 |
 | password | string | 예 | 아니오 | 8~72자, UTF-8 72바이트 이하 (한글·이모지는 바이트 수도 확인) |
-| name | string | 예 | 아니오 | 실명; 현재 최대100자 |
-| orgName | string \| null | 아니오 | 예 | 선택 레거시, 최대100자; 필수 수집 금지 |
+| name | string | 예 | 아니오 | 실명; 최대100자, 보이는 글자 1자 이상, 제어 문자 불가. 앞뒤 공백은 서버가 지우고 저장 |
+| orgName | string \| null | 아니오 | 예 | 선택 레거시, 최대100자, 제어 문자 불가; 필수 수집 금지 |
 | termsAgreed | true | 예 | 아니오 | 필수 동의. false/null/누락은 422 |
 | privacyAgreed | true | 예 | 아니오 | 필수 동의. 버전과 동의 시각은 서버가 결정 |
 
@@ -227,6 +227,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/users" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S3-BAE-01` · `S8-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/user/dto/SignupRequest.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/user/dto/SignupRequest.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

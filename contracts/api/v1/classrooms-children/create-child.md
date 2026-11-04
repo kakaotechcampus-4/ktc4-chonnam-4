@@ -1,6 +1,6 @@
 # API-CLS-06 · 아동 실명 등록
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -45,7 +45,7 @@
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| displayName | string | 예 | 아니오 | 실명만; 현재 최대100자, 동명이인 허용 |
+| displayName | string | 예 | 아니오 | 실명만; 최대100자, 보이는 글자 1자 이상, 제어 문자 불가, 동명이인 허용 |
 
 ~~~json
 {
@@ -94,7 +94,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 403 | ACCESS_DENIED | 역할 권한 |
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
 | 404 | CLASSROOM_NOT_FOUND | 대상 없음/소유권 숨김 |
-| 422 | VALIDATION_FAILED | DTO 필수/길이 |
+| 422 | VALIDATION_FAILED | 빈 값, 100자 초과, 보이는 글자 없음·제어 문자. `fieldErrors`로 칸 표시 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 
 공통 오류 envelope 예시(message/traceId는 동적):
@@ -201,6 +201,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/classrooms/${classId}/children" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

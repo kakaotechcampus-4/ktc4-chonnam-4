@@ -1187,7 +1187,7 @@
       "data": {
         "hintId": "70000000-0000-4000-8000-000000000001",
         "hintOrder": 1,
-        "type": "SITUATION_CUE",
+        "type": "OBSERVABLE_FACE_CUE",
         "text": "친구가 넘어져서 아플 수 있어요."
       },
       "meta": {
@@ -1219,7 +1219,7 @@
         "activityId": "40000000-0000-4000-8000-000000000001",
         "validQuestionCount": 3,
         "correctQuestionCount": 2,
-        "overallAccuracy": 0.6666666666666666,
+        "overallAccuracy": 0.666667,
         "totalHintCount": 1,
         "resolvedAfterHintCount": 1,
         "scenarioLevel": "L2",
@@ -1777,6 +1777,7 @@
         "action": "NONE",
         "messages": [
           {
+            "speakerRole": "DIALOGUE",
             "text": "친구는 왜 그런 기분이 들었을까?",
             "speech": {
               "available": false,
@@ -1806,35 +1807,47 @@
   {
     "id": "API-RPL-05",
     "fn": "submitTextInput",
-    "draft": true,
+    "draft": false,
     "method": "POST",
     "route": "/api/v1/roleplay-sessions/{sessionId}/text-inputs",
     "args": {
       "sessionId": "82000000-0000-4000-8000-000000000001",
       "body": {
-        "clientInputId": "84000000-0000-4000-8000-000000000001",
         "text": "친구가 아프고 속상할 것 같아요."
       },
       "idempotencyKey": "89000000-0000-4000-8000-000000000001"
     },
     "response": {
       "data": {
-        "inputId": "84000000-0000-4000-8000-000000000001",
-        "turnId": "85000000-0000-4000-8000-000000000001",
-        "status": "PROCESSING"
+        "status": "DELIVERED",
+        "action": "NONE",
+        "messages": [
+          {
+            "speakerRole": "DIALOGUE",
+            "text": "친구는 왜 그런 기분이 들었을까?",
+            "speech": {
+              "available": false,
+              "url": null
+            }
+          }
+        ],
+        "acceptedInput": "친구가 아프고 속상할 것 같아요.",
+        "checkpointVersion": 2,
+        "replayed": false
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
       }
     },
-    "status": 202,
+    "status": 200,
     "key": true,
     "mode": "child",
     "form": false,
     "expectedStatuses": [
+      200,
       202
     ],
-    "conditional": false,
+    "conditional": true,
     "unavailable": false
   },
   {
@@ -2009,7 +2022,7 @@
         "quiz": {
           "validQuestionCount": 3,
           "correctQuestionCount": 2,
-          "overallAccuracy": 0.6666666666666666,
+          "overallAccuracy": 0.666667,
           "resolvedAfterHintCount": 1
         },
         "roleplay": {
@@ -2063,7 +2076,7 @@
           "quiz": {
             "validQuestionCount": 3,
             "correctQuestionCount": 2,
-            "overallAccuracy": 0.6666666666666666,
+            "overallAccuracy": 0.666667,
             "resolvedAfterHintCount": 1
           },
           "roleplay": {

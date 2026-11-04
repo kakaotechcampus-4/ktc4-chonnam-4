@@ -1,6 +1,6 @@
 # API-QUIZ-07 · 퀴즈 결과·최초 난이도 조회
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -21,7 +21,7 @@
 - initialDifficultyUsed=true는 FIRST_COMBINED 결과 중 최초 난이도로 실제 사용한 경우입니다. 독립 퀴즈 결과에도 계산 값은 있을 수 있지만 initialDifficultyUsed=false이며 활동 난이도에 적용하지 않습니다.
 - 최초 매핑은50%미만 L1/S2, 50~80%미만 L2/S1, 80%이상 L3/S0입니다. INITIAL_QUIZ_V2에서는 정상 집계의 유효 문항이0개일 때만 총2회 계산 후 L1/S1을 사용합니다. 누락·모순된 집계가 두 번 실패하면 답안 제출이500 QUIZ_RESULT_CALCULATION_FAILED로 실패하고 결과를 저장하지 않습니다. 후속 역할극 난이도는 이 독립 퀴즈로 바꾸지 않습니다.
 - 아동에게 상세 평가/난이도 결과를 그대로 표시하지 않습니다.
-- S5-JIN-02 작업 브랜치의 복구 동작: 권한 확인 후 최초 난이도가 사용된 미완료·미연결 FIRST_COMBINED 활동이면, 조회 트랜잭션 커밋 뒤 승인 시나리오 연결을 재시도합니다. 난이도·결과 스냅샷은 다시 계산하지 않으며 응답 필드는 바뀌지 않습니다. 독립 퀴즈·미사용 결과·완료 활동·이미 연결된 활동은 대상이 아닙니다.
+- 복구 동작(S5-JIN-02, develop 반영): 권한 확인 후 최초 난이도가 사용된 미완료·미연결 FIRST_COMBINED 활동이면, 조회 트랜잭션 커밋 뒤 승인 시나리오 연결을 재시도합니다. 난이도·결과 스냅샷은 다시 계산하지 않으며 응답 필드는 바뀌지 않습니다. 독립 퀴즈·미사용 결과·완료 활동·이미 연결된 활동은 대상이 아닙니다.
 - 후보 부재·연결 저장 실패여도 저장된 퀴즈 결과는 200으로 반환됩니다. 200을 역할극 준비 완료로 간주하지 않습니다. 아동은 실제 결과 GET을 다시 요청한 뒤 `GET /api/v1/children/{childId}/activities`의 해당 활동 `scenarioId` 또는 시작 API의 준비 미완료 409로 연결 상태를 확인합니다. 활동 상세 단건 조회는 강사 전용입니다. 새 공개 복구 API나 자동 주기 재시도는 추가하지 않았습니다. 이 동작의 운영 배포는 확인하지 않았습니다.
 
 ## 3. 요청
@@ -58,7 +58,7 @@ HTTP 200.
     "activityId": "40000000-0000-4000-8000-000000000001",
     "validQuestionCount": 3,
     "correctQuestionCount": 2,
-    "overallAccuracy": 0.6666666666666666,
+    "overallAccuracy": 0.666667,
     "totalHintCount": 1,
     "resolvedAfterHintCount": 1,
     "scenarioLevel": "L2",
@@ -81,7 +81,7 @@ HTTP 200.
 | data.activityId | UUID | 예 | 아니오 | 활동 |
 | data.validQuestionCount | number | 예 | 아니오 | 기술 제외 후 분모 |
 | data.correctQuestionCount | number | 예 | 아니오 | 힌트 전 최초 정답 수 |
-| data.overallAccuracy | number \| null | 예 | 예 | 0~1 비율, 유효0개면null |
+| data.overallAccuracy | number \| null | 예 | 예 | 0~1 비율(소수 6자리까지), 유효0개면null |
 | data.totalHintCount | number | 예 | 아니오 | 힌트 총수 |
 | data.resolvedAfterHintCount | number | 예 | 아니오 | 힌트 후 해결 별도 집계 |
 | data.scenarioLevel | ScenarioLevel \| null | 예 | 예 | 최초 난이도 |
@@ -217,7 +217,7 @@ curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}/quiz-result
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S5-JIN-01` · `S5-JIN-02` · `S5-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
 

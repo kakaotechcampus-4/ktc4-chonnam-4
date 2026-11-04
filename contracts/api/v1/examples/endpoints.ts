@@ -1,4 +1,4 @@
-// 구현 함수 32개·조건부 음성 함수 1개. 2026-10-28 통합 기준.
+// 구현 함수 32개·조건부 음성·텍스트 입력 함수 2개. 2026-11-04 develop bab136d 기준.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -557,6 +557,28 @@ export function submitVoiceInput(
     idempotencyKey: args.idempotencyKey,
     conditional: true,
     form
+  });
+}
+
+export interface SubmitTextInputArgs {
+  sessionId: T.UUID;
+  body: T.TextInputBody;
+  idempotencyKey: T.UUID;
+}
+
+export function submitTextInput(
+  api: ApiClient,
+  args: SubmitTextInputArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RoleplayVoiceData>> {
+  return api.request<T.RoleplayVoiceData>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
+    method: "POST",
+    auth: "child",
+    expectedStatuses: [200, 202],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    conditional: true,
+    body: args.body
   });
 }
 
