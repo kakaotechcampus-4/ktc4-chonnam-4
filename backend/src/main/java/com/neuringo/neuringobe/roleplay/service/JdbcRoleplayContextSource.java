@@ -112,15 +112,18 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         """
                         select s.scenario_id, s.scenario_version, s.class_id, s.goal_content_hash,
                                s.scenario_level, s.title, s.summary, s.ai_role, s.characters,
-                               s.scenario_facts, s.prohibited_inferences, s.opening_prompts
+                               s.scenario_facts, s.prohibited_inferences, s.opening_prompts,
+                               EXISTS (SELECT 1 FROM activity_scenario_approval p WHERE p.activity_id=av.activity_id) AS shared_assignment
                         from scenario s
                         join child c on c.child_id=?
                         join learning_goal g on g.goal_id=? and g.child_id=c.child_id
-                        where s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
-                          and s.class_id=c.class_id and s.goal_content_hash=g.content_hash
+                        join activity_approved_scenario av on av.child_id=c.child_id and av.goal_id=g.goal_id
+                            and av.scenario_id=s.scenario_id and av.scenario_version=s.scenario_version
+                        where av.activity_id=? and s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
                         """,
                         key.childId(),
                         key.goalId(),
+                        key.activityId(),
                         key.scenarioId(),
                         key.scenarioVersion());
         if (rows.size() != 1) return Optional.empty();
@@ -188,6 +191,7 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
             if (goals.stream().noneMatch(g -> g.id().equals(policy.currentMicroGoalId())))
                 return Optional.empty();
 
+            boolean sharedAssignment = Boolean.TRUE.equals(content.get("shared_assignment"));
             var pinned = new LinkedHashMap<String, Object>();
             for (var field :
                     List.of(
@@ -203,13 +207,16 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                             "scenario_facts",
                             "prohibited_inferences",
                             "opening_prompts")) {
+                // 공통 배정의 학급 연결 해제는 승인 콘텐츠 변경으로 취급하지 않는다.
+                if (sharedAssignment && field.equals("class_id")) continue;
                 pinned.put(
                         field, content.get(field) == null ? null : content.get(field).toString());
             }
             pinned.put("learning_goal", owner.learningGoal());
             pinned.put("micro_goals", goals);
             var approvalReference =
-                    "scenario-context/v1:" + digest(json.writeValueAsString(pinned));
+                    (sharedAssignment ? "scenario-context/v2:" : "scenario-context/v1:")
+                            + digest(json.writeValueAsString(pinned));
             readBudget(deadline);
             var assessments =
                     jdbc.queryForList(
