@@ -172,7 +172,9 @@ LLM 과 같은 방식으로 제공자 중립 포트를 두고, 결과는 `AiCall
 - 402(크레딧 부족)·422(검증 오류)는 `PROVIDER_REQUEST_REJECTED`(재시도 안 함)다.
 - `ssfm-v30` 은 `prompt.emotion_type=preset` 을 함께 보낸다. `ssfm-v21` 은 이 필드를 보내지 않는다.
 - 검증을 통과해 전달이 확정된 문장(`EvaluationResult.canDeliver()`)과 고정 안내 문구만 TTS 로 보낸다.
-- 역할극 대사의 괄호 속 행동 묘사("(훌쩍이며)")는 TTS 로 보내지 않는다. 괄호만 있으면 음성을 만들지 않는다(`SpokenText`).
+- 역할극 대사의 괄호 속 행동 묘사("(훌쩍이며)")는 TTS 로 보내지 않는다(`SpokenText`).
+- 괄호 밖 울음소리 낱말("흐윽…", "훌쩍", "흑흑", "엉엉", "으앙")도 보내지 않는다. TTS 는 이 낱말을 울음이 아니라 글자로 읽는다. 대신 슬픈 목소리(`sad`)로 읽는다.
+- 지우고 나서 읽을 말이 없으면 음성을 만들지 않는다.
 - 그 지문 낱말로 감정을 고른다. 훌쩍·울·눈물 → `sad`, 웃·미소 → `happy`, 씩씩·버럭 → `angry`, 속삭·소곤 → `whisper`, 그 밖은 `normal`.
 - 목소리·모델별 지원 감정은 `GET /v2/voices/{voice_id}` 로 확인한다. 지금 쓰는 목소리 Sua(아이 여성)는 `ssfm-v30` 에서 7가지를 모두 지원하고, `ssfm-v21` 은 normal·happy·sad·angry 만 지원한다. `ssfm-v21` 에 그 밖의 감정이 오면 `normal` 로 보낸다.
 

@@ -20,6 +20,14 @@ class SpokenTextTest {
                 "친구는 어떤 기분일까?|친구는 어떤 기분일까?",
                 "(고개를 끄덕이며)|''",
                 "(훌쩍이며)   (흐윽)|''",
+                "흐윽… 무릎이 아파.|무릎이 아파.",
+                "(훌쩍이며) 흐윽… 나 넘어졌어. 훌쩍.|나 넘어졌어.",
+                "응, 흐윽, 고마워.|응, 고마워.",
+                "흐으윽… 엉엉!|''",
+                "아야… 흑흑|아야…",
+                "(훌쩍이며) 흐윽…|''",
+                "나 훌쩍이고 있었어.|나 훌쩍이고 있었어.",
+                "흑백 사진 같아.|흑백 사진 같아.",
             })
     void removesStageDirectionsInParentheses(String text, String spoken) {
         assertThat(SpokenText.of(text)).isEqualTo(spoken);
@@ -38,6 +46,9 @@ class SpokenTextTest {
                 "(무릎을 감싸 쥐며) 아야…|NORMAL",
                 "(무릎을 감싸 쥐며) 아야… (훌쩍)|SAD",
                 "친구는 어떤 기분일까?|NORMAL",
+                "흐윽… 무릎이 아파.|SAD",
+                "(웃으며) 흐윽, 아니야 괜찮아.|HAPPY",
+                "흑백 사진 같아.|NORMAL",
             })
     void picksVoiceEmotionFromStageDirections(String text, SpeechEmotion emotion) {
         assertThat(SpokenText.emotionOf(text)).isEqualTo(emotion);
