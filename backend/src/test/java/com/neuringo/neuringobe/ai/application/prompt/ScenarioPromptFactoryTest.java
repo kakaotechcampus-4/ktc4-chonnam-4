@@ -31,8 +31,8 @@ class ScenarioPromptFactoryTest {
         LlmRequest request = factory.generation(trace(), attempts(), 1, input("L1")).request();
 
         assertThat(request.operation()).isEqualTo(AiOperation.SCENARIO_GENERATION);
-        assertThat(request.promptVersion()).isEqualTo("scenario-generation/v1");
-        assertThat(request.responseSchemaVersion()).isEqualTo("generated-scenario/v1");
+        assertThat(request.promptVersion()).isEqualTo("scenario-generation/v2");
+        assertThat(request.responseSchemaVersion()).isEqualTo("generated-scenario/v2");
         assertThat(request.policyVersion()).isEqualTo("CONTENT-MVP-001");
         assertThat(request.systemPrompt()).contains("시나리오 생성 에이전트");
 
@@ -356,6 +356,25 @@ class ScenarioPromptFactoryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void startingQuestionsRequireExplicitExistingGoalIds() {
+        assertFailure(
+                "L1",
+                value -> value.remove("starting_question_goal_ids"),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+        assertFailure(
+                "L1",
+                value ->
+                        value.put(
+                                "starting_question_goal_ids",
+                                Map.of("S0", "MG-99", "S1", "MG-01", "S2", "MG-01")),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+        assertFailure(
+                "L1",
+                value -> value.put("starting_question_goal_ids", Map.of("S0", "MG-01")),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+    }
+
     // --- fixtures
 
     private void assertFailure(String level, Consumer<Map<String, Object>> edit, String reason) {
@@ -434,6 +453,7 @@ class ScenarioPromptFactoryTest {
                                 "S0", "아까 놀이터에서 무슨 일이 있었는지 봤어?",
                                 "S1", "친구가 미끄럼틀 앞에서 울고 있어. 무슨 일이 있었을까?",
                                 "S2", "친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?")));
+        json.put("starting_question_goal_ids", Map.of("S0", "MG-01", "S1", "MG-01", "S2", "MG-01"));
         edit.accept(json);
         return json;
     }

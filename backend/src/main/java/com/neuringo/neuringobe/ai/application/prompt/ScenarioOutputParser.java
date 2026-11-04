@@ -40,6 +40,7 @@ final class ScenarioOutputParser {
         EVIDENCE_NOT_CONDITION,
         EVIDENCE_COPIES_FACT,
         STARTING_QUESTIONS_INVALID,
+        STARTING_QUESTION_GOAL_IDS_INVALID,
         QUESTION_FORMAT_INVALID,
         TOO_LONG,
         FORBIDDEN_EXPRESSION_USED,
@@ -149,6 +150,15 @@ final class ScenarioOutputParser {
         }
 
         checkStartingQuestions(scenario.startingQuestions(), !NARRATOR.equals(scenario.aiRole()));
+        check(
+                scenario.startingQuestionGoalIds().keySet().equals(STARTING_SUPPORT_LEVELS)
+                        && scenario.startingQuestionGoalIds().values().stream()
+                                .allMatch(
+                                        id ->
+                                                scenario.microGoals().stream()
+                                                        .anyMatch(goal -> goal.id().equals(id))),
+                ScenarioFailure.STARTING_QUESTION_GOAL_IDS_INVALID,
+                "starting_question_goal_ids");
         checkLengths(scenario);
 
         Set<String> characterIds =

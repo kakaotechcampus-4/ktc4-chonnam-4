@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 시나리오 생성 프롬프트 v1 의 출력(scenario-generation/v1). 강사 검토 전 상태다.
+ * 시나리오 생성 프롬프트 v2 의 출력(scenario-generation/v2). 강사 검토 전 상태다.
  *
  * <p>여기서는 모양만 확인한다. 난이도별 개수, 금지 표현, 길이 같은 계약 검사는 ScenarioOutputParser 가 한다. micro goal id 는 MG-01
  * 형태의 모델 키이고, 저장할 때 UUID 로 바꾼다.
@@ -20,7 +20,8 @@ public record GeneratedScenario(
         @JsonProperty("scenario_facts") List<String> scenarioFacts,
         @JsonProperty("prohibited_inferences") List<String> prohibitedInferences,
         @JsonProperty("micro_goals") List<MicroGoal> microGoals,
-        @JsonProperty("starting_questions") Map<String, String> startingQuestions) {
+        @JsonProperty("starting_questions") Map<String, String> startingQuestions,
+        @JsonProperty("starting_question_goal_ids") Map<String, String> startingQuestionGoalIds) {
 
     public GeneratedScenario {
         requireText(title, "title");
@@ -36,6 +37,8 @@ public record GeneratedScenario(
                 Map.copyOf(
                         Objects.requireNonNull(
                                 startingQuestions, "startingQuestions must not be null"));
+        startingQuestionGoalIds =
+                startingQuestionGoalIds == null ? Map.of() : Map.copyOf(startingQuestionGoalIds);
     }
 
     /** personality·speech_style 은 AI 가 연기하는 인물(ai_role)에만 있다. 학습자(LEARNER)에는 없다. */
