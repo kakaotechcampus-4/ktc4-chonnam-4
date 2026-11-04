@@ -5,7 +5,7 @@ import { createChild, deleteClassroom, getClassroom, listChildren, type ChildSta
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
-import { RecentLearningRow } from '../components/report/ChildLatestLearning'
+import { RecentLearningList } from '../components/report/ChildLatestLearning'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import {
   cardClass,
@@ -220,16 +220,7 @@ function ClassroomDetailPage() {
               <h2 id="recent-heading" className="text-sm font-semibold">
                 최근 학습 요약
               </h2>
-              <p className="text-sm text-[var(--instructor-text-subtle)]">
-                역할극을 마친 아동의 최근 학습이 여기에 모여요. 누르면 그 활동 리포트로 가요.
-              </p>
-              {children && children.length > 0 && (
-                <ul aria-label="최근 학습" className="flex flex-col">
-                  {children.map((child) => (
-                    <RecentLearningRow key={child.childId} child={child} />
-                  ))}
-                </ul>
-              )}
+              <RecentLearningList classChildren={children ?? []} />
             </section>
 
             <div className="flex flex-col gap-4">

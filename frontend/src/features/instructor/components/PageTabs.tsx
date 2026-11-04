@@ -5,6 +5,25 @@ type PageTab = {
   label: string
   // 없으면 아직 화면이 없는 탭이라 비활성으로 보인다(instructorNav.ts 의 메뉴와 같은 규칙).
   available?: boolean
+  // 시안의 탭 옆 숫자(예: 기술 기록 ②). 0 이면 보이지 않는다.
+  count?: number
+}
+
+function TabCount({ count }: { count?: number }) {
+  if (!count) return null
+  // 앞의 빈칸은 화면 읽기 이름을 "기술 기록 2건"으로 띄우려고 둔다. 숫자 동그라미는 읽지 않고 "2건"을 읽는다.
+  return (
+    <>
+      {' '}
+      <span
+        aria-hidden
+        className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--instructor-neutral-bg)] px-1.5 text-xs font-normal text-[var(--instructor-neutral-fg)]"
+      >
+        {count}
+      </span>
+      <span className="sr-only">{count}건</span>
+    </>
+  )
 }
 
 /**
@@ -35,6 +54,7 @@ function PageTabs({
             className={cn(tabBaseClass, tab.label === selected ? tabSelectedClass : tabIdleClass)}
           >
             {tab.label}
+            <TabCount count={tab.count} />
           </button>
         ) : tab.available ? (
           <span
@@ -44,6 +64,7 @@ function PageTabs({
             className={cn(tabBaseClass, tab.label === selected ? tabSelectedClass : tabIdleClass)}
           >
             {tab.label}
+            <TabCount count={tab.count} />
           </span>
         ) : (
           <span

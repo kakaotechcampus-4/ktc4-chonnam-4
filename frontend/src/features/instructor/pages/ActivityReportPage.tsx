@@ -16,13 +16,16 @@ import {
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { PageTabs } from '../components/PageTabs'
+import { StatCard } from '../components/StatCard'
 import {
   DifficultyBasisView,
   ReportOverview,
   RoleplayGoalsView,
   TechnicalRecordView,
 } from '../components/report/ReportViews'
-import { cardClass } from '../components/styles'
+import { orNullOn404 } from '../components/report/learningQueries'
+import { recommendationsPath, technicalCount } from '../components/report/reportHelpers'
+import { cardClass, primaryButtonClass } from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
@@ -40,16 +43,6 @@ const EDIT_TAB_LABEL = 'AI 요약 수정'
 
 function hasRoleplay(activity: Activity): boolean {
   return activity.activityType === 'FIRST_COMBINED' || activity.activityType === 'ROLEPLAY'
-}
-
-/** 없는 리포트·난이도는 오류가 아니라 "아직 없음"이라 null 로 바꾼다. */
-async function orNullOn404<T>(load: () => Promise<T>): Promise<T | null> {
-  try {
-    return await load()
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return null
-    throw error
-  }
 }
 
 /**
@@ -143,17 +136,30 @@ function ActivityReportPage() {
   const title = child
     ? `활동 리포트 · ${child.displayName}${classroomQuery.data ? ` (${classroomQuery.data.name})` : ''}`
     : '활동 리포트'
+  const hasRecommendations = (recommendationsQuery.data?.length ?? 0) > 0
 
   return (
     <InstructorLayout
       title={title}
+      // 시안의 헤더 버튼 중 "추천 보기"만 둔다. "내보내기"는 내보낼 형식·API 가 아직 없다.
+      actions={
+        child && hasRecommendations ? (
+          <Link to={recommendationsPath({ classId: child.classId, childId: child.childId })} className={primaryButtonClass}>
+            추천 보기
+          </Link>
+        ) : undefined
+      }
       subheader={
         <PageTabs
           label="활동 리포트"
           selected={tabLabel}
           onSelect={selectTab}
           tabs={[
-            ...TABS.map((t) => ({ label: t.label, available: available[t.key] })),
+            ...TABS.map((t) => ({
+              label: t.label,
+              available: available[t.key],
+              count: t.key === 'technical' && report ? technicalCount(report) : undefined,
+            })),
             { label: EDIT_TAB_LABEL },
           ]}
         />
@@ -228,6 +234,7 @@ function ActivityReportPage() {
                   recommendations={recommendationsQuery.data ?? []}
                   latestDifficulty={latestDifficulty}
                   classId={child?.classId ?? null}
+                  childId={activity.childId}
                 />
               </>
             ))}
@@ -283,16 +290,6 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
           </p>
         )}
       </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className={cn(cardClass, 'flex flex-col gap-2 px-5 py-4')}>
-      <p className="text-xs text-[var(--instructor-text-subtle)]">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
-      {note && <p className="text-xs text-[var(--instructor-text-subtle)]">{note}</p>}
     </div>
   )
 }

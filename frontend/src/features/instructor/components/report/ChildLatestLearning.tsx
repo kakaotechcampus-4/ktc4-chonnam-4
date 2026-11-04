@@ -1,125 +1,68 @@
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import {
-  ApiError,
-  getRoleplayDifficulty,
-  listLearningReports,
-  listRecommendations,
-  type Child,
-} from '../../api'
-import { DIRECTION_LABELS, SUPPORT_LABELS } from '../../lib/reportLabels'
+import { useQueries } from '@tanstack/react-query'
+import { getRoleplayDifficulty, type Child, type RoleplayDifficulty } from '../../api'
+import { ActivityStatusBadge } from '../ActivityStatusBadge'
 import { tableRowClass } from '../styles'
-import { RecommendationCard } from './RecommendationCard'
+import { formatDate } from '../../lib/dateTime'
+import { orNullOn404, useActivityGoal } from './learningQueries'
 
 /**
- * 아동 한 명의 가장 최근 역할극 학습. 기준은 다음 역할극 난이도(API-REC-06)다. 난이도는 AI 요약과 상관없이 서버가 역할극을 마칠 때마다 정해서,
- * 요약을 만들지 못한 활동도 그 학습 기록(sourceRecordId)으로 추천을 읽을 수 있다. 요약 한 줄은 완료 리포트 목록의 첫 항목이 그 활동일 때만 쓴다.
+ * 학급 개요의 "최근 학습 요약"(시안 T-CLS-03). 아동마다 가장 최근에 마친 역할극을 최근 순으로 한 줄씩 보인다.
+ * 기준은 다음 역할극 난이도(API-REC-06)라 AI 요약이 없어도 줄이 생긴다. 학급 단위 API 가 없어 아동마다 부른다.
  */
-function useChildLatestLearning(childId: string) {
-  const difficultyQuery = useQuery({
-    queryKey: ['children', childId, 'roleplay-difficulty'],
-    queryFn: async () => {
-      try {
-        return await getRoleplayDifficulty(childId)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return null
-        throw error
-      }
-    },
+function RecentLearningList({ classChildren }: { classChildren: Child[] }) {
+  const difficultyQueries = useQueries({
+    queries: classChildren.map((child) => ({
+      queryKey: ['children', child.childId, 'roleplay-difficulty'],
+      queryFn: () => orNullOn404(() => getRoleplayDifficulty(child.childId)),
+    })),
   })
-  const difficulty = difficultyQuery.data ?? null
-  const reportsQuery = useQuery({
-    queryKey: ['learning-records', { childId, size: 1 }],
-    queryFn: () => listLearningReports(childId, 1),
-    enabled: !!difficulty,
-  })
-  const latestReport = reportsQuery.data?.[0]
-  const report = latestReport && latestReport.activityId === difficulty?.sourceActivityId ? latestReport : null
-  const recordId = difficulty?.sourceRecordId ?? null
-  const recommendationsQuery = useQuery({
-    queryKey: ['learning-records', recordId, 'recommendations'],
-    queryFn: () => listRecommendations(recordId!),
-    enabled: !!recordId,
-  })
-  return {
-    difficulty,
-    report,
-    recommendations: recommendationsQuery.data ?? [],
-    isLoading: difficultyQuery.isLoading || reportsQuery.isLoading || recommendationsQuery.isLoading,
-    error: difficultyQuery.error ?? reportsQuery.error ?? recommendationsQuery.error,
+  const rows = classChildren
+    .flatMap((child, index) => {
+      const difficulty = difficultyQueries[index]?.data
+      return difficulty ? [{ child, difficulty }] : []
+    })
+    .sort((a, b) => b.difficulty.decidedAt.localeCompare(a.difficulty.decidedAt))
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-[var(--instructor-text-subtle)]">
+        {difficultyQueries.some((query) => query.isLoading)
+          ? '불러오는 중...'
+          : '역할극을 마친 아동의 최근 학습이 여기에 모여요. 누르면 그 활동 리포트로 가요.'}
+      </p>
+    )
   }
+  return (
+    <ul aria-label="최근 학습" className="flex flex-col">
+      {rows.map(({ child, difficulty }) => (
+        <RecentLearningRow key={child.childId} child={child} difficulty={difficulty} />
+      ))}
+    </ul>
+  )
 }
 
-/** 학급 개요 "최근 학습 요약"의 한 줄. 누르면 그 활동 리포트로 간다. */
-function RecentLearningRow({ child }: { child: Child }) {
-  const { difficulty, report, recommendations, isLoading } = useChildLatestLearning(child.childId)
-  if (isLoading || !difficulty) return null
-  const open = recommendations.filter((r) => r.decision === null || r.decision === 'DEFER').length
+/** 한 줄: 아동 · 활동 목표, 활동 상태, 마친 날. 누르면 그 활동 리포트로 간다. */
+function RecentLearningRow({ child, difficulty }: { child: Child; difficulty: RoleplayDifficulty }) {
+  const { activity, goalTitle } = useActivityGoal(difficulty.sourceActivityId)
   return (
     <li className={tableRowClass}>
       <Link
         to={`/activities/${difficulty.sourceActivityId}/report`}
-        className="flex flex-col gap-0.5 px-1 py-3 hover:bg-[var(--instructor-surface-muted)]"
+        className="flex items-center gap-3 px-1 py-3 hover:bg-[var(--instructor-surface-muted)]"
       >
-        <span className="text-sm font-semibold">
+        <span aria-hidden className="size-7 shrink-0 rounded-full bg-[var(--instructor-avatar)]" />
+        <span className="min-w-0 flex-1 truncate text-sm">
           {child.displayName}
-          <span className="ml-2 text-xs font-normal text-[var(--instructor-text-muted)]">
-            다음 역할극 {difficulty.scenarioLevel} {DIRECTION_LABELS[difficulty.direction]} · 확인할 제안 {open}개
-          </span>
+          {goalTitle && ` · ${goalTitle}`}
         </span>
-        <span className="text-sm text-[var(--instructor-text-muted)] break-keep">
-          {report ? report.summary : 'AI 요약을 만드는 중이거나 만들지 못했어요.'}
+        {activity && <ActivityStatusBadge status={activity.status} />}
+        <span className="w-14 shrink-0 text-right text-xs text-[var(--instructor-text-subtle)]">
+          {formatDate(activity?.completedAt ?? difficulty.decidedAt)}
         </span>
       </Link>
     </li>
   )
 }
 
-/** 추천·다음목표 화면의 아동 한 명 칸. 다음 난이도와 확인할 제안을 보이고, 제안을 고르면 활동 만들기로 이어진다. */
-function ChildRecommendations({ child }: { child: Child }) {
-  const { difficulty, report, recommendations, isLoading, error } = useChildLatestLearning(child.childId)
-  return (
-    <section aria-labelledby={`child-${child.childId}`} className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id={`child-${child.childId}`} className="text-base font-semibold">
-          {child.displayName}
-        </h2>
-        {difficulty && (
-          <Link
-            to={`/activities/${difficulty.sourceActivityId}/report`}
-            className="text-sm text-[var(--instructor-link)] hover:underline"
-          >
-            리포트 보기
-          </Link>
-        )}
-      </div>
-      {isLoading ? (
-        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-      ) : error ? (
-        <p className="text-sm text-[var(--instructor-danger-text)]">{error.message}</p>
-      ) : !difficulty ? (
-        <p className="text-sm text-[var(--instructor-text-muted)]">아직 마친 역할극이 없어요.</p>
-      ) : (
-        <>
-          <p className="text-sm">
-            다음 역할극 <b>{difficulty.scenarioLevel}</b> · 시작 지원 {SUPPORT_LABELS[difficulty.initialSupportLevel]}
-            {report && <span className="text-[var(--instructor-text-muted)]"> · {report.summary}</span>}
-          </p>
-          {recommendations.length === 0 ? (
-            <p className="text-sm text-[var(--instructor-text-muted)]">만든 제안이 없어요.</p>
-          ) : (
-            recommendations.map((recommendation) => (
-              <RecommendationCard
-                key={recommendation.recommendationId}
-                recommendation={recommendation}
-                classId={child.classId}
-              />
-            ))
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
-export { ChildRecommendations, RecentLearningRow }
+export { RecentLearningList }
