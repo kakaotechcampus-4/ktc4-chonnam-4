@@ -1,5 +1,7 @@
 # API-ACT-02 · 아동 배정 활동 목록 조회
 
+> 2026-11-04 S4-JIN-01: 강사 확정 전 scenarioId/scenarioSource는 null이다. 확정 후 UUID와 GENERATED/REUSE/EDITED를 반환한다. 아동의 배정 확인 경로다.
+
 > 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint

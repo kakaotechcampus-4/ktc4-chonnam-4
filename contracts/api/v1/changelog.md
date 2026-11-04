@@ -116,3 +116,22 @@
 - 문서 내 TypeScript 블록165개와 공통 TypeScript 파일4개를 strict/exactOptionalPropertyTypes/noEmit으로 검사했습니다.
 - 현행/조건부29개 경로를 기준 커밋의 Controller와 대조했고 미제공2개 경로는 없는 것을 확인했습니다. ACT-03은 현재 강사만 허용하는 보안필터를 반영했습니다.
 - 실제 서버·DB·AI·브라우저·배포 인수는 실행하지 않았습니다. 위 결과는 문서/연동 예제의 검증입니다.
+
+
+## 2026-11-04 · S4-JIN-01 작업본
+
+- SCN-01을 POST /activities/{activityId}/scenario-review의 준비·복원·NEXT 계약으로 변경했다. 한 후보와 조건·DB UUID 목표 연결을 반환하고 후보 소진 시 같은 요청에서 동기 생성한다.
+- SCN-04를 PUT /activities/{activityId}/scenario의 선택적 수정·명시적 확정·배정으로 통합했다. 수정본은 새 UUID/버전이며 원본은 유지한다.
+- SCN-06을 DELETE /activities/{activityId}/scenario-review의 본문 있는 취소, 200 종료 응답으로 변경했다.
+- SCN-03/05/07은 이번 경로의 응답·확정 처리로 통합된 과거 제안으로 표시했다. 전체 카탈로그 SCN-02는 미구현 별도 설계다.
+- 결과 GET 자동 연결 설명을 폐기하고 활동/역할극의 명시적 승인 선행 조건을 반영했다.
+- contracts/api-v1.json은 기존 FE/BE 공유 전송 검사 픽스처로 유지한다. 새 세 API의 HTTP 계약은 ScenarioReviewHttpIntegrationTest가 검증한다. FE 예제·MSW·화면은 수정하지 않았다. develop 병합·운영 배포는 미확인이다.
+
+
+## 2026-11-05 · 공통 풀 전환 작업본
+
+- SCN-01/04/06의 재사용 범위를 본인 승인본에서 전체 공통 승인 풀로 변경했다. HTTP 경로·본문·revision 구조는 유지한다.
+- 제시 순서는 강사별이며 거절은 이번 검토에만 적용한다. 공통 제공 중지 API는 추가하지 않았다.
+- 활동별 승인자와 원 콘텐츠 최초 승인자를 분리하고, 원 승인자 탈퇴 후에도 후보 조회·확정을 지원한다. V39의 삭제 보존 변경을 포함한다.
+- 선택 진단 로그는 ruleVersion=2/pool로 변경했다. pool은 공통 승인 기록 수, eligible은 조건 통과 수다. CONFIRM 목적은 해당 후보만 검사하며 전체 풀 집계와 섞지 않는다.
+- 공통 후보 조회·타 강사 확정·탈퇴 후 재사용·개별 순환·검토 거절·수정 새 공통 후보를 HTTP로 검사했다. 전체 회귀와 실제 FE/배포/부하 측정은 아직 진행 전이다.

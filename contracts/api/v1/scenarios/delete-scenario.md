@@ -1,152 +1,86 @@
-# API-SCN-06 · 미사용 시나리오 초안 폐기
+# API-SCN-06 · 시나리오 검토 취소
 
-> 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 2026-11-05 공통 풀 정책 반영: 최초 승인 강사와 관계없이 확인된 공통 승인 콘텐츠를 조건에 맞춰 제공한다. 제시 이력·검토·이번 활동의 확정은 강사별이다. NEXT 거절은 이번 검토에만 적용한다. 최초 승인자 탈퇴 후에도 콘텐츠·조건은 보존하고 계정/삭제 학급 연결은 해제한다. 아래는 V39 작업본 기준이며 백엔드 회귀 검증은 완료했으며 운영 배포·브라우저 연동·부하 측정은 아직 완료하지 않았다.
+
+> 2026-11-04 · S4-JIN-01 작업본, 통합 기준 develop `bab136d`. Controller·DTO와 PostgreSQL/HTTP 통합 검사로 확인한 계약이다. 작업 브랜치 구현이며 develop 병합·운영 배포·프론트엔드 연동은 완료하지 않았다.
 
 ## 1. Endpoint
 
-| 항목 | 값 |
-|---|---|
-| Method | DELETE |
-| Path | /api/v1/scenarios/{scenarioId} |
-| 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
-| 인증 | 담당 강사 Bearer + CSRF |
-| 성공 | 204 — 설계 예시 |
-| 반환 | 본문 없음 (204) |
-| FE 함수 | deleteScenario |
-| 구현·협업 | 배재일 |
+`DELETE /api/v1/activities/{activityId}/scenario-review`
 
-## 2. 용도·중요 규칙
+기존 DELETE /scenarios/{scenarioId} 초안 폐기 제안을 이번 검토 취소 기능으로 대체한다. 응답은 204가 아닌 **200 JSON**이며 DELETE에도 아래 본문을 보낸다.
 
-- 사용이력/승인본의보존과미사용초안폐기경계를합의한다. 기존활동참조를끊지않는다.
+## 2. 요청
 
-## 3. 요청
+### 공통 헤더·인증
 
-### Path parameters
+담당 강사 Bearer 인증, 쿠키 CSRF가 필요하다. `GET /api/v1/csrf`의 쿠키와 반환된 헤더 이름·토큰을 보내고 `credentials: include`를 사용한다.
 
-| 이름 | 타입 | 필수 | 설명 |
-|---|---|---|---|
-| scenarioId | UUID string | 예 | 경로 식별자 |
+| 이름 | 필수 | 값 |
+| --- | --- | --- |
+| Authorization | 예 | `Bearer <accessToken>` |
+| Content-Type / Accept | 예 | `application/json` |
+| Idempotency-Key | 예 | 논리 동작마다 만든 UUID. 응답 유실 재전송은 같은 키·본문 유지 |
+| CSRF 헤더·쿠키 | 예 | CSRF 조회 결과. HttpOnly 입장 쿠키를 직접 읽지 않음 |
 
-### Query parameters
+Path의 activityId는 UUID이며 Query parameters는 없다. 응답은 기존 `{data, meta:{traceId}}` 형식이다. 아래 모든 성공 응답은 200이다. 예시 UUID·시간·문구는 합성 값이며 실제 호출에서는 응답 값을 사용한다.
 
-없음. 지원되지 않는 page/size/sort를 보내도 적용된다고 가정하지 않습니다.
+```json
+{"reviewId":"70000000-0000-4000-8000-000000000001","revision":1}
+```
 
-### Headers·쿠키
+reviewId는 필수 UUID, revision은 필수 양수 정수다. scenarioId는 보내지 않는다. 알 수 없는 필드는 400이다.
 
-| 이름 | 값/타입 | 필수 | 주의 |
-|---|---|---|---|
-| Accept | application/json | 예 | 공통 envelope |
-| Cookie | credentials: include | 예 | 브라우저 관리; HttpOnly 쿠키 직접 읽기 금지 |
-| Authorization | Bearer <accessToken> | 예 | 아동/public에 강사 토큰을 붙이지 않음 |
-| CSRF Header | GET /api/v1/csrf의 headerName:token | 예 | 쿠키와 함께 전송 |
+## 3. 처리·보존
 
-### Request Body
+현재 강사 권한·검토 ID·revision을 확인한다. 같은 트랜잭션에서 scenario_review 및 scenario_review_candidate를 DELETE하고 미완료 요청의 결과 스냅샷을 정리한다. 참조 없는 미승인 생성 초안·목표는 정리한다. 승인된 재사용 원본과 제시·재사용 통계, 과거 활동 배정은 DELETE하지 않는다. 버전 계보에서 참조하는 생성 초안도 보존한다.
 
-없음. 빈 JSON 객체를 추가하지 않습니다.
+배정하지 않고 활동의 scenario_review_epoch를 증가시켜 진행 중이던 이전 생성/조회 결과가 뒤늦게 저장되지 못하게 한다. 자동 만료는 없으며, 명시적 취소 또는 확정/활동 삭제로 임시 검토가 정리된다. 강사 계정/아동 삭제 정책은 해당 삭제 API의 종속 데이터 정리 규칙을 따른다.
 
 ## 4. 성공 응답
 
-HTTP 204 — 설계 예시.
-
-본문 없음. HTTP 204이며 JSON을 파싱하지 않습니다.
-
-### response schema
-
-없음.
-
-## 5. 오류·FE 처리
-
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
-
-| HTTP | code | 상황·FE 행동 |
-|---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
-| 401 | INVALID_TOKEN | 강사 토큰 만료/위조; 입력·토큰 폐기 |
-| 403 | ACCESS_DENIED | 역할 권한 |
-| 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
-| 404 | RESOURCE_NOT_FOUND | 리소스/소유권 코드 제안 |
-| 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
-
-공통 오류 envelope 예시(message/traceId는 동적):
-
-~~~json
+```json
 {
-  "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
-    "path": "/api/v1/scenarios/{scenarioId}",
-    "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
-  }
+  "data":{
+    "reviewId":"70000000-0000-4000-8000-000000000001",
+    "activityId":"40000000-0000-4000-8000-000000000001",
+    "outcome":"CANCELLED",
+    "closedAt":"2026-11-04T09:00:00Z"
+  },
+  "meta":{"traceId":"90000000-0000-4000-8000-000000000001"}
 }
-~~~
+```
 
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+UUID 두 개, CANCELLED 문자열, ISO-8601 종료 시각을 반환한다. 같은 키·본문은 같은 종료 결과를 반환한다. 취소 이후 이전 START/NEXT 키는 검토를 되살리지 않는다. 새 검토를 의도하면 새 키로 START_OR_RESUME를 보낸다. 취소 응답을 놓쳤다면 먼저 취소를 같은 키로 재전송한다.
 
-## 6. 복사 가능한 TypeScript
+## 오류와 재전송
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
+| HTTP | code | 의미·처리 |
+| --- | --- | --- |
+| 400 | INVALID_REQUEST | UUID/JSON/필수 헤더 형식 오류, 알 수 없는 필드. 요청 수정 |
+| 401 | AUTHENTICATION_REQUIRED / INVALID_TOKEN | 인증 없음·유효하지 않은 토큰. 재로그인 |
+| 403 | ACCESS_DENIED | 아동 역할 또는 CSRF 등 접근 차단. CSRF는 새 토큰을 받아 원래 키로 재시도 |
+| 404 | ACTIVITY_NOT_FOUND / GOAL_NOT_FOUND | 없는 자원과 권한 밖 자원은 구분하지 않음 |
+| 409 | INITIAL_DIFFICULTY_NOT_READY | 저장된 최초 난이도 근거가 없음 |
+| 409 | SCENARIO_REVIEW_CHANGED | 검토·현재 후보·수정 번호가 달라짐. 새 키의 START_OR_RESUME로 현재 상태 복원 |
+| 409 | SCENARIO_REVIEW_INPUT_CHANGED | 목표·난이도·담당 조건이 달라짐. 이전 입력으로 진행하지 않음 |
+| 409 | SCENARIO_REVIEW_CLOSED / SCENARIO_REVIEW_NOT_READY | 종료됐거나 진행 중인 검토 없음 |
+| 409 | SCENARIO_ALREADY_ASSIGNED | 이미 배정됨. 활동 상태 조회 |
+| 409 | IDEMPOTENCY_KEY_REUSED | 같은 키를 다른 동작·본문에 사용함 |
+| 409 | SCENARIO_ALREADY_USED | 최종 배정 ID가 같은 학생에게 이미 배정됨 |
+| 409 | SCENARIO_OPENING_FOCUS_NOT_READY | 시작 질문별 목표 연결 미준비 |
+| 409 | SCENARIO_CANDIDATE_INVALID | 현재 후보 상태·내용·배정 자격이 유효하지 않음 |
+| 422 | VALIDATION_FAILED | 필수값·양수 revision/version 오류 |
+| 422 | INVALID_SCENARIO_REVIEW_REQUEST / INVALID_SCENARIO_EDITS / INVALID_GOAL_CONDITIONS | 동작별 필드 조합·편집·목표 조건 오류 |
+| 502 | SCENARIO_GENERATION_FAILED / SCENARIO_GENERATION_INVALID_OUTPUT | 생성·출력 검사 실패. 준비 요청에서 발생 가능 |
+| 503 | SCENARIO_GENERATOR_UNAVAILABLE / SCENARIO_GENERATION_FAILED | 생성 제공자 미설정·일시 불가 |
+| 504 | SCENARIO_GENERATION_FAILED | 생성 시간 초과 |
 
-### 요청·응답 타입
+오류는 `{error:{status,code,message,path,traceId,fieldErrors}}` 형식이며 fieldErrors는 오류 세부 목록이며 일반 오류에서는 []다. 위 코드는 세 API에서 발생할 수 있는 공통 범위이며 생성 오류는 준비 POST에서 발생한다. 전송 실패·Abort는 서버 처리 실패의 증거가 아니다. 동일 동작은 기존 키·본문으로 재전송한다. 서버는 실패 후 자동 생성 루프를 돌리지 않는다.
 
-~~~ts
-// 본문 없는 요청/응답입니다.
-~~~
+## 5. 구현·연동
 
-### 호출 함수
+ScenarioReviewController.cancel → ScenarioReviewTransactions.cancel. 취소 성공 시 화면의 미저장 편집을 폐기한다. 기존 draft-endpoints.ts의 deleteScenario는 경로·본문·204 처리가 모두 다르므로 이 계약에 사용하지 않는다. 프론트엔드는 직접 수정하지 않았다.
 
-~~~ts
-import type { ApiClient, CallOptions } from "./api-client.ts";
-import { queryString } from "./api-client.ts";
-import type * as T from "./types.ts";
 
-export interface DeleteScenarioArgs {
-  scenarioId: T.UUID;
-}
-
-export function deleteScenario(
-  api: ApiClient,
-  args: DeleteScenarioArgs,
-  options: CallOptions = {}
-): Promise<void> {
-  return api.requestEmpty("/api/v1/scenarios/" + encodeURIComponent(args.scenarioId), {
-    method: "DELETE",
-    auth: "instructor",
-    expectedStatuses: [204],
-    signal: options.signal,
-    draft: true
-  });
-}
-~~~
-
-### 사용 예시
-
-~~~ts
-import { deleteScenario } from "./draft-endpoints.ts";
-
-await deleteScenario(api, {
-  "scenarioId": "80000000-0000-4000-8000-000000000001"
-});
-// 개인정보·원본·토큰·응답 전문을 로그에 출력하지 않습니다.
-~~~
-
-## 7. cURL 계약 확인
-
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
-
-~~~bash
-curl -i -X DELETE "$NEURINGO_API_ORIGIN/api/v1/scenarios/${scenarioId}" \
-  --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
-  -H 'Accept: application/json' \
-  -H "Authorization: Bearer $NEURINGO_ACCESS_TOKEN" \
-  -H "$NEURINGO_CSRF_HEADER: $NEURINGO_CSRF_TOKEN"
-~~~
-
-## 8. 연결 Task·미정·검증
-
-- 관련 Task ID: `S4-BAE-02`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
-- [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
-- 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
+공통 후보 제외 기능은 제공하지 않는다. 검토 취소·NEXT가 다른 강사의 원본 승인 상태나 후보 풀을 바꾸지 않는다. 이번 검토에서 거절한 콘텐츠는 이후 새 검토에서 조건에 맞으면 다시 제공할 수 있으나 동일 학생의 과거 배정 ID는 계속 제외한다.
