@@ -25,7 +25,7 @@ function RecommendationBoard({
 }) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-4">
+    <section aria-labelledby={headingId} className="flex flex-1 flex-col gap-4">
       <div>
         <h2 id={headingId} className="text-base font-semibold">
           다음 활동으로 무엇을 할까요?
@@ -50,7 +50,8 @@ function RecommendationBoard({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--instructor-border)] pt-4">
+      {/* 시안처럼 안내와 버튼은 화면 맨 아래에 둔다(페이지는 InstructorLayout fill). */}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-4">
         <p className="text-xs text-[var(--instructor-text-subtle)]">
           추천은 참고용입니다. 강사가 목표를 직접 입력할 수도 있습니다.
         </p>

@@ -51,7 +51,9 @@ describe("추천 학습 목록", () => {
     const { recommendations } = seedRoleplayLearning({ childId: CHILD.childId })
     const { user, router } = renderRecommendations(`?classId=${A1}&childId=${CHILD.childId}`)
 
+    // 아동을 정해 들어오면(리포트의 "추천 보기") 시안처럼 학급·아동 고르는 칸이 없다.
     const board = await screen.findByRole("radiogroup", { name: "다음 활동으로 무엇을 할까요?" })
+    expect(screen.queryByLabelText("아동")).not.toBeInTheDocument()
     await user.click(within(board).getAllByRole("radio")[1])
     await user.click(screen.getByRole("button", { name: "추천 상세 보기" }))
 
@@ -62,7 +64,11 @@ describe("추천 학습 목록", () => {
     const detail = screen.getByRole("article")
     expect(within(detail).getByText("반복")).toBeInTheDocument()
     expect(within(detail).getByText(recommendations[1].reason)).toBeInTheDocument()
-    expect(screen.getByText("S1 (상황 단서)")).toBeInTheDocument()
+    expect(within(detail).getByText(`근거는 '${recommendations[1].basisGoalTitle}' 목표의 기록에서 가져왔어요.`)).toBeInTheDocument()
+    // 예상 조건: 서버가 정한 다음 레벨 방향(그대로)과 이번 시작 지원 → 다음 시작 지원(S1 → S1)
+    const conditions = screen.getByRole("region", { name: "예상 조건" })
+    expect(within(conditions).getByText("L2 (유지)")).toBeInTheDocument()
+    expect(within(conditions).getByText("S1 (유지)")).toBeInTheDocument()
     const others = screen.getByRole("region", { name: "다른 추천" })
     expect(within(others).getAllByRole("button")).toHaveLength(2)
     expect(within(detail).queryByText("채택함")).not.toBeInTheDocument()

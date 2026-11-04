@@ -52,11 +52,12 @@ describe("역할극 리포트 탭", () => {
     expect(await within(panel).findAllByRole("article")).toHaveLength(3)
     // 계약은 강사 수정이 없다. 팀이 정할 때까지 탭만 닫아 둔다.
     expect(screen.getByRole("tab", { name: "AI 요약 수정" })).toHaveAttribute("aria-disabled", "true")
-    // 시안 헤더의 "추천 보기"는 이 아동을 고른 추천 화면으로 간다.
+    // 시안 헤더의 "추천 보기"는 이 아동을 고른 추천 화면으로 간다. "내보내기"는 API 가 없어 비활성이다.
     expect(screen.getByRole("link", { name: "추천 보기" })).toHaveAttribute(
       "href",
       `/recommendations?classId=${CHILD.classId}&childId=${CHILD.childId}`,
     )
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled()
 
     const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } })
     expect(results.violations.map((v) => v.id)).toEqual([])
@@ -73,13 +74,17 @@ describe("역할극 리포트 탭", () => {
     // 시안 지표 세 칸: 판단한 목표, 유도 횟수(지원을 올린 단계 수 0+1+2), 지원 수준(시작 → 다음)
     expect(within(roleplay).getByText("3개")).toBeInTheDocument()
     expect(within(roleplay).getByText("3회")).toBeInTheDocument()
-    expect(within(roleplay).getByText("다음 역할극은 상황 단서부터")).toBeInTheDocument()
+    expect(within(roleplay).getByText("다음 S1")).toBeInTheDocument()
+    // 작은 목표별 증거: 시안처럼 상태 칩(달성·부분 달성)과 회색 줄 하나. 줄은 지원 경로 · 관찰 문장이다.
     const goal = within(roleplay).getByRole("region", { name: "감정의 이유 말하기" })
     expect(within(goal).getByRole("heading", { name: "감정의 이유 말하기" })).toBeInTheDocument()
-    expect(within(goal).getByText("지원을 더 받고 도달")).toBeInTheDocument()
-    expect(within(goal).getByText("지원 S1 상황 단서 → S2 두 선택지")).toBeInTheDocument()
-    expect(within(roleplay).getByRole("heading", { name: "유도 기록" })).toBeInTheDocument()
-    expect(within(roleplay).getByText("기술 문제로 뺀 답이나 목표는 없어요.")).toBeInTheDocument()
+    expect(within(goal).getByText("부분 달성")).toHaveAttribute("title", "지원을 더 받고 도달")
+    expect(within(goal).getByText("S1 → S2 · 감정의 이유 말하기 관찰")).toBeInTheDocument()
+    expect(within(roleplay).getByRole("region", { name: "감정 이름 말하기" })).toHaveTextContent("달성")
+    // 유도 기록: 받은 지원 기호와 목표 · 받은 도움
+    const log = within(roleplay).getByRole("region", { name: "유도 기록" })
+    expect(within(log).getByText("위로하는 말 하기 · 답 알려 주기")).toBeInTheDocument()
+    expect(within(log).getByText("기술 문제로 뺀 답이나 목표는 없어요.")).toBeInTheDocument()
 
     await user.click(screen.getByRole("tab", { name: "난이도 근거" }))
     const basis = await screen.findByRole("tabpanel", { name: "난이도 근거" })

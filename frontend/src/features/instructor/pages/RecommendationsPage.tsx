@@ -6,7 +6,7 @@ import { InstructorLayout } from '../layout/InstructorLayout'
 import { RecommendationBoard } from '../components/report/RecommendationBoard'
 import { RecommendationDetail } from '../components/report/RecommendationDetail'
 import { useActivityGoal, useChildLatestLearning } from '../components/report/learningQueries'
-import type { NextLevel } from '../components/report/reportHelpers'
+import { LEVEL_CHANGE_LABELS, supportChangeLabel, type NextLevel } from '../components/report/reportHelpers'
 import { cardClass, fieldLabelClass, selectClass } from '../components/styles'
 import { Notice } from '../components/Feedback'
 import { formatDate } from '../lib/dateTime'
@@ -15,14 +15,18 @@ import { cn } from '@/lib/utils'
 const mutedTextClass = 'text-sm text-[var(--instructor-text-muted)]'
 
 /**
- * 추천·다음목표(시안 T-REC-01 추천 학습 목록, T-REC-02 추천 상세). 학급과 아동을 고르면 그 아동의 가장 최근 역할극에서 나온
+ * 추천·다음목표(시안 T-REC-01 추천 학습 목록, T-REC-02 추천 상세). 아동 한 명의 가장 최근 역할극에서 나온
  * 제안을 카드로 보이고, 하나를 골라 상세에서 결정한다(?recommendationId=). 기준 리포트는 헤더 오른쪽에서 연다.
  * 제안을 고르면 활동 만들기(역할극)로 이어지고, 배정은 그 화면에서 강사가 한다(자동 배정 금지).
+ * 시안은 아동이 정해진 화면만 그린다. 리포트의 "추천 보기"처럼 아동을 정해 들어오면 시안 그대로 보이고,
+ * 사이드바로 들어와 아동이 없을 때만 학급·아동 고르는 칸을 목록 위에 둔다(시안에 없는 자리).
  * 학급 단위 API 가 없어 고른 아동 한 명의 계약 API 만 부른다.
  */
 function RecommendationsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  // 들어올 때 아동이 정해져 있었는지. 고르는 칸에서 아동을 바꿔도 칸이 사라지지 않게 처음 값만 쓴다.
+  const [enteredWithChild] = useState(() => searchParams.has('childId'))
   const classroomsQuery = useQuery({ queryKey: ['classrooms'], queryFn: listClassrooms })
   const classrooms = classroomsQuery.data ?? []
   const requestedClass = searchParams.get('classId')
@@ -38,11 +42,14 @@ function RecommendationsPage() {
   const requestedChild = searchParams.get('childId')
   const child = children.find((c) => c.childId === requestedChild) ?? children[0] ?? null
 
-  const { difficulty, recommendations, isLoading, error } = useChildLatestLearning(child?.childId ?? null)
+  const { difficulty, report, recommendations, isLoading, error } = useChildLatestLearning(child?.childId ?? null)
   const basis = useActivityGoal(difficulty?.sourceActivityId ?? null)
   const level: NextLevel | null = difficulty
     ? { scenarioLevel: difficulty.scenarioLevel, supportLevel: difficulty.initialSupportLevel }
     : null
+  // 이번 역할극의 시작 지원은 AI 요약까지 끝난 리포트에만 있어서, 리포트가 없으면 지원 변화는 비워 둔다.
+  const supportChange =
+    difficulty && report ? supportChangeLabel(report.roleplay.startSupportLevel, difficulty.initialSupportLevel) : null
 
   // 고른 카드. 처음에는 아직 결정하지 않은 첫 제안을 골라 둔다(시안처럼 한 장이 골라진 채로 연다).
   const [picked, setPicked] = useState<string | null>(null)
@@ -65,10 +72,13 @@ function RecommendationsPage() {
   }
 
   const title = detail ? '추천 상세' : child ? `추천 학습 목록 · ${child.displayName}` : '추천·다음목표'
+  const showPicker = !enteredWithChild && !detail
 
   return (
     <InstructorLayout
       title={title}
+      // 시안처럼 목록의 안내·버튼과 상세의 버튼이 화면 맨 아래에 온다.
+      fill
       actions={
         difficulty ? (
           <Link
@@ -90,38 +100,40 @@ function RecommendationsPage() {
           <p className={mutedTextClass}>학급을 먼저 만들어 주세요.</p>
         ) : (
           <>
-            <div className={cn(cardClass, 'flex flex-wrap gap-4 p-4')}>
-              <label className={cn(fieldLabelClass, 'w-60')}>
-                학급
-                <select
-                  value={classId}
-                  onChange={(e) => show({ classId: e.target.value })}
-                  className={selectClass}
-                >
-                  {classrooms.map((classroom) => (
-                    <option key={classroom.classId} value={classroom.classId}>
-                      {classroom.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {children.length > 0 && (
+            {showPicker && (
+              <div className={cn(cardClass, 'flex flex-wrap gap-4 p-4')}>
                 <label className={cn(fieldLabelClass, 'w-60')}>
-                  아동
+                  학급
                   <select
-                    value={child?.childId ?? ''}
-                    onChange={(e) => show({ classId, childId: e.target.value })}
+                    value={classId}
+                    onChange={(e) => show({ classId: e.target.value })}
                     className={selectClass}
                   >
-                    {children.map((c) => (
-                      <option key={c.childId} value={c.childId}>
-                        {c.displayName}
+                    {classrooms.map((classroom) => (
+                      <option key={classroom.classId} value={classroom.classId}>
+                        {classroom.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              )}
-            </div>
+                {children.length > 0 && (
+                  <label className={cn(fieldLabelClass, 'w-60')}>
+                    아동
+                    <select
+                      value={child?.childId ?? ''}
+                      onChange={(e) => show({ classId, childId: e.target.value })}
+                      className={selectClass}
+                    >
+                      {children.map((c) => (
+                        <option key={c.childId} value={c.childId}>
+                          {c.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
 
             {childrenQuery.isLoading ? (
               <p className={mutedTextClass}>불러오는 중...</p>
@@ -141,6 +153,8 @@ function RecommendationsPage() {
                 recommendation={detail}
                 others={recommendations.filter((r) => r.recommendationId !== detail.recommendationId)}
                 level={level}
+                levelChange={LEVEL_CHANGE_LABELS[difficulty.direction]}
+                supportChange={supportChange}
                 classId={classId}
                 onBack={() => show({ classId, childId: child.childId })}
                 onOpenOther={(recommendationId) => show({ classId, childId: child.childId, recommendationId })}

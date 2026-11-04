@@ -21,14 +21,15 @@ const WARNING = 'bg-[var(--instructor-warning-bg)] text-[var(--instructor-warnin
 const DANGER = 'bg-[var(--instructor-danger-bg)] text-[var(--instructor-danger-text)]'
 const INFO = 'bg-[var(--instructor-info-bg)] text-[var(--instructor-info-fg)]'
 
-// 시안의 "달성"(초록)·"부분 달성"(주황)을 지원 단계로 나눈 상태에 맞춘다.
-const GOAL_STATUS_COLORS: Record<GoalStatus, string> = {
-  NO_SUPPORT_NEEDED: SUCCESS,
-  REACHED_AT_START: SUCCESS,
-  EXTRA_SUPPORT: WARNING,
-  ANSWER_GIVEN: DANGER,
-  NOT_REACHED: DANGER,
-  EXCLUDED: NEUTRAL,
+// 시안 T-RPT-02~08 의 "달성"(초록)·"부분 달성"(주황). 시안 예시대로 처음 받은 지원으로 도달하면 달성, 지원을 더 받고서야
+// 도달하면(답을 듣고 따라 말한 것 포함) 부분 달성이다. 자세한 상태는 title 로 남긴다.
+const GOAL_STATUS_CHIPS: Record<GoalStatus, { label: string; color: string }> = {
+  NO_SUPPORT_NEEDED: { label: '달성', color: SUCCESS },
+  REACHED_AT_START: { label: '달성', color: SUCCESS },
+  EXTRA_SUPPORT: { label: '부분 달성', color: WARNING },
+  ANSWER_GIVEN: { label: '부분 달성', color: WARNING },
+  NOT_REACHED: { label: '미달성', color: DANGER },
+  EXCLUDED: { label: '제외', color: NEUTRAL },
 }
 
 // 시안 T-REC-01 의 유형 칩: 보완 주황, 반복 파랑, 확장 초록, 적용 회색.
@@ -51,7 +52,12 @@ function SupportChip({ level, prefix }: { level: SupportLevel; prefix?: string }
 }
 
 function GoalStatusChip({ status }: { status: GoalStatus }) {
-  return <span className={cn(badgeClass, 'shrink-0', GOAL_STATUS_COLORS[status])}>{GOAL_STATUS_LABELS[status]}</span>
+  const chip = GOAL_STATUS_CHIPS[status]
+  return (
+    <span className={cn(badgeClass, 'shrink-0', chip.color)} title={GOAL_STATUS_LABELS[status]}>
+      {chip.label}
+    </span>
+  )
 }
 
 function RecommendationTypeChip({ type }: { type: RecommendationType }) {

@@ -23,7 +23,9 @@ const chipClass =
   'inline-block rounded-[var(--instructor-radius-badge)] bg-[var(--instructor-primary-subtle)] px-2.5 py-0.5 text-xs font-semibold text-[var(--instructor-link)]'
 
 // 시안 T-RPT-02~08 의 두 칸(왼쪽 지표·근거 1.5 : 오른쪽 요약·기록 1). 표정 퀴즈 탭과 같은 비율이다.
-const twoColumnClass = 'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start gap-4'
+// 시안처럼 두 칸의 마지막 카드가 화면 아래까지 늘어난다(페이지는 InstructorLayout fill).
+const twoColumnClass = 'grid flex-1 grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4'
+const columnClass = 'flex flex-col gap-4 [&>*:last-child]:flex-1'
 const sectionCardClass = cn(cardClass, 'flex flex-col gap-3 p-5')
 const sectionTitleClass = 'text-sm font-semibold'
 // 카드 안의 옅은 상자(시안의 증거 줄·기술 기록 안내).
@@ -82,9 +84,6 @@ function AiSummaryCard({ summary }: { summary: string }) {
         AI 요약
       </h3>
       <p className="text-sm leading-[1.7] break-keep">{summary}</p>
-      <p className="text-xs text-[var(--instructor-text-subtle)]">
-        관찰 기록으로 작성했고 근거와 맞는지 한 번 더 검사했어요
-      </p>
     </section>
   )
 }
@@ -109,10 +108,9 @@ function ReportOverview({
 }) {
   const next = report ? fromReport(report) : latestDifficulty ? fromLatest(latestDifficulty) : null
   const level: NextLevel | null = next ? { scenarioLevel: next.scenarioLevel, supportLevel: next.nextSupportLevel } : null
-  const technical = report ? technicalCount(report) : 0
   return (
     <div className={twoColumnClass}>
-      <div className="flex flex-col gap-4">
+      <div className={columnClass}>
         {report && (
           <section aria-labelledby="goal-help-heading" className={sectionCardClass}>
             <h3 id="goal-help-heading" className={sectionTitleClass}>
@@ -152,7 +150,7 @@ function ReportOverview({
         </section>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className={columnClass}>
         {report && <AiSummaryCard summary={report.summary} />}
 
         <section aria-labelledby="next-difficulty-heading" className={sectionCardClass}>
@@ -182,13 +180,6 @@ function ReportOverview({
               <p className="text-sm leading-6 break-keep">{report.narrative.effectiveSupports[0].text}</p>
             )}
           </section>
-        )}
-
-        {report && (
-          <p className="text-xs text-[var(--instructor-text-subtle)]">
-            관찰 기록 {report.roleplay.observations.length}개로 썼어요 ·{' '}
-            {technical > 0 ? `기술 문제 ${technical}건은 기술 기록 탭에서 봐요` : '기술 문제 없음'}
-          </p>
         )}
       </div>
     </div>
@@ -252,15 +243,26 @@ function GoalHelpTable({ goals }: { goals: ReportGoal[] }) {
   )
 }
 
-/** 지원이 어디서 시작해 어디까지 갔는지. 시안처럼 기호를 쓰고 받은 도움을 함께 적는다. */
+/** 지원이 어디서 시작해 어디까지 갔는지(S1 → S2). 시안 증거 줄 맨 앞의 "T2 ·" 자리다. */
 function supportPath(goal: ReportGoal): string {
-  const from = `${goal.startSupport} ${SUPPORT_LABELS[goal.startSupport]}`
-  if (goal.startSupport === goal.finalSupport) return from
-  return `${from} → ${goal.finalSupport} ${SUPPORT_LABELS[goal.finalSupport]}`
+  return goal.startSupport === goal.finalSupport ? goal.startSupport : `${goal.startSupport} → ${goal.finalSupport}`
 }
 
-/** 작은 목표 하나의 증거(시안 "작은 목표별 증거"의 한 칸). 아동 발화 원문은 없고, 지원 경로·기준별 관찰·관찰 문장을 보인다. */
+/**
+ * 작은 목표 하나의 증거(시안 "작은 목표별 증거"의 한 칸): 제목·상태 칩, 회색 줄 하나.
+ * 시안은 "T2 · 아동 발화 — 지원 조건"이지만 발화 원문은 저장하지 않아서, 지원 경로와 관찰 문장(지원 단계와 기준으로 만든 문장)을 쓴다.
+ * 관찰 문장이 없으면 기준과 관찰 상태를 쓴다.
+ */
 function GoalEvidence({ goal }: { goal: ReportGoal }) {
+  const criterion = goal.criteria[0]
+  const lines =
+    goal.status === 'EXCLUDED'
+      ? ['판단할 답이 없어 결과에서 뺐어요']
+      : goal.observations.length > 0
+        ? goal.observations
+        : criterion
+          ? [`${criterion.description} · ${criterion.status ? OBSERVATION_LABELS[criterion.status] : '관찰하지 못함'}`]
+          : []
   return (
     <section
       aria-label={goal.title}
@@ -270,17 +272,12 @@ function GoalEvidence({ goal }: { goal: ReportGoal }) {
         <h4 className="text-sm font-semibold break-keep">{goal.title}</h4>
         <GoalStatusChip status={goal.status} />
       </div>
-      <div className={cn(insetClass, 'flex flex-col gap-1 break-keep')}>
-        <p>지원 {supportPath(goal)}</p>
-        {goal.criteria.map((criterion) => (
-          <p key={criterion.description}>
-            {criterion.description} · {criterion.status ? OBSERVATION_LABELS[criterion.status] : '관찰하지 못함'}
-          </p>
-        ))}
-        {goal.observations.map((observation) => (
-          <p key={observation}>{observation}</p>
-        ))}
-      </div>
+      {lines.map((line, index) => (
+        <p key={line} className={cn(insetClass, 'break-keep')}>
+          {index === 0 && `${supportPath(goal)} · `}
+          {line}
+        </p>
+      ))}
     </section>
   )
 }
@@ -288,7 +285,8 @@ function GoalEvidence({ goal }: { goal: ReportGoal }) {
 /**
  * 역할극 탭(시안 T-RPT-02~08). 왼쪽은 지표 세 칸과 작은 목표별 증거, 오른쪽은 AI 요약과 유도 기록이다.
  * 시안의 "턴 수"는 리포트에 없어 판단한 목표 수로, "유도 횟수"는 지원을 올린 단계 수로 채운다.
- * 지원 수준은 이번 시작 지원과 서버가 정한 다음 시작 지원이다.
+ * 지원 수준은 이번 시작 지원과 서버가 정한 다음 시작 지원이다(시안의 "최종"은 리포트에 없다).
+ * 유도 기록은 시안의 "S1 T4 · 감정 이름 힌트"처럼 받은 지원을 쓰되, 턴 번호 대신 목표 이름을 쓴다.
  */
 function RoleplayGoalsView({ report }: { report: LearningReport }) {
   const { roleplay, metrics, difficultyDecision } = report
@@ -296,18 +294,10 @@ function RoleplayGoalsView({ report }: { report: LearningReport }) {
   const technical = technicalCount(report)
   return (
     <div className={twoColumnClass}>
-      <div className="flex flex-col gap-4">
+      <div className={columnClass}>
         <div className="grid grid-cols-3 gap-4">
-          <StatCard
-            label="판단한 목표"
-            value={`${metrics.validGoalCount}개`}
-            note={
-              metrics.excludedGoalCount > 0
-                ? `기술 문제로 ${metrics.excludedGoalCount}개 뺌`
-                : `이번 역할극 ${roleplay.scenarioLevel}`
-            }
-          />
-          <StatCard label="유도 횟수" value={`${promptCount(roleplay.goals)}회`} note="지원을 한 단계 올린 횟수" />
+          <StatCard label="판단한 목표" value={`${metrics.validGoalCount}개`} />
+          <StatCard label="유도 횟수" value={`${promptCount(roleplay.goals)}회`} />
           <StatCard
             label="지원 수준"
             value={
@@ -319,7 +309,6 @@ function RoleplayGoalsView({ report }: { report: LearningReport }) {
                 <SupportChip level={difficultyDecision.nextSupportLevel} prefix="다음" />
               </div>
             }
-            note={`다음 역할극은 ${SUPPORT_LABELS[difficultyDecision.nextSupportLevel]}부터`}
           />
         </div>
 
@@ -333,7 +322,7 @@ function RoleplayGoalsView({ report }: { report: LearningReport }) {
         </section>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className={columnClass}>
         <AiSummaryCard summary={report.summary} />
         <section aria-labelledby="prompt-log-heading" className={sectionCardClass}>
           <h3 id="prompt-log-heading" className={sectionTitleClass}>
@@ -344,7 +333,7 @@ function RoleplayGoalsView({ report }: { report: LearningReport }) {
               <li key={goal.microGoalId} className="flex items-start gap-2">
                 <SupportChip level={goal.finalSupport} />
                 <span className="break-keep">
-                  {goal.title} · {GOAL_STATUS_LABELS[goal.status]}
+                  {goal.title} · {SUPPORT_LABELS[goal.finalSupport]}
                 </span>
               </li>
             ))}
