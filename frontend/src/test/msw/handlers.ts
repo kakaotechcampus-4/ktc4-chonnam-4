@@ -231,6 +231,7 @@ export function emptyQuizPool() {
  * 문항은 서버처럼 문항 풀에서 붙인다.
  */
 export function seedActivity({
+  activityId,
   childId,
   goalTitle,
   category,
@@ -238,6 +239,8 @@ export function seedActivity({
   status = "NOT_STARTED",
   result,
 }: {
+  /** 테스트가 주소에 미리 넣어 둘 고정 ID. 없으면 새로 만든다. */
+  activityId?: string
   childId: string
   goalTitle?: string
   category?: string
@@ -258,6 +261,7 @@ export function seedActivity({
     goalId = goal.goalId
   }
   const activity = newActivity(childId, activityType, goalId, null)
+  if (activityId) activity.activityId = activityId
   activity.status = status
   if (status !== "NOT_STARTED") activity.startedAt = activity.assignedAt
   if (status === "COMPLETED") activity.completedAt = activity.assignedAt
@@ -896,13 +900,20 @@ export const handlers = [
     return HttpResponse.json(envelope(goal))
   }),
 
+  // 강사(Bearer)와 입장한 아동(세션 쿠키) 둘 다 부른다. 아동은 자기 목록만 보고, 다른 아동 ID 는 서버처럼 404 로 숨긴다.
   http.get("*/api/v1/children/:childId/activities", ({ params, request }) => {
-    const session = authenticate(request)
-    if (session instanceof Response) return session
     const childId = String(params.childId)
     const path = new URL(request.url).pathname
-    if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
-    if (!ownedChild(childId, session)) return childNotFound(path)
+    const asChild = request.headers.get("Authorization") === null && childSession !== null
+    if (!asChild) {
+      const session = authenticate(request)
+      if (session instanceof Response) return session
+      if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+      if (!ownedChild(childId, session)) return childNotFound(path)
+    } else {
+      if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+      if (childId !== childSession) return childNotFound(path)
+    }
     // 서버는 배정 시각 최신순이고, page·size(기본 0·20, 최대 100)로 나눠 준다.
     const url = new URL(request.url)
     const page = Number(url.searchParams.get("page") ?? 0)

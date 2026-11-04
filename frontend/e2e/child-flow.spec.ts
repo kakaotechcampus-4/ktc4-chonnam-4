@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test"
-import { enterChild, MOCK_ACTIVITY } from "./support/child.js"
+import { ANY_ACTIVITY, enterChild } from "./support/child.js"
 
 // 아동 흐름 종단 검사(VS-003, 07 "Chrome PC·태블릿에서 기본 화면이 열림"). playwright.config.ts 의 chromium(PC)·tablet
-// 두 프로젝트에서 같은 흐름을 돈다. 입장·사용 종료는 실제 API 이고, 코드는 강사 API 로 발급받는다(support/child.ts).
+// 두 프로젝트에서 같은 흐름을 돈다. 입장·사용 종료·활동 목록은 실제 API 이고, 활동 배정·코드 발급은 강사 API 로 한다(support/child.ts).
 // - 코드 입력 → 인사 → 내 활동 → 활동 소개 → 퀴즈 → 사용 종료 → 코드 입력 화면
 // - 입장하지 않고 활동 화면 주소를 열거나, 사용 종료한 뒤 뒤로 가기를 눌러도 코드 입력 화면으로 간다(#22 의 5번).
 // - 활동 중 창을 닫으려 하면 확인창이 뜨고(#18), 사용 종료한 뒤에는 뜨지 않는다.
@@ -18,10 +18,11 @@ test("아동이 코드로 입장해 퀴즈 화면까지 가고, 사용 종료하
   await expect(page).toHaveURL(/\/child\/activities$/)
   await expect(page.getByText(`${child.name}의 활동`)).toBeVisible()
 
+  // 서버에 배정한 활동이 열기구로 보인다(API-ACT-02).
   await page.getByRole("button", { name: /친구 마음 알아보기/ }).click()
-  await expect(page).toHaveURL(new RegExp(`/child/activities/${MOCK_ACTIVITY}$`))
-  await page.getByRole("button", { name: "이어서 하기" }).click()
-  await expect(page).toHaveURL(new RegExp(`/child/quiz/${MOCK_ACTIVITY}$`))
+  await expect(page).toHaveURL(new RegExp(`/child/activities/${child.activityId}$`))
+  await page.getByRole("button", { name: "시작하기" }).click()
+  await expect(page).toHaveURL(new RegExp(`/child/quiz/${child.activityId}$`))
   await expect(page.getByText("1/3 문항")).toBeVisible()
 
   await page.getByRole("button", { name: "사용 종료" }).click()
@@ -32,8 +33,8 @@ test("아동이 코드로 입장해 퀴즈 화면까지 가고, 사용 종료하
 for (const path of [
   "/child/hello",
   "/child/activities",
-  `/child/quiz/${MOCK_ACTIVITY}`,
-  `/child/roleplay/${MOCK_ACTIVITY}`,
+  `/child/quiz/${ANY_ACTIVITY}`,
+  `/child/roleplay/${ANY_ACTIVITY}`,
 ]) {
   test(`입장하지 않고 ${path} 를 열면 코드 입력 화면으로 간다`, async ({ page }) => {
     await page.goto(path)

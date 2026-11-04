@@ -93,10 +93,8 @@ public class RoleplayCompletionService {
                                 status.setRollbackOnly();
                                 return new RoleplayCheckpointStore.Conflict();
                             }
-                            // 저장소가 잠긴 세션의 다음 턴 번호를 이미 대조했다.
                             boolean maximumTurnReached =
-                                    limits.configured()
-                                            && command.turnNumber() >= limits.maximumTurnCount();
+                                    maximumLearningTurnReached(command, plan, deadline);
                             if (maximumTurnReached
                                     && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
                                             || !"CLOSING".equals(command.responseType()))) {
@@ -122,5 +120,19 @@ public class RoleplayCompletionService {
             if (deadline.remainingNanos() == 0) return new RoleplayCheckpointStore.Expired();
             throw failure;
         }
+    }
+
+    private boolean maximumLearningTurnReached(
+            RoleplayCheckpointCommand command,
+            RoleplayGoalObservationPlan plan,
+            RoleplayTurnDeadline deadline) {
+        if (!limits.configured()) return false;
+        var progress = plan.proposal().inputGoalProgress();
+        // 입력 판정 계약 도입 전 내부 호출은 기존 상한을 유지한다.
+        if (progress == null) return command.turnNumber() >= limits.maximumTurnCount();
+        if (progress.learningState().equals("NOT_ASSESSABLE")) return false;
+        var learningTurn =
+                observations.nextLearningTurn(command.sessionId(), command.turnNumber(), deadline);
+        return learningTurn.isPresent() && learningTurn.getAsInt() >= limits.maximumTurnCount();
     }
 }

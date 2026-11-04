@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router-dom"
 import { setAccessToken } from "@/features/instructor/auth/tokenStorage"
 import { useChildSessionStore } from "@/features/child/store/childSessionStore"
-import { fixtures, instructors, startChildSession } from "./msw/handlers"
+import { fixtures, instructors, seedActivity, startChildSession } from "./msw/handlers"
 
 /**
  * 라우터·React Query 를 붙여 화면을 렌더링한다. 화면 테스트는 이 함수로 시작하면 된다.
@@ -44,4 +44,20 @@ export function signIn(instructor: { accessToken: string } = instructors.a) {
 export function enterAsChild(childName = fixtures.childA1_1.displayName) {
   startChildSession(fixtures.childA1_1.childId)
   useChildSessionStore.getState().startSession({ childId: fixtures.childA1_1.childId, childName })
+}
+
+/** 아동 화면 테스트가 주소에 넣는 활동 ID. seedChildActivity 가 이 ID 로 활동을 만든다. */
+export const CHILD_ACTIVITY_ID = "40000000-0000-4000-8000-000000000001"
+
+/**
+ * enterAsChild 의 아동(김하늘)에게 진행 중인 최초 결합 활동(친구 마음 알아보기)을 하나 배정한다.
+ * 활동 목록은 실제 API(API-ACT-02)라 가짜 서버에 넣어 둬야 화면에 보인다.
+ */
+export function seedChildActivity(options: Partial<Parameters<typeof seedActivity>[0]> = {}) {
+  return seedActivity({
+    activityId: CHILD_ACTIVITY_ID,
+    childId: fixtures.childA1_1.childId,
+    status: "IN_PROGRESS",
+    ...options,
+  })
 }

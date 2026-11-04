@@ -90,7 +90,73 @@ class RoleplayMaximumTurnOutputTest {
                 .isInstanceOf(InvalidLlmOutputException.class);
     }
 
+    @Test
+    void unknownLearningEvidenceDoesNotUseTheStoredOrdinalAsTheMaximum() {
+        var input = inputWithMaximum(1, null);
+        var analysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser()
+                        .parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1"));
+        assertThat(analysis.nextStrategy().type()).isEqualTo("PROBE_EMOTION");
+        assertThat(
+                        factory.responseGeneration(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        1,
+                                        input,
+                                        analysis,
+                                        CANDIDATE_ID,
+                                        null)
+                                .parser()
+                                .parse(candidateJson("친구는 어떤 기분일까?", "GUIDING_QUESTION"))
+                                .responseType())
+                .isEqualTo("GUIDING_QUESTION");
+    }
+
+    @Test
+    void unassessableInputDoesNotForceAClosingCandidateAtTheKnownMaximum() {
+        var input = inputWithMaximum(1);
+        var analysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser()
+                        .parse(
+                                analysisJson("CONFIRM_UNDERSTANDING", MG_EMOTION, "S1")
+                                        .replace("PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE"));
+        var candidate =
+                candidateJson("다시 한번 알려줄래?", "CONFIRMATION")
+                        .replace("PROBE_EMOTION", "CONFIRM_UNDERSTANDING");
+        assertThat(
+                        factory.responseGeneration(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        1,
+                                        input,
+                                        analysis,
+                                        CANDIDATE_ID,
+                                        null)
+                                .parser()
+                                .parse(candidate)
+                                .responseType())
+                .isEqualTo("CONFIRMATION");
+    }
+
     private RoleplayTurnInput inputWithMaximum(int maximum) {
+        return inputWithMaximum(maximum, input("친구가 울어.").state().turnCount());
+    }
+
+    private RoleplayTurnInput inputWithMaximum(int maximum, Integer learningTurn) {
         var original = input("친구가 울어.");
         var state = original.state();
         return new RoleplayTurnInput(
@@ -103,7 +169,9 @@ class RoleplayMaximumTurnOutputTest {
                         state.answerRevealed(),
                         state.turnCount(),
                         maximum,
-                        state.maximumSupportTurnsPerMicroGoal()),
+                        state.maximumSupportTurnsPerMicroGoal(),
+                        state.currentMicroGoalSupportTurn(),
+                        learningTurn),
                 original.learnerTurn(),
                 original.recentDialogue());
     }

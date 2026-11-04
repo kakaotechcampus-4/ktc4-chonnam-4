@@ -5,11 +5,11 @@ import { http, HttpResponse } from "msw"
 import { router } from "@/router"
 import { apiError, childAccessCodes } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
-import { enterAsChild, renderRoutes } from "@/test/render"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 import * as api from "./api"
 
 // S2-YOON-01 아동 화면 오류·로딩·재입력 점검, S3-YOON-01 상태 규칙 통일 확인 (VS-003·006·010).
-// 입장은 실제 API(API-IAM-08)라 MSW 가짜 서버의 응답을 바꿔 실패시킨다. 나머지 아동 API는 아직 화면 쪽 mock(api.ts)이라
+// 입장·활동 목록은 실제 API(API-IAM-08, API-ACT-02)라 MSW 가짜 서버에 넣어 둔 활동을 쓴다. 나머지 아동 API는 아직 화면 쪽 mock(api.ts)이라
 // 항상 성공하므로 mock 함수를 감싸 일부러 실패시키거나 응답을 붙잡아 두고, 화면이 오류 모달·로딩 표시·재입력을 제대로 보여 주는지 본다.
 // - 기술 오류는 오답이 아니므로 같은 요청을 그대로 다시 보낸다(퀴즈 VS-006, 역할극 턴 VS-011, 완료·스탬프 VS-013).
 // - 응답을 기다리는 동안에는 버튼을 막아 같은 요청이 두 번 가지 않게 한다.
@@ -25,12 +25,12 @@ vi.mock("./api", async (importOriginal) => {
     submitQuizAnswer: vi.fn(actual.submitQuizAnswer),
     getRoleplayScenario: vi.fn(actual.getRoleplayScenario),
     sendRoleplayTurn: vi.fn(actual.sendRoleplayTurn),
-    // 실제 mock은 활동을 완료로 바꿔 다음 테스트에 남으므로, 상태를 바꾸지 않는 응답으로 대신한다.
+    // 실제 mock은 완료한 활동을 기억해 다음 테스트에 남으므로, 상태를 바꾸지 않는 응답으로 대신한다.
     completeActivity: vi.fn(async ({ activityId }: { activityId: string }) => ({ activityId, stampGranted: true })),
   }
 })
 
-const QUIZ_ACTIVITY = "mock-activity-1"
+const QUIZ_ACTIVITY = CHILD_ACTIVITY_ID
 const ENTRY_URL = "*/api/v1/child-access-sessions"
 const VALID_CODE = childAccessCodes.valid
 const GREETING = "안녕, 김하늘!"
@@ -47,6 +47,7 @@ function deferred<T>() {
 
 function openChildPage(path: string) {
   enterAsChild()
+  seedChildActivity()
   return renderRoutes(router.routes, path)
 }
 
@@ -281,6 +282,26 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
     expect(screen.getByRole("button", { name: "스탬프를 준비하고 있어요…" })).toBeDisabled()
     pending.resolve({ activityId: QUIZ_ACTIVITY, stampGranted: true })
     expect(await screen.findByText("스탬프를 받았어요!")).toBeInTheDocument()
+  })
+
+  it("완료 응답을 기다리는 사이 사용 종료하면, 늦게 온 응답으로 완료 화면에 가지 않는다 (#56 FE 전달사항 4)", async () => {
+    const pending = deferred<api.ActivityCompletion>()
+    vi.mocked(api.completeActivity).mockReturnValueOnce(pending.promise)
+    const { user, router: memoryRouter } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+
+    await finishRoleplay(user)
+    await user.click(await screen.findByRole("button", { name: "다음으로" }))
+    await user.click(screen.getByRole("button", { name: "사용 종료" }))
+    await screen.findByText("입장 코드를 입력해줘!")
+    // 완료 화면으로 갔다가 가드가 바로 돌려보내도 마지막 주소는 /child 라서, 거쳐 간 주소를 모두 모은다.
+    const visited: string[] = []
+    memoryRouter.subscribe((state) => visited.push(state.location.pathname))
+
+    pending.resolve({ activityId: QUIZ_ACTIVITY, stampGranted: true })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(visited.filter((path) => path.startsWith("/child/done"))).toEqual([])
+    expect(memoryRouter.state.location.pathname).toBe("/child")
   })
 })
 

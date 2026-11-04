@@ -40,7 +40,10 @@ public interface RoleplaySessionRepository extends JpaRepository<RoleplaySession
                     """
             select s.* from roleplay_session s
             where (s.status = 'COMPLETED' or s.last_activity_at <= :cutoff)
-              and exists (select 1 from roleplay_turn t where t.session_id = s.session_id and t.canonical_utterance is not null)
+              and (
+                exists (select 1 from roleplay_turn t where t.session_id = s.session_id and t.canonical_utterance is not null)
+                or exists (select 1 from roleplay_voice_input_state v where v.session_id = s.session_id)
+              )
             order by s.session_id
             for update of s skip locked
             """,

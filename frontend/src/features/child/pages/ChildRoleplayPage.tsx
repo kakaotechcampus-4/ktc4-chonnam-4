@@ -9,17 +9,17 @@ import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
 import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
+import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
 import {
   completeActivity,
-  getMyActivities,
   getRoleplayScenario,
   myActivitiesQueryKey,
   roleplayScenarioQueryKey,
   sendRoleplayTurn,
   type RoleplaySpeaker,
 } from "../api"
-import { useChildSessionStore } from "../store/childSessionStore"
+import { useMyActivities } from "../hooks/useMyActivities"
+import { rememberChildSession, useChildSessionStore } from "../store/childSessionStore"
 
 type ThreadMessage = {
   id: string
@@ -119,10 +119,7 @@ function ChildRoleplayPage() {
   // 완료 요청을 다시 보내도 스탬프가 두 번 지급되지 않도록 화면에 머무는 동안 같은 값을 쓴다.
   const [completionRequestId] = useState(() => crypto.randomUUID())
 
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
   const scenarioQuery = useQuery({
     queryKey: roleplayScenarioQueryKey(childId, activityId),
     queryFn: () => getRoleplayScenario(activityId ?? ""),
@@ -152,7 +149,11 @@ function ChildRoleplayPage() {
 
   const completeMutation = useMutation({
     mutationFn: completeActivity,
-    onSuccess: (completion) => {
+    // 요청을 보낼 때의 아동 세션을 기억한다.
+    onMutate: () => ({ isSameSession: rememberChildSession() }),
+    onSuccess: (completion, _input, context) => {
+      // 응답을 기다리는 사이 사용 종료했거나 다른 아동이 들어왔으면, 늦게 온 완료 응답으로 완료 화면에 가지 않는다 (#56 FE 전달사항 4).
+      if (!context.isSameSession()) return
       navigate(`/child/done/${completion.activityId}`, { state: { completion } })
       // 홈으로 돌아갔을 때 완료 상태(열기구 탑승)가 바로 보이도록 목록을 다시 받는다.
       queryClient.invalidateQueries({ queryKey: myActivitiesQueryKey(childId) })
@@ -177,7 +178,7 @@ function ChildRoleplayPage() {
   const showSendError = turnMutation.isError && !turnMutation.isPending
   const showCompleteError = completeMutation.isError && !completeMutation.isPending
 
-  // 내 배정 목록에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003, 최종 차단은 서버 403).
+  // 내 배정 목록(서버가 이 아동 것만 준다)에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003).
   if (activitiesQuery.isSuccess && (!activity || activity.status === "COMPLETED")) {
     return <Navigate to="/child/activities" replace />
   }
@@ -252,9 +253,12 @@ function ChildRoleplayPage() {
         </div>
       ) : null}
 
-      <StateDialog open={showLoadError}>
-        <ErrorState message="역할극을 불러오지 못했어요" onRetry={retryLoad} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showLoadError}
+        error={activitiesQuery.error ?? scenarioQuery.error}
+        message="역할극을 불러오지 못했어요"
+        onRetry={retryLoad}
+      />
       <StateDialog open={showSendError}>
         {/* 같은 requestId로 다시 보내 턴이 중복 생성되지 않게 한다 (VS-011 재전송). */}
         <ErrorState

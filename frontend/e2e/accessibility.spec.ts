@@ -1,6 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright"
 import { expect, test, type Page } from "@playwright/test"
-import { enterChild, MOCK_ACTIVITY, openInApp } from "./support/child.js"
+import { enterChild, openInApp } from "./support/child.js"
 import { createClassroom, marker, signUp } from "./support/instructor.js"
 
 // 실제 브라우저 접근성 검사(axe-core). jsdom 검사(src/accessibility.test.tsx)가 못 보는 색 대비·실제 배치를 본다.
@@ -69,18 +69,19 @@ for (const { path, ready } of PUBLIC_PAGES) {
 }
 
 // 아동 상태는 새로고침하면 사라진다(메모리 저장). 코드로 입장한 뒤 새로고침 없이 앱 안에서 주소를 옮긴다(support/child.ts).
+// 활동 ID 는 입장할 때 서버에 배정한 활동(support/child.ts)이다.
 const CHILD_ACTIVITY_PAGES = [
-  { path: "/child/hello", name: "/child/hello", ready: "오늘도 만나서 반가워" },
-  { path: "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
-  { path: `/child/activities/${MOCK_ACTIVITY}`, name: "/child/activities/:activityId", ready: "이어서 하기" },
-  { path: `/child/quiz/${MOCK_ACTIVITY}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
-  { path: `/child/roleplay/${MOCK_ACTIVITY}`, name: "/child/roleplay/:activityId", ready: "놀이터에서" },
+  { path: () => "/child/hello", name: "/child/hello", ready: "오늘도 만나서 반가워" },
+  { path: () => "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
+  { path: (id: string) => `/child/activities/${id}`, name: "/child/activities/:activityId", ready: "시작하기" },
+  { path: (id: string) => `/child/quiz/${id}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
+  { path: (id: string) => `/child/roleplay/${id}`, name: "/child/roleplay/:activityId", ready: "놀이터에서" },
 ]
 
 for (const { path, name, ready } of CHILD_ACTIVITY_PAGES) {
   test(`${name} 에 새 WCAG A·AA 위반이 없다`, async ({ page }) => {
-    await enterChild(page)
-    await openInApp(page, path)
+    const child = await enterChild(page)
+    await openInApp(page, path(child.activityId))
     await expect(page.getByText(ready).first()).toBeVisible()
 
     await checkAccessibility(page, name)

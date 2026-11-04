@@ -14,10 +14,45 @@ public final class RoleplaySupportDecisionRules {
             RoleplayTurnInput.State state,
             GoalObservationInput observations,
             AnalysisResult analysis) {
+        requireValidModelAnalysis(state, observations, analysis);
+        RoleplaySupportApplication.requireValid(state, observations, analysis);
+    }
+
+    public static void requireValidModelAnalysis(
+            RoleplayTurnInput.State state,
+            GoalObservationInput observations,
+            AnalysisResult analysis) {
         var next = analysis.nextStrategy();
-        if (state.turnCount() >= state.maximumTurnCount()
-                && !"CLOSE_ROLEPLAY".equals(next.type())) {
-            throw new IllegalArgumentException("최대 턴에서는 역할극을 마무리해야 합니다.");
+        RoleplayCodes.requireOneOf(
+                RoleplayCodes.SUPPORT_LEVELS, next.recommendedSupportLevel(), "supportLevel");
+        if (state.learningTurnCount() != null
+                && state.learningTurnCount() >= state.maximumTurnCount()
+                && !analysis.learningState().equals("NOT_ASSESSABLE")
+                && (!next.type().equals("CLOSE_ROLEPLAY")
+                        || !next.targetMicroGoalId().equals(state.currentMicroGoalId())
+                        || !next.recommendedSupportLevel().equals(state.currentSupportLevel()))) {
+            throw new IllegalArgumentException("전체 학습 턴 상한에서는 현재 목표·지원 수준으로 마무리해야 합니다.");
+        }
+        if (analysis.learningState().equals("GOAL_ACHIEVED")
+                && !next.targetMicroGoalId().equals(state.currentMicroGoalId())
+                && !next.type().equals("CLOSE_ROLEPLAY")
+                && !GOAL_QUESTION_STRATEGIES.contains(next.type()))
+            throw new IllegalArgumentException("목표 도달 뒤 새 목표의 시작은 학습 질문 전략이어야 합니다.");
+        if (analysis.learningState().equals("NOT_ASSESSABLE")
+                && (!next.targetMicroGoalId().equals(state.currentMicroGoalId())
+                        || !next.recommendedSupportLevel().equals(state.currentSupportLevel()))) {
+            throw new IllegalArgumentException("판정 불가 입력으로 질문 목표·지원 수준을 바꿀 수 없습니다.");
+        }
+        if (!next.type().equals("CLOSE_ROLEPLAY")
+                && next.targetMicroGoalId().equals(state.currentMicroGoalId())
+                && next.recommendedSupportLevel().compareTo(state.currentSupportLevel()) < 0) {
+            throw new IllegalArgumentException("같은 목표의 지원을 낮춰 다시 유도할 수 없습니다.");
+        }
+        if (!next.type().equals("CLOSE_ROLEPLAY")
+                && next.targetMicroGoalId().equals(state.currentMicroGoalId())
+                && next.recommendedSupportLevel().charAt(1)
+                        > state.currentSupportLevel().charAt(1) + 1) {
+            throw new IllegalArgumentException("같은 목표의 지원은 한 번에 한 단계만 높일 수 있습니다.");
         }
         if (!GOAL_QUESTION_STRATEGIES.contains(next.type())) return;
         var target =
@@ -27,14 +62,6 @@ public final class RoleplaySupportDecisionRules {
                         .orElseThrow(() -> new IllegalArgumentException("지원 조정 목표가 승인 범위에 없습니다."));
         if (target.exposureBeforeInput().answerRevealed()) {
             throw new IllegalArgumentException("이미 정답을 제공한 목표를 다시 유도할 수 없습니다.");
-        }
-        RoleplayCodes.requireOneOf(
-                RoleplayCodes.SUPPORT_LEVELS, next.recommendedSupportLevel(), "supportLevel");
-        // 지원 감소는 다음 목표에 반영하고 같은 목표의 질문을 낮춰 반복하지 않는다.
-        if (next.targetMicroGoalId().equals(state.currentMicroGoalId())
-                && next.recommendedSupportLevel().charAt(1)
-                        < state.currentSupportLevel().charAt(1)) {
-            throw new IllegalArgumentException("같은 목표의 지원을 낮춰 다시 유도할 수 없습니다.");
         }
     }
 }

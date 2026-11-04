@@ -85,12 +85,25 @@ public final class ScenarioPromptFactory {
                                             "NOT_OBSERVED");
                                 })
                         .toList();
+        RoleplayTurnInput.AiCharacter aiCharacter =
+                scenario.characters().stream()
+                        .filter(character -> character.id().equals(scenario.aiRole()))
+                        .findFirst()
+                        .map(
+                                character ->
+                                        new RoleplayTurnInput.AiCharacter(
+                                                character.id(),
+                                                character.role(),
+                                                character.personality(),
+                                                character.speechStyle()))
+                        .orElse(null);
         return new RoleplayTurnInput.Scenario(
                 learningGoal,
                 scenario.scenarioLevel(),
                 scenario.scenarioFacts(),
                 scenario.prohibitedInferences(),
-                goals);
+                goals,
+                aiCharacter);
     }
 
     private Map<String, Object> message(ScenarioGenerationInput input) {

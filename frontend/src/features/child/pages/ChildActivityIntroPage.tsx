@@ -1,42 +1,37 @@
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 import { ChevronRight, MessagesSquare, Smile, Stamp } from "lucide-react"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
-import { getMyActivities, myActivitiesQueryKey } from "../api"
-import { useChildSessionStore } from "../store/childSessionStore"
+import { LoadErrorDialog, LoadingState } from "../components/state"
+import { isActivityInProgress } from "../api"
+import { useMyActivities } from "../hooks/useMyActivities"
 
 /**
  * C-ACT-01 활동 소개.
- * 퀴즈를 시작하기 전에 이번 활동에서 할 일(퀴즈 → 역할극 → 스탬프)을 미리 보여준다.
+ * 시작하기 전에 이번 활동에서 할 일(퀴즈 → 역할극 → 스탬프)을 미리 보여준다. 활동 유형에 없는 단계는 뺀다.
  */
 function ChildActivityIntroPage() {
   const navigate = useNavigate()
   const { activityId } = useParams()
-  const childId = useChildSessionStore((state) => state.childId)
-
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
 
   const isLoading = activitiesQuery.isPending || (activitiesQuery.isError && activitiesQuery.isFetching)
   const showError = activitiesQuery.isError && !activitiesQuery.isFetching
   const activity = activitiesQuery.data?.find((item) => item.activityId === activityId)
 
-  // 내 배정 목록에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다.
-  // 다른 아동의 활동 ID 차단은 최종적으로 서버 응답(403)으로 처리해야 한다 (VS-003, S4).
+  // 내 배정 목록(서버가 이 아동 것만 준다)에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다.
+  // 다른 아동의 활동 ID 를 주소에 넣어도 여기서 막힌다 (VS-003, S4).
   if (activitiesQuery.isSuccess && (!activity || activity.status === "COMPLETED")) {
     return <Navigate to="/child/activities" replace />
   }
 
+  const quizCount = activity?.quizCount ?? 0
   const steps = [
-    { icon: <Smile />, label: "표정 퀴즈", detail: `${activity?.quizCount ?? 0}문제` },
-    { icon: <MessagesSquare />, label: "역할극", detail: "대화하기" },
+    quizCount > 0 ? { icon: <Smile />, label: "표정 퀴즈", detail: `${quizCount}문제` } : null,
+    activity?.roleplayCount ? { icon: <MessagesSquare />, label: "역할극", detail: "대화하기" } : null,
     { icon: <Stamp />, label: "스탬프", detail: "받기" },
-  ]
+  ].filter((step) => step !== null)
 
   return (
     <ChildLayout activityTitle="활동 소개">
@@ -70,16 +65,19 @@ function ChildActivityIntroPage() {
 
           <ChildButton
             className="h-16 w-full max-w-sm text-xl"
-            onClick={() => navigate(`/child/quiz/${activity.activityId}`)}
+            onClick={() => navigate(`/child/${quizCount > 0 ? "quiz" : "roleplay"}/${activity.activityId}`)}
           >
-            {activity.status === "IN_PROGRESS" ? "이어서 하기" : "시작하기"}
+            {isActivityInProgress(activity.status) ? "이어서 하기" : "시작하기"}
           </ChildButton>
         </div>
       )}
 
-      <StateDialog open={showError}>
-        <ErrorState message="활동을 불러오지 못했어요" onRetry={() => activitiesQuery.refetch()} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showError}
+        error={activitiesQuery.error}
+        message="활동을 불러오지 못했어요"
+        onRetry={() => activitiesQuery.refetch()}
+      />
     </ChildLayout>
   )
 }

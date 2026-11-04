@@ -38,7 +38,16 @@ public record GeneratedScenario(
                                 startingQuestions, "startingQuestions must not be null"));
     }
 
-    public record Character(String id, String role) {
+    /** personality·speech_style 은 AI 가 연기하는 인물(ai_role)에만 있다. 학습자(LEARNER)에는 없다. */
+    public record Character(
+            String id,
+            String role,
+            String personality,
+            @JsonProperty("speech_style") String speechStyle) {
+
+        public Character(String id, String role) {
+            this(id, role, null, null);
+        }
 
         public Character {
             requireText(id, "character.id");

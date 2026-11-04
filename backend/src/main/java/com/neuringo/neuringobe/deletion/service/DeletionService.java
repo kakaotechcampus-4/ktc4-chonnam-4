@@ -16,6 +16,7 @@ import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
 import com.neuringo.neuringobe.roleplay.service.RoleplayGoalObservationStore;
+import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceFailureStore;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.util.List;
@@ -48,6 +49,7 @@ public class DeletionService {
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
     private final RoleplayGoalObservationStore roleplayObservations;
+    private final RoleplayVoiceFailureStore roleplayVoiceFailures;
     private final AuthSessionRepository sessions;
     private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -64,6 +66,7 @@ public class DeletionService {
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns,
             RoleplayGoalObservationStore roleplayObservations,
+            RoleplayVoiceFailureStore roleplayVoiceFailures,
             AuthSessionRepository sessions,
             UserAccountRepository users,
             PasswordEncoder passwordEncoder) {
@@ -78,6 +81,7 @@ public class DeletionService {
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
         this.roleplayObservations = roleplayObservations;
+        this.roleplayVoiceFailures = roleplayVoiceFailures;
         this.sessions = sessions;
         this.users = users;
         this.passwordEncoder = passwordEncoder;
@@ -157,6 +161,7 @@ public class DeletionService {
 
         quizzes.deleteAllByChildIds(childIds);
         roleplayObservations.deleteByChildIds(childIds);
+        roleplayVoiceFailures.deleteByChildIds(childIds);
         // 마지막 턴 참조는 같은 트랜잭션에서 턴과 세션을 모두 삭제한 뒤 검사한다.
         roleplayTurns.deleteByChildIds(childIds);
         roleplaySessions.deleteByChildIds(childIds);
