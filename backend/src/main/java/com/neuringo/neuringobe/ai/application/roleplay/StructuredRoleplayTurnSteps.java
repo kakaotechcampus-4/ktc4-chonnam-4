@@ -145,7 +145,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
         return new AnalysisRetry(
                 codes.stream().distinct().toList(),
                 focus.stream().distinct().toList(),
-                avoid.stream().distinct().toList());
+                avoid.stream().distinct().toList(),
+                rejectedReview ? last.analysis() : null);
     }
 
     private GenerationRetry generationRetry(RoleplayRetryContext retry) {

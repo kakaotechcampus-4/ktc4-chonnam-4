@@ -40,7 +40,7 @@ class RoleplayPromptFactoryTest {
 
         LlmRequest request = prompt.request();
         assertThat(request.operation()).isEqualTo(AiOperation.CAUSE_ANALYSIS);
-        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v2");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v3");
         assertThat(request.responseSchemaVersion()).isEqualTo("analysis-result/v2");
         assertThat(request.policyVersion()).isEqualTo("SUPPORT-MVP-001");
         assertThat(request.systemPrompt()).contains("원인 판단 단계");
@@ -130,7 +130,8 @@ class RoleplayPromptFactoryTest {
                                 new AnalysisRetry(
                                         List.of("UNSUPPORTED_CAUSE_ANALYSIS"),
                                         List.of("아동이 실제로 말한 감정"),
-                                        List.of("표현하지 않은 감정 원인")),
+                                        List.of("표현하지 않은 감정 원인"),
+                                        parsedAnalysis()),
                                 RoleplayObservationTestPlans.inputForScenario(
                                         (input("친구가 사탕을 못 가져서 화났어.")).scenario()))
                         .request();
@@ -139,7 +140,37 @@ class RoleplayPromptFactoryTest {
         assertThat(retry.path("failure_codes").get(0).asString())
                 .isEqualTo("UNSUPPORTED_CAUSE_ANALYSIS");
         assertThat(retry.path("do_not_assume").get(0).asString()).isEqualTo("표현하지 않은 감정 원인");
+        assertThat(retry.path("failed_analysis").path("turn_id").asString())
+                .isEqualTo(TURN_ID.toString());
+        assertThat(retry.path("failed_analysis").path("learning_state").asString())
+                .isEqualTo(parsedAnalysis().learningState());
         assertThat(request.currentAttempt()).isEqualTo(2);
+    }
+
+    @Test
+    void reanalysisRejectsFailedAnalysisFromAnotherTurn() {
+        var failed =
+                JSON.readValue(
+                        analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")
+                                .replace(TURN_ID.toString(), UUID.randomUUID().toString()),
+                        AnalysisResult.class);
+        var input = input("친구가 울고 있어");
+
+        assertThatThrownBy(
+                        () ->
+                                factory.causeAnalysis(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        2,
+                                        input,
+                                        new AnalysisRetry(
+                                                List.of("UNSUPPORTED_CAUSE_ANALYSIS"),
+                                                List.of(),
+                                                List.of(),
+                                                failed),
+                                        RoleplayObservationTestPlans.inputForScenario(
+                                                input.scenario())))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -29,7 +29,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class RoleplayPromptFactory {
 
-    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v2";
+    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v3";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
 
@@ -66,7 +66,10 @@ public final class RoleplayPromptFactory {
     public RoleplayPromptFactory(ObjectMapper objectMapper, String policyVersion) {
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.policyVersion = policyVersion;
-        this.causeAnalysisSystemPrompt = PromptTemplates.load("roleplay/v2/cause-analysis.md");
+        this.causeAnalysisSystemPrompt =
+                PromptTemplates.load("roleplay/v2/cause-analysis.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v3/reanalysis.md");
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
         this.characterResponseGenerationSystemPrompt =
@@ -101,6 +104,12 @@ public final class RoleplayPromptFactory {
         addObservationContext(message, observations, input, trace);
         if (retry != null) {
             Map<String, Object> retrySection = new LinkedHashMap<>();
+            if (retry.failedAnalysis() != null) {
+                if (!retry.failedAnalysis().turnId().equals(input.learnerTurn().turnId())) {
+                    throw new IllegalArgumentException("Failed analysis belongs to another turn");
+                }
+                retrySection.put("failed_analysis", analysisSection(retry.failedAnalysis()));
+            }
             retrySection.put("failure_codes", retry.failureCodes());
             retrySection.put("focus", retry.focus());
             retrySection.put("do_not_assume", retry.doNotAssume());
