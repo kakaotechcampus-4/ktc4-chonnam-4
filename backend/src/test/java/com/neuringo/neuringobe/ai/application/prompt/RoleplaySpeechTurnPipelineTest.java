@@ -217,6 +217,8 @@ class RoleplaySpeechTurnPipelineTest {
                 .singleElement()
                 .extracting(SpeechSynthesisRequest::text)
                 .isEqualTo("친구는 어떤 기분일까?");
+        assertThat(ttsRequests.getFirst().emotion())
+                .isEqualTo(com.neuringo.neuringobe.ai.application.model.SpeechEmotion.SAD);
         assertThat(result.speech()).isNotNull();
     }
 

@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.neuringo.neuringobe.ai.application.model.SpeechEmotion;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -22,5 +23,23 @@ class SpokenTextTest {
             })
     void removesStageDirectionsInParentheses(String text, String spoken) {
         assertThat(SpokenText.of(text)).isEqualTo(spoken);
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "(훌쩍이며) 나 넘어졌어…|SAD",
+                "(울먹이며) 무릎이 아파|SAD",
+                "(눈물을 닦으며) 고마워|SAD",
+                "(방긋 웃으며) 고마워!|HAPPY",
+                "(씩씩거리며) 싫어|ANGRY",
+                "(작은 목소리로) 비밀이야|WHISPER",
+                "(무릎을 감싸 쥐며) 아야…|NORMAL",
+                "(무릎을 감싸 쥐며) 아야… (훌쩍)|SAD",
+                "친구는 어떤 기분일까?|NORMAL",
+            })
+    void picksVoiceEmotionFromStageDirections(String text, SpeechEmotion emotion) {
+        assertThat(SpokenText.emotionOf(text)).isEqualTo(emotion);
     }
 }
