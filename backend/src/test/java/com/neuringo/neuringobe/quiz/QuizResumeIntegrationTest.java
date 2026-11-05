@@ -14,10 +14,14 @@ import com.neuringo.neuringobe.TestFixtures;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.child.security.ChildPrincipal;
 import com.neuringo.neuringobe.quiz.domain.ExpressionMatchResult;
+import com.neuringo.neuringobe.quiz.domain.QuizAttempt;
 import com.neuringo.neuringobe.quiz.domain.QuizType;
 import com.neuringo.neuringobe.quiz.dto.PutQuizAttemptRequest;
+import com.neuringo.neuringobe.quiz.dto.QuizAttemptResponse;
+import com.neuringo.neuringobe.quiz.repository.QuizAttemptRepository;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
 import com.neuringo.neuringobe.quiz.service.QuizAttemptService;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +44,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 @LocalProfileIntegrationTest
@@ -49,6 +55,52 @@ class QuizResumeIntegrationTest {
     @Autowired TestFixtures fixtures;
     @Autowired JsonMapper json;
     @Autowired QuizAttemptService attempts;
+    @Autowired QuizAttemptRepository savedAttempts;
+    @Autowired PlatformTransactionManager transactions;
+
+    @ParameterizedTest
+    @CsvSource({
+        "2026-11-05T05:00:00.123456789Z, 2026-11-05T05:00:00.123456Z",
+        "2026-11-05T05:00:00.999999999Z, 2026-11-05T05:00:00.999999Z",
+        "2026-11-05T05:00:00.123456Z, 2026-11-05T05:00:00.123456Z"
+    })
+    void fixedNanosecondResponseMatchesDatabaseAndHttpReplay(String input, String normalized)
+            throws Exception {
+        var f = fixture(ActivityType.FIRST_COMBINED, "PAUSED");
+        var original =
+                new TransactionTemplate(transactions)
+                        .execute(
+                                ignored -> {
+                                    var saved =
+                                            savedAttempts.saveAndFlush(
+                                                    new QuizAttempt(
+                                                            UUID.randomUUID(),
+                                                            f.target(),
+                                                            "기쁨",
+                                                            false,
+                                                            null,
+                                                            null,
+                                                            null,
+                                                            false,
+                                                            Instant.parse(input)));
+                                    return QuizAttemptResponse.from(saved, List.of());
+                                });
+        Object expected = JsonPath.read(json.writeValueAsString(original), "$");
+        var before = activity(f);
+        var response = answer(f, "기쁨", null).andExpect(status().isOk());
+        Object actual =
+                JsonPath.read(response.andReturn().getResponse().getContentAsString(), "$.data");
+        assertThat(actual).isEqualTo(expected);
+        assertThat(original.respondedAt().toInstant()).isEqualTo(Instant.parse(normalized));
+        Instant stored =
+                jdbc.queryForObject(
+                        "select responded_at from quiz_attempt where activity_quiz_id=?",
+                        (rs, row) -> rs.getTimestamp(1).toInstant(),
+                        f.target());
+        assertThat(stored).isEqualTo(Instant.parse(normalized));
+        assertThat(activity(f)).isEqualTo(before);
+        assertThat(attemptCount(f)).isEqualTo(1);
+    }
 
     @ParameterizedTest
     @CsvSource({

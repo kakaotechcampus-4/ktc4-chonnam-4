@@ -21,6 +21,8 @@
 
 - 재진입/응답 유실 시 실제 저장한 답안을 확인. GET으로새답안생성안함.
 
+신규 답변의 respondedAt은 DB 저장 전에 마이크로초 단위로 정규화합니다. JSON 소수점 자릿수를 항상 6자리로 고정하는 의미는 아닙니다. 기존 응답 구조·답변 재전송 정책과 기존 저장 데이터는 유지합니다.
+
 ## 3. 요청
 
 ### Path parameters
@@ -88,7 +90,7 @@ HTTP 200.
 | data.itemCorrect | boolean | 예 | 아니오 | 최종 문항 판정 |
 | data.excludedFromScoring | boolean | 예 | 아니오 | 기술 제외 |
 | data.status | 'DRAFT' \| 'FINALIZED' | 예 | 아니오 | 현재 응답 상태 |
-| data.respondedAt | ISODateTime | 예 | 아니오 | 응답 시각 |
+| data.respondedAt | ISODateTime | 예 | 아니오 | 최초 답변 시각. 신규 저장 시 마이크로초 단위로 절삭해 최초 응답과 DB 재조회·동일 답변 재전송의 값을 일치시킴 |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 
