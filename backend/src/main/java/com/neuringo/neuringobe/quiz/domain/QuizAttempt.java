@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -81,7 +82,8 @@ public class QuizAttempt {
         this.cameraModelVersion = cameraModelVersion;
         this.technicalFailureReason = technicalFailureReason;
         this.excludedFromScoring = excludedFromScoring;
-        this.respondedAt = respondedAt;
+        // 최초 응답과 DB 재조회 응답이 같은 시각을 사용하도록 저장 정밀도에 맞춘다.
+        this.respondedAt = respondedAt.truncatedTo(ChronoUnit.MICROS);
         this.status = "DRAFT";
     }
 

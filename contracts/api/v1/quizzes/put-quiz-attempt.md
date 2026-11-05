@@ -1,5 +1,7 @@
 # API-QUIZ-04 · 퀴즈 최초·최종 답안 제출
 
+> 2026-11-05 S4-JIN-02 작업본: 새 답변·새 힌트를 저장할 때 중단된 활동을 검사 후 재개합니다. S4-JIN-01 `f8e3dfa` 기반 `feat/activity-readiness`이며 병합·운영 배포 완료를 뜻하지 않습니다.
+
 > 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
@@ -21,6 +23,18 @@
 - SELF_EMOTION_SITUATION만 카메라판정/모델전송. 첫NOT_ANALYZABLE을 즉시확정하지말고 최대2회재촬영후기술제외.
 - Body재전송으로동일응답보장; 현재Header멱등키없음. 원본영상전송없음.
 - 독립 퀴즈(나의 감정·친구 감정)는 마지막 문항이 FINALIZED되는 요청 안에서 활동이 COMPLETED가 되고 스탬프 지급 시각과 학습 기록이 한 번만 남는다. 응답 모양은 그대로이고, 완료 여부는 [API-ACT-04](../activities/get-activity-status.md)로 확인한다. 최초 결합은 퀴즈만으로 완료되지 않는다.
+
+### S4-JIN-02 · 중단된 퀴즈 재개
+
+- 별도 재개 Endpoint와 준비 상태 요청 필드를 추가하지 않습니다. PAUSED·RECOVERY_NEEDED 활동은 새 쓰기 요청에서 현재 페이지 안내와 같은 준비 근거를 다시 검사합니다. 현재 단계가 QUIZ일 때만 IN_PROGRESS로 전환합니다.
+- 재개 검사에는 활동 유형별 문항 구성·배정 버전·문항 승인/본문/선택지·아직 확정하지 않은 문항 존재 여부를 사용합니다. 최초 난이도나 시나리오 확정은 퀴즈 풀이의 선행 조건이 아닙니다. 퀴즈 결과가 이미 저장돼 다음 단계로 넘어간 중단 활동은 이 API로 재개하지 않습니다.
+- 활동 → 아동 순서로 행 잠금을 획득하고 소유권·참여 상태를 검사합니다. 비활성 아동은 404 ACTIVITY_QUIZ_NOT_FOUND이며 참여 상태를 해제하지 않습니다. 재개와 응답/힌트 저장, 마지막 문항의 결과·완료 처리는 같은 트랜잭션입니다. 검증·저장 실패 시 재개도 롤백합니다.
+- 최초 startedAt과 기존 답변·힌트 기록은 보존합니다. 완료 활동에 새 데이터를 추가하는 요청과 재개 근거가 불충분한 새 요청은 409 QUIZ_ACTIVITY_NOT_READY입니다. 배정 문항 자체의 버전 충돌 등 기존 검증 오류는 유지합니다.
+- 활동 목록·배정 문항·답변 GET은 재개하거나 답변을 확정하지 않습니다. 준비 상태는 응답에서 계산하며 body/query로 전달하지 않습니다. 현재 작업은 중단 상태 재개와 완료 활동의 새 쓰기 차단을 추가하며, 진행 중 활동의 기존 문항별 제출 검증은 유지합니다.
+
+- 새 첫 답변 또는 DRAFT의 새 finalResponse를 저장할 때만 재개합니다. 같은 첫 답변만 재전송한 DRAFT와 동일 확정 답변 재전송은 기존 결과를 반환하며 상태를 변경하지 않습니다. 내부 PATCH 확정은 이번 아동 PUT 재개 동작과 구분합니다.
+
+신규 답변의 respondedAt은 DB 저장 전에 마이크로초 단위로 정규화합니다. JSON 소수점 자릿수를 항상 6자리로 고정하는 의미는 아닙니다. 기존 응답 구조·답변 재전송 정책과 기존 저장 데이터는 유지합니다.
 
 ## 3. 요청
 
@@ -106,7 +120,7 @@ HTTP 201 / 200.
 | data.itemCorrect | boolean | 예 | 아니오 | 최종 문항 판정 |
 | data.excludedFromScoring | boolean | 예 | 아니오 | 기술 제외 |
 | data.status | 'DRAFT' \| 'FINALIZED' | 예 | 아니오 | 현재 응답 상태 |
-| data.respondedAt | ISODateTime | 예 | 아니오 | 응답 시각 |
+| data.respondedAt | ISODateTime | 예 | 아니오 | 최초 답변 시각. 신규 저장 시 마이크로초 단위로 절삭해 최초 응답과 DB 재조회·동일 답변 재전송의 값을 일치시킴 |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 
@@ -126,6 +140,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 422 | VALIDATION_FAILED | 길이 검증 |
 | 404 | ACTIVITY_QUIZ_NOT_FOUND | 배정 문항 없음 |
 | 500 | QUIZ_RESULT_CALCULATION_FAILED | 정상 집계를 만들지 못함. 마지막 답안·결과·활동 변경이 롤백됨. 기존 firstResponse와 최종 답안 등을 그대로 유지해 수동 재전송 |
+| 409 | QUIZ_ACTIVITY_NOT_READY | 완료 활동에 새 쓰기를 시도했거나 중단 활동의 퀴즈 재개 근거가 불충분함. 현재 목록/상태를 다시 확인 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 | 404 | ACTIVITY_QUIZ_NOT_FOUND | 없거나 소유권 밖 리소스 |
 

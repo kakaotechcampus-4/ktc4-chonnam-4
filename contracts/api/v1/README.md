@@ -1,5 +1,7 @@
 # 느링고 API v1 명세
 
+> S4-JIN-02 작업본(2026-11-05): [ACT-02 목록](./activities/list-child-activities.md)과 [ACT-03 상세](./activities/get-activity.md)에 서버 계산 nextAction/blockedReason을 추가했습니다. 생성·status 응답은 유지합니다. [RPL-01](./roleplay/start-roleplay.md)은 저장 근거 검사 후 중단된 역할극을 재개합니다. 퀴즈도 새 답변·새 힌트 저장에서 검사 후 재개합니다. 백엔드 전체 빌드·회귀는 통과했습니다. 실제 프론트엔드·공유 TypeScript 예제 반영과 브라우저 연동·배포 검증은 남아 있습니다.
+
 > S4-JIN-01 통합 기준은 develop `bab136d`, 작업 브랜치는 `feat/scenario-reuse-review`다. 아래 시나리오 세 API는 이 브랜치의 계약이며 develop 배포 완료를 의미하지 않는다.
 
 > 2026-11-04 S4-JIN-01 갱신: 시나리오의 현행 작업본 계약은 아래 세 활동별 API다. 그 밖의 날짜·구현 개수는 기존 검토 시점 기록이다. 동봉 TypeScript 예제와 실제 프론트엔드는 이번 세 API에 맞춰 수정하지 않았으며, 이전 draft 시나리오 함수를 새 경로에 사용할 수 없다. develop 병합·운영 배포는 미확인이다.

@@ -1739,9 +1739,9 @@ class QuizFlowIntegrationTest {
                 .isEqualTo("S0");
     }
 
-    @ParameterizedTest(name = "기존 세션 상태 유지: {0}")
-    @ValueSource(strings = {"PAUSED", "COMPLETED"})
-    void roleplayStartRestoresPausedAndCompletedWithoutRestarting(String state) throws Exception {
+    @Test
+    void roleplayStartRestoresCompletedWithoutRestarting() throws Exception {
+        String state = "COMPLETED";
         UUID activityId = readyRoleplayActivity(childId);
         var created =
                 roleplayStartsOrRestores.start(
@@ -2321,14 +2321,14 @@ class QuizFlowIntegrationTest {
                 .isZero();
     }
 
-    @ParameterizedTest(name = "재질문하지 않는 활동 상태: {0}")
-    @ValueSource(strings = {"PAUSED", "COMPLETED", "RECOVERY_NEEDED"})
-    void httpRoleplayStartDoesNotSendQuestionsForStoppedStates(String state) throws Exception {
+    @Test
+    void httpRoleplayStartDoesNotSendQuestionsForCompletedState() throws Exception {
+        String state = "COMPLETED";
         UUID activityId = readyRoleplayActivity(childId);
         var created =
                 roleplayStartsOrRestores.start(
                         activityId, UUID.randomUUID(), childAuthentication());
-        String sessionState = state.equals("RECOVERY_NEEDED") ? "IN_PROGRESS" : state;
+        String sessionState = state;
         jdbc.update(
                 "UPDATE roleplay_session SET status = ? WHERE session_id = ?",
                 sessionState,
