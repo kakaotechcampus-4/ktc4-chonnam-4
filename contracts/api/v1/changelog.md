@@ -1,5 +1,10 @@
 # API v1 변경 이력
 
+## 2026-11-05 — develop `7376e91`(PR #101·#103) 반영
+
+- 공유 예제: [API-SCN-01](./scenarios/prepare-scenario.md) prepareScenario(POST `/activities/{activityId}/scenario-review`), [API-SCN-04](./scenarios/review-scenario.md) reviewScenario(PUT `/activities/{activityId}/scenario`), [API-SCN-06](./scenarios/delete-scenario.md) deleteScenario(DELETE `/activities/{activityId}/scenario-review`)를 실제 계약으로 바꿔 `examples/endpoints.ts`로 옮겼습니다. 목차는 구현 35개·조건부 2개·설계 18개·미제공 2개이며, 공유 예제 검사가 다시 통과합니다.
+- 프론트엔드 아동 화면은 [API-ACT-02](./activities/list-child-activities.md)의 `nextAction`으로 갈 곳을 정합니다. QUIZ → 퀴즈, ROLEPLAY → 역할극, WAIT_FOR_SCENARIO → 선생님 확정 대기 안내, BLOCKED → 이어 갈 수 없음 안내. 확정 전에는 역할극 시작 요청을 보내지 않습니다.
+
 ## 2026-11-05 — S4-JIN-02 준비 상태·역할극 재개
 
 - feat/activity-readiness 작업본에서 ACT-02의 data[]와 ACT-03의 data.activity에 nextAction/blockedReason을 추가했습니다. 필드·값·단계별 판정은 개별 명세를 따릅니다.

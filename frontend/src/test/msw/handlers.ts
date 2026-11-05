@@ -329,6 +329,7 @@ export function seedActivity({
   status = "NOT_STARTED",
   result,
   quizFinished = false,
+  scenarioConfirmed,
 }: {
   /** 테스트가 주소에 미리 넣어 둘 고정 ID. 없으면 새로 만든다. */
   activityId?: string
@@ -343,6 +344,8 @@ export function seedActivity({
    * 숫자면 앞에서부터 그 수만큼이다. 활동 완료는 실제 마지막 답에서 일어나므로 여기서는 하지 않는다.
    */
   quizFinished?: boolean | number
+  /** 최초 결합에서 선생님이 시나리오를 확정해 둔다(API-SCN-04). 없으면 퀴즈를 모두 마친 경우(quizFinished: true)에만 확정한다. */
+  scenarioConfirmed?: boolean
 }): StoredActivity {
   let goalId: string | null = null
   if (activityType === "FIRST_COMBINED" || activityType === "ROLEPLAY") {
@@ -364,6 +367,7 @@ export function seedActivity({
   activities = [...activities, activity]
   attachQuizzes(activity.activityId, activityType)
   if (quizFinished) finishQuizzes(activity.activityId, quizFinished === true ? undefined : quizFinished)
+  if (scenarioConfirmed ?? quizFinished === true) confirmScenario(activity.activityId)
   if (result) quizResults.set(activity.activityId, { activityId: activity.activityId, ...result })
   return activity
 }
@@ -428,6 +432,34 @@ function toAttemptBody(attempt: StoredAttempt) {
     status: attempt.status,
     respondedAt: attempt.respondedAt,
   }
+}
+
+/** 선생님이 시나리오 검토를 마치고 확정한 것처럼 활동에 시나리오를 붙인다(API-SCN-04 PUT 의 결과). */
+export function confirmScenario(activityId: string) {
+  const activity = activities.find((a) => a.activityId === activityId)
+  if (activity && activity.scenarioId === null) {
+    activity.scenarioId = crypto.randomUUID()
+    activity.scenarioSource = "REUSE"
+  }
+}
+
+type NextAction = "QUIZ" | "WAIT_FOR_SCENARIO" | "ROLEPLAY" | "NONE" | "BLOCKED"
+
+/** 서버 ActivityReadinessPolicy 처럼 저장된 근거로 다음 학습 동작을 계산한다(API-ACT-02·03 nextAction). */
+function nextActionOf(activity: StoredActivity): NextAction {
+  if (activity.status === "COMPLETED") return "NONE"
+  if (roleplaySessions.has(activity.activityId)) return "ROLEPLAY"
+  const quizzes = activityQuizzes.filter((q) => q.activityId === activity.activityId)
+  if (quizzes.some((q) => quizAttempts.get(q.activityQuizId)?.status !== "FINALIZED")) return "QUIZ"
+  if (activity.activityType === "FIRST_COMBINED" || activity.activityType === "ROLEPLAY") {
+    return activity.scenarioId ? "ROLEPLAY" : "WAIT_FOR_SCENARIO"
+  }
+  return "NONE"
+}
+
+/** 목록·상세 응답의 활동. 생성 응답(ACT-01)에는 준비 상태를 싣지 않는다. */
+function toListedActivity(stored: StoredActivity) {
+  return { ...toActivity(stored), nextAction: nextActionOf(stored), blockedReason: null }
 }
 
 /** 화면 테스트에서 그 배정 문항에 저장된 답안을 본다. */
@@ -1214,7 +1246,7 @@ export const handlers = [
       return invalidRequest(path)
     }
     const list = activities.filter((a) => a.childId === childId).reverse()
-    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toActivity)))
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toListedActivity)))
   }),
 
   // 활동 배정. 서버처럼 목표를 함께 저장하고 유형별 구성대로 문항을 붙인다. 같은 요청 키는
@@ -1313,7 +1345,7 @@ export const handlers = [
     if (!ownedChild(activity.childId, session)) return childNotFound(path)
     return HttpResponse.json(
       envelope({
-        activity: toActivity(activity),
+        activity: toListedActivity(activity),
         quizItems: activityQuizzes.filter((q) => q.activityId === activityId),
         sessionSummary: null,
         learningRecord: null,
@@ -1503,6 +1535,10 @@ export const handlers = [
     }
     if (!quizDone) {
       return apiError(409, "INITIAL_DIFFICULTY_NOT_READY", "최초 퀴즈 결과가 아직 준비되지 않았습니다.", path)
+    }
+    // 퀴즈를 마쳐도 시나리오가 자동으로 붙지 않는다. 선생님이 확정해야 시작된다(S4-JIN-01).
+    if (!activity.scenarioId) {
+      return apiError(409, "INITIAL_ROLEPLAY_NOT_READY", "최초 역할극 시작에 필요한 저장 근거가 준비되지 않았습니다.", path)
     }
     if (activity.status === "NOT_STARTED") {
       activity.status = "IN_PROGRESS"

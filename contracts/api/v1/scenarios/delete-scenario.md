@@ -4,6 +4,8 @@
 
 > 2026-11-04 · S4-JIN-01 작업본, 통합 기준 develop `bab136d`. Controller·DTO와 PostgreSQL/HTTP 통합 검사로 확인한 계약이다. 작업 브랜치 구현이며 develop 병합·운영 배포·프론트엔드 연동은 완료하지 않았다.
 
+> 구현 — 2026-11-05 / develop `7376e91` (PR #101 병합). 담당 강사 Bearer + CSRF + Idempotency-Key, 성공은 200입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+
 ## 1. Endpoint
 
 `DELETE /api/v1/activities/{activityId}/scenario-review`
@@ -80,7 +82,34 @@ UUID 두 개, CANCELLED 문자열, ISO-8601 종료 시각을 반환한다. 같�
 
 ## 5. 구현·연동
 
-ScenarioReviewController.cancel → ScenarioReviewTransactions.cancel. 취소 성공 시 화면의 미저장 편집을 폐기한다. 기존 draft-endpoints.ts의 deleteScenario는 경로·본문·204 처리가 모두 다르므로 이 계약에 사용하지 않는다. 프론트엔드는 직접 수정하지 않았다.
+ScenarioReviewController.cancel → ScenarioReviewTransactions.cancel. 취소 성공 시 화면의 미저장 편집을 폐기한다. 공유 예제 deleteScenario는 2026-11-05에 이 계약(200, 종료 응답)으로 바꿔 `examples/endpoints.ts`로 옮겼다. 프론트엔드는 직접 수정하지 않았다.
 
 
 공통 후보 제외 기능은 제공하지 않는다. 검토 취소·NEXT가 다른 강사의 원본 승인 상태나 후보 풀을 바꾸지 않는다. 이번 검토에서 거절한 콘텐츠는 이후 새 검토에서 조건에 맞으면 다시 제공할 수 있으나 동일 학생의 과거 배정 ID는 계속 제외한다.
+
+## 복사 가능한 TypeScript
+
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 요청·응답 타입은 types.ts의 `ScenarioReviewCancelBody`·`ScenarioReviewClosure`입니다.
+
+~~~ts
+export interface DeleteScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioReviewCancelBody;
+  idempotencyKey: T.UUID;
+}
+
+export function deleteScenario(
+  api: ApiClient,
+  args: DeleteScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewClosure>> {
+  return api.request<T.ScenarioReviewClosure>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario-review", {
+    method: "DELETE",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+~~~

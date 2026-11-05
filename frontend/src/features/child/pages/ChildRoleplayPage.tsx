@@ -21,6 +21,7 @@ import {
   type RoleplayTurnInput,
 } from "../api"
 import { useMyActivities } from "../hooks/useMyActivities"
+import { WaitingForTeacher } from "../components/WaitingForTeacher"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 type ThreadMessage = {
@@ -125,10 +126,12 @@ function ChildRoleplayPage() {
   const [startKey] = useState(() => crypto.randomUUID())
 
   const activitiesQuery = useMyActivities()
+  const listedActivity = activitiesQuery.data?.find((item) => item.activityId === activityId)
   const sessionQuery = useQuery({
     queryKey: roleplaySessionQueryKey(childId, activityId),
     queryFn: () => startRoleplay(activityId ?? "", startKey),
-    enabled: Boolean(activityId),
+    // 서버가 역할극을 열어 준 활동(nextAction ROLEPLAY)만 시작한다. 선생님 확정 대기 중에는 시작 요청을 보내지 않는다.
+    enabled: Boolean(activityId) && listedActivity?.nextAction === "ROLEPLAY",
     // 시작은 변경 요청이라 화면에 머무는 동안 다시 보내지 않는다. 다시 들어오면 새로 불러 서버 세션을 이어 간다.
     staleTime: Infinity,
     gcTime: 0,
@@ -177,17 +180,26 @@ function ChildRoleplayPage() {
   }, [replies.length, turnMutation.isPending])
 
   const session = sessionQuery.data
-  const activity = activitiesQuery.data?.find((item) => item.activityId === activityId)
+  const activity = listedActivity
+  const startErrorCode = sessionQuery.error instanceof ChildApiError ? sessionQuery.error.code : null
+  // 세션이 없을 때만 대기·차단을 본다. 시작한 뒤 목록이 바뀌어도(완료 등) 대화 화면을 유지한다.
+  const waiting: "wait" | "blocked" | null = session
+    ? null
+    : activity?.nextAction === "WAIT_FOR_SCENARIO" || startErrorCode === "INITIAL_ROLEPLAY_NOT_READY"
+      ? "wait"
+      : activity?.nextAction === "BLOCKED" || startErrorCode === "ROLEPLAY_RESUME_NOT_READY"
+        ? "blocked"
+        : null
   const isLoading =
     activitiesQuery.isPending ||
-    sessionQuery.isPending ||
+    (sessionQuery.isPending && sessionQuery.fetchStatus !== "idle") ||
     ((activitiesQuery.isError || sessionQuery.isError) &&
       (activitiesQuery.isFetching || sessionQuery.isFetching))
   // 최초 결합 퀴즈를 다 풀기 전에는 서버가 역할극을 시작하지 않는다(409). 퀴즈가 있는 활동이면 오류 대신 퀴즈로 돌려보낸다.
   const quizNotFinished =
     sessionQuery.error instanceof ChildApiError && sessionQuery.error.code === "INITIAL_DIFFICULTY_NOT_READY"
   const showLoadError =
-    (activitiesQuery.isError || sessionQuery.isError) &&
+    (activitiesQuery.isError || (sessionQuery.isError && waiting === null)) &&
     !activitiesQuery.isFetching &&
     !sessionQuery.isFetching
   const showSendError = turnMutation.isError && !turnMutation.isPending
@@ -199,7 +211,12 @@ function ChildRoleplayPage() {
   if (activitiesQuery.isSuccess && (!activity || (activity.status === "COMPLETED" && !isFinished))) {
     return <Navigate to="/child/activities" replace />
   }
-  if (quizNotFinished && (activity?.quizCount ?? 0) > 0) return <Navigate to={`/child/quiz/${activityId}`} replace />
+  if (
+    !session &&
+    (activity?.nextAction === "QUIZ" || (quizNotFinished && (activity?.quizCount ?? 0) > 0))
+  ) {
+    return <Navigate to={`/child/quiz/${activityId}`} replace />
+  }
 
   const send = (text: string, inputMode: RoleplayInputMode) => {
     if (!session) return
@@ -228,6 +245,8 @@ function ChildRoleplayPage() {
         <div className="flex flex-1 items-center justify-center">
           <LoadingState message="역할극을 준비하고 있어요" />
         </div>
+      ) : waiting ? (
+        <WaitingForTeacher blocked={waiting === "blocked"} />
       ) : isWrappedUp && activityId ? (
         <RoleplayWrapUpView
           childName={childName}

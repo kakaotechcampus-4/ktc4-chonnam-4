@@ -40,12 +40,19 @@ export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "PAUSED" | "CO
 
 export type ChildActivityType = "FIRST_COMBINED" | "SELF_EMOTION_QUIZ" | "OTHER_EMOTION_QUIZ" | "ROLEPLAY"
 
+/**
+ * 서버가 계산한 다음 학습 동작(API-ACT-02 nextAction). 화면은 이 값으로 갈 곳을 정한다.
+ * WAIT_FOR_SCENARIO 는 퀴즈를 마치고 선생님의 역할극 시나리오 확정을 기다리는 정상 상태다.
+ */
+export type ChildNextAction = "QUIZ" | "WAIT_FOR_SCENARIO" | "ROLEPLAY" | "NONE" | "BLOCKED"
+
 export type ChildActivity = {
   activityId: string
   activityType: ChildActivityType
   title: string
   description: string
   status: ChildActivityStatus
+  nextAction: ChildNextAction
   quizCount: number
   roleplayCount: number
   /** 완료 시각(ISO). 홈 열기구에 캐릭터를 완료한 순서대로 태우는 데 쓴다. */
@@ -55,6 +62,13 @@ export type ChildActivity = {
 /** 시작했지만 끝나지 않은 활동. 활동 소개에서 "이어서 하기"로 보이고, 다음 활동 제안에서 먼저 고른다. */
 export function isActivityInProgress(status: ChildActivityStatus) {
   return status === "IN_PROGRESS" || status === "PAUSED" || status === "RECOVERY_NEEDED"
+}
+
+/** 다음 학습 동작으로 갈 화면. 퀴즈·역할극이 아니면(대기·차단·완료) 갈 곳이 없다. */
+export function nextActivityPath(activity: Pick<ChildActivity, "activityId" | "nextAction">): string | null {
+  if (activity.nextAction === "QUIZ") return `/child/quiz/${activity.activityId}`
+  if (activity.nextAction === "ROLEPLAY") return `/child/roleplay/${activity.activityId}`
+  return null
 }
 
 /** "표정 퀴즈 3개 + 역할극 1개"처럼 활동 구성을 보여 준다. 0개인 부분은 뺀다. */
@@ -109,6 +123,7 @@ type ActivityData = {
   activityId: string
   activityType: ChildActivityType
   status: ChildActivityStatus
+  nextAction: ChildNextAction
   completedAt: string | null
 }
 
@@ -128,6 +143,7 @@ export async function getMyActivities(childId: string, signal?: AbortSignal): Pr
     activityId: activity.activityId,
     activityType: activity.activityType,
     status: activity.status,
+    nextAction: activity.nextAction,
     completedAt: activity.completedAt,
     ...ACTIVITY_CONTENT[activity.activityType],
   }))

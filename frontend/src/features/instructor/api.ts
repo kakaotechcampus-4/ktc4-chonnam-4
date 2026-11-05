@@ -456,6 +456,9 @@ export type Activity = {
   startedAt: string | null
   completedAt: string | null
   rewardIssuedAt: string | null
+  /** 목록·상세에서만 오는 서버 계산 다음 동작(API-ACT-02·03). 생성 응답에는 없다. */
+  nextAction?: 'QUIZ' | 'WAIT_FOR_SCENARIO' | 'ROLEPLAY' | 'NONE' | 'BLOCKED'
+  blockedReason?: string | null
 }
 
 export type QuizType = 'SELF_EMOTION_SITUATION' | 'OTHER_EMOTION_SITUATION' | 'OTHER_EMOTION_IMAGE'

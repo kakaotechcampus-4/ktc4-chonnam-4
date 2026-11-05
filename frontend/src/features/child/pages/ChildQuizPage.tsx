@@ -14,9 +14,11 @@ import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../compo
 import {
   ChildApiError,
   getActivityStatus,
+  getMyActivities,
   getQuizQuestions,
   myActivitiesQueryKey,
   NO_MORE_HINTS,
+  nextActivityPath,
   quizQuestionsQueryKey,
   requestQuizHint,
   submitQuizAnswer,
@@ -26,6 +28,7 @@ import {
   type QuizType,
 } from "../api"
 import { useMyActivities } from "../hooks/useMyActivities"
+import { WaitingForTeacher } from "../components/WaitingForTeacher"
 import { rememberChildSession, useChildSessionStore } from "../store/childSessionStore"
 
 const CHOICE_PROMPTS: Record<QuizType, string> = {
@@ -319,7 +322,7 @@ function QuizDoneView({
           </p>
         ) : null}
         <ChildButton className="h-16 w-full text-xl" onClick={onContinue} disabled={isPending}>
-          {hasRoleplay ? "역할극 하러 가기" : isPending ? "스탬프를 준비하고 있어요…" : "스탬프 받으러 가기"}
+          {isPending ? (hasRoleplay ? "확인하고 있어요…" : "스탬프를 준비하고 있어요…") : hasRoleplay ? "역할극 하러 가기" : "스탬프 받으러 가기"}
         </ChildButton>
       </div>
     </div>
@@ -358,6 +361,25 @@ function ChildQuizPage() {
     },
   })
 
+  // 최초 결합은 퀴즈 뒤 선생님이 시나리오를 확정해야 역할극이 열린다(API-SCN-04). 목록을 다시 받아 서버의 다음 동작으로 간다.
+  const [waiting, setWaiting] = useState<"wait" | "blocked" | null>(null)
+  const nextMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const list = await getMyActivities(childId ?? "")
+      queryClient.setQueryData(myActivitiesQueryKey(childId), list)
+      const found = list.find((item) => item.activityId === id)
+      if (!found) throw new Error("활동을 찾지 못했습니다.")
+      return found
+    },
+    onMutate: () => ({ isSameSession: rememberChildSession() }),
+    onSuccess: (found, _id, context) => {
+      if (!context.isSameSession()) return
+      const path = nextActivityPath(found)
+      if (path && found.nextAction === "ROLEPLAY") navigate(path)
+      else setWaiting(found.nextAction === "BLOCKED" ? "blocked" : "wait")
+    },
+  })
+
   const activity = activitiesQuery.data?.find((item) => item.activityId === activityId)
   const questions = questionsQuery.data ?? []
   const firstUnfinished = questions.findIndex((item) => item.attempt?.status !== "FINALIZED")
@@ -374,7 +396,8 @@ function ChildQuizPage() {
     (activitiesQuery.isError || questionsQuery.isError) &&
     !activitiesQuery.isFetching &&
     !questionsQuery.isFetching
-  const showCompleteError = completionMutation.isError && !completionMutation.isPending
+  const showCompleteError =
+    (completionMutation.isError && !completionMutation.isPending) || (nextMutation.isError && !nextMutation.isPending)
 
   // 내 배정 목록(서버가 이 아동 것만 준다)에 없거나 이미 끝낸 활동이면 목록으로 돌려보낸다 (VS-003).
   // 독립 퀴즈는 마지막 답으로 완료되므로, 완료 확인을 기다리는 동안에는 돌려보내지 않는다.
@@ -409,13 +432,15 @@ function ChildQuizPage() {
         <div className="flex flex-1 items-center justify-center">
           <LoadingState message="퀴즈를 준비하고 있어요" />
         </div>
+      ) : waiting ? (
+        <WaitingForTeacher blocked={waiting === "blocked"} />
       ) : isDone && activityId ? (
         <QuizDoneView
           total={questions.length}
           hasRoleplay={hasRoleplay}
-          isPending={completionMutation.isPending}
+          isPending={completionMutation.isPending || nextMutation.isPending}
           onContinue={() => {
-            if (hasRoleplay) navigate(`/child/roleplay/${activityId}`)
+            if (hasRoleplay) nextMutation.mutate(activityId)
             else completionMutation.mutate(activityId)
           }}
         />
@@ -437,7 +462,9 @@ function ChildQuizPage() {
       <StateDialog open={showCompleteError}>
         <ErrorState
           onRetry={() => {
-            if (activityId) completionMutation.mutate(activityId)
+            if (!activityId) return
+            if (hasRoleplay) nextMutation.mutate(activityId)
+            else completionMutation.mutate(activityId)
           }}
         />
       </StateDialog>
