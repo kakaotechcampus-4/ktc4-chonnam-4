@@ -78,6 +78,13 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("POST /api/v1/activities", "CHILD_NOT_FOUND"),
                     Map.entry("GET /api/v1/activities/{activityId}", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
+                            "POST /api/v1/activities/{activityId}/scenario-review",
+                            "ACTIVITY_NOT_FOUND"),
+                    Map.entry("PUT /api/v1/activities/{activityId}/scenario", "ACTIVITY_NOT_FOUND"),
+                    Map.entry(
+                            "DELETE /api/v1/activities/{activityId}/scenario-review",
+                            "ACTIVITY_NOT_FOUND"),
+                    Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-items", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-result",
@@ -256,6 +263,39 @@ class OwnershipPatrolIntegrationTest {
                         "GET /api/v1/activities/{activityId}",
                         "/api/v1/activities/%s",
                         Owned::activityId),
+                post(
+                        "POST /api/v1/activities/{activityId}/scenario-review",
+                        "/api/v1/activities/%s/scenario-review",
+                        Owned::activityId,
+                        "{\"action\":\"START_OR_RESUME\"}"),
+                Arguments.of(
+                        "PUT /api/v1/activities/{activityId}/scenario",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.put()
+                                                        .uri(
+                                                                "/api/v1/activities/%s/scenario"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"reviewId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"revision\":1,\"scenarioId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"scenarioVersion\":1}")),
+                Arguments.of(
+                        "DELETE /api/v1/activities/{activityId}/scenario-review",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.delete()
+                                                        .uri(
+                                                                "/api/v1/activities/%s/scenario-review"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"reviewId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"revision\":1}")),
                 get(
                         "GET /api/v1/activities/{activityId}/quiz-items",
                         "/api/v1/activities/%s/quiz-items",

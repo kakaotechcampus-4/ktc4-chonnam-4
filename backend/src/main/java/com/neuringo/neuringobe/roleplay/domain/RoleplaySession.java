@@ -161,6 +161,15 @@ public class RoleplaySession {
                 && nextTurn == lastTurnNumber + 1;
     }
 
+    /** 활동만 중단됐던 경우에도 버전을 갱신해 재개 전 요청의 저장을 막는다. */
+    public void resume(Instant now) {
+        if (!Set.of("IN_PROGRESS", "PAUSED").contains(status)) {
+            throw new IllegalStateException("재개할 수 없는 역할극 세션입니다.");
+        }
+        status = "IN_PROGRESS";
+        lastActivityAt = Objects.requireNonNull(now);
+    }
+
     public void advance(
             UUID turnId, int turnNumber, UUID goalId, String supportLevel, Instant now) {
         if (!"IN_PROGRESS".equals(status) || turnNumber != lastTurnNumber + 1)
