@@ -61,7 +61,7 @@ tasks.named('jacocoTestReport') {
 // backend/.env.local 이 있으면 KEY=VALUE 를 환경변수로 넣는다(.gitignore 의 .env.* 라 커밋되지 않는다).
 // 셸에 값이 있는 환경변수가 우선한다(빈 값은 없는 것으로 본다). Spring 앱 실행(bootRun)에는 쓰이지 않는다.
 // 값은 출력하지 않고 읽은 이름만 출력한다. Windows 콘솔에서 깨지지 않게 로그는 영어로 쓴다.
-def loadEnvLocal = { JavaExec task ->
+def loadEnvLocal = { task ->
     def envFile = file('.env.local')
     task.doFirst {
         if (!envFile.isFile()) {
@@ -120,6 +120,24 @@ tasks.register('scenarioEval', JavaExec) {
     mainClass = 'com.neuringo.neuringobe.ai.eval.ScenarioEvalMain'
     workingDir = projectDir
     jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 실제 ML API(엘리스)로 역할극 턴을 HTTP → DB → 모델까지 돌리는 통합 실측. 비용이 들어 CI 빌드에는 들어가지 않는다(ML_API_REAL 일 때만 돈다).
+// 예: ./gradlew mlApiTest -Pmlapi.model=MINI41 -Pmlapi.personas=steady,strong,unsure -Pmlapi.repeats=1
+//     결과는 build/mlapi-it/<run>/summary.md. -Pmlapi.* 는 시스템 속성으로 넘긴다(RealMlApiSettings).
+tasks.register('mlApiTest', Test) {
+    group = 'verification'
+    description = '실제 ML API 로 역할극 턴을 끝까지 돌려 연동 오류(형식 실패·잘림·시간 초과·응답 계약)를 모은다'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching '*RealMlApiRoleplayIntegrationTest' }
+    environment 'ML_API_REAL', 'true'
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    project.properties.findAll { it.key.startsWith('mlapi.') }.each { systemProperty it.key, it.value }
+    outputs.upToDateWhen { false }
+    testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
     loadEnvLocal(it)
 }
 
