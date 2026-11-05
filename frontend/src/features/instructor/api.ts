@@ -622,7 +622,7 @@ export function prepareScenarioReview(
   action: ScenarioReviewAction,
   requestKey: string,
 ): Promise<ScenarioReview> {
-  return writeRequest<ScenarioReview>('POST', `/activities/${activityId}/scenario-review`, action, {
+  return writeRequest<ScenarioReview>('POST', `/activities/${encodeURIComponent(activityId)}/scenario-review`, action, {
     headers: { 'Idempotency-Key': requestKey },
   })
 }
@@ -633,7 +633,7 @@ export function confirmScenarioReview(
   confirmation: ScenarioConfirmation,
   requestKey: string,
 ): Promise<ScenarioReviewClosure> {
-  return writeRequest<ScenarioReviewClosure>('PUT', `/activities/${activityId}/scenario`, confirmation, {
+  return writeRequest<ScenarioReviewClosure>('PUT', `/activities/${encodeURIComponent(activityId)}/scenario`, confirmation, {
     headers: { 'Idempotency-Key': requestKey },
   })
 }
@@ -644,7 +644,7 @@ export function cancelScenarioReview(
   review: { reviewId: string; revision: number },
   requestKey: string,
 ): Promise<ScenarioReviewClosure> {
-  return writeRequest<ScenarioReviewClosure>('DELETE', `/activities/${activityId}/scenario-review`, review, {
+  return writeRequest<ScenarioReviewClosure>('DELETE', `/activities/${encodeURIComponent(activityId)}/scenario-review`, review, {
     headers: { 'Idempotency-Key': requestKey },
   })
 }
