@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.roleplay.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -96,7 +97,7 @@ public class RoleplaySession {
         session.status = "IN_PROGRESS";
         session.currentSupportLevel = initialSupportLevel;
         session.currentMicroGoalId = initialMicroGoalId;
-        session.lastActivityAt = Objects.requireNonNull(now);
+        session.lastActivityAt = StoredTime.normalize(Objects.requireNonNull(now));
         return session;
     }
 
@@ -131,7 +132,7 @@ public class RoleplaySession {
     public void completeNormally(Instant now) {
         if (!"COMPLETED".equals(status)) {
             status = "COMPLETED";
-            lastActivityAt = now;
+            lastActivityAt = StoredTime.normalize(now);
         }
     }
 
@@ -169,6 +170,6 @@ public class RoleplaySession {
         lastTurnNumber = turnNumber;
         currentMicroGoalId = goalId;
         currentSupportLevel = supportLevel;
-        lastActivityAt = now;
+        lastActivityAt = StoredTime.normalize(now);
     }
 }

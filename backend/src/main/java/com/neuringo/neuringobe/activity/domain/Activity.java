@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.activity.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -74,7 +75,7 @@ public class Activity {
         this.goalId = goalId;
         this.idempotencyKey = idempotencyKey;
         this.status = ActivityStatus.NOT_STARTED;
-        this.assignedAt = assignedAt;
+        this.assignedAt = StoredTime.normalize(assignedAt);
     }
 
     public UUID getActivityId() {
@@ -136,7 +137,7 @@ public class Activity {
     public void start(Instant now) {
         if (status == ActivityStatus.NOT_STARTED) {
             status = ActivityStatus.IN_PROGRESS;
-            startedAt = now;
+            startedAt = StoredTime.normalize(now);
         }
     }
 
@@ -150,10 +151,10 @@ public class Activity {
         }
         status = ActivityStatus.COMPLETED;
         if (startedAt == null) {
-            startedAt = now;
+            startedAt = StoredTime.normalize(now);
         }
-        completedAt = now;
-        rewardIssuedAt = now;
+        completedAt = StoredTime.normalize(now);
+        rewardIssuedAt = StoredTime.normalize(now);
         return true;
     }
 

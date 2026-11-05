@@ -1,5 +1,12 @@
 # API v1 변경 이력
 
+## 2026-11-05 — 저장 시각 마이크로초 정규화(#104)
+
+- 기준은 `fix/instant-micros-precision` 작업 브랜치입니다. 원격 병합·운영 배포를 뜻하지 않습니다.
+- 필드 이름·타입은 그대로입니다. 서버가 시각을 저장하기 전에 마이크로초 아래 자리를 버려, 처음 응답(메모리 값)과 재전송·재조회 응답(DB 값)의 시각이 같아집니다. 전에는 처음 응답만 나노초(예: `.512881776`)였고 재전송 응답은 DB가 반올림한 값(`.512882`)이었습니다.
+- 영향 API: [API-ACT-01](./activities/create-activity.md)·[API-ACT-02](./activities/list-child-activities.md)·[API-ACT-03](./activities/get-activity.md)의 `assignedAt`, [API-IAM-07](./auth/issue-child-code.md)의 `expiresAt`, [API-IAM-03](./auth/login.md)의 `expiresAt`, [API-GOAL-01](./learning-goals/create-learning-goal.md)·[API-GOAL-03](./learning-goals/get-learning-goal.md)의 `createdAt`, [API-QUIZ-04](./quizzes/put-quiz-attempt.md)·[API-QUIZ-05](./quizzes/get-quiz-attempt.md)의 `respondedAt`.
+- 공통 규칙은 [integration-guide.md](./integration-guide.md) 4절에 적었습니다. DB 컬럼·기존 데이터는 바꾸지 않습니다.
+
 ## 2026-11-02 — 학급·아동 이름 수정과 목표 조건 정리·모순 거절
 
 - 기준은 `feature/goal-lineage-edit` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
