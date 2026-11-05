@@ -61,6 +61,11 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return body.data
 }
 
+/** 조회 요청. 읽기만 하므로 CSRF 토큰이 필요 없다. signal 은 React Query 가 화면을 떠날 때 요청을 끊는 데 쓴다. */
+export async function childGetRequest<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return parseResponse<T>(await send(`${API_BASE_URL}${path}`, { headers: { Accept: "application/json" }, signal }))
+}
+
 type CsrfToken = { headerName: string; token: string }
 
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 변경 요청 직전에 받는다. 헤더 이름도 서버가 정한다.

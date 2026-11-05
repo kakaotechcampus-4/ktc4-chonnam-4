@@ -1,12 +1,12 @@
 import { useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 import { ListChecks, Smile } from "lucide-react"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
-import { getMyActivities, myActivitiesQueryKey } from "../api"
+import { LoadErrorDialog, LoadingState } from "../components/state"
+import { activityParts } from "../api"
+import { useMyActivities } from "../hooks/useMyActivities"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 /**
@@ -15,13 +15,9 @@ import { useChildSessionStore } from "../store/childSessionStore"
  */
 function ChildWelcomePage() {
   const navigate = useNavigate()
-  const childId = useChildSessionStore((state) => state.childId)
   const childName = useChildSessionStore((state) => state.childName) ?? ""
 
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
 
   const todoActivities = (activitiesQuery.data ?? []).filter(
     (activity) => activity.status !== "COMPLETED"
@@ -57,7 +53,7 @@ function ChildWelcomePage() {
                 <div className="flex flex-col gap-1 text-left">
                   <p className="text-xl font-bold text-[var(--child-text)]">{firstActivity.title}</p>
                   <p className="text-base text-[var(--child-text-muted)]">
-                    표정 퀴즈 {firstActivity.quizCount}개 + 역할극 {firstActivity.roleplayCount}개
+                    {activityParts(firstActivity)}
                   </p>
                 </div>
               </div>
@@ -73,9 +69,12 @@ function ChildWelcomePage() {
         </section>
       </div>
 
-      <StateDialog open={showError}>
-        <ErrorState message="활동을 불러오지 못했어요" onRetry={() => activitiesQuery.refetch()} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showError}
+        error={activitiesQuery.error}
+        message="활동을 불러오지 못했어요"
+        onRetry={() => activitiesQuery.refetch()}
+      />
     </ChildLayout>
   )
 }

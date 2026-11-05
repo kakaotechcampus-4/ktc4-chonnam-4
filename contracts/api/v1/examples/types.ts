@@ -131,21 +131,35 @@ export interface ChildData {
   status: ChildStatus;
 }
 
+export interface GoalCharacter {
+  /** 아이와의 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 비우면 OTHER, LEARNER 불가 */
+  id?: string | null;
+  /** 인물 설명(예: 넘어진 친구), 최대50자. 실제 이름 금지 */
+  role: string;
+}
+
 export interface GoalBody {
   /** 최대200자 */
   title: string;
-  /** 최대30자, 선택 */
+  /** 상황 설명 문장, 최대200자, 선택. 공백만이면 null */
   situationType?: string | null;
-  /** 목표 분류, 최대30자. 별도 enum 아님 */
+  /** 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null */
   category?: string | null;
-  /** 추가 등장인물; 누락/null은 현재 [] 정리 */
-  characters?: Record<string, unknown>[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 추가 등장인물; 누락/null은 [] */
+  characters?: GoalCharacter[] | null;
+  /** 아이가 대화에서 해 볼 행동. 빈/공백/null 원소는 조건 오류 */
   requiredElements?: string[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 역할극에 나오면 안 되는 말. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 */
   forbiddenExpressions?: string[] | null;
   /** 접근 가능한 동일 아동의 이전 목표 */
   parentGoalId?: UUID | null;
+}
+
+export interface GoalCharacterData {
+  /** 저장된 관계 id. 비었으면 OTHER, 같은 id가 겹치면 FRIEND_2처럼 번호가 붙음 */
+  id: string;
+  /** 인물 설명 */
+  role: string;
 }
 
 export interface GoalData {
@@ -159,17 +173,17 @@ export interface GoalData {
   parentGoalId: UUID | null;
   /** 목표명 */
   title: string;
-  /** 상황 유형 */
+  /** 상황 설명 문장 */
   situationType: string | null;
   /** 목표 분류, 최대30자. 별도 enum 아님 */
   category: string | null;
-  /** 등장인물 */
-  characters: Record<string, unknown>[];
-  /** 필수 조건 */
+  /** 등장인물; 정리한 값 */
+  characters: GoalCharacterData[];
+  /** 필수 요소; 정리한 값 */
   requiredElements: string[];
-  /** 금지 조건 */
+  /** 피할 표현; 정리한 값 */
   forbiddenExpressions: string[];
-  /** 서버 계산; FE 수정 금지 */
+  /** 서버 계산; 목록 순서와 무관. FE 수정 금지 */
   contentHash: string;
   /** 생성 시각 */
   createdAt: ISODateTime;

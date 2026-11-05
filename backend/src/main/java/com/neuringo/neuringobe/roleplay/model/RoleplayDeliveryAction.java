@@ -4,6 +4,7 @@ package com.neuringo.neuringobe.roleplay.model;
 public enum RoleplayDeliveryAction {
     NONE,
     REQUEST_NEW_INPUT,
+    SUGGEST_TEXT_KEEP_VOICE,
     RETRY_TURN,
     STOP_DIALOGUE,
     WAIT,

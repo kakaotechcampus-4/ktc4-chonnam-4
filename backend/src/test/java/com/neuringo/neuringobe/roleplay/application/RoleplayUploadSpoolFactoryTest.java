@@ -36,7 +36,9 @@ class RoleplayUploadSpoolFactoryTest {
 
     private RoleplayUploadSpoolFactory factory() {
         return new RoleplayUploadSpoolFactory(
-                directory, new RoleplayUploadPolicy(4, Set.of(AudioFormat.WEBM)));
+                directory,
+                new RoleplayUploadPolicy(4, Set.of(AudioFormat.WEBM)),
+                (file, format, deadline) -> {});
     }
 
     @Test
@@ -97,7 +99,97 @@ class RoleplayUploadSpoolFactoryTest {
                         () -> factory().create(source, mime, trace, RoleplayTurnDeadline.start()))
                 .isInstanceOf(RoleplayUploadSpoolFactory.Rejected.class);
         assertThat(source.closed).isTrue();
-        assertThat(source.reads).isZero();
+        assertThat(source.reads).isGreaterThan(0);
+        assertThat(files()).isZero();
+    }
+
+    @Test
+    void oversizedFileGetsExactFingerprintOnlyWithinTheRequestBound() throws Exception {
+        var bounded =
+                new RoleplayUploadSpoolFactory(
+                        directory,
+                        new RoleplayUploadPolicy(4, Set.of(AudioFormat.WEBM), 8),
+                        (file, format, deadline) -> {
+                            throw new AssertionError("크기 초과 파일은 검사하지 않습니다.");
+                        });
+        var bytes = new byte[] {1, 2, 3, 4, 5, 6, 7};
+        var expected = RoleplayVoiceInput.newFingerprintDigest(AudioFormat.WEBM, null);
+        expected.update(bytes);
+        assertThatThrownBy(
+                        () ->
+                                bounded.create(
+                                        new ByteArrayInputStream(bytes),
+                                        "audio/webm",
+                                        trace,
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOfSatisfying(
+                        RoleplayUploadSpoolFactory.Rejected.class,
+                        rejected -> {
+                            assertThat(rejected.reason())
+                                    .isEqualTo(RoleplayUploadSpoolFactory.Reason.TOO_LARGE);
+                            assertThat(rejected.inputFingerprint())
+                                    .isEqualTo(
+                                            java.util.HexFormat.of().formatHex(expected.digest()));
+                        });
+        assertThatThrownBy(
+                        () ->
+                                bounded.create(
+                                        new ByteArrayInputStream(new byte[9]),
+                                        "audio/webm",
+                                        trace,
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOfSatisfying(
+                        RoleplayUploadSpoolFactory.Rejected.class,
+                        rejected -> {
+                            assertThat(rejected.reason())
+                                    .isEqualTo(RoleplayUploadSpoolFactory.Reason.TOO_LARGE);
+                            assertThat(rejected.inputFingerprint()).isNull();
+                        });
+        assertThat(files()).isZero();
+    }
+
+    @Test
+    void sharedInspectorExceptionKeepsEachConcurrentInputFingerprintSeparate() throws Exception {
+        var shared = new RoleplayAudioInspector.Unavailable();
+        var uploads =
+                new RoleplayUploadSpoolFactory(
+                        directory,
+                        new RoleplayUploadPolicy(4, Set.of(AudioFormat.WEBM)),
+                        (file, format, deadline) -> {
+                            throw shared;
+                        });
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            java.util.function.Function<Byte, String> submit =
+                    value -> {
+                        try {
+                            start.await();
+                            uploads.create(
+                                    new ByteArrayInputStream(new byte[] {value}),
+                                    "audio/webm",
+                                    trace,
+                                    RoleplayTurnDeadline.start());
+                            throw new AssertionError("검사 장애가 반환되지 않았습니다.");
+                        } catch (RoleplayAudioInspector.Unavailable unavailable) {
+                            return unavailable.inputFingerprint();
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(interrupted);
+                        }
+                    };
+            var first = workers.submit(() -> submit.apply((byte) 1));
+            var second = workers.submit(() -> submit.apply((byte) 2));
+            start.countDown();
+            var digestOne = RoleplayVoiceInput.newFingerprintDigest(AudioFormat.WEBM, null);
+            var digestTwo = RoleplayVoiceInput.newFingerprintDigest(AudioFormat.WEBM, null);
+            digestOne.update((byte) 1);
+            digestTwo.update((byte) 2);
+            assertThat(first.get())
+                    .isEqualTo(java.util.HexFormat.of().formatHex(digestOne.digest()));
+            assertThat(second.get())
+                    .isEqualTo(java.util.HexFormat.of().formatHex(digestTwo.digest()));
+            assertThat(shared.inputFingerprint()).isNull();
+        }
         assertThat(files()).isZero();
     }
 

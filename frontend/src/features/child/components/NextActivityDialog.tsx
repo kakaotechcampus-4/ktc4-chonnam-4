@@ -1,6 +1,6 @@
 import { Dialog as DialogPrimitive } from "radix-ui"
 import { Smile, X } from "lucide-react"
-import type { ChildActivity } from "../api"
+import { activityParts, type ChildActivity } from "../api"
 import { ChildButton } from "./ChildButton"
 import { Character } from "./Character"
 
@@ -46,7 +46,7 @@ function NextActivityDialog({
                     <div className="flex flex-col">
                       <span className="text-lg font-bold text-[var(--child-text)]">{activity.title}</span>
                       <span className="text-sm text-[var(--child-text-muted)]">
-                        표정 퀴즈 {activity.quizCount}개 + 역할극 {activity.roleplayCount}개
+                        {activityParts(activity)}
                       </span>
                     </div>
                   </div>

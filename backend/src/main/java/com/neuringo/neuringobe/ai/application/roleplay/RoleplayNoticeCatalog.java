@@ -8,8 +8,11 @@ import java.util.Optional;
 
 /** Trusted configuration only. Approval is performed outside this class, never by an LLM. */
 public final class RoleplayNoticeCatalog {
+    public static final String REINPUT_TEXT = "다시 한 번만 말해줄래?";
+
     public enum Kind {
         TIMEOUT,
+        INPUT_RECOVERY,
         INPUT_QUALITY,
         INPUT_CONFIRMATION,
         SAFE_FALLBACK,
@@ -36,7 +39,7 @@ public final class RoleplayNoticeCatalog {
 
     private final Map<Kind, ApprovedNotice> notices;
 
-    /** Only DEC-010 has a confirmed literal in the current specification. */
+    /** 확정된 재입력 문구를 시간 초과와 파일 검증 복구에 재사용한다. */
     public RoleplayNoticeCatalog(Collection<ApprovedNotice> approvedNotices) {
         var entries = new EnumMap<Kind, ApprovedNotice>(Kind.class);
         entries.put(
@@ -46,6 +49,13 @@ public final class RoleplayNoticeCatalog {
                         new RoleplayTurnResult.TimedOut().message(),
                         "DEC-010",
                         "DEC-010"));
+        entries.put(
+                Kind.INPUT_RECOVERY,
+                new ApprovedNotice(
+                        Kind.INPUT_RECOVERY,
+                        REINPUT_TEXT,
+                        "INPUT-RECOVERY-V1",
+                        "USER-2026-10-30-VOICE-REINPUT"));
         for (ApprovedNotice notice : Objects.requireNonNull(approvedNotices)) {
             Objects.requireNonNull(notice);
             if (entries.putIfAbsent(notice.kind(), notice) != null) {

@@ -1,10 +1,10 @@
-import { childWriteRequest } from "./apiClient"
+import { childGetRequest, childWriteRequest } from "./apiClient"
 
 export { ChildApiError, NETWORK_ERROR } from "./apiClient"
 
 /**
  * 아동 흐름 API.
- * 입장·사용 종료는 실제 서버(API-IAM-08·09)를 부른다. 활동·퀴즈·역할극·완료는 아직 mock 응답이다.
+ * 입장·사용 종료·활동 목록은 실제 서버(API-IAM-08·09, API-ACT-02)를 부른다. 퀴즈·역할극·완료는 아직 mock 응답이다.
  * 실제 API로 바꿀 때 각 함수 안쪽만 바꾸고, 화면 코드는 그대로 둔다.
  */
 
@@ -41,17 +41,36 @@ export function exitChildSession(): Promise<void> {
   return childWriteRequest<void>("DELETE", "/child-access-sessions/current")
 }
 
-export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"
+/** API-ACT-02 의 수행 상태. 일시 중단·복구 필요는 아이 화면에서 "진행 중"과 같게 보인다. */
+export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "RECOVERY_NEEDED"
+
+export type ChildActivityType = "FIRST_COMBINED" | "SELF_EMOTION_QUIZ" | "OTHER_EMOTION_QUIZ" | "ROLEPLAY"
 
 export type ChildActivity = {
   activityId: string
+  activityType: ChildActivityType
   title: string
   description: string
   status: ChildActivityStatus
   quizCount: number
   roleplayCount: number
   /** 완료 시각(ISO). 홈 열기구에 캐릭터를 완료한 순서대로 태우는 데 쓴다. */
-  completedAt?: string
+  completedAt: string | null
+}
+
+/** 시작했지만 끝나지 않은 활동. 활동 소개에서 "이어서 하기"로 보이고, 다음 활동 제안에서 먼저 고른다. */
+export function isActivityInProgress(status: ChildActivityStatus) {
+  return status === "IN_PROGRESS" || status === "PAUSED" || status === "RECOVERY_NEEDED"
+}
+
+/** "표정 퀴즈 3개 + 역할극 1개"처럼 활동 구성을 보여 준다. 0개인 부분은 뺀다. */
+export function activityParts(activity: Pick<ChildActivity, "quizCount" | "roleplayCount">) {
+  return [
+    activity.quizCount > 0 ? `표정 퀴즈 ${activity.quizCount}개` : null,
+    activity.roleplayCount > 0 ? `역할극 ${activity.roleplayCount}개` : null,
+  ]
+    .filter(Boolean)
+    .join(" + ")
 }
 
 /** 세션이 다른 아동의 캐시를 섞어 쓰지 않도록 childId를 키에 포함한다. */
@@ -59,40 +78,65 @@ export function myActivitiesQueryKey(childId: string | null) {
   return ["child", childId, "activities"] as const
 }
 
-// Figma C-HOME-01 시안과 같은 3개 활동
-const MOCK_ACTIVITIES: ChildActivity[] = [
-  {
-    activityId: "mock-activity-1",
+// 서버 응답에는 아이에게 보여 줄 제목·설명이 없어서 활동 유형으로 정한다. 문항 수는 서버 배정 구성(QuizAssignmentService)과 같다.
+// 최초 결합·상대 감정 제목은 Figma C-HOME-01 시안 문구이고, 나머지 둘은 시안에 없어 임시로 정했다.
+const ACTIVITY_CONTENT: Record<
+  ChildActivityType,
+  Pick<ChildActivity, "title" | "description" | "quizCount" | "roleplayCount">
+> = {
+  FIRST_COMBINED: {
     title: "친구 마음 알아보기",
-    description: "넘어진 친구를 보고 어떤 마음일지 함께 생각해볼 거야",
-    status: "IN_PROGRESS",
+    description: "친구 표정을 보고 어떤 마음일지 함께 생각해볼 거야",
     quizCount: 3,
     roleplayCount: 1,
   },
-  {
-    activityId: "mock-activity-2",
-    title: "교실에서 있었던 일",
-    description: "교실에서 친구와 있었던 일을 떠올리며 마음을 표현해볼 거야",
-    status: "NOT_STARTED",
-    quizCount: 3,
-    roleplayCount: 1,
+  SELF_EMOTION_QUIZ: {
+    title: "내 마음 알아보기",
+    description: "여러 일을 떠올리며 내 마음을 표정으로 알려줄 거야",
+    quizCount: 10,
+    roleplayCount: 0,
   },
-  {
-    activityId: "mock-activity-3",
+  OTHER_EMOTION_QUIZ: {
     title: "상대방 마음 맞히기",
     description: "친구의 표정을 보고 어떤 마음인지 맞혀볼 거야",
-    status: "COMPLETED",
-    quizCount: 3,
-    roleplayCount: 1,
-    completedAt: "2026-09-29T10:00:00+09:00",
+    quizCount: 10,
+    roleplayCount: 0,
   },
-]
+  ROLEPLAY: {
+    title: "친구랑 이야기하기",
+    description: "친구랑 이야기하면서 내 마음을 전해볼 거야",
+    quizCount: 0,
+    roleplayCount: 1,
+  },
+}
 
-/** 현재 아동 세션에 배정된 활동만 돌려준다. 실제 API는 세션 쿠키로 아동을 식별한다 (VS-003). */
-export async function getMyActivities(): Promise<ChildActivity[]> {
-  await wait(MOCK_DELAY_MS)
-  // 완료 처리로 mock 상태가 바뀌므로, 캐시와 참조를 공유하지 않게 복사해서 돌려준다.
-  return MOCK_ACTIVITIES.map((activity) => ({ ...activity }))
+/** API-ACT-02 응답 중 아이 화면에 쓰는 필드. 지원 수준 같은 평가 정보는 받지만 화면으로 넘기지 않는다. */
+type ActivityData = {
+  activityId: string
+  activityType: ChildActivityType
+  status: ChildActivityStatus
+  completedAt: string | null
+}
+
+// 한 아이에게 배정되는 활동은 많지 않아 서버 최대 크기(100) 한 쪽만 받는다.
+const ACTIVITY_PAGE_SIZE = 100
+
+/**
+ * 현재 아동 세션에 배정된 활동 (API-ACT-02, VS-003).
+ * 서버가 세션 쿠키의 아동과 경로의 childId 가 다르면 404 CHILD_NOT_FOUND 로 막는다(다른 아동 목록 차단).
+ */
+export async function getMyActivities(childId: string, signal?: AbortSignal): Promise<ChildActivity[]> {
+  const data = await childGetRequest<ActivityData[]>(
+    `/children/${encodeURIComponent(childId)}/activities?size=${ACTIVITY_PAGE_SIZE}`,
+    signal
+  )
+  return data.map((activity) => ({
+    activityId: activity.activityId,
+    activityType: activity.activityType,
+    status: activity.status,
+    completedAt: activity.completedAt,
+    ...ACTIVITY_CONTENT[activity.activityType],
+  }))
 }
 
 export type Emotion = "HAPPY" | "SAD" | "ANGRY" | "SURPRISED" | "UPSET"
@@ -293,23 +337,22 @@ export type CompleteActivityInput = {
 }
 
 const mockCompletions = new Map<string, ActivityCompletion>()
+const mockCompletedActivities = new Set<string>()
 
 /**
- * 활동 완료 처리와 스탬프 지급.
- * 완료를 서버가 마지막 턴에서 자동 처리할지, FE가 요청할지는 API 계약이 아직 없다.
- * 서버 자동 처리로 정해지면 이 함수 안쪽만 "완료 결과 조회"로 바꾸고 화면은 그대로 둔다.
+ * 활동 완료 처리와 스탬프 지급 (mock).
+ * 완료는 서버가 정한다(#76): 독립 퀴즈는 마지막 문항 확정, 최초 결합은 역할극 목표 달성 때 서버가 완료·스탬프를 함께 저장한다.
+ * FE 는 완료를 요청하지 않고 GET /activities/{activityId}/status(API-ACT-04)로 COMPLETED 인지 읽기만 한다.
+ * 퀴즈·역할극이 아직 mock 이라 서버 활동은 완료되지 않으므로, 실제 연결(S5~S7) 때 이 함수 안쪽을 상태 조회로 바꾼다.
+ * 그때까지 활동 목록(실제 서버)은 완료로 바뀌지 않는다.
  */
 export async function completeActivity(input: CompleteActivityInput): Promise<ActivityCompletion> {
   await wait(MOCK_DELAY_MS)
   const previous = mockCompletions.get(input.requestId)
   if (previous) return previous
 
-  const activity = MOCK_ACTIVITIES.find((item) => item.activityId === input.activityId)
-  if (!activity) throw new Error("알 수 없는 활동입니다.")
-
-  const completion = { activityId: activity.activityId, stampGranted: activity.status !== "COMPLETED" }
-  if (activity.status !== "COMPLETED") activity.completedAt = new Date().toISOString()
-  activity.status = "COMPLETED"
+  const completion = { activityId: input.activityId, stampGranted: !mockCompletedActivities.has(input.activityId) }
+  mockCompletedActivities.add(input.activityId)
   mockCompletions.set(input.requestId, completion)
   return completion
 }

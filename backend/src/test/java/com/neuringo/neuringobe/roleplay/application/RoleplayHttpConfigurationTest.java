@@ -31,6 +31,7 @@ class RoleplayHttpConfigurationTest {
         return new ApplicationContextRunner()
                 .withUserConfiguration(
                         RoleplayHttpConfiguration.class,
+                        com.neuringo.neuringobe.roleplay.config.RoleplayTextConfiguration.class,
                         RoleplayProgressConfiguration.class,
                         RoleplayVoiceController.class);
     }
@@ -61,7 +62,11 @@ class RoleplayHttpConfigurationTest {
                         () -> mock(RoleplayRequestScopeService.class))
                 .withBean(RoleplayCheckpointStore.class, () -> mock(RoleplayCheckpointStore.class))
                 .withBean(RoleplayRequestGuard.class, () -> mock(RoleplayRequestGuard.class))
+                .withBean(RoleplayInputFailureStore.class, RoleplayInputFailureStore::untracked)
                 .withBean(RoleplayContextSource.class, () -> mock(RoleplayContextSource.class))
+                .withBean(
+                        RoleplayVoiceRecoverySource.class,
+                        () -> (key, deadline) -> RoleplayVoiceFailureProgress.initial())
                 .withBean(
                         RoleplayCompletionService.class,
                         () -> mock(RoleplayCompletionService.class))
@@ -222,6 +227,64 @@ class RoleplayHttpConfigurationTest {
     @Test
     void turnBudgetCannotExceedSixtySeconds() {
         ports(enabled().withPropertyValues("roleplay.http.turn-budget=61s"))
+                .run(c -> assertThat(c).hasFailed());
+    }
+
+    @Test
+    void textEndpointRequiresAnExplicitProcessingLimitWhenEnabled() {
+        ports(enabled().withPropertyValues("roleplay.text.enabled=true"))
+                .run(context -> assertThat(context).hasFailed());
+        ports(
+                        enabled()
+                                .withPropertyValues(
+                                        "roleplay.text.enabled=true",
+                                        "roleplay.text.maximum-characters=64"))
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            assertThat(context)
+                                    .hasSingleBean(
+                                            com.neuringo.neuringobe.roleplay.service
+                                                    .RoleplayTextInputService.class);
+                        });
+    }
+
+    @Test
+    void confidenceThresholdDefaultsToTheConfirmedValue() {
+        ports(enabled())
+                .run(
+                        c -> {
+                            assertThat(c).hasNotFailed();
+                            assertThat(
+                                            c.getBean(
+                                                            com.neuringo.neuringobe.roleplay.config
+                                                                    .RoleplayInputProperties.class)
+                                                    .sttConfidenceThreshold())
+                                    .isEqualTo(0.40);
+                        });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"0", "0.65", "1"})
+    void confidenceThresholdCanBeConfigured(String value) {
+        ports(enabled().withPropertyValues("roleplay.input.stt-confidence-threshold=" + value))
+                .run(
+                        c -> {
+                            assertThat(c).hasNotFailed();
+                            assertThat(
+                                            c.getBean(
+                                                            com.neuringo.neuringobe.roleplay.config
+                                                                    .RoleplayInputProperties.class)
+                                                    .sttConfidenceThreshold())
+                                    .isEqualTo(Double.valueOf(value));
+                        });
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(
+            strings = {"-0.01", "1.01", "NaN", "Infinity", "-Infinity", "invalid"})
+    void invalidConfidenceThresholdCannotStartTheHttpPipeline(String value) {
+        ports(enabled().withPropertyValues("roleplay.input.stt-confidence-threshold=" + value))
                 .run(c -> assertThat(c).hasFailed());
     }
 }

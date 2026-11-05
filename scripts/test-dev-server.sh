@@ -3,6 +3,7 @@
 # - 대문(CloudFront): 켤 때 새 서버 주소로 바꾸고 연다 / 끌 때는 다 꺼진 것을 본 뒤에만 끝낸다 / 그사이 바뀌었으면 덮어쓰지 않는다
 # - 서버(EC2): 켜고 끈다 / 권한이 없으면 77 / 끄기 권한이 없으면 "OS 를 끄면 중지"일 때만 서버 안에서 끈다
 # - 출력(공개 로그)에 배포 ID·주소·인스턴스 ID 가 없다
+# - dev-server.yml 판정 단계: 포크 PR 은 저장소 변수가 빈 값이어도 실패 없이 건너뛴다
 #   bash scripts/test-dev-server.sh   (verify.sh workflows 에 포함)
 set -euo pipefail
 
@@ -252,8 +253,53 @@ idle_last
 check "권한이 없으면 unreadable · 실패로 끝나지 않는다" bash -c "grep -q 'IDLE_LOG=unreadable' <<<\"\$0\" && [ \"\$1\" = 0 ]" "$out" "$code"
 check "오류 원문(역할 ARN·계정 ID)을 찍지 않는다" no_leak
 
+echo "Dev server 판정(plan 단계) 자체 검사"
+# dev-server.yml 의 'Decide what to do' 스크립트를 꺼내 GitHub 밖에서 돌린다. gh 는 가짜(부르면 기록하고 실패)라 실제 PR 을 건드리지 않는다.
+plan_script() {
+  awk '
+    $0 == "      - name: Decide what to do" { step = 1; next }
+    step && $0 == "        run: |" { run = 1; next }
+    run && /^          / { print substr($0, 11); next }
+    run && /^[[:space:]]*$/ { print ""; next }
+    run { exit }
+  ' .github/workflows/dev-server.yml
+}
+mkdir -p "$tmp/plan-bin"
+cat >"$tmp/plan-bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "gh $*" >>"$PLAN_GH_CALLS"
+exit 1
+EOF
+chmod +x "$tmp/plan-bin/gh"
+plan_script >"$tmp/plan.sh"
+check "plan 단계 스크립트를 꺼냈다" file_has "$tmp/plan.sh" 'AWS_ACCOUNT_ID'
+decide() { # 환경변수=값... (GitHub 이 이 단계에 넘기는 값)
+  : >"$tmp/plan-out"
+  : >"$tmp/plan-summary"
+  : >"$tmp/plan-gh"
+  code=0
+  out=$(env -i PATH="$tmp/plan-bin:$PATH" PLAN_GH_CALLS="$tmp/plan-gh" \
+    GITHUB_OUTPUT="$tmp/plan-out" GITHUB_STEP_SUMMARY="$tmp/plan-summary" \
+    REPO=kakaotechcampus-4/ktc4-chonnam-4 ACTOR=someone "$@" \
+    bash --noprofile --norc -eo pipefail "$tmp/plan.sh" 2>&1) || code=$?
+}
+
+# 포크에서 온 PR 실행에는 GitHub 이 저장소 변수를 넘기지 않는다(AWS_ACCOUNT_ID 가 빈 값).
+decide EVENT=pull_request PR_ACTION=opened PR=101 HEAD_REPO=someone/ktc4-chonnam-4 AWS_ACCOUNT_ID=
+check "포크 PR: 저장소 변수가 빈 값이어도 실패하지 않는다" same "$code" 0
+check "포크 PR: 할 일 없음(task=none)으로 끝난다" file_has "$tmp/plan-out" "task=none"
+check "포크 PR: 요약에 포크라서 건너뛴다고 쓴다" file_has "$tmp/plan-summary" "포크에서 온 PR"
+check "포크 PR: GitHub API 를 부르지 않는다" same "$(cat "$tmp/plan-gh")" ""
+
+decide EVENT=workflow_dispatch ACTION="상태 보기" AWS_ACCOUNT_ID=
+check "버튼 실행: 저장소 변수가 없으면 실패한다" same "$code" 1
+check "버튼 실행: 오류에 AWS_ACCOUNT_ID 가 없다고 쓴다" has "$out" "AWS_ACCOUNT_ID(12자리)가 없다"
+
+decide EVENT=workflow_dispatch ACTION="상태 보기" AWS_ACCOUNT_ID=000000000000
+check "버튼 실행: 저장소 변수가 있으면 할 일을 정한다" file_has "$tmp/plan-out" "task=상태 보기"
+
 if [ "$failures" -gt 0 ]; then
-  echo "edge-toggle.sh · server-power.sh 자체 검사 실패: $failures 건" >&2
+  echo "edge-toggle.sh · server-power.sh · Dev server 판정 자체 검사 실패: $failures 건" >&2
   exit 1
 fi
-echo "edge-toggle.sh · server-power.sh 자체 검사 통과"
+echo "edge-toggle.sh · server-power.sh · Dev server 판정 자체 검사 통과"
