@@ -2,7 +2,7 @@
 
 > 2026-11-04 S4-JIN-01: 이 GET과 퀴즈 완료는 시나리오를 자동 배정하지 않는다. 결과 조회는 저장된 난이도만 반환한다. 담당 강사가 준비 POST → 명시적 확정 PUT을 완료해야 한다. 아동의 배정 확인은 활동 목록의 scenarioId, 강사는 활동 상세 data.activity.scenarioId를 사용한다. 200은 시나리오 준비 완료를 뜻하지 않는다.
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -58,7 +58,7 @@ HTTP 200.
     "activityId": "40000000-0000-4000-8000-000000000001",
     "validQuestionCount": 3,
     "correctQuestionCount": 2,
-    "overallAccuracy": 0.6666666666666666,
+    "overallAccuracy": 0.666667,
     "totalHintCount": 1,
     "resolvedAfterHintCount": 1,
     "scenarioLevel": "L2",
@@ -81,7 +81,7 @@ HTTP 200.
 | data.activityId | UUID | 예 | 아니오 | 활동 |
 | data.validQuestionCount | number | 예 | 아니오 | 기술 제외 후 분모 |
 | data.correctQuestionCount | number | 예 | 아니오 | 힌트 전 최초 정답 수 |
-| data.overallAccuracy | number \| null | 예 | 예 | 0~1 비율, 유효0개면null |
+| data.overallAccuracy | number \| null | 예 | 예 | 0~1 비율(소수 6자리까지), 유효0개면null |
 | data.totalHintCount | number | 예 | 아니오 | 힌트 총수 |
 | data.resolvedAfterHintCount | number | 예 | 아니오 | 힌트 후 해결 별도 집계 |
 | data.scenarioLevel | ScenarioLevel \| null | 예 | 예 | 최초 난이도 |
@@ -217,7 +217,7 @@ curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}/quiz-result
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S5-JIN-01` · `S5-JIN-02` · `S5-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
 

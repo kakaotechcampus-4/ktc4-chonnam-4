@@ -2,7 +2,7 @@
 
 > 2026-11-04 S4-JIN-01: 강사 확정 전 scenarioId는 null이다. 퀴즈 완료·결과 조회만으로 자동 배정하지 않는다.
 
-> 구현 — 2026-11-02 / 브랜치 `feature/goal-lineage-edit`. 학급·아동 이름 수정과 목표 조건 정리·모순 거절의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d` (PR #78 `feature/goal-lineage-edit` 병합). 학급·아동 이름 수정과 목표 조건 정리·모순 거절의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -20,7 +20,7 @@
 ## 2. 용도·중요 규칙
 
 - childId와 activityType, 필요한 경우 goal 내용을 함께 전달합니다. 기존 goalId 필드는 현재 계약이 아닙니다. 목표 저장·활동 생성·문항 배정은 한 트랜잭션이며 실패 시 함께 롤백됩니다.
-- Idempotency-Key(UUID)는 필수입니다. 같은 키·같은 아동/유형/목표 내용이면 기존 활동을 200, 새 배정은 201로 반환합니다. 동일 키의 다른 요청은 409입니다.
+- Idempotency-Key(UUID)는 필수입니다. 같은 키·같은 아동/유형/목표 내용·parentGoalId이면 기존 활동을 200, 새 배정은 201로 반환합니다. 동일 키의 다른 요청(목표 내용이 같아도 parentGoalId가 다르면 포함)은 409 IDEMPOTENCY_KEY_REUSED입니다.
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
 - ROLEPLAY는 enum에 있지만 현재 422 ACTIVITY_TYPE_NOT_AVAILABLE로 거부합니다. 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
@@ -305,6 +305,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/activities" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-02` · `S4-JIN-02`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/assignment/service/ActivityAssignmentService.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/assignment/service/ActivityAssignmentService.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

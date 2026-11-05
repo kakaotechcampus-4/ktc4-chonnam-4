@@ -4,6 +4,8 @@
 
 > 2026-11-04 · S4-JIN-01 작업본, 통합 기준 develop `bab136d`. Controller·DTO와 PostgreSQL/HTTP 통합 검사로 확인한 계약이다. 작업 브랜치 구현이며 develop 병합·운영 배포·프론트엔드 연동은 완료하지 않았다.
 
+> 구현 — 2026-11-05 / develop `7376e91` (PR #101 병합). 담당 강사 Bearer + CSRF + Idempotency-Key, 성공은 200입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+
 ## 1. Endpoint
 
 `PUT /api/v1/activities/{activityId}/scenario`
@@ -117,3 +119,30 @@ ScenarioReviewController.confirm → ScenarioConfirmationService.confirm. 선택
 
 
 공통 승인과 활동별 승인: A의 원본을 B가 수정 없이 확정하면 원본 최초 승인자·조건을 덮어쓰지 않고 B의 활동별 승인 근거를 INSERT한다. 실제 수정하면 새 ID/버전을 B의 최초 승인으로 등록하며 새 콘텐츠도 공통 후보가 된다. 최초 승인자가 탈퇴해 NULL이 된 승인 기록도 유효한 상태·조건이면 재사용할 수 있다. 콘텐츠 본문·조건의 직접 변경이나 소유 강사 재지정 기능은 추가하지 않았다.
+
+## 복사 가능한 TypeScript
+
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 요청·응답 타입은 types.ts의 `ScenarioConfirmBody`·`ScenarioReviewClosure`입니다.
+
+~~~ts
+export interface ReviewScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioConfirmBody;
+  idempotencyKey: T.UUID;
+}
+
+export function reviewScenario(
+  api: ApiClient,
+  args: ReviewScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewClosure>> {
+  return api.request<T.ScenarioReviewClosure>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario", {
+    method: "PUT",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+~~~

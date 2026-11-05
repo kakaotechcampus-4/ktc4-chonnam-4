@@ -1,6 +1,6 @@
 # API-RPL-05 · 역할극 텍스트 입력 제출
 
-> 조건부 구현 — S6-JIN-01 입력 흐름 브랜치 기준. 배포·외부 모델·입력 정제 운영 포트·FE 연동 완료와 구분합니다.
+> 조건부 구현 — 2026-11-04 / develop `bab136d` (S6-JIN-01 입력 흐름 병합). 배포·외부 모델·입력 정제 운영 포트·FE 연동 완료와 구분합니다.
 
 ## 1. Endpoint
 
@@ -11,7 +11,9 @@
 | 인증 | 본인 아동 세션 + CSRF + Idempotency-Key |
 | 요청 | application/json |
 | 응답 | 음성과 같은 ApiResponse<RoleplayTurnResponse> |
-| 등록 조건 | roleplay.http.enabled=true 및 roleplay.text.enabled=true |
+| 등록 조건 | roleplay.http.enabled=true 및 roleplay.text.enabled=true. 꺼져 있으면 경로가 없어 404 RESOURCE_NOT_FOUND |
+| 성공 | 200 / 202(같은 키 처리 중) |
+| FE 함수 | submitTextInput (endpoints.ts, conditional) |
 | 처리 상한 | roleplay.text.maximum-characters 필수, 제품 기본값 없음 |
 
 환경변수 ROLEPLAY_TEXT_ENABLED는 기본 false입니다. 활성화 시 ROLEPLAY_TEXT_MAXIMUM_CHARACTERS를 명시해야 합니다. Unicode 코드 포인트 단위이며 FE의 200자를 서버 정책으로 자동 채택하지 않았습니다.
@@ -43,7 +45,7 @@
 
 ## 4. 응답
 
-기존 음성 응답의 status/action/messages/acceptedInput/checkpointVersion/replayed와 공통 meta.traceId를 사용합니다. no-store이며 HTTP 200만으로 학습 진행 성공을 판정하지 않습니다.
+기존 음성 응답의 status/action/messages/acceptedInput/checkpointVersion/replayed와 공통 meta.traceId를 사용합니다. messages[].speakerRole(DIALOGUE 캐릭터 대사·HINT 마스코트 힌트/고정 안내) 규칙도 [API-RPL-04](./submit-voice-input.md)와 같습니다. no-store이며 HTTP 200만으로 학습 진행 성공을 판정하지 않습니다.
 
 | HTTP/status | 의미 |
 |---|---|
@@ -52,17 +54,56 @@
 | 200 / RETRY_REQUIRED | 기존 평가 오류의 턴 재시도 |
 | 200 / STOPPED 또는 NOTICE_UNAVAILABLE + STOP_DIALOGUE | 안전 경로 유지 |
 | 202 / PROCESSING + WAIT | 같은 키가 처리 중. 신규 비동기 접수 API가 아니며 inputId/turnId 없음 |
-| 400/422 | 필수 헤더·본문·JSON 등 요청 검증 |
-| 401/403/404 | 인증·CSRF·본인 소유 확인 |
+| 400 / INVALID_REQUEST | 잘못된 JSON, Idempotency-Key 누락/UUID 아님, sessionId UUID 형식 |
+| 415 / UNSUPPORTED_MEDIA_TYPE | application/json이 아닌 요청 |
+| 422 / VALIDATION_FAILED | text 누락/null |
+| 401/403 | 인증·CSRF·역할 |
+| 404 / ROLEPLAY_NOT_FOUND | 본인 세션/활동 없음 또는 비활성 아동 |
+| 409 / ROLEPLAY_SCENARIO_CONFLICT | 활동/세션 시나리오 불일치 |
 | 409 / ROLEPLAY_CONFLICT | 키/입력 종류/체크포인트 충돌 |
 | 503 / ROLEPLAY_BUSY 또는 ROLEPLAY_CONTEXT_UNAVAILABLE | 기존 용량·승인 문맥 오류 |
 | 500 | 기존 예상하지 못한 저장/내부 장애 |
 
 컨트롤러 진입 후 동일한 최대60초 기한을 사용합니다. 본문 수신/파싱은 그 이전 경계입니다. 초과 시 “다시 한 번만 말해줄래?”로 안내하며 늦은 결과를 차단합니다.
 
-## 5. FE 후속 작업·검증 경계
+## 5. 복사 가능한 TypeScript
 
-현재 ChildRoleplayPage → sendRoleplayTurn은 mock입니다. 공유 예제 submitTextInput도 draft-endpoints.ts의 DraftInputAccepted 계약이므로 새 본문/응답/기능 설정에 맞춰 별도 동기화해야 합니다. 이번에는 FE·공유 TypeScript/JSON 예제를 수정하지 않았습니다.
+요청 본문 타입은 `TextInputBody`, 응답은 음성과 같은 `RoleplayVoiceData`입니다([types.ts](../examples/types.ts)). 조건부 서버 활성화를 확인하고 allowConditional을 설정해야 합니다.
+
+~~~ts
+export interface TextInputBody {
+  /** 아이가 입력한 원문. 누락/null은 422, 빈 값·공백·길이 초과는 200 REINPUT_REQUIRED */
+  text: string;
+}
+~~~
+
+~~~ts
+export interface SubmitTextInputArgs {
+  sessionId: T.UUID;
+  body: T.TextInputBody;
+  idempotencyKey: T.UUID;
+}
+
+export function submitTextInput(
+  api: ApiClient,
+  args: SubmitTextInputArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RoleplayVoiceData>> {
+  return api.request<T.RoleplayVoiceData>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
+    method: "POST",
+    auth: "child",
+    expectedStatuses: [200, 202],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    conditional: true,
+    body: args.body
+  });
+}
+~~~
+
+## 6. FE 후속 작업·검증 경계
+
+FE ChildRoleplayPage는 2026-11-04부터 sendRoleplayText(`frontend/src/features/child/api.ts`)로 이 API를 부릅니다. 서버에서 roleplay.text.enabled가 꺼져 있으면 404라 화면은 오류 안내를 보여 줍니다. 공유 예제 submitTextInput도 위 본문/응답/기능 설정으로 동기화해 `examples/endpoints.ts`의 조건부 함수(allowConditional 기본 차단)로 옮겼습니다.
 
 텍스트는 처음부터 선택할 수 있고 3회 권유 후에도 음성을 유지합니다. 성공/재입력마다 입력 모드를 강제 변경하지 않습니다. 새 답은 새 키, 응답 유실 재전송은 기존 키/입력으로 처리합니다.
 

@@ -4,6 +4,8 @@
 
 > 2026-11-04 · S4-JIN-01 작업본, 통합 기준 develop `bab136d`. Controller·DTO와 PostgreSQL/HTTP 통합 검사로 확인한 계약이다. 작업 브랜치 구현이며 develop 병합·운영 배포·프론트엔드 연동은 완료하지 않았다.
 
+> 구현 — 2026-11-05 / develop `7376e91` (PR #101 병합). 담당 강사 Bearer + CSRF + Idempotency-Key, 성공은 200입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+
 ## 1. Endpoint
 
 `POST /api/v1/activities/{activityId}/scenario-review`
@@ -194,7 +196,7 @@ const response = await fetch(`${origin}/api/v1/activities/${activityId}/scenario
 });
 ```
 
-동봉 draft-endpoints.ts의 prepareScenario는 이전 경로·타입이므로 이 API에 사용할 수 없다. 예제 코드 파일과 실제 프론트엔드 연동은 이번 변경에서 수정하지 않았다.
+공유 예제 prepareScenario는 2026-11-05에 이 계약으로 바꿔 `examples/endpoints.ts`로 옮겼다(아래 TypeScript). 예제 코드 파일과 실제 프론트엔드 연동은 이번 변경에서 수정하지 않았다.
 
 ## 7. 구현·검증
 
@@ -202,3 +204,30 @@ ScenarioReviewController.prepare → ScenarioPreparationService → ScenarioRevi
 
 
 공통 풀 경계: 다른 강사의 미승인 초안·학생·학습 목표·검토 기록은 공유하지 않는다. 응답 conditions는 요청한 학생의 목표이며 최초 승인자의 개인 데이터를 반환하지 않는다. APPROVED 상태만 있고 확인된 승인 조건 기록이 없는 과거 자료는 조건을 추정하지 않고 제외한다. 공통 후보가 있어도 현재 담당 강사의 확정 PUT 전에는 배정하지 않는다.
+
+## 복사 가능한 TypeScript
+
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 요청·응답 타입은 types.ts의 `ScenarioReviewBody`·`ScenarioReviewData`입니다.
+
+~~~ts
+export interface PrepareScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioReviewBody;
+  idempotencyKey: T.UUID;
+}
+
+export function prepareScenario(
+  api: ApiClient,
+  args: PrepareScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewData>> {
+  return api.request<T.ScenarioReviewData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario-review", {
+    method: "POST",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+~~~

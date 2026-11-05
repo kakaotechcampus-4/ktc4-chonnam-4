@@ -2,7 +2,7 @@
 
 > 2026-11-05 S4-JIN-02 작업본: 새 답변·새 힌트를 저장할 때 중단된 활동을 검사 후 재개합니다. S4-JIN-01 `f8e3dfa` 기반 `feat/activity-readiness`이며 병합·운영 배포 완료를 뜻하지 않습니다.
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -20,7 +20,8 @@
 ## 2. 용도·중요 규칙
 
 - 최초 firstResponse/카메라값은 유지. 힌트후 finalResponse만추가. 동일확정응답은기존결과.
-- SELF_EMOTION_SITUATION만 카메라판정/모델전송. 첫NOT_ANALYZABLE을 즉시확정하지말고 최대2회재촬영후기술제외.
+- 처음 PUT으로 답안 행이 생기면 201, 이후 PUT(확정 포함)은 200입니다.
+- SELF_EMOTION_SITUATION만 카메라판정/모델전송. 서버는 NOT_ANALYZABLE이나 technicalFailureReason을 받으면 그 요청에서 바로 채점 제외(excludedFromScoring=true)로 확정하고 이후 첫 응답은 바꿀 수 없습니다(409 FIRST_RESPONSE_IMMUTABLE). 재촬영(최대2회)은 첫 PUT 전에 FE에서 끝냅니다.
 - Body재전송으로동일응답보장; 현재Header멱등키없음. 원본영상전송없음.
 - 독립 퀴즈(나의 감정·친구 감정)는 마지막 문항이 FINALIZED되는 요청 안에서 활동이 COMPLETED가 되고 스탬프 지급 시각과 학습 기록이 한 번만 남는다. 응답 모양은 그대로이고, 완료 여부는 [API-ACT-04](../activities/get-activity-status.md)로 확인한다. 최초 결합은 퀴즈만으로 완료되지 않는다.
 
@@ -61,11 +62,11 @@
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| firstResponse | string \| null | 아니오 | 예 | 최대200자; 재PUT에서도 최초 값을 유지 |
-| expressionMatchResult | ExpressionMatchResult \| null | 아니오 | 예 | SELF 유형만, 서버 원본 업로드 없음 |
+| firstResponse | string \| null | 조건부 | 예 | 최대200자, 배정 선택지 중 하나; 재PUT에서도 최초 값을 유지. technicalFailureReason이나 NOT_ANALYZABLE이 없으면 필수(누락 422 INVALID_QUIZ_RESULT) |
+| expressionMatchResult | ExpressionMatchResult \| null | 조건부 | 예 | SELF 유형은 technicalFailureReason이 없으면 필수, 다른 유형은 보내면 422. 서버 원본 업로드 없음 |
 | cameraModelVersion | string \| null | 아니오 | 예 | 판정 있으면 필요; 최대100자 |
-| finalResponse | string \| null | 아니오 | 예 | 최대200자; 최초는null, 힌트후 최종 추가 |
-| technicalFailureReason | TechnicalFailureReason \| null | 아니오 | 예 | 현재 두 enum; 다른 문자열 금지 |
+| finalResponse | string \| null | 아니오 | 예 | 최대200자; 최초는 null 또는 firstResponse와 같은 값(힌트 없이 오답 확정), 힌트후 최종 추가. 그 밖의 값은 422 |
+| technicalFailureReason | TechnicalFailureReason \| null | 아니오 | 예 | SELF는 CAMERA_PERMISSION_DENIED만, OTHER_EMOTION_IMAGE는 IMAGE_LOAD_FAILED만, OTHER_EMOTION_SITUATION은 불가. 어긋나면 422 |
 
 ~~~json
 {
@@ -138,7 +139,8 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 409 | ATTEMPT_FINALIZED | 확정 응답 변경 |
 | 422 | INVALID_QUIZ_RESULT | 판정/힌트/응답 모순 |
 | 422 | VALIDATION_FAILED | 길이 검증 |
-| 404 | ACTIVITY_QUIZ_NOT_FOUND | 배정 문항 없음 |
+| 404 | QUIZ_ITEM_NOT_FOUND | 배정 당시 문항이 문항 풀에서 사라짐 |
+| 409 | ITEM_VERSION_CONFLICT | 배정 당시 문항 버전이 바뀜 |
 | 500 | QUIZ_RESULT_CALCULATION_FAILED | 정상 집계를 만들지 못함. 마지막 답안·결과·활동 변경이 롤백됨. 기존 firstResponse와 최종 답안 등을 그대로 유지해 수동 재전송 |
 | 409 | QUIZ_ACTIVITY_NOT_READY | 완료 활동에 새 쓰기를 시도했거나 중단 활동의 퀴즈 재개 근거가 불충분함. 현재 목록/상태를 다시 확인 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
@@ -281,7 +283,7 @@ curl -i -X PUT "$NEURINGO_API_ORIGIN/api/v1/activity-quiz-items/${activityQuizId
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S5-BAE-01` · `S5-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.
 
