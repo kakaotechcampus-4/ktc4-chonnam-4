@@ -43,6 +43,18 @@ const RESTORE_CODES = new Set([
   'SCENARIO_CANDIDATE_INVALID',
 ])
 
+// 본문이 따로 안내·복구하는 오류. 확인창에서 나면 창을 닫아 그 안내가 가려지지 않게 한다.
+const BODY_CODES = new Set([
+  ...RESTORE_CODES,
+  'SCENARIO_REVIEW_INPUT_CHANGED',
+  'SCENARIO_ALREADY_ASSIGNED',
+  'INITIAL_DIFFICULTY_NOT_READY',
+])
+
+function isBodyError(error: unknown): boolean {
+  return error instanceof ApiError && BODY_CODES.has(error.code)
+}
+
 function hasCode(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code
 }
@@ -119,6 +131,9 @@ function ScenarioReviewPage() {
       showReview(next)
       void queryClient.invalidateQueries({ queryKey: ['scenario-approvals'] })
     },
+    onError: (error) => {
+      if (isBodyError(error)) setDiscardNextOpen(false)
+    },
     onSettled: (_data, error) => keys.settle(error),
   })
   const confirm = useMutation({
@@ -134,6 +149,9 @@ function ScenarioReviewPage() {
       afterClose()
       leavingRef.current = true
       navigate('/content')
+    },
+    onError: (error) => {
+      if (isBodyError(error)) setCancelOpen(false)
     },
     onSettled: (_data, error) => keys.settle(error),
   })
@@ -237,7 +255,7 @@ function ScenarioReviewPage() {
         actionLabel="검토 그만하기"
         pendingLabel="그만하는 중..."
         isPending={cancel.isPending}
-        error={cancel.isError && !needsRestore ? describeError(cancel.error, '검토를 그만하지 못했습니다.') : null}
+        error={cancel.isError && !isBodyError(cancel.error) ? describeError(cancel.error, '검토를 그만하지 못했습니다.') : null}
         onConfirm={() => review && cancel.mutate({ reviewId: review.reviewId, revision: review.revision })}
       />
       <DeleteConfirmDialog
@@ -248,7 +266,7 @@ function ScenarioReviewPage() {
         actionLabel="다른 후보 보기"
         pendingLabel="준비하는 중..."
         isPending={prepare.isPending}
-        error={null}
+        error={prepare.isError && !isBodyError(prepare.error) ? describeError(prepare.error, '다른 후보를 불러오지 못했습니다.') : null}
         onConfirm={next}
       />
       <DeleteConfirmDialog

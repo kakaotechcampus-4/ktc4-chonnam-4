@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
 import { apiError, envelope } from "@/test/msw/handlers"
@@ -182,6 +182,39 @@ describe("시나리오 검토", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/content"))
     const deleted = sent.find((request) => request.method === "DELETE")!
     expect(deleted.body).toEqual({ reviewId: REVIEW_ID, revision: 1 })
+  })
+
+  it("고친 뒤 다른 후보로 넘기다 연결이 끊기면 확인창 안에서 알리고 같은 키로 다시 보낸다", async () => {
+    const sent = serve([scenarioReview(), () => HttpResponse.error(), SECOND])
+    const { user } = renderReview()
+
+    await user.click(await screen.findByRole("button", { name: "수정하기" }))
+    await user.type(screen.getByRole("textbox", { name: "제목" }), "!")
+    await user.click(screen.getByRole("button", { name: "다른 후보" }))
+    const dialog = await screen.findByRole("alertdialog")
+    await user.click(within(dialog).getByRole("button", { name: "다른 후보 보기" }))
+    expect(await within(dialog).findByText(/서버에 연결할 수 없습니다/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole("button", { name: "다른 후보 보기" }))
+    expect(await screen.findByRole("heading", { name: "넘어진 친구 돕기" })).toBeInTheDocument()
+    expect(sent[2].key).toBe(sent[1].key)
+  })
+
+  it("검토 그만하기가 검토 변경으로 막히면 확인창을 닫고 [새로 불러오기]를 보인다", async () => {
+    serve([scenarioReview()])
+    server.use(
+      http.delete("*/api/v1/activities/:activityId/scenario-review", () =>
+        apiError(409, "SCENARIO_REVIEW_CHANGED", "검토가 바뀌었습니다.", PATH),
+      ),
+    )
+    const { user } = renderReview()
+
+    await user.click(await screen.findByRole("button", { name: "검토 그만하기" }))
+    const dialog = await screen.findByRole("alertdialog")
+    await user.click(within(dialog).getByRole("button", { name: "검토 그만하기" }))
+
+    expect(await screen.findByRole("button", { name: "새로 불러오기" })).toBeInTheDocument()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
   })
 
   it("고친 내용이 있는 채로 나가려 하면 사라진다고 묻는다", async () => {
