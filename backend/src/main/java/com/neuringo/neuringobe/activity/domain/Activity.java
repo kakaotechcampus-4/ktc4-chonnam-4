@@ -140,6 +140,14 @@ public class Activity {
         }
     }
 
+    /** 최초 시작 시각을 보존하면서 중단된 활동만 재개한다. */
+    public void resume(Instant now) {
+        if (status == ActivityStatus.PAUSED || status == ActivityStatus.RECOVERY_NEEDED) {
+            status = ActivityStatus.IN_PROGRESS;
+            if (startedAt == null) startedAt = now;
+        }
+    }
+
     /**
      * 완료와 스탬프 지급을 함께 기록한다. 이미 완료된 활동이면 아무것도 바꾸지 않고 false 를 돌려준다. 동시 요청에도 한 번만 true 가 나오려면 호출하는 쪽이
      * 활동 행을 잠근 상태여야 한다.
