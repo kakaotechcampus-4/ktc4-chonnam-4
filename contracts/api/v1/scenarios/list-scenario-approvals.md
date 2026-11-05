@@ -1,6 +1,6 @@
 # API-SCN-08 · 시나리오 승인 대기 활동 목록 조회
 
-> 구현 — 2026-11-05 / 브랜치 `feature/scenario-review-screens`(시나리오 검토 API-SCN-01·04·06 위). 콘텐츠·승인 → 승인 대기함의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-06 / 브랜치 `feature/scenario-review-screens`(develop `d1a7b0e` 위). 콘텐츠·승인 → 승인 대기함의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -130,8 +130,11 @@ export interface ScenarioApprovalItem {
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import type * as T from "./types.ts";
 
+export type ListScenarioApprovalsArgs = Record<string, never>;
+
 export function listScenarioApprovals(
   api: ApiClient,
+  _args: ListScenarioApprovalsArgs = {},
   options: CallOptions = {}
 ): Promise<T.ApiResponse<T.ScenarioApprovalItem[]>> {
   return api.request<T.ScenarioApprovalItem[]>("/api/v1/scenario-approvals", {
