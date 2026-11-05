@@ -246,7 +246,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -538,4 +538,134 @@ export type QuizResult = {
 /** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
 export function getQuizResult(activityId: string): Promise<QuizResult> {
   return readRequest<QuizResult>(`/activities/${encodeURIComponent(activityId)}/quiz-result`)
+}
+
+export type ScenarioCharacter = { id: string; role: string }
+
+export type ScenarioMicroGoal = {
+  microGoalId: string
+  description: string
+  requiredEvidence: string[]
+  achievementExample: string | null
+}
+
+/** 검토 중인 시나리오 한 개(재사용 후보 또는 새로 만든 것). 후보 목록·개수는 서버가 내리지 않는다. */
+export type ReviewScenario = {
+  scenarioId: string
+  /** 콘텐츠 버전. 검토 번호(revision)와 다르다 */
+  scenarioVersion: number
+  scenarioLevel: string
+  title: string
+  summary: string
+  characters: ScenarioCharacter[]
+  scenarioFacts: string[]
+  microGoals: ScenarioMicroGoal[]
+  /** S0·S1·S2 시작 질문 */
+  startingQuestions: Record<string, string>
+  /** 시작 질문마다 이어지는 작은 목표 ID */
+  startingQuestionGoalIds: Record<string, string>
+}
+
+/** 이번 활동의 목표와 조건. 서버에 저장된 값이다. */
+export type ReviewConditions = {
+  title: string
+  category: string | null
+  situationType: string | null
+  characters: Record<string, unknown>[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+  scenarioLevel: string
+}
+
+export type ScenarioReview = {
+  reviewId: string
+  activityId: string
+  /** 검토 번호. 다음 동작에 그대로 돌려보내고, 이보다 낮은 번호의 늦은 응답은 버린다 */
+  revision: number
+  conditions: ReviewConditions
+  scenario: ReviewScenario
+}
+
+export type ScenarioReviewAction =
+  | { action: 'START_OR_RESUME' }
+  | { action: 'NEXT'; reviewId: string; revision: number }
+
+/** 고친 칸만 싣는다. 사실·등장인물·시작 질문은 고칠 수 없다. */
+export type ScenarioEdits = {
+  title?: string
+  summary?: string
+  microGoals?: { microGoalId: string; description?: string; requiredEvidence?: string[] }[]
+}
+
+export type ScenarioConfirmation = {
+  reviewId: string
+  revision: number
+  scenarioId: string
+  scenarioVersion: number
+  edits?: ScenarioEdits
+}
+
+/** 확정·취소 결과. 최종 시나리오 ID 는 활동 상세의 scenarioId 로 확인한다. */
+export type ScenarioReviewClosure = {
+  reviewId: string
+  activityId: string
+  outcome: 'CONFIRMED' | 'CANCELLED'
+  closedAt: string
+}
+
+/**
+ * 검토 시작·이어 보기(START_OR_RESUME)와 다른 후보(NEXT). 후보가 없거나 다 넘기면 같은 요청 안에서 새로 만들어 오래 걸릴 수 있다.
+ * 응답을 못 받아 다시 보낼 때는 같은 키와 같은 본문을 쓴다.
+ */
+export function prepareScenarioReview(
+  activityId: string,
+  action: ScenarioReviewAction,
+  requestKey: string,
+): Promise<ScenarioReview> {
+  return writeRequest<ScenarioReview>('POST', `/activities/${activityId}/scenario-review`, action, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [승인]: 보고 있는 시나리오를 (고친 내용이 있으면 새 버전으로) 이 활동에 붙인다. */
+export function confirmScenarioReview(
+  activityId: string,
+  confirmation: ScenarioConfirmation,
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('PUT', `/activities/${activityId}/scenario`, confirmation, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [검토 그만하기]: 이번 검토를 끝낸다. 활동은 계속 시나리오를 기다린다. */
+export function cancelScenarioReview(
+  activityId: string,
+  review: { reviewId: string; revision: number },
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('DELETE', `/activities/${activityId}/scenario-review`, review, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+export type ScenarioApprovalState = 'WAITING' | 'IN_REVIEW'
+
+/** 승인 대기함의 한 줄. 시나리오를 기다리는 최초 결합 활동 하나다. */
+export type ScenarioApprovalItem = {
+  activityId: string
+  childId: string
+  childName: string
+  classId: string
+  className: string
+  goalId: string
+  goalTitle: string
+  scenarioLevel: string
+  waitingSince: string
+  state: ScenarioApprovalState
+}
+
+/** 내 학급에서 시나리오 승인을 기다리는 활동. 기다린 순서대로 온다. */
+export function listScenarioApprovals(): Promise<ScenarioApprovalItem[]> {
+  return readRequest<ScenarioApprovalItem[]>('/scenario-approvals')
 }
