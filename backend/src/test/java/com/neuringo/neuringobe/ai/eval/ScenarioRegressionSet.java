@@ -51,7 +51,7 @@ record ScenarioRegressionSet(String setId, String description, List<Case> cases)
             Expectation expect) {
 
         Expectation expectation() {
-            return expect == null ? new Expectation(null, null, null) : expect;
+            return expect == null ? new Expectation(null, null, null, null) : expect;
         }
 
         /** 앞선 시도가 계약 검사에서 실패했으면 그 코드를 붙여 다시 만든다. */
@@ -65,12 +65,14 @@ record ScenarioRegressionSet(String setId, String description, List<Case> cases)
     }
 
     /**
-     * @param mentionsAny 묶음마다 낱말 하나 이상이 시나리오 어딘가에 있어야 한다(상황·필수 요소 반영)
+     * @param mentionsAny 묶음마다 낱말 하나 이상이 시나리오 어딘가에 있어야 한다(상황 반영)
+     * @param goalsMentionAny 묶음마다 낱말 하나 이상이 마이크로 목표(설명·달성 조건)에 있어야 한다(필수 요소 = 아동 행동 반영)
      * @param mustNotMention 시나리오 어디에도 없어야 한다(지시문 주입을 따르지 않았는지)
      * @param lastGoalMentionsAny 마지막 마이크로 목표 설명에 하나 이상 있어야 한다(분류별 마지막 목표)
      */
     record Expectation(
             List<List<String>> mentionsAny,
+            List<List<String>> goalsMentionAny,
             List<String> mustNotMention,
             List<String> lastGoalMentionsAny) {
 
@@ -83,6 +85,15 @@ record ScenarioRegressionSet(String setId, String description, List<Case> cases)
                             new Check(
                                     "mentions_any " + group,
                                     group.stream().anyMatch(all::contains)));
+                }
+            }
+            if (goalsMentionAny != null) {
+                String goals = goalText(scenario);
+                for (List<String> group : goalsMentionAny) {
+                    checks.add(
+                            new Check(
+                                    "goals_mention_any " + group,
+                                    group.stream().anyMatch(goals::contains)));
                 }
             }
             if (mustNotMention != null) {
@@ -98,6 +109,15 @@ record ScenarioRegressionSet(String setId, String description, List<Case> cases)
                                 lastGoalMentionsAny.stream().anyMatch(last::contains)));
             }
             return checks;
+        }
+
+        private static String goalText(GeneratedScenario scenario) {
+            StringBuilder text = new StringBuilder();
+            for (GeneratedScenario.MicroGoal goal : scenario.microGoals()) {
+                text.append(goal.description()).append('\n');
+                goal.requiredEvidence().forEach(e -> text.append(e).append('\n'));
+            }
+            return text.toString();
         }
 
         private static String text(GeneratedScenario scenario) {

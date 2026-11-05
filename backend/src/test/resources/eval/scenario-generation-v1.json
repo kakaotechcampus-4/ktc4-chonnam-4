@@ -10,11 +10,11 @@
         "category": "EMOTION_RECOGNITION",
         "situation_type": "PLAYGROUND",
         "characters": [{"id": "FRIEND", "role": "같은 반 친구"}],
-        "required_elements": ["친구의 표정을 보는 장면"],
+        "required_elements": ["친구의 표정을 보고 기분 말하기"],
         "forbidden_expressions": ["싸움"]
       },
       "difficulty": {"scenario_level": "L1"},
-      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"], ["표정", "얼굴", "눈물", "울"]]}
+      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"]], "goals_mention_any": [["표정", "얼굴", "겉모습", "단서"]]}
     },
     {
       "id": "L1_PRESENTATION",
@@ -32,17 +32,17 @@
     },
     {
       "id": "L1_HOME_SIBLING",
-      "purpose": "가정 상황, 등장인물이 친구가 아닌 동생",
+      "purpose": "가정 상황, 등장인물이 친구가 아닌 동생. L1 감정 인식(목표 3개)에도 질문하기 행동이 목표에 들어가는지",
       "teacher_input": {
         "learning_goal": "동생의 마음 알아차리기",
         "category": "EMOTION_RECOGNITION",
         "situation_type": "집",
         "characters": [{"id": "SIBLING", "role": "다섯 살 동생"}],
-        "required_elements": ["장난감"],
+        "required_elements": ["동생에게 기분을 묻는 질문 하기"],
         "forbidden_expressions": []
       },
       "difficulty": {"scenario_level": "L1"},
-      "expect": {"mentions_any": [["동생"], ["장난감"]]}
+      "expect": {"mentions_any": [["동생"]], "goals_mention_any": [["묻", "물어", "질문"]]}
     },
     {
       "id": "L1_MINIMAL",
@@ -80,11 +80,11 @@
         "category": "EMOTION_RECOGNITION",
         "situation_type": "급식 시간",
         "characters": [{"role": "같은 모둠 친구"}],
-        "required_elements": ["좋아하는 반찬"],
+        "required_elements": ["친구에게 왜 그런 기분인지 물어보기"],
         "forbidden_expressions": ["편식"]
       },
       "difficulty": {"scenario_level": "L2", "emotion_complexity": "SINGLE_EMOTION_WITH_CAUSE"},
-      "expect": {"mentions_any": [["급식", "반찬", "점심"]]}
+      "expect": {"mentions_any": [["급식", "반찬", "점심"]], "goals_mention_any": [["묻", "물어", "질문"]]}
     },
     {
       "id": "L2_EMPATHY",
@@ -94,11 +94,11 @@
         "category": "EMPATHY_EXPRESSION",
         "situation_type": "미술 시간",
         "characters": [{"id": "FRIEND", "role": "옆자리 친구"}],
-        "required_elements": ["그림"],
+        "required_elements": ["친구에게 위로하는 말 하기"],
         "forbidden_expressions": ["못생겼다"]
       },
       "difficulty": {"scenario_level": "L2"},
-      "expect": {"mentions_any": [["그림", "미술"]], "last_goal_mentions_any": ["말", "위로", "해 줄"]}
+      "expect": {"mentions_any": [["그림", "미술"]], "goals_mention_any": [["위로", "해 줄 말", "괜찮"]], "last_goal_mentions_any": ["말", "위로", "해 줄"]}
     },
     {
       "id": "L3_COPING",
@@ -122,11 +122,11 @@
         "category": "친구 마음에 공감하기",
         "situation_type": "학교",
         "characters": [{"id": "FRIEND", "role": "이사 가는 친구"}],
-        "required_elements": ["이사"],
+        "required_elements": ["두 가지 마음을 함께 말하기"],
         "forbidden_expressions": []
       },
       "difficulty": {"scenario_level": "L3", "emotion_complexity": "MIXED_EMOTIONS"},
-      "expect": {"mentions_any": [["이사"]], "last_goal_mentions_any": ["말", "위로", "해 줄", "공감"]}
+      "expect": {"mentions_any": [["이사"]], "goals_mention_any": [["두 가지", "섞인", "함께", "둘 다", "동시에"]], "last_goal_mentions_any": ["말", "위로", "해 줄", "공감"]}
     }
   ]
 }
