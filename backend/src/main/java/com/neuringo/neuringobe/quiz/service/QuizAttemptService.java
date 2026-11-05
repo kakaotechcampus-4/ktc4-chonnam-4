@@ -1,9 +1,14 @@
 package com.neuringo.neuringobe.quiz.service;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityNextAction;
+import com.neuringo.neuringobe.activity.domain.ActivityReadinessPolicy;
+import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
+import com.neuringo.neuringobe.activity.repository.ActivityReadinessRepository;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
+import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
@@ -30,6 +35,7 @@ import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -59,6 +65,7 @@ public class QuizAttemptService {
     private final QuizAssignmentService assignmentService;
     private final ActivityCompletionService completion;
     private final ApplicationEventPublisher events;
+    private final ActivityReadinessRepository readiness;
 
     public QuizAttemptService(
             ActivityRepository activities,
@@ -70,7 +77,8 @@ public class QuizAttemptService {
             ChildAccessScope access,
             QuizAssignmentService assignmentService,
             ActivityCompletionService completion,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ActivityReadinessRepository readiness) {
         this.activities = activities;
         this.assignments = assignments;
         this.attempts = attempts;
@@ -81,6 +89,7 @@ public class QuizAttemptService {
         this.assignmentService = assignmentService;
         this.completion = completion;
         this.events = events;
+        this.readiness = readiness;
     }
 
     @Transactional
@@ -103,6 +112,7 @@ public class QuizAttemptService {
                 }
                 throw conflict("ATTEMPT_FINALIZED", "확정된 응답은 변경할 수 없습니다.");
             }
+            if (request.finalResponse() != null) prepareForQuizWrite(activity);
             return finishExisting(existing, item, activity, request);
         }
 
@@ -130,8 +140,8 @@ public class QuizAttemptService {
                         reason(request),
                         judged.excludedFromScoring(),
                         Instant.now());
+        prepareForQuizWrite(activity);
         attempts.saveAndFlush(created);
-        activity.start(Instant.now());
         if (judged.correct() || judged.excludedFromScoring()) {
             if (request.finalResponse() != null
                     && !Objects.equals(request.finalResponse(), request.firstResponse())) {
@@ -208,8 +218,11 @@ public class QuizAttemptService {
     public QuizHintResponse issueHint(
             UUID assignmentId, UUID requestKey, Authentication authentication) {
         ActivityQuiz assigned = requireAssignment(assignmentId);
-        requireLockedActivity(
-                assigned.getActivityId(), authentication, QuizAttemptService::assignmentNotFound);
+        Activity activity =
+                requireLockedActivity(
+                        assigned.getActivityId(),
+                        authentication,
+                        QuizAttemptService::assignmentNotFound);
         QuizAttempt attempt =
                 attempts.findByActivityQuizId(assignmentId)
                         .orElseThrow(
@@ -234,6 +247,7 @@ public class QuizAttemptService {
             throw conflict("NO_MORE_HINTS", "제공 가능한 힌트가 없습니다.");
         }
         QuizItem.HintSpec spec = item.getHints().get(next - 1);
+        prepareForQuizWrite(activity);
         QuizHint hint =
                 new QuizHint(
                         UUID.randomUUID(),
@@ -362,8 +376,43 @@ public class QuizAttemptService {
     private Activity requireLockedActivity(
             UUID id, Authentication authentication, Supplier<ResourceNotFoundException> hidden) {
         Activity activity = activities.findByIdForUpdate(id).orElseThrow(hidden);
+        children.findByIdForUpdate(activity.getChildId())
+                .filter(child -> child.getStatus() == ChildStatus.ACTIVE)
+                .orElseThrow(hidden);
         access.requireOwnerOrInstructor(authentication, activity.getChildId(), hidden);
         return activity;
+    }
+
+    private void prepareForQuizWrite(Activity activity) {
+        if (activity.getStatus() == ActivityStatus.COMPLETED) throw quizNotReady();
+        if (activity.getStatus() == ActivityStatus.PAUSED
+                || activity.getStatus() == ActivityStatus.RECOVERY_NEEDED) {
+            var composition =
+                    Map.of(
+                            activity.getActivityType().name(),
+                            QuizAssignmentService.composition(activity.getActivityType()).stream()
+                                    .map(Enum::name)
+                                    .sorted()
+                                    .toList());
+            var evidence =
+                    readiness
+                            .load(
+                                    activity.getChildId(),
+                                    List.of(activity.getActivityId()),
+                                    composition)
+                            .get(activity.getActivityId());
+            if (evidence == null
+                    || ActivityReadinessPolicy.evaluate(evidence).nextAction()
+                            != ActivityNextAction.QUIZ) {
+                throw quizNotReady();
+            }
+            activity.resume(Instant.now());
+        }
+        activity.start(Instant.now());
+    }
+
+    private ApiException quizNotReady() {
+        return conflict("QUIZ_ACTIVITY_NOT_READY", "현재 활동에서는 퀴즈 응답이나 힌트를 추가할 수 없습니다.");
     }
 
     private static ResourceNotFoundException assignmentNotFound() {
