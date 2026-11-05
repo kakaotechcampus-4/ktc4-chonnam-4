@@ -1,5 +1,11 @@
 # API v1 변경 이력
 
+## 2026-11-06 — 시나리오 승인 대기 활동 목록
+
+- 기준은 develop `d1a7b0e`(PR #100·#101·#103 병합) 위의 `feature/scenario-review-screens` 작업 브랜치입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 58개 ID 중 구현 36개·조건부 구현 2개·설계 18개·미제공 2개입니다.
+- 추가: [API-SCN-08](./scenarios/list-scenario-approvals.md) 승인 대기 활동 목록(콘텐츠·승인 → 승인 대기함). 퀴즈로 난이도가 정해졌고 시나리오가 없는 내 학급의 최초 결합 활동을 기다린 순서대로 주고, `state`는 `WAITING`(검토 전)·`IN_REVIEW`(서버에 남은 검토 있음)입니다.
+
 ## 2026-11-05 — develop `7376e91`(PR #101·#103) 반영
 
 - 공유 예제: [API-SCN-01](./scenarios/prepare-scenario.md) prepareScenario(POST `/activities/{activityId}/scenario-review`), [API-SCN-04](./scenarios/review-scenario.md) reviewScenario(PUT `/activities/{activityId}/scenario`), [API-SCN-06](./scenarios/delete-scenario.md) deleteScenario(DELETE `/activities/{activityId}/scenario-review`)를 실제 계약으로 바꿔 `examples/endpoints.ts`로 옮겼습니다. 목차는 구현 35개·조건부 2개·설계 18개·미제공 2개이며, 공유 예제 검사가 다시 통과합니다.
