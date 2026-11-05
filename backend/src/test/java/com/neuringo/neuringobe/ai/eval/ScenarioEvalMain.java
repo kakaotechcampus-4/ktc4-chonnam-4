@@ -68,7 +68,7 @@ public final class ScenarioEvalMain {
                             set,
                             llm,
                             new ScenarioPromptFactory(JsonMapper.builder().build(), null));
-            System.out.printf("[%s] scenario-generation/v1 · %s × %d회 시작%n", runId, model, repeats);
+            System.out.printf("[%s] scenario-generation/v2 · %s × %d회 시작%n", runId, model, repeats);
             List<ScenarioRecord> records =
                     runner.run(
                             repeats,

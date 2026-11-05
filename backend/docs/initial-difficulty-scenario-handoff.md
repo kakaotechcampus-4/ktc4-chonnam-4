@@ -1,5 +1,7 @@
 # S5-JIN-02 최초 난이도 → 시나리오 준비 계약
 
+> 2026-11-04 S4-JIN-01 변경: 아래의 퀴즈 완료·결과 재조회 자동 배정은 폐기된 이전 구현 기록이다. 현재는 강사 준비 POST와 명시적 확정 PUT으로만 배정하며, ScenarioAttachmentService와 결과 GET의 이벤트 재발행은 제거했다. 현재 계약은 [시나리오 승인·재사용 기록](scenario-approval-registry.md)의 아홉 번째 구현 단위를 따른다. 과거 테스트 수·통합 위치는 당시 기록이다.
+
 현재 후속 통합 위치(2026-10-28): `/private/tmp/neuringo-s5-s3-integration-1qgwnvtg`, 브랜치 `codex/s5-s3-backend-integration`, 기준 `9f6ffa5`다. 시나리오 구조·역할극 코드 통합(1번·2번)을 마쳤고 전체 89개 묶음의 1,322개 테스트가 실패·오류·건너뛰기 없이 통과했다. 상세 기록은 통합 폴더의 `backend/docs/s5-s3-backend-integration.md`를 따른다. 다음은 운영 진행 상태 공급(3번)이다. 아래 1,016개 결과와 구현 설명은 원본 S5 작업 폴더의 이전 범위이며 최신 통합본 전체 기록과 구분한다.
 
 ## 최종 범위 판정

@@ -115,3 +115,17 @@ export NEURINGO_REQUEST_KEY='<한 새 행동에서 생성해 재전송 시 유�
 ~~~
 
 각 MD의 경로 변수도 해당 UUID로 설정합니다. 음성은 NEURINGO_AUDIO_FILE에 테스트용 파일 경로를 지정합니다. cookie jar/비밀값/실제 원본을 Git이나 공유 문서에 넣지 않습니다. [모의 검사](./examples/verify-examples.mjs)는 실제 네트워크를 호출하지 않으며 Node24에서 실행합니다.
+
+
+## S4-JIN-01 시나리오 검토 계약 갱신 (2026-11-04)
+
+활동별 준비 POST(START_OR_RESUME/NEXT), 확정 PUT, 취소 DELETE의 상세는 시나리오 API-SCN-01/04/06을 따른다. 세 요청 모두 Bearer·쿠키 CSRF·UUID Idempotency-Key를 사용한다. DELETE에도 JSON 검토 ID/revision을 보내고 200 JSON을 읽는다. 재사용본도 강사 확정이 필요하며, 후보가 없거나 소진되면 준비 요청 안에서 동기 신규 생성으로 넘어간다.
+
+새로고침·재접속은 START_OR_RESUME로 복원한다. 같은 동작 재전송은 기존 키·본문, 새로운 거절은 새 키·직전 revision을 쓴다. 낮은 revision의 늦은 응답은 화면에 덮어쓰지 않는다. 수정은 확정 PUT의 edits에 포함하며 별도 저장·버전 생성 요청을 보내지 않는다. 퀴즈 완료·결과 GET은 자동 배정하지 않는다.
+
+기존 예제 TypeScript·MSW·실제 프론트엔드 수정은 이번 백엔드 작업 범위 밖이다. prepareScenario/reviewScenario/createScenarioVersion/deleteScenario 등 기존 초안 함수는 이번 경로·필드·성공 상태와 다르므로 그대로 연동하지 않는다. 이 명세 갱신은 운영 배포를 의미하지 않는다.
+
+
+## 2026-11-05 공통 승인 풀
+
+A의 확인된 승인본을 B도 조건에 맞으면 재사용한다. 제시 순서·검토·확정 권한은 각 강사/담당 활동별이며 NEXT는 해당 검토에서만 거절한다. 원 승인자 탈퇴 후 콘텐츠·조건을 보존한다. 요청/응답 경로와 revision 구조는 유지되며 공유 범위만 넓어진다. 다른 강사의 학생·목표·미승인 초안·검토 기록은 공유하지 않는다. 새 API 연동 예제 TypeScript와 실제 FE는 아직 미수정이다.

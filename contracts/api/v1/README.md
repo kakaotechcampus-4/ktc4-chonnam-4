@@ -1,5 +1,9 @@
 # 느링고 API v1 명세
 
+> S4-JIN-01 통합 기준은 develop `bab136d`, 작업 브랜치는 `feat/scenario-reuse-review`다. 아래 시나리오 세 API는 이 브랜치의 계약이며 develop 배포 완료를 의미하지 않는다.
+
+> 2026-11-04 S4-JIN-01 갱신: 시나리오의 현행 작업본 계약은 아래 세 활동별 API다. 그 밖의 날짜·구현 개수는 기존 검토 시점 기록이다. 동봉 TypeScript 예제와 실제 프론트엔드는 이번 세 API에 맞춰 수정하지 않았으며, 이전 draft 시나리오 함수를 새 경로에 사용할 수 없다. develop 병합·운영 배포는 미확인이다.
+
 > 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
 > 통합 갱신: 2026-10-28 · PR #80 `c306bd1` + develop `565beb6`의 충돌 해결 작업본. 위 기존 계약 기준에 API-RPL-01 시작·복원과 API-ACT-04 활동 상태 조회의 실제 구현을 반영했습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
@@ -98,13 +102,13 @@
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-SCN-01 · 시나리오 재사용 우선 준비·생성](./scenarios/prepare-scenario.md) | POST | `/api/v1/scenarios` | 설계 | prepareScenario |
-| [API-SCN-02 · 강사용 시나리오 목록 조회](./scenarios/list-scenarios.md) | GET | `/api/v1/scenarios` | 설계 | listScenarios |
-| [API-SCN-03 · 시나리오 검토 상세 조회](./scenarios/get-scenario.md) | GET | `/api/v1/scenarios/{scenarioId}` | 설계 | getScenario |
-| [API-SCN-04 · 시나리오 초안 수정·승인 검토](./scenarios/review-scenario.md) | PATCH | `/api/v1/scenarios/{scenarioId}` | 설계 | reviewScenario |
-| [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 설계 | createScenarioVersion |
-| [API-SCN-06 · 미사용 시나리오 초안 폐기](./scenarios/delete-scenario.md) | DELETE | `/api/v1/scenarios/{scenarioId}` | 설계 | deleteScenario |
-| [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 설계 | listScenarioMicroGoals |
+| [API-SCN-01 · 준비·복원·다음 후보](./scenarios/prepare-scenario.md) | POST | `/api/v1/activities/{activityId}/scenario-review` | 작업본 구현 | 기존 예제 미반영 |
+| [API-SCN-02 · 강사용 시나리오 목록 조회](./scenarios/list-scenarios.md) | GET | `/api/v1/scenarios` | 별도 설계| listScenarios |
+| [API-SCN-03 · 시나리오 검토 상세 조회](./scenarios/get-scenario.md) | GET | `/api/v1/scenarios/{scenarioId}` | 준비/확정 응답으로 통합·별도 경로 미구현 | getScenario |
+| [API-SCN-04 · 수정·확정·배정](./scenarios/review-scenario.md) | PUT | `/api/v1/activities/{activityId}/scenario` | 작업본 구현 | 기존 예제 미반영 |
+| [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 준비/확정 응답으로 통합·별도 경로 미구현 | createScenarioVersion |
+| [API-SCN-06 · 검토 취소](./scenarios/delete-scenario.md) | DELETE | `/api/v1/activities/{activityId}/scenario-review` | 작업본 구현 | 기존 예제 미반영 |
+| [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 준비/확정 응답으로 통합·별도 경로 미구현 | listScenarioMicroGoals |
 ### 역할극
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |

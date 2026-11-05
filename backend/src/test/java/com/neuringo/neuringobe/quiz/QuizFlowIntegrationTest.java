@@ -46,7 +46,6 @@ import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayStartService;
 import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
 import com.neuringo.neuringobe.scenario.service.InitialScenarioPreparationService;
-import com.neuringo.neuringobe.scenario.service.ScenarioAttachmentService;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.domain.UserRole;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
@@ -118,7 +117,6 @@ class QuizFlowIntegrationTest {
     @Autowired private InitialDifficultyQueryService initialDifficulties;
     @Autowired private InitialScenarioPreparationService scenarioPreparations;
     @Autowired private CompletionEvents completionEvents;
-    @Autowired private ScenarioAttachmentService scenarioAttachments;
     @Autowired private InitialRoleplayStartQueryService roleplayStarts;
     @Autowired private RoleplaySessionRepository roleplaySessions;
     @Autowired private RoleplayRequestScopeService roleplayScopes;
@@ -443,9 +441,7 @@ class QuizFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.policyVersion").value("INITIAL_QUIZ_V2"));
         Activity applied = activities.findById(activityId).orElseThrow();
         assertThat(completionEvents.forActivity(activityId))
-                .containsExactly(
-                        new FirstQuizCompleted(activityId, childId, "L2"),
-                        new FirstQuizCompleted(activityId, childId, "L2"));
+                .containsExactly(new FirstQuizCompleted(activityId, childId, "L2"));
         assertThat(applied.getInitialSupportLevel()).isEqualTo("S1");
         assertThat(applied.isDifficultyFallbackApplied()).isFalse();
         InitialDifficultyEvidence evidence =
@@ -492,10 +488,7 @@ class QuizFlowIntegrationTest {
         assertThat(resultCount(activityId)).isEqualTo(1);
         assertThat(initialDifficultyCount()).isEqualTo(1);
         assertThat(completionEvents.forActivity(activityId))
-                .containsExactly(
-                        new FirstQuizCompleted(activityId, childId, "L2"),
-                        new FirstQuizCompleted(activityId, childId, "L2"),
-                        new FirstQuizCompleted(activityId, childId, "L2"));
+                .containsExactly(new FirstQuizCompleted(activityId, childId, "L2"));
         assertThat(jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId))
                 .isEqualTo(resultSnapshot);
         assertThat(jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId))
@@ -1038,9 +1031,7 @@ class QuizFlowIntegrationTest {
             assertThat(completionEvents.forActivity(activityId)).isEmpty();
         } else {
             assertThat(completionEvents.forActivity(activityId))
-                    .containsExactly(
-                            new FirstQuizCompleted(activityId, childId, "L3"),
-                            new FirstQuizCompleted(activityId, childId, "L3"));
+                    .containsExactly(new FirstQuizCompleted(activityId, childId, "L3"));
         }
     }
 
@@ -1099,9 +1090,7 @@ class QuizFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.policyVersion").value("INITIAL_QUIZ_V2"));
         assertThat(resultCount(activityId)).isEqualTo(1);
         assertThat(completionEvents.forActivity(activityId))
-                .containsExactly(
-                        new FirstQuizCompleted(activityId, childId, "L1"),
-                        new FirstQuizCompleted(activityId, childId, "L1"));
+                .containsExactly(new FirstQuizCompleted(activityId, childId, "L1"));
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT difficulty_fallback_reason FROM quiz_result WHERE activity_id = ?",
@@ -1138,6 +1127,7 @@ class QuizFlowIntegrationTest {
         assertThat(prepared.initialDifficulty()).isEqualTo(legacy);
         assertThat(prepared.reuseKey().scenarioLevel()).isEqualTo("L1");
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L1");
+        assignLegacyScenario(activityId, scenarioId);
         mvc.perform(get("/api/v1/activities/{id}/quiz-result", activityId).session(childSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.scenarioLevel").value("L1"))
@@ -1170,19 +1160,20 @@ class QuizFlowIntegrationTest {
     }
 
     @Test
-    void committedFirstQuizAttachesMatchingApprovedVersionAndReplayKeepsIt() throws Exception {
+    void committedFirstQuizAndResultReadNeverAssignWithoutInstructorConfirmation()
+            throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "승인본 연결"));
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         completeAssignedQuiz(activityId, true);
 
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
         Map<String, Object> resultSnapshot =
                 jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId);
         Map<String, Object> activitySnapshot =
                 jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId);
         UUID laterCandidate = saveScenarioForActivity(activityId, "APPROVED", "L3");
-        scenarioAttachments.onFirstQuizCompleted(new FirstQuizCompleted(activityId, childId, "L3"));
+        mvc.perform(get("/api/v1/activities/{id}/quiz-result", activityId).session(childSession))
+                .andExpect(status().isOk());
         assertThat(jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId))
                 .isEqualTo(activitySnapshot);
         assertThat(jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId))
@@ -1245,7 +1236,7 @@ class QuizFlowIntegrationTest {
     }
 
     @Test
-    void approvedScenarioCannotChangeConditionsContentVersionOrBecomeDraft() throws Exception {
+    void approvedScenarioKeepsContentImmutableWhileAllowingClassDetachment() throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "승인 버전 불변"));
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         for (String change :
@@ -1253,7 +1244,6 @@ class QuizFlowIntegrationTest {
                         "title = '변경'",
                         "scenario_level = 'L1'",
                         "goal_content_hash = null",
-                        "class_id = null",
                         "scenario_version = 2",
                         "status = 'DRAFT'")) {
             assertThatThrownBy(
@@ -1265,6 +1255,19 @@ class QuizFlowIntegrationTest {
                                             scenarioId))
                     .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
+        var before = jdbc.queryForMap("SELECT * FROM scenario WHERE scenario_id=?", scenarioId);
+        var originalClass = before.get("class_id");
+        jdbc.update("UPDATE scenario SET class_id=NULL WHERE scenario_id=?", scenarioId);
+        before.put("class_id", null);
+        assertThat(jdbc.queryForMap("SELECT * FROM scenario WHERE scenario_id=?", scenarioId))
+                .isEqualTo(before);
+        assertThatThrownBy(
+                        () ->
+                                jdbc.update(
+                                        "UPDATE scenario SET class_id=? WHERE scenario_id=?",
+                                        originalClass,
+                                        scenarioId))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         jdbc.update("UPDATE scenario SET status = 'RETIRED' WHERE scenario_id = ?", scenarioId);
         assertThatThrownBy(
                         () ->
@@ -1300,7 +1303,7 @@ class QuizFlowIntegrationTest {
     }
 
     @Test
-    void rollbackDoesNotAttachAndSuccessfulRetryUsesSameApprovedCandidate() throws Exception {
+    void rollbackAndSuccessfulQuizRetryBothLeaveScenarioUnassigned() throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "저장 성공 후 연결"));
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         new TransactionTemplate(transactionManager)
@@ -1322,13 +1325,12 @@ class QuizFlowIntegrationTest {
         assertThat(resultCount(activityId)).isZero();
         assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
         completeAssignedQuiz(activityId, true);
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
     }
 
     @Test
-    void attachmentWriteFailureKeepsCommittedQuizAndResultReadRetriesWithoutRecalculation(
-            CapturedOutput output) throws Exception {
+    void quizCompletionAndResultReadNeverAttemptScenarioAttachment(CapturedOutput output)
+            throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "연결 저장 실패 복구"));
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         jdbc.execute(
@@ -1357,7 +1359,7 @@ class QuizFlowIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.initialSupportLevel").value("S0"));
             assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
-            assertThat(output.getAll()).contains("시나리오 연결 실패");
+            assertThat(output.getAll()).doesNotContain("시나리오 연결 실패");
         } finally {
             jdbc.execute(
                     "DROP TRIGGER test_attachment_failure ON activity; DROP FUNCTION test_reject_scenario_attachment()");
@@ -1366,14 +1368,13 @@ class QuizFlowIntegrationTest {
                 jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId);
         mvc.perform(get("/api/v1/activities/{id}/quiz-result", activityId).session(childSession))
                 .andExpect(status().isOk());
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
         assertThat(jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId))
                 .isEqualTo(snapshot);
     }
 
     @Test
-    void resultReadConnectsNewlyAvailableApprovedScenarioAndKeepsResultResponse() throws Exception {
+    void resultReadLeavesNewlyAvailableApprovedScenarioUnassigned() throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "나중에 준비된 승인본"));
         completeAssignedQuiz(activityId, true);
         MvcResult before =
@@ -1397,8 +1398,7 @@ class QuizFlowIntegrationTest {
         Object recoveredData =
                 JsonPath.read(recovered.getResponse().getContentAsString(), "$.data");
         assertThat(recoveredData).isEqualTo(beforeData);
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
         assertThat(jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId))
                 .isEqualTo(snapshot);
 
@@ -1436,7 +1436,7 @@ class QuizFlowIntegrationTest {
     }
 
     @Test
-    void unauthorizedResultReadCannotTriggerAttachmentButOwningInstructorCan() throws Exception {
+    void resultReadChecksOwnershipAndNeverAssignsScenario() throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "결과 복구 권한"));
         completeAssignedQuiz(activityId, true);
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
@@ -1463,29 +1463,35 @@ class QuizFlowIntegrationTest {
                                                 instructorAuthentication(
                                                         TestInstructors.id("teacher-quiz")))))
                 .andExpect(status().isOk());
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
     }
 
     @Test
-    void concurrentResultReadsAttachOnceAndPreserveTheOriginalDifficulty() throws Exception {
+    void concurrentResultReadsNeverAssignAndPreserveTheOriginalDifficulty() throws Exception {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "동시 결과 복구"));
         completeAssignedQuiz(activityId, true);
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         saveScenarioForActivity(activityId, "APPROVED", "L3");
         Map<String, Object> snapshot =
                 jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId);
+        var start = new java.util.concurrent.CyclicBarrier(2);
         Callable<MvcResult> request =
-                () ->
-                        mvc.perform(
-                                        get("/api/v1/activities/{id}/quiz-result", activityId)
-                                                .session(childSession))
-                                .andReturn();
-        List<MvcResult> responses = concurrentlyWithChildLocked(List.of(request, request));
+                () -> {
+                    start.await(10, TimeUnit.SECONDS);
+                    return mvc.perform(
+                                    get("/api/v1/activities/{id}/quiz-result", activityId)
+                                            .session(childSession))
+                            .andReturn();
+                };
+        List<MvcResult> responses;
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(request);
+            var second = pool.submit(request);
+            responses = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+        }
         assertThat(responses.stream().map(response -> response.getResponse().getStatus()).toList())
                 .containsOnly(200);
-        assertThat(activities.findById(activityId).orElseThrow().getScenarioId())
-                .isEqualTo(scenarioId);
+        assertThat(activities.findById(activityId).orElseThrow().getScenarioId()).isNull();
         assertThat(jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId))
                 .isEqualTo(snapshot);
         assertThat(resultCount(activityId)).isEqualTo(1);
@@ -1501,6 +1507,7 @@ class QuizFlowIntegrationTest {
                 "UPDATE scenario SET scenario_version = 7, status = 'APPROVED' WHERE scenario_id = ?",
                 scenarioId);
         completeAssignedQuiz(activityId, correctCount);
+        assignLegacyScenario(activityId, scenarioId);
         Map<String, Object> activitySnapshot =
                 jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId);
         Map<String, Object> resultSnapshot =
@@ -1631,6 +1638,7 @@ class QuizFlowIntegrationTest {
         UUID activityId = assignFirstActivity(childId, Map.of("title", "기존 세션은 초기화 금지"));
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         completeAssignedQuiz(activityId, true);
+        assignLegacyScenario(activityId, scenarioId);
         UUID sessionId = UUID.randomUUID();
         jdbc.update(
                 """
@@ -2144,7 +2152,7 @@ class QuizFlowIntegrationTest {
                                 .getResponse()
                                 .getStatus())
                 .isEqualTo(201);
-        saveScenarioForActivity(activityId, "APPROVED", "L1");
+        assignLegacyScenario(activityId, saveScenarioForActivity(activityId, "APPROVED", "L1"));
         mvc.perform(get("/api/v1/activities/{id}/quiz-result", activityId).session(childSession))
                 .andExpect(status().isOk());
         mvc.perform(
@@ -2174,6 +2182,7 @@ class QuizFlowIntegrationTest {
                 prompts,
                 scenarioId);
         completeAssignedQuiz(activityId, true);
+        assignLegacyScenario(activityId, scenarioId);
         UUID key = UUID.randomUUID();
         mvc.perform(
                         post("/api/v1/activities/{id}/roleplay-sessions", activityId)
@@ -2395,8 +2404,9 @@ class QuizFlowIntegrationTest {
 
     private UUID readyRoleplayActivity(UUID ownerId) throws Exception {
         UUID activityId = assignFirstActivity(ownerId, Map.of("title", "역할극 시작 준비"));
-        saveScenarioForActivity(activityId, "APPROVED", "L3");
+        UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L3");
         completeAssignedQuiz(activityId, true);
+        assignLegacyScenario(activityId, scenarioId);
         return activityId;
     }
 
@@ -2411,6 +2421,14 @@ class QuizFlowIntegrationTest {
                         input.scenario().version(),
                         evidence.initialSupportLevel(),
                         Instant.now()));
+    }
+
+    // 과거에 배정이 끝난 활동의 역할극 호환성을 검증하기 위한 픽스처다.
+    private void assignLegacyScenario(UUID activityId, UUID scenarioId) {
+        jdbc.update(
+                "UPDATE activity SET scenario_id = ? WHERE activity_id = ?",
+                scenarioId,
+                activityId);
     }
 
     private UUID saveScenarioForActivity(UUID activityId, String status, String level) {

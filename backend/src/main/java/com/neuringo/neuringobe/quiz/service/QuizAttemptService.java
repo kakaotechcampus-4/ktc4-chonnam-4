@@ -1,7 +1,6 @@
 package com.neuringo.neuringobe.quiz.service;
 
 import com.neuringo.neuringobe.activity.domain.Activity;
-import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
@@ -249,20 +248,10 @@ public class QuizAttemptService {
     }
 
     public QuizResultResponse result(UUID activityId, Authentication authentication) {
-        Activity activity =
-                requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
+        requireActivity(activityId, authentication, QuizAttemptService::activityNotFound);
         QuizResult result =
                 results.findById(activityId)
                         .orElseThrow(() -> conflict("QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다."));
-        if (activity.getActivityType() == ActivityType.FIRST_COMBINED
-                && result.isInitialDifficultyUsed()
-                && activity.getScenarioId() == null
-                && activity.getStatus() != ActivityStatus.COMPLETED) {
-            // 조회 성공 후 별도 트랜잭션에서 미연결 시나리오만 다시 준비한다.
-            events.publishEvent(
-                    new FirstQuizCompleted(
-                            activityId, activity.getChildId(), result.getScenarioLevel()));
-        }
         return QuizResultResponse.from(result);
     }
 

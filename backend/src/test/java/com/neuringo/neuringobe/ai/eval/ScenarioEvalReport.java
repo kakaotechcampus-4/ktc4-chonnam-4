@@ -81,7 +81,7 @@ final class ScenarioEvalReport {
         row(md, "제공자 / 모델", run.provider() + " / " + run.model());
         row(md, "시작 시각", run.startedAt());
         row(md, "코드 버전", run.commit());
-        row(md, "프롬프트", "scenario-generation/v1");
+        row(md, "프롬프트", "scenario-generation/v2");
         row(
                 md,
                 "반복 × 케이스",
