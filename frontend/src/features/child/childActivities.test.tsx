@@ -68,7 +68,7 @@ describe("내 활동 목록은 서버에 배정된 활동을 보여 준다", () 
   })
 
   it("역할극만 있는 활동은 퀴즈 단계 없이 역할극으로 간다", async () => {
-    const activity = seedActivity({ childId: ME, activityType: "ROLEPLAY", status: "PAUSED" })
+    const activity = seedActivity({ childId: ME, activityType: "ROLEPLAY", status: "PAUSED", scenarioConfirmed: true })
     enterAsChild()
     const { user, router: memoryRouter } = renderRoutes(router.routes, `/child/activities/${activity.activityId}`)
 
@@ -76,6 +76,31 @@ describe("내 활동 목록은 서버에 배정된 활동을 보여 준다", () 
 
     expect(screen.queryByText("표정 퀴즈")).not.toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe(`/child/roleplay/${activity.activityId}`)
+  })
+})
+
+describe("다음 동작은 서버가 계산한 nextAction 으로 정한다 (API-ACT-02)", () => {
+  it("퀴즈를 마쳤지만 선생님이 시나리오를 확정하기 전이면 시작 버튼 대신 기다림을 안내한다", async () => {
+    const activity = seedActivity({ childId: ME, status: "IN_PROGRESS", quizFinished: true, scenarioConfirmed: false })
+    enterAsChild()
+    renderRoutes(router.routes, `/child/activities/${activity.activityId}`)
+
+    expect(await screen.findByText("선생님이 역할극을 준비하고 있어")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /이어서 하기|시작하기/ })).not.toBeInTheDocument()
+  })
+
+  it("역할극 주소로 바로 와도 확정 전이면 시작 요청을 보내지 않고 기다림을 안내한다", async () => {
+    const activity = seedActivity({ childId: ME, status: "IN_PROGRESS", quizFinished: true, scenarioConfirmed: false })
+    const starts: string[] = []
+    server.events.on("request:start", ({ request }) => {
+      if (request.url.includes("/roleplay-sessions")) starts.push(request.url)
+    })
+    enterAsChild()
+    renderRoutes(router.routes, `/child/roleplay/${activity.activityId}`)
+
+    expect(await screen.findByText("선생님이 역할극을 준비하고 있어")).toBeInTheDocument()
+    server.events.removeAllListeners("request:start")
+    expect(starts).toEqual([])
   })
 })
 

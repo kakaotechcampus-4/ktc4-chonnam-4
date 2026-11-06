@@ -1,6 +1,5 @@
 package com.neuringo.neuringobe.assignment.dto;
 
-import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.quiz.dto.AssignedQuizItemResponse;
 import java.util.List;
 
@@ -9,13 +8,13 @@ import java.util.List;
  * 아동에게도 보이는 모양(정답·힌트 내용 제외)이다.
  */
 public record ActivityDetailResponse(
-        ActivityResponse activity,
+        ActivityReadResponse activity,
         List<AssignedQuizItemResponse> quizItems,
         Object sessionSummary,
         Object learningRecord) {
 
     public static ActivityDetailResponse of(
-            ActivityResponse activity, List<AssignedQuizItemResponse> quizItems) {
+            ActivityReadResponse activity, List<AssignedQuizItemResponse> quizItems) {
         return new ActivityDetailResponse(activity, quizItems, null, null);
     }
 }

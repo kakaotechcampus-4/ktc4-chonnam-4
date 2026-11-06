@@ -65,11 +65,15 @@ function extraHeaders(headers: Scenario["request"]["headers"]): Record<string, s
 async function send({ request }: Scenario) {
   const url = `${ORIGIN}${fill(request.path)}`
   if (request.method === "GET") {
-    return fetch(url, { credentials: "include", headers: { ...authHeader(request.auth), ...extraHeaders(request.headers) } })
+    return fetch(url, {
+      credentials: "include",
+      headers: { Accept: "application/json", ...authHeader(request.auth), ...extraHeaders(request.headers) },
+    })
   }
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    Accept: "application/json",
+    "Content-Type": "application/json; charset=utf-8",
     ...authHeader(request.auth),
     ...extraHeaders(request.headers),
   }

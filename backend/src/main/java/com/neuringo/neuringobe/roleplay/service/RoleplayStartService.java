@@ -1,6 +1,10 @@
 package com.neuringo.neuringobe.roleplay.service;
 
+import com.neuringo.neuringobe.activity.domain.Activity;
+import com.neuringo.neuringobe.activity.domain.ActivityNextAction;
+import com.neuringo.neuringobe.activity.domain.ActivityReadinessPolicy;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
+import com.neuringo.neuringobe.activity.repository.ActivityReadinessRepository;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
@@ -13,6 +17,8 @@ import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayStartRequestRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioRepository;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
@@ -35,6 +41,7 @@ public class RoleplayStartService {
     private final ScenarioRepository scenarios;
     private final TransactionTemplate transaction;
     private final RoleplayStartDeliveryService delivery;
+    private final ActivityReadinessRepository readiness;
 
     public RoleplayStartService(
             RoleplayRequestScopeService scopes,
@@ -45,6 +52,7 @@ public class RoleplayStartService {
             RoleplayStartRequestRepository requests,
             ScenarioRepository scenarios,
             RoleplayStartDeliveryService delivery,
+            ActivityReadinessRepository readiness,
             PlatformTransactionManager manager) {
         this.scopes = scopes;
         this.initialInputs = initialInputs;
@@ -54,6 +62,7 @@ public class RoleplayStartService {
         this.requests = requests;
         this.scenarios = scenarios;
         this.delivery = delivery;
+        this.readiness = readiness;
         transaction = new TransactionTemplate(manager);
     }
 
@@ -124,13 +133,13 @@ public class RoleplayStartService {
                         "ROLEPLAY_SCENARIO_CONFLICT",
                         "활동과 역할극 시나리오가 일치하지 않습니다.");
             }
+            resumeIfNeeded(activity, session, now);
             if (prior == null) {
                 requests.insert(requestKey, activityId, childId, session.getSessionId(), now);
             }
             return new StartResult(RoleplaySessionState.from(session, activity.getStatus()), false);
         }
-        if (activity.getStatus() != ActivityStatus.NOT_STARTED
-                && activity.getStatus() != ActivityStatus.IN_PROGRESS) {
+        if (activity.getStatus() == ActivityStatus.COMPLETED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "INITIAL_ROLEPLAY_NOT_READY",
@@ -162,8 +171,42 @@ public class RoleplayStartService {
                                         .orElse(null),
                                 now));
         activity.start(now);
+        activity.resume(now);
         requests.insert(requestKey, activityId, childId, session.getSessionId(), now);
         return new StartResult(RoleplaySessionState.from(session, activity.getStatus()), true);
+    }
+
+    private void resumeIfNeeded(Activity activity, RoleplaySession session, Instant now) {
+        if (activity.getStatus() == ActivityStatus.COMPLETED
+                || "COMPLETED".equals(session.getStatus())) return;
+        boolean stopped =
+                activity.getStatus() == ActivityStatus.PAUSED
+                        || activity.getStatus() == ActivityStatus.RECOVERY_NEEDED
+                        || "PAUSED".equals(session.getStatus());
+        if (!stopped) return;
+        scenarios
+                .lockApprovedVersion(session.getScenarioId(), session.getScenarioVersion())
+                .orElseThrow(this::resumeNotReady);
+        // 기존 세션 재개는 최초 퀴즈 자료를 다시 요구하지 않는다.
+        var evidence =
+                readiness
+                        .load(activity.getChildId(), List.of(activity.getActivityId()), Map.of())
+                        .get(activity.getActivityId());
+        if (evidence == null
+                || ActivityReadinessPolicy.evaluate(evidence).nextAction()
+                        != ActivityNextAction.ROLEPLAY) {
+            throw resumeNotReady();
+        }
+        activity.start(now);
+        activity.resume(now);
+        session.resume(now);
+        // 변경된 버전을 응답에 반영하며, 이후 문구 준비 실패도 같은 트랜잭션에서 롤백한다.
+        sessions.flush();
+    }
+
+    private ApiException resumeNotReady() {
+        return new ApiException(
+                HttpStatus.CONFLICT, "ROLEPLAY_RESUME_NOT_READY", "역할극을 재개할 저장 근거가 준비되지 않았습니다.");
     }
 
     private ApiException keyConflict() {

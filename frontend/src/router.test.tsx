@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { fixtures } from "@/test/msw/handlers"
+import { fixtures, ROLEPLAY_OPENING } from "@/test/msw/handlers"
 import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity, signIn } from "@/test/render"
 import { router } from "./router"
 
@@ -50,8 +50,8 @@ describe("라우팅 표", () => {
     ["/child/hello", "오늘도 만나서 반가워"],
     ["/child/activities", "친구 마음 알아보기"],
     [`/child/activities/${ACTIVITY}`, "이어서 하기"],
-    [`/child/quiz/${ACTIVITY}`, "지금 네 기분은 어때?"],
-    [`/child/roleplay/${ACTIVITY}`, "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?"],
+    [`/child/quiz/${ACTIVITY}`, "생일에 친구가 선물을 줬어. 너는 어떤 기분이 들까?"],
+    // 역할극은 서버처럼 퀴즈를 마쳐야 시작되므로 아래 "역할극 화면은 서버가 준 첫 질문을 보여 준다"가 본다.
   ])("입장하면 %s 는 약속한 화면을 연다", async (path, text) => {
     enterWithActivities()
     const { router: memoryRouter } = renderRoutes(router.routes, path)
@@ -94,8 +94,12 @@ describe("라우팅 표", () => {
     enterWithActivities()
     renderRoutes(router.routes, `/child/quiz/${ACTIVITY}`)
     expect(await screen.findByText("1/3 문항")).toBeInTheDocument()
+  })
 
+  it("역할극 화면은 서버가 준 첫 질문을 보여 준다", async () => {
+    seedChildActivity({ quizFinished: true })
+    enterAsChild()
     renderRoutes(router.routes, `/child/roleplay/${ACTIVITY}`)
-    expect(await screen.findByText("놀이터에서")).toBeInTheDocument()
+    expect(await screen.findByText(ROLEPLAY_OPENING)).toBeInTheDocument()
   })
 })
