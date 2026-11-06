@@ -111,7 +111,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             assertThat(count(f)).isEqualTo(1);
             assertThat(upload.closed).isTrue();
             var publicResponse =
-                    new RoleplayTurnResponseMapper((id, audio) -> Optional.empty()).map(result);
+                    new RoleplayTurnResponseMapper((id, audio) -> Optional.empty(), false)
+                            .map(result);
             assertThat(publicResponse.acceptedInput()).isEqualTo(response.canonicalUtterance());
             assertThat(publicResponse.messages().getFirst().text())
                     .isEqualTo(response.response().text());
@@ -145,7 +146,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     new RoleplayTurnResponseMapper(
                                     (id, audio) -> {
                                         throw new AssertionError("Replay must not publish audio");
-                                    })
+                                    },
+                                    false)
                             .map(replay);
             assertThat(publicReplay.replayed()).isTrue();
             assertThat(publicReplay.acceptedInput()).isNull();
@@ -194,7 +196,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     new RoleplayTurnResponseMapper(
                                     (id, audio) -> {
                                         throw new AssertionError("Replay must not publish audio");
-                                    })
+                                    },
+                                    false)
                             .map(replay);
             assertThat(response.acceptedInput()).isNull();
             assertThat(response.messages().getFirst().text()).isEqualTo(original.text());
@@ -500,7 +503,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     service(
                                     workers,
                                     new RoleplayTurnResponseMapper(
-                                            (id, speech) -> Optional.empty()))
+                                            (id, speech) -> Optional.empty(), false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -526,7 +529,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             var missing = new Input(new byte[] {1});
             assertThatThrownBy(
                             () ->
@@ -569,7 +573,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             assertThat(
                             service.submitVoice(
                                             auth(f),
@@ -596,7 +601,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             var first =
                     service.submitVoice(
                             auth(f),
@@ -646,7 +652,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     service(
                                     workers,
                                     new RoleplayTurnResponseMapper(
-                                            (id, speech) -> Optional.empty()))
+                                            (id, speech) -> Optional.empty(), false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -678,7 +684,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                     (id, speech) -> {
                                         throw new IllegalStateException(
                                                 "synthetic publication failure");
-                                    }));
+                                    },
+                                    false));
             assertThatThrownBy(
                             () ->
                                     failing.submitVoice(
@@ -752,7 +759,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                     (id, speech) -> {
                                         throw new IllegalStateException(
                                                 "synthetic publication failure");
-                                    }));
+                                    },
+                                    false));
             assertThatThrownBy(
                             () ->
                                     failing.submitVoice(
@@ -776,7 +784,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                             (id, speech) -> {
                                                 throw new AssertionError(
                                                         "No publication on replay");
-                                            }))
+                                            },
+                                            false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -808,7 +817,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             assertThatThrownBy(
                             () ->
                                     service.submitVoice(

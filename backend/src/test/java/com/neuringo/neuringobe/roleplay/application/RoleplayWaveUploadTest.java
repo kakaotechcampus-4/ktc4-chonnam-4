@@ -155,7 +155,7 @@ class RoleplayWaveUploadTest {
                         scopes,
                         factory(),
                         turns,
-                        new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()),
+                        new RoleplayTurnResponseMapper((id, speech) -> Optional.empty(), false),
                         outcomes,
                         (recoveryKey, recoveryDeadline) -> RoleplayVoiceFailureProgress.initial());
         for (var bytes : List.of(new byte[] {1}, wave(1, 16, 240001), wave(2, 16, 8000))) {

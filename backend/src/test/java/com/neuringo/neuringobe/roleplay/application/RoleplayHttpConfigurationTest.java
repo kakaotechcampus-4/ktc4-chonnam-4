@@ -11,6 +11,7 @@ import com.neuringo.neuringobe.roleplay.config.RoleplayHttpProperties;
 import com.neuringo.neuringobe.roleplay.config.RoleplayProgressConfiguration;
 import com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties;
 import com.neuringo.neuringobe.roleplay.controller.RoleplayVoiceController;
+import com.neuringo.neuringobe.roleplay.model.RoleplayDeliveryAction;
 import com.neuringo.neuringobe.roleplay.service.*;
 import jakarta.servlet.MultipartConfigElement;
 import java.nio.file.Path;
@@ -246,6 +247,50 @@ class RoleplayHttpConfigurationTest {
                                     .hasSingleBean(
                                             com.neuringo.neuringobe.roleplay.service
                                                     .RoleplayTextInputService.class);
+                        });
+    }
+
+    @Test
+    void responseMapperRecommendsTextOnlyWhenTheTextEndpointIsEnabled() {
+        ports(enabled())
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            var recovery =
+                                    context.getBean(RoleplayTurnOutcomeResolver.class)
+                                            .resolve(
+                                                    new RoleplayTurnResult.InputRejected(
+                                                            RoleplayTurnResult.InputFailure
+                                                                    .LOW_CONFIDENCE));
+                            var response =
+                                    context.getBean(RoleplayTurnResponseMapper.class)
+                                            .map(
+                                                    new RoleplayCheckpointedTurnExecutor
+                                                            .InputRecovery(recovery, true, false));
+                            assertThat(response.action())
+                                    .isEqualTo(RoleplayDeliveryAction.REQUEST_NEW_INPUT);
+                        });
+        ports(
+                        enabled()
+                                .withPropertyValues(
+                                        "roleplay.text.enabled=true",
+                                        "roleplay.text.maximum-characters=64"))
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            var recovery =
+                                    context.getBean(RoleplayTurnOutcomeResolver.class)
+                                            .resolve(
+                                                    new RoleplayTurnResult.InputRejected(
+                                                            RoleplayTurnResult.InputFailure
+                                                                    .LOW_CONFIDENCE));
+                            var response =
+                                    context.getBean(RoleplayTurnResponseMapper.class)
+                                            .map(
+                                                    new RoleplayCheckpointedTurnExecutor
+                                                            .InputRecovery(recovery, true, false));
+                            assertThat(response.action())
+                                    .isEqualTo(RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE);
                         });
     }
 

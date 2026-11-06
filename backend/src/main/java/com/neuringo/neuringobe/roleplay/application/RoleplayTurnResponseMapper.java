@@ -14,9 +14,11 @@ import java.util.Objects;
 public final class RoleplayTurnResponseMapper {
     private static final Speech NO_SPEECH = new Speech(false, null);
     private final RoleplaySpeechDelivery speech;
+    private final boolean textEnabled;
 
-    public RoleplayTurnResponseMapper(RoleplaySpeechDelivery speech) {
+    public RoleplayTurnResponseMapper(RoleplaySpeechDelivery speech, boolean textEnabled) {
         this.speech = Objects.requireNonNull(speech);
+        this.textEnabled = textEnabled;
     }
 
     public RoleplayTurnResponse map(RoleplayCheckpointedTurnExecutor.Result result) {
@@ -42,7 +44,7 @@ public final class RoleplayTurnResponseMapper {
         var recovery = mapRecovery(input.outcome());
         return new RoleplayTurnResponse(
                 recovery.status(),
-                input.textRecommended()
+                input.textRecommended() && textEnabled
                         ? RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE
                         : recovery.action(),
                 recovery.messages(),
