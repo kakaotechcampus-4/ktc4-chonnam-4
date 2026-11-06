@@ -722,3 +722,16 @@ export interface ScenarioReviewClosure {
   outcome: 'CONFIRMED' | 'CANCELLED';
   closedAt: ISODateTime;
 }
+export type ScenarioApprovalState = 'WAITING' | 'IN_REVIEW';
+export interface ScenarioApprovalItem {
+  activityId: UUID;
+  childId: UUID;
+  childName: string;
+  classId: UUID;
+  className: string;
+  goalId: UUID;
+  goalTitle: string;
+  scenarioLevel: ScenarioLevel;
+  waitingSince: ISODateTime;
+  state: ScenarioApprovalState;
+}

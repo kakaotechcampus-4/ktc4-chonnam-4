@@ -1619,6 +1619,42 @@
     "unavailable": false
   },
   {
+    "id": "API-SCN-08",
+    "fn": "listScenarioApprovals",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/scenario-approvals",
+    "args": {},
+    "response": {
+      "data": [
+        {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "30000000-0000-4000-8000-000000000001",
+          "childName": "테스트 아동",
+          "classId": "11000000-0000-4000-8000-000000000001",
+          "className": "테스트 학급",
+          "goalId": "50000000-0000-4000-8000-000000000001",
+          "goalTitle": "차례를 기다려요",
+          "scenarioLevel": "L2",
+          "waitingSince": "2026-11-05T09:00:00Z",
+          "state": "WAITING"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
     "id": "API-RPL-01",
     "fn": "startRoleplay",
     "draft": false,

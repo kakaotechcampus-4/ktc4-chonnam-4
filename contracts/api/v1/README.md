@@ -10,10 +10,11 @@
 
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
 > 이전 갱신(2026-10-28 PR #80 통합, 2026-11-02 `feature/goal-lineage-edit`)은 모두 develop에 병합됐습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+> 승인 대기 활동 목록 갱신: `feature/scenario-review-screens`. API-SCN-08을 더했습니다(상태 `WAITING`·`IN_REVIEW`).
 
 ## 현재 제공 범위
 
-develop `7376e91` 기준 57개 API ID 중 **구현35개 · 조건부 구현2개 · 설계18개 · 미제공2개**입니다(시나리오 준비·확정·취소 API-SCN-01·04·06이 PR #101로 구현). 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했습니다. 실제 FE 아동 화면은 퀴즈(QUIZ-03·04·05·06)·완료 확인(ACT-04)·역할극 시작(RPL-01)·글자 입력(RPL-05)을 실제 API로 부르고, 말로 답하기(RPL-04)는 아직 연결하지 않았습니다.
+develop `7376e91`에 API-SCN-08을 더한 기준 58개 API ID 중 **구현36개 · 조건부 구현2개 · 설계18개 · 미제공2개**입니다(시나리오 준비·확정·취소 API-SCN-01·04·06이 PR #101로 구현, 승인 대기 활동 목록 API-SCN-08이 이 브랜치로 구현). 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했습니다. 실제 FE 아동 화면은 퀴즈(QUIZ-03·04·05·06)·완료 확인(ACT-04)·역할극 시작(RPL-01)·글자 입력(RPL-05)을 실제 API로 부르고, 말로 답하기(RPL-04)는 아직 연결하지 않았습니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -110,6 +111,7 @@ develop `7376e91` 기준 57개 API ID 중 **구현35개 · 조건부 구현2개 
 | [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 준비/확정 응답으로 통합·별도 경로 미구현 | createScenarioVersion |
 | [API-SCN-06 · 검토 취소](./scenarios/delete-scenario.md) | DELETE | `/api/v1/activities/{activityId}/scenario-review` | 구현 | deleteScenario |
 | [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 준비/확정 응답으로 통합·별도 경로 미구현 | listScenarioMicroGoals |
+| [API-SCN-08 · 시나리오 승인 대기 활동 목록 조회](./scenarios/list-scenario-approvals.md) | GET | `/api/v1/scenario-approvals` | 구현 | listScenarioApprovals |
 ### 역할극
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
