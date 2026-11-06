@@ -28,7 +28,7 @@ function renderReport(activityId: string, search = "") {
     [
       { path: "/activities/:activityId/report", element: <ActivityReportPage /> },
       { path: "/classrooms/:classId/children/:childId", element: <p>아동 상세 화면</p> },
-      { path: "/activities/new", element: <p>활동 만들기 화면</p> },
+      { path: "/recommendations", element: <p>추천 화면</p> },
     ],
     `/activities/${activityId}/report${search}`,
   )
@@ -52,6 +52,12 @@ describe("역할극 리포트 탭", () => {
     expect(await within(panel).findAllByRole("article")).toHaveLength(3)
     // 계약은 강사 수정이 없다. 팀이 정할 때까지 탭만 닫아 둔다.
     expect(screen.getByRole("tab", { name: "AI 요약 수정" })).toHaveAttribute("aria-disabled", "true")
+    // 시안 헤더의 "추천 보기"는 이 아동을 고른 추천 화면으로 간다. "내보내기"는 API 가 없어 비활성이다.
+    expect(screen.getByRole("link", { name: "추천 보기" })).toHaveAttribute(
+      "href",
+      `/recommendations?classId=${CHILD.classId}&childId=${CHILD.childId}`,
+    )
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled()
 
     const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } })
     expect(results.violations.map((v) => v.id)).toEqual([])
@@ -65,8 +71,20 @@ describe("역할극 리포트 탭", () => {
 
     await user.click(screen.getByRole("tab", { name: "역할극" }))
     const roleplay = await screen.findByRole("tabpanel", { name: "역할극" })
-    expect(within(roleplay).getByRole("heading", { name: "감정의 이유 말하기" })).toBeInTheDocument()
-    expect(within(roleplay).getByText(/상황 단서에서 시작 · 두 선택지까지 · 지원을 더 받고 도달/)).toBeInTheDocument()
+    // 시안 지표 세 칸: 판단한 목표, 유도 횟수(지원을 올린 단계 수 0+1+2), 지원 수준(시작 → 다음)
+    expect(within(roleplay).getByText("3개")).toBeInTheDocument()
+    expect(within(roleplay).getByText("3회")).toBeInTheDocument()
+    expect(within(roleplay).getByText("다음 S1")).toBeInTheDocument()
+    // 작은 목표별 증거: 시안처럼 상태 칩(달성·부분 달성)과 회색 줄 하나. 줄은 지원 경로 · 관찰 문장이다.
+    const goal = within(roleplay).getByRole("region", { name: "감정의 이유 말하기" })
+    expect(within(goal).getByRole("heading", { name: "감정의 이유 말하기" })).toBeInTheDocument()
+    expect(within(goal).getByText("부분 달성")).toHaveAttribute("title", "지원을 더 받고 도달")
+    expect(within(goal).getByText("S1 → S2 · 감정의 이유 말하기 관찰")).toBeInTheDocument()
+    expect(within(roleplay).getByRole("region", { name: "감정 이름 말하기" })).toHaveTextContent("달성")
+    // 유도 기록: 받은 지원 기호와 목표 · 받은 도움
+    const log = within(roleplay).getByRole("region", { name: "유도 기록" })
+    expect(within(log).getByText("위로하는 말 하기 · 답 알려 주기")).toBeInTheDocument()
+    expect(within(log).getByText("기술 문제로 뺀 답이나 목표는 없어요.")).toBeInTheDocument()
 
     await user.click(screen.getByRole("tab", { name: "난이도 근거" }))
     const basis = await screen.findByRole("tabpanel", { name: "난이도 근거" })
@@ -93,34 +111,28 @@ describe("역할극 리포트 탭", () => {
     expect(screen.getByRole("tab", { name: "역할극" })).toHaveAttribute("aria-disabled", "true")
   })
 
-  it("제안을 채택하면 결정을 남기고 목표가 채워진 역할극 만들기로 간다(배정은 하지 않는다)", async () => {
-    const { activity } = seedRoleplayLearning({ childId: CHILD.childId })
+  it("제안 카드를 누르면 결정 없이 그 제안의 추천 상세로 간다", async () => {
+    const { activity, recommendations } = seedRoleplayLearning({ childId: CHILD.childId })
     const { user, router } = renderReport(activity.activityId)
 
     const panel = await screen.findByRole("tabpanel", { name: "개요" })
-    const [first] = await within(panel).findAllByRole("article")
-    await user.click(within(first).getByRole("button", { name: "이 제안으로 활동 만들기" }))
+    const [, second] = await within(panel).findAllByRole("article")
+    await user.click(within(second).getByRole("link"))
 
-    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/activities/new"))
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/recommendations"))
     const params = new URLSearchParams(router.state.location.search)
-    expect(params.get("type")).toBe("ROLEPLAY")
+    expect(params.get("classId")).toBe(CHILD.classId)
     expect(params.get("childId")).toBe(CHILD.childId)
-    expect(params.get("goalTitle")).toBe("넘어진 친구의 속상한 마음 알아보기")
-    expect(params.get("parentGoalId")).toBe(activity.goalId)
+    expect(params.get("recommendationId")).toBe(recommendations[1].recommendationId)
   })
 
-  it("거절은 이유를 골라 남기고 확정된 제안에는 결정 버튼이 사라진다", async () => {
-    const { activity } = seedRoleplayLearning({ childId: CHILD.childId })
-    const { user } = renderReport(activity.activityId)
+  it("기술 기록 탭 옆에 따로 뺀 건수를 보인다", async () => {
+    const { activity, report } = seedRoleplayLearning({ childId: CHILD.childId })
+    report.roleplay.technicalExclusions = ["UNCLEAR_INPUT"]
 
-    const panel = await screen.findByRole("tabpanel", { name: "개요" })
-    const [, second] = await within(panel).findAllByRole("article")
-    await user.click(within(second).getByRole("button", { name: "거절" }))
-    await user.selectOptions(within(second).getByLabelText("거절 이유"), "ALREADY_PLANNED")
-    await user.click(within(second).getByRole("button", { name: "거절하기" }))
+    renderReport(activity.activityId)
 
-    expect(await within(second).findByText("거절함")).toBeInTheDocument()
-    expect(within(second).queryByRole("button", { name: "이 제안으로 활동 만들기" })).not.toBeInTheDocument()
+    expect(await screen.findByRole("tab", { name: "기술 기록 1건" })).toBeInTheDocument()
   })
 })
 

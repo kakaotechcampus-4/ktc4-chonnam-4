@@ -23,9 +23,10 @@ test("역할극을 마치지 않은 아동은 추천 화면에 그렇게 보이�
   const childName = `리포트 아동 ${marker}`
   await registerChild(page, classId, childName)
 
+  // 학급에 아동이 한 명이라 그 아동이 골라진 채로 열린다(시안 T-REC-01 추천 학습 목록).
   await page.goto(`/recommendations?classId=${classId}`)
-  const region = page.getByRole("region", { name: childName })
-  await expect(region.getByText("아직 마친 역할극이 없어요.")).toBeVisible()
+  await expect(page.getByRole("heading", { name: `추천 학습 목록 · ${childName}` })).toBeVisible()
+  await expect(page.getByText("아직 마친 역할극이 없어요.")).toBeVisible()
 
   await page.goto(`/activities/new?classId=${classId}`)
   await page.getByRole("radio", { name: childName }).click()
@@ -96,10 +97,14 @@ test("다음 난이도와 제안이 있으면 채택해 목표가 채워진 역�
     })
   })
 
+  // 추천 학습 목록(T-REC-01)에서 카드를 고르고 추천 상세(T-REC-02)에서 정한다. 고르기만으로는 결정이 남지 않는다.
   await page.goto(`/recommendations?classId=${classId}`)
-  const region = page.getByRole("region", { name: childName })
-  await expect(region.getByText("다음 역할극")).toBeVisible()
-  await region.getByRole("button", { name: "이 제안으로 활동 만들기" }).click()
+  const board = page.getByRole("radiogroup", { name: "다음 활동으로 무엇을 할까요?" })
+  await expect(board.getByRole("radio", { name: "넘어진 친구의 속상한 마음 알아보기" })).toBeChecked()
+  await page.getByRole("button", { name: "추천 상세 보기" }).click()
+  await expect(page.getByRole("heading", { name: "추천 상세" })).toBeVisible()
+  expect(decided).toBeNull()
+  await page.getByRole("button", { name: "이 추천으로 다음 목표 설정" }).click()
 
   await expect(page).toHaveURL(/\/activities\/new\?/)
   expect(decided).toEqual({ decision: "ACCEPT" })

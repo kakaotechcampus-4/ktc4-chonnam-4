@@ -16,13 +16,16 @@ import {
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
 import { PageTabs } from '../components/PageTabs'
+import { StatCard } from '../components/StatCard'
 import {
   DifficultyBasisView,
   ReportOverview,
   RoleplayGoalsView,
   TechnicalRecordView,
 } from '../components/report/ReportViews'
-import { cardClass } from '../components/styles'
+import { orNullOn404 } from '../components/report/learningQueries'
+import { recommendationsPath, technicalCount } from '../components/report/reportHelpers'
+import { cardClass, outlineButtonClass, primaryButtonClass } from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
@@ -40,16 +43,6 @@ const EDIT_TAB_LABEL = 'AI 요약 수정'
 
 function hasRoleplay(activity: Activity): boolean {
   return activity.activityType === 'FIRST_COMBINED' || activity.activityType === 'ROLEPLAY'
-}
-
-/** 없는 리포트·난이도는 오류가 아니라 "아직 없음"이라 null 로 바꾼다. */
-async function orNullOn404<T>(load: () => Promise<T>): Promise<T | null> {
-  try {
-    return await load()
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return null
-    throw error
-  }
 }
 
 /**
@@ -143,100 +136,124 @@ function ActivityReportPage() {
   const title = child
     ? `활동 리포트 · ${child.displayName}${classroomQuery.data ? ` (${classroomQuery.data.name})` : ''}`
     : '활동 리포트'
+  const hasRecommendations = (recommendationsQuery.data?.length ?? 0) > 0
 
   return (
     <InstructorLayout
       title={title}
+      // 시안의 카드처럼 두 칸이 화면 아래까지 늘어난다.
+      fill
+      // 시안 헤더의 "내보내기"·"추천 보기". 내보내기는 형식·API 가 아직 없어 학급 개요의 "접근 코드 출력"처럼 비활성으로 둔다.
+      actions={
+        <>
+          <button type="button" disabled title="준비 중인 기능입니다" className={outlineButtonClass}>
+            내보내기
+          </button>
+          {child && hasRecommendations && (
+            <Link to={recommendationsPath({ classId: child.classId, childId: child.childId })} className={primaryButtonClass}>
+              추천 보기
+            </Link>
+          )}
+        </>
+      }
       subheader={
         <PageTabs
           label="활동 리포트"
           selected={tabLabel}
           onSelect={selectTab}
           tabs={[
-            ...TABS.map((t) => ({ label: t.label, available: available[t.key] })),
+            ...TABS.map((t) => ({
+              label: t.label,
+              available: available[t.key],
+              count: t.key === 'technical' && report ? technicalCount(report) : undefined,
+            })),
             { label: EDIT_TAB_LABEL },
           ]}
         />
       }
     >
-      {child && (
-        <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
-          <Link to={`/classrooms/${child.classId}?tab=children`} className="hover:underline">
-            {classroomQuery.data?.name ?? '학급'}
-          </Link>
-          <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
-            ›
-          </span>
-          <Link to={`/classrooms/${child.classId}/children/${child.childId}`} className="hover:underline">
-            {child.displayName} 활동 이력
-          </Link>
-        </nav>
-      )}
+      {/* fill 은 본문의 바로 아래 자식을 늘인다. 경로 줄은 그대로 두고 탭 내용만 남은 높이를 채운다. */}
+      <div className="flex flex-col">
+        {child && (
+          <nav aria-label="현재 위치" className="mb-4 text-xs text-[var(--instructor-text-subtle)]">
+            <Link to={`/classrooms/${child.classId}?tab=children`} className="hover:underline">
+              {classroomQuery.data?.name ?? '학급'}
+            </Link>
+            <span aria-hidden className="mx-1 text-[var(--instructor-border-strong)]">
+              ›
+            </span>
+            <Link to={`/classrooms/${child.classId}/children/${child.childId}`} className="hover:underline">
+              {child.displayName} 활동 이력
+            </Link>
+          </nav>
+        )}
 
-      {activityQuery.isLoading ? (
-        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-      ) : activityQuery.isError || !activity ? (
-        <Notice tone="error">
-          {activityQuery.error instanceof Error ? activityQuery.error.message : '활동을 찾을 수 없습니다.'}
-        </Notice>
-      ) : (
-        <section role="tabpanel" aria-label={tabLabel} className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold">
-              {activity.goalId ? (goalQuery.data?.title ?? '학습 목표') : ACTIVITY_TYPE_LABELS[activity.activityType]}
-            </h2>
-            <ActivityStatusBadge status={activity.status} />
-          </div>
+        {activityQuery.isLoading ? (
+          <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+        ) : activityQuery.isError || !activity ? (
+          <Notice tone="error">
+            {activityQuery.error instanceof Error ? activityQuery.error.message : '활동을 찾을 수 없습니다.'}
+          </Notice>
+        ) : (
+          <section role="tabpanel" aria-label={tabLabel} className="flex flex-1 flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold">
+                {activity.goalId ? (goalQuery.data?.title ?? '학습 목표') : ACTIVITY_TYPE_LABELS[activity.activityType]}
+              </h2>
+              <ActivityStatusBadge status={activity.status} />
+            </div>
 
-          {tab === 'quiz' &&
-            (activity.status === 'NOT_STARTED' ? (
-              <p className="text-sm text-[var(--instructor-text-muted)]">
-                아직 시작 전이에요. 아동이 퀴즈를 마치면 결과가 보입니다.
-              </p>
-            ) : resultQuery.isLoading ? (
-              <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-            ) : isQuizInProgress ? (
-              <p className="text-sm text-[var(--instructor-text-muted)]">
-                퀴즈를 진행 중이에요. 아동이 모든 문항을 마치면 결과가 보입니다.
-              </p>
-            ) : resultQuery.isError || !resultQuery.data ? (
-              <Notice tone="error">
-                {resultQuery.error instanceof Error ? resultQuery.error.message : '결과를 불러오지 못했습니다.'}
-              </Notice>
-            ) : (
-              <QuizResultView result={resultQuery.data} quizItemCount={quizItemCount} />
-            ))}
+            {tab === 'quiz' &&
+              (activity.status === 'NOT_STARTED' ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">
+                  아직 시작 전이에요. 아동이 퀴즈를 마치면 결과가 보입니다.
+                </p>
+              ) : resultQuery.isLoading ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+              ) : isQuizInProgress ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">
+                  퀴즈를 진행 중이에요. 아동이 모든 문항을 마치면 결과가 보입니다.
+                </p>
+              ) : resultQuery.isError || !resultQuery.data ? (
+                <Notice tone="error">
+                  {resultQuery.error instanceof Error ? resultQuery.error.message : '결과를 불러오지 못했습니다.'}
+                </Notice>
+              ) : (
+                <QuizResultView result={resultQuery.data} quizItemCount={quizItemCount} />
+              ))}
 
-          {tab === 'overview' &&
-            (!roleplayDone ? (
-              <p className="text-sm text-[var(--instructor-text-muted)]">
-                역할극을 마치면 목표별로 필요했던 도움과 다음 수업 제안이 여기에 보여요.
-              </p>
-            ) : reportQuery.isLoading || difficultyQuery.isLoading ? (
-              <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-            ) : reportQuery.isError ? (
-              <Notice tone="error">{reportQuery.error.message}</Notice>
-            ) : (
-              <>
-                {!report && (
-                  <Notice tone="info">
-                    AI 요약을 만드는 중이거나 만들지 못했어요. 서버가 기록으로 정한 다음 난이도와 제안은 아래에서 볼 수 있어요.
-                  </Notice>
-                )}
-                <ReportOverview
-                  report={report}
-                  recommendations={recommendationsQuery.data ?? []}
-                  latestDifficulty={latestDifficulty}
-                  classId={child?.classId ?? null}
-                />
-              </>
-            ))}
+            {tab === 'overview' &&
+              (!roleplayDone ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">
+                  역할극을 마치면 목표별로 필요했던 도움과 다음 수업 제안이 여기에 보여요.
+                </p>
+              ) : reportQuery.isLoading || difficultyQuery.isLoading ? (
+                <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+              ) : reportQuery.isError ? (
+                <Notice tone="error">{reportQuery.error.message}</Notice>
+              ) : (
+                <>
+                  {!report && (
+                    <Notice tone="info">
+                      AI 요약을 만드는 중이거나 만들지 못했어요. 서버가 기록으로 정한 다음 난이도와 제안은 아래에서 볼 수 있어요.
+                    </Notice>
+                  )}
+                  <ReportOverview
+                    report={report}
+                    recommendations={recommendationsQuery.data ?? []}
+                    latestDifficulty={latestDifficulty}
+                    classId={child?.classId ?? null}
+                    childId={activity.childId}
+                  />
+                </>
+              ))}
 
-          {tab === 'roleplay' && report && <RoleplayGoalsView report={report} />}
-          {tab === 'difficulty' && report && <DifficultyBasisView report={report} />}
-          {tab === 'technical' && report && <TechnicalRecordView report={report} />}
-        </section>
-      )}
+            {tab === 'roleplay' && report && <RoleplayGoalsView report={report} />}
+            {tab === 'difficulty' && report && <DifficultyBasisView report={report} />}
+            {tab === 'technical' && report && <TechnicalRecordView report={report} />}
+          </section>
+        )}
+      </div>
     </InstructorLayout>
   )
 }
@@ -283,16 +300,6 @@ function QuizResultView({ result, quizItemCount }: { result: QuizResult; quizIte
           </p>
         )}
       </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className={cn(cardClass, 'flex flex-col gap-2 px-5 py-4')}>
-      <p className="text-xs text-[var(--instructor-text-subtle)]">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
-      {note && <p className="text-xs text-[var(--instructor-text-subtle)]">{note}</p>}
     </div>
   )
 }

@@ -1271,7 +1271,8 @@ function TypeStep({
           tabbable={tabStop === 2}
           title="역할극만"
           description="상황 시나리오로 대화를 주고받으며 공감 표현을 연습합니다."
-          meta={['예상 소요 10~15분', '지난 역할극으로 정한 난이도']}
+          // 시안 T-ACT-02 문구. 역할극 단독은 배정한 뒤 강사가 시나리오를 검토·확정해야 아동이 시작한다(PR #101).
+          meta={['예상 소요 10~15분', '시나리오 승인 필요']}
           disabledReason={availability.roleplay ? undefined : '최초 활동을 마치면 열려요.'}
           checked={cards[2].checked}
           onSelect={cards[2].select}
