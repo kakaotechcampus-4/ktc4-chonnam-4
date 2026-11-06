@@ -24,7 +24,7 @@
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
 - ROLEPLAY(역할극 단독)는 최초 결합 완료 뒤에 배정하고 goal이 필수입니다. 이 아동의 다음 역할극 난이도(API-REC-06)가 있어야 하며, 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY입니다. 배정 때 그 레벨·시작 지원을 활동에 고정하고(`initialSupportLevel`), 퀴즈 문항은 붙이지 않습니다(2026-10-31 작업 브랜치). 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
-- goal 내용의 정리·등장인물 `{id, role}`·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
+- goal 내용의 정리·등장인물 `{id, role}`·목록 상한·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
 - 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
 - ROLEPLAY도 배정 응답의 scenarioId는 null이고 요청에 시나리오를 받지 않습니다(2026-11-06, PR #101 회의 결정 반영). 강사가 [API-SCN-08](../scenarios/list-scenario-approvals.md) 승인 대기함에서 활동을 열어 [API-SCN-01](../scenarios/prepare-scenario.md) 준비·다음 후보 → [API-SCN-04](../scenarios/review-scenario.md) 확정을 거쳐야 활동에 붙습니다. 이때 검토 입력의 레벨은 배정 때 이 활동에 고정한 다음 역할극 난이도이고, 검토 입력 지문에 그 결정 ID가 들어갑니다. 다른 역할극이 끝나 새 결정이 생겨도 이 활동의 고정값과 진행 중 검토는 바뀌지 않습니다.
 
@@ -138,7 +138,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 409 | ROLEPLAY_DIFFICULTY_NOT_READY | 마친 역할극이 없어 다음 역할극 난이도가 없음. 역할극 단독 배정 불가 |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
 | 422 | INVALID_GOAL_CONDITIONS | 빈 원소, LEARNER id, 피할 표현이 필수 요소·등장인물 role과 겹침. `fieldErrors`의 `goal.` 경로로 칸 표시 |
-| 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |
+| 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증(goal 목록 상한 초과 포함, 예: `goal.forbiddenExpressions`) |
 | 404 | GOAL_NOT_FOUND | 부모 목표 없음/다른 아동 |
 | 400 | INVALID_REQUEST | UUID/필수 헤더·파트/Query 형식 |
 

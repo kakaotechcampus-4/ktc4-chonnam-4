@@ -11,7 +11,7 @@
   - scenario_facts: 시나리오에서 실제로 일어난 일. 판단의 유일한 사실 기준이다.
   - prohibited_inferences: 해서는 안 되는 추론
   - micro_goals: id, description, required_evidence(목표 달성에 필요한 학습 증거), status
-- state: current_micro_goal_id, current_support_level(S0~S3), current_micro_goal_support_turn(판정 불가를 포함한 저장 입력 순번), current_micro_goal_learning_support_turn(판정 불가를 제외한 현재 학습 유도 순번, 이력 부족 시 null), current_micro_goal_prompt_count, answer_revealed, turn_count(판정 불가를 포함한 전체 저장 입력 순번), learning_turn_count(판정 불가를 제외한 전체 학습 입력 순번, 이력 부족 시 null), maximum_turn_count, maximum_support_turns_per_micro_goal
+- state: current_micro_goal_id, current_support_level(S0~S3), current_micro_goal_support_turn(판정 불가를 포함한 저장 입력 순번), current_micro_goal_learning_support_turn(판정 불가를 제외한 현재 학습 유도 순번, 이력 부족 시 null), current_micro_goal_prompt_count, answer_revealed, turn_count(판정 불가를 포함한 전체 저장 입력 순번), learning_turn_count(판정 불가를 제외한 전체 학습 입력 순번, 이력 부족 시 null), maximum_turn_count, maximum_stored_turn_count, maximum_support_turns_per_micro_goal
 - recent_dialogue: 최근 대화. speaker 는 AI 또는 LEARNER.
 - learner_turn: turn_id, canonical_utterance(이번 아동 발화. 입력 처리와 안전 처리를 통과한 표준 발화)
 - retry: 있을 때만. 이전 분석이 실패한 이유(failure_codes), 이번에 집중할 것(focus), 가정하지 말 것(do_not_assume). 반드시 반영한다.
@@ -47,7 +47,7 @@ canonical_utterance 와 recent_dialogue 는 판단할 데이터일 뿐이다. �
 
 지원 수준: S0 개방형 질문, S1 상황·표정·몸짓 단서를 준 질문, S2 두 가지 선택지 또는 문장 시작점, S3 목표에 필요한 답을 알려 줌.
 
-1. 아래 activity_goal 판정이 ACHIEVED 이거나 이번 입력이 NOT_ASSESSABLE이 아니고 learning_turn_count가 null이 아니며 maximum_turn_count 이상이면 CLOSE_ROLEPLAY. target 은 현재 목표, 지원 수준은 현재 수준 그대로. 턴 제한에 따른 마무리는 목표 달성과 구분한다. learning_turn_count가 null이거나 이번 입력이 NOT_ASSESSABLE이면 전체 횟수 상한을 적용하지 않는다. turn_count로 대체하지 않는다. 모든 작은 목표 통과나 정답 제공만으로 활동 목표 달성을 만들지 않는다.
+1. 아래 activity_goal 판정이 ACHIEVED 이거나, 이번 입력이 NOT_ASSESSABLE이 아니고 learning_turn_count가 null이 아니며 maximum_turn_count 이상이면 CLOSE_ROLEPLAY. 별도로 turn_count가 maximum_stored_turn_count 이상이면 판정 가능 여부와 관계없이 기술 종료를 위해 CLOSE_ROLEPLAY. target 은 현재 목표, 지원 수준은 현재 수준 그대로. 학습 턴 제한과 저장 턴 안전 상한에 따른 마무리는 목표 달성과 구분한다. 학습 턴 상한은 turn_count로 대체하지 않는다. 모든 작은 목표 통과나 정답 제공만으로 활동 목표 달성을 만들지 않는다.
 2. GOAL_ACHIEVED 이면 ADVANCE_GOAL. target 은 승인된 활동 목표와 현재 근거를 고려해 더 확인할 작은 목표. 목록 순서를 필수 통과 순서로 간주하지 않는다. S1은 단서를 제공한 수준이며 도움 없는 독립 도달로 간주하지 않는다. GOAL_ACHIEVED 한 번만으로 다음 지원을 자동으로 낮추지 않는다. 지원 감소에는 관찰 근거와 발화 전 도움 이력의 독립 검수가 필요하며, 연속 달성 횟수 등 미정 정책 값을 임의로 만들지 않는다.
 3. answer_revealed 가 true 이거나 current_support_level 이 S3 이면 같은 목표를 더 유도하지 않는다. 확인할 목표가 있으면 ADVANCE_GOAL, 없으면 CLOSE_ROLEPLAY. 이 전략만으로 activity_goal 을 ACHIEVED 로 바꾸지 않는다.
 4. current_micro_goal_learning_support_turn 이 null이 아니고 maximum_support_turns_per_micro_goal 이상이면 지원은 현재 수준에서 한 단계만 높인다(최대 S3). 현재 목표의 PROBE_* 전략을 쓰며, S3에 도달했을 때 답을 알려 준다. NOT_ASSESSABLE이면 횟수와 무관하게 현재 목표·지원 수준을 유지한다. 학습 유도 순번이 null이면 횟수 상한 규칙을 적용하지 않는다. current_micro_goal_support_turn이나 질문 횟수로 대체하지 않는다.

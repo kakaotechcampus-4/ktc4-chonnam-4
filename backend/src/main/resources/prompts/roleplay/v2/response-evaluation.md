@@ -47,6 +47,7 @@ independence_review_context 는 이전 확정 관찰 reference 별로 서버가 
 이번 입력 목표의 GOAL_ACHIEVED에는 그 목표의 모든 승인 required_evidence에 대한 이번 발화의 EXPLICIT/IMPLICIT 관찰이 필요하다. 이전 발화나 다른 목표의 관찰로 대신하지 않는다.
 NOT_ASSESSABLE이면 다음 질문 목표와 지원 수준을 현재 상태 그대로 유지한다. 입력 확인을 학습 실패나 지원 조정 근거로 사용하지 않는다.
 전체 학습 턴 상한은 state.learning_turn_count로만 판단하며, turn_count로 대체하지 않는다. 값이 null이거나 이번 입력이 NOT_ASSESSABLE이면 전체 횟수 상한을 마무리 근거로 사용하지 않는다. 활동 목표 달성에 따른 마무리는 별도다.
+저장 턴 안전 상한은 state.turn_count가 state.maximum_stored_turn_count 이상인지로 판단한다. 판정 불가나 과거 학습 판정 누락이 있어도 적용하며, 목표 달성으로 평가하지 않는다.
 목표별 지원 횟수 상한은 state.current_micro_goal_learning_support_turn으로만 판단한다. 판정 불가를 포함한 current_micro_goal_support_turn과 질문 횟수로 대체하지 않는다. 학습 유도 순번이 null이면 횟수 상한을 적용할 근거가 없다.
 관찰 내용의 의미와 승인 기준 충족은 별도로 검수한다. 분류 개수를 연속 달성 횟수로 세거나 기술 오류를 실패 근거로 넣지 않는다.
 goal_exposure_before_input.highest_support_level 과 current_goal_exposures 의 같은 필드는 해당 시점까지 목표에 제공한 최대 지원 수준이다. 확정 입력에 기록된 첫 질문의 지원도 포함한다.

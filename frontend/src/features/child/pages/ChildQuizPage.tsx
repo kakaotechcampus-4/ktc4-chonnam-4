@@ -1,16 +1,26 @@
 import { useRef, useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CircleCheck, ScanFace } from "lucide-react"
 import themeparkBackgroundUrl from "@/assets/child/themepark-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { EmotionChoices } from "../components/quiz/EmotionChoices"
-import { PhotoGate } from "../components/quiz/PhotoGate"
 import { QuizGuideBubble } from "../components/quiz/QuizGuideBubble"
+import { SelfCameraGate } from "../components/quiz/SelfCameraGate"
+import {
+  EXPRESSION_LABELS,
+  finalMatchResult,
+  judgeExpression,
+  MAX_RETAKES,
+  type ExpressionVerdict,
+} from "../camera/expressionJudge"
+import { CAMERA_MODEL_VERSION } from "../camera/faceExpressionModel"
+import { useExpressionCamera } from "../hooks/useExpressionCamera"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
+import { SessionLostDialog } from "../components/state/LoadErrorDialog"
+import { isSessionLost } from "../components/state/sessionLost"
 import {
   ChildApiError,
   getActivityStatus,
@@ -23,6 +33,7 @@ import {
   requestQuizHint,
   submitQuizAnswer,
   type QuizAttempt,
+  type QuizCameraFields,
   type QuizHint,
   type QuizItemWithAttempt,
   type QuizType,
@@ -40,7 +51,15 @@ const CHOICE_PROMPTS: Record<QuizType, string> = {
 /** 문항 진행 단계. 서버는 첫 답 → (틀리면) 힌트 최대 2개 → 최종 답 1번 순서로 받는다 (API-QUIZ-04·06). */
 type Phase =
   | { kind: "first" }
-  | { kind: "retry"; firstResponse: string; hints: QuizHint[]; issuedHints: number; noMoreHints: boolean }
+  | {
+      kind: "retry"
+      firstResponse: string
+      /** 첫 답과 함께 보낸 카메라 판정. 최종 답에도 그대로 다시 보낸다. */
+      camera: QuizCameraFields | null
+      hints: QuizHint[]
+      issuedHints: number
+      noMoreHints: boolean
+    }
   | { kind: "done"; result: "correct" | "resolved" | "wrong" | "excluded" }
 
 function phaseFromAttempt(attempt: QuizAttempt | null): Phase {
@@ -50,10 +69,20 @@ function phaseFromAttempt(attempt: QuizAttempt | null): Phase {
   return {
     kind: "retry",
     firstResponse: attempt.firstResponse ?? "",
+    camera: attempt.camera,
     hints: [],
     issuedHints: attempt.hintCount,
     noMoreHints: attempt.hintCount >= 2,
   }
+}
+
+/** 다시 찍기 전에 들려주는 말. 정답 여부는 서버만 알므로 표정 이야기만 한다. */
+function retakeMessage(verdict: ExpressionVerdict, choice: string) {
+  if (verdict.kind === "no-face") return "얼굴이 잘 안 보여. 동그라미 안에 얼굴을 맞춰 볼까?"
+  if (verdict.kind === "mismatch" && verdict.detected !== "neutral") {
+    return `지금은 '${EXPRESSION_LABELS[verdict.detected]}' 표정처럼 보여. '${choice}' 표정을 다시 지어 볼까?`
+  }
+  return `'${choice}' 표정을 조금 더 크게 지어 볼까?`
 }
 
 function resultOf(attempt: QuizAttempt, afterHint: boolean): "correct" | "resolved" | "wrong" | "excluded" {
@@ -66,6 +95,10 @@ function resultOf(attempt: QuizAttempt, afterHint: boolean): "correct" | "resolv
  * 표정 퀴즈 한 문항 (C-QZ-01~04, VS-006).
  * 판정은 서버가 한다. 첫 답이 틀리면 힌트를 보여 주고(최대 2개) 최종 답을 한 번 더 고르게 한다.
  * 최종 답도 틀리면 정답·점수 없이 다음 문제로 넘어간다.
+ *
+ * 내 감정 문항은 첫 답 동안 셀프 카메라를 켜고, 고른 표정을 아이가 따라 지었는지 브라우저 안에서 본다.
+ * 표정 확률이 50% 미만이거나 다른 표정이면 첫 제출 전에 최대 2번 다시 찍게 하고(API-QUIZ-04),
+ * 그래도 안 되면 그때 판정(MISMATCH·NOT_ANALYZABLE)으로 보낸다.
  */
 function QuizQuestionView({
   question,
@@ -78,6 +111,11 @@ function QuizQuestionView({
 }) {
   const [phase, setPhase] = useState<Phase>(() => phaseFromAttempt(question.attempt))
   const [selected, setSelected] = useState<string | null>(null)
+  const isSelf = question.type === "SELF_EMOTION_SITUATION"
+  // 카메라 판정은 첫 답에만 쓴다. 첫 답을 낸 뒤에는 바로 끈다.
+  const camera = useExpressionCamera(isSelf && phase.kind === "first")
+  const [retakes, setRetakes] = useState(0)
+  const [retakeHint, setRetakeHint] = useState<string | null>(null)
   // 힌트 순서마다 요청 키 하나. 응답을 못 받아 다시 보내도 같은 힌트가 한 번만 발급된다.
   const hintKeys = useRef(new Map<number, string>())
 
@@ -113,7 +151,14 @@ function QuizQuestionView({
         return
       }
       // 첫 답이 틀렸다. 첫 힌트를 바로 받아 보여 준다.
-      setPhase({ kind: "retry", firstResponse: input.firstResponse, hints: [], issuedHints: 0, noMoreHints: false })
+      setPhase({
+        kind: "retry",
+        firstResponse: input.firstResponse,
+        camera: input.camera ?? null,
+        hints: [],
+        issuedHints: 0,
+        noMoreHints: false,
+      })
       askHint(0)
     },
   })
@@ -128,6 +173,21 @@ function QuizQuestionView({
     !hintMutation.isPending &&
     !(hintMutation.error instanceof ChildApiError && hintMutation.error.code === NO_MORE_HINTS)
 
+  /** 내 감정 문항 첫 답의 카메라 판정. 다시 찍게 할 때는 null 을 주고 제출하지 않는다. */
+  const judgeCamera = (choice: string): QuizCameraFields | null => {
+    if (camera.status === "denied") return { technicalFailureReason: "CAMERA_PERMISSION_DENIED" }
+    if (camera.status !== "ready") {
+      return { expressionMatchResult: "NOT_ANALYZABLE", cameraModelVersion: CAMERA_MODEL_VERSION }
+    }
+    const verdict = judgeExpression(choice, camera.readScores())
+    if (verdict.kind !== "match" && verdict.kind !== "unsupported" && retakes < MAX_RETAKES) {
+      setRetakes(retakes + 1)
+      setRetakeHint(retakeMessage(verdict, choice))
+      return null
+    }
+    return { expressionMatchResult: finalMatchResult(verdict), cameraModelVersion: CAMERA_MODEL_VERSION }
+  }
+
   const submit = () => {
     if (!selected) return
     if (phase.kind === "retry") {
@@ -136,13 +196,27 @@ function QuizQuestionView({
         type: question.type,
         firstResponse: phase.firstResponse,
         finalResponse: selected,
+        camera: phase.camera,
       })
-    } else {
-      submitMutation.mutate({ activityQuizId: question.activityQuizId, type: question.type, firstResponse: selected })
+      return
     }
+    let cameraFields: QuizCameraFields | undefined
+    if (isSelf) {
+      const judged = judgeCamera(selected)
+      if (!judged) return
+      cameraFields = judged
+    }
+    setRetakeHint(null)
+    submitMutation.mutate({
+      activityQuizId: question.activityQuizId,
+      type: question.type,
+      firstResponse: selected,
+      camera: cameraFields,
+    })
   }
 
-  const isSelf = question.type === "SELF_EMOTION_SITUATION"
+  // 카메라가 켜지는 동안은 판정할 수 없으니 기다린다. 권한을 묻는 창이 떠 있는 동안도 여기에 든다.
+  const cameraStarting = isSelf && phase.kind === "first" && camera.status === "starting"
 
   const answerPanel = (
     <div className="flex flex-col gap-4 text-left">
@@ -179,6 +253,14 @@ function QuizQuestionView({
           ) : (
             <SpeechBubble character="turtle" mood="wink">괜찮아! 다음 문제로 가볼까?</SpeechBubble>
           )
+        ) : retakeHint ? (
+          <SpeechBubble character="rabbit" mood="wink" characterAlign="top">
+            {retakeHint}
+            <span className="mt-1 block text-base text-[var(--child-text-muted)]">
+              {/* retakes 는 지금까지 준 다시 찍기 수. 방금 준 기회도 아직 쓰지 않았으므로 남은 수에 넣는다. */}
+              다시 찍을 수 있는 기회: {MAX_RETAKES - retakes + 1}번 남았어요
+            </span>
+          </SpeechBubble>
         ) : null}
       </div>
 
@@ -187,10 +269,12 @@ function QuizQuestionView({
           <ChildButton
             className="h-16 w-full font-child-display text-xl font-extrabold"
             onClick={submit}
-            disabled={!selected || isBusy}
+            disabled={!selected || isBusy || cameraStarting}
           >
             {submitMutation.isPending
               ? "확인하고 있어요…"
+              : cameraStarting
+                ? "카메라를 준비하고 있어요…"
               : phase.kind === "retry"
                 ? "다시 골라볼래요"
                 : "이 표정으로 확인할래요"}
@@ -233,27 +317,12 @@ function QuizQuestionView({
           친구 감정 문항(C-QZ-02·03)은 신버전 시안이 없어 와이어프레임 배치를 따르고, 깡총이는 힌트 때만 나온다. */}
       {isSelf ? (
         <div className="grid items-start gap-6 md:grid-cols-[minmax(0,22.5rem)_1fr] md:gap-8">
-          <PhotoGate
-            caption={
-              <>
-                <span className="font-child-display text-base font-extrabold text-[#252331]">
-                  얼굴을 맞추고 표정을 지어봐!
-                </span>
-                {/* Figma 시안 문구 그대로. 지금은 카메라를 켜지 않으므로 표정 인식 기능이 정해지면 실제 상태와 맞춰야 한다. */}
-                <span className="flex items-center gap-1 text-xs font-bold text-[#6654D9]">
-                  <CircleCheck className="size-4 fill-[#8BCB4A] text-white" aria-hidden="true" />
-                  카메라 준비 완료 · 얼굴을 찾았어요
-                </span>
-              </>
-            }
-          >
-            {/* 표정 인식 기능 도입 여부가 미정이라 Figma의 얼굴 프레임 모양만 둔다 (카메라는 켜지 않는다). */}
-            <div className="flex h-[76%] w-[57%] items-center justify-center rounded-[50%] bg-white/70">
-              <div className="flex h-[88%] w-[84%] items-center justify-center rounded-[50%] border-3 border-dashed border-[#A99BF5] text-[#A99BF5]">
-                <ScanFace className="size-12" />
-              </div>
-            </div>
-          </PhotoGate>
+          <SelfCameraGate
+            status={camera.status}
+            faceFound={camera.faceFound}
+            attachVideo={camera.attachVideo}
+            onRestart={camera.restart}
+          />
           {answerPanel}
         </div>
       ) : question.type === "OTHER_EMOTION_IMAGE" && question.imageUrl ? (
@@ -268,14 +337,18 @@ function QuizQuestionView({
         <div className="mx-auto w-full max-w-[43rem]">{answerPanel}</div>
       )}
 
-      <StateDialog open={showSubmitError}>
+      <StateDialog open={showSubmitError && !isSessionLost(submitMutation.error)}>
         <ErrorState
           onRetry={() => {
             if (submitMutation.variables) submitMutation.mutate(submitMutation.variables)
           }}
         />
       </StateDialog>
-      <StateDialog open={hintFailed}>
+      {/* 답·힌트를 보내다 세션이 끝나면(401) 다시 하기로는 빠져나갈 수 없어 다시 입장하게 한다. */}
+      <SessionLostDialog
+        open={(showSubmitError && isSessionLost(submitMutation.error)) || (hintFailed && isSessionLost(hintMutation.error))}
+      />
+      <StateDialog open={hintFailed && !isSessionLost(hintMutation.error)}>
         {/* 같은 키로 다시 요청해 힌트가 두 번 발급되지 않게 한다. */}
         <ErrorState
           message="힌트를 가져오지 못했어요"
@@ -459,7 +532,7 @@ function ChildQuizPage() {
         message="퀴즈를 불러오지 못했어요"
         onRetry={retryLoad}
       />
-      <StateDialog open={showCompleteError}>
+      <StateDialog open={showCompleteError && !isSessionLost(completionMutation.error ?? nextMutation.error)}>
         <ErrorState
           onRetry={() => {
             if (!activityId) return
@@ -468,6 +541,7 @@ function ChildQuizPage() {
           }}
         />
       </StateDialog>
+      <SessionLostDialog open={showCompleteError && isSessionLost(completionMutation.error ?? nextMutation.error)} />
     </ChildLayout>
   )
 }

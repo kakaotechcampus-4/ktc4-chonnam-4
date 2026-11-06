@@ -22,6 +22,7 @@ import jakarta.servlet.MultipartConfigElement;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -138,8 +139,10 @@ public class RoleplayHttpConfiguration {
     }
 
     @Bean
-    public RoleplayTurnResponseMapper roleplayTurnResponses(RoleplaySpeechDelivery delivery) {
-        return new RoleplayTurnResponseMapper(delivery);
+    public RoleplayTurnResponseMapper roleplayTurnResponses(
+            RoleplaySpeechDelivery delivery,
+            @Value("${roleplay.text.enabled:false}") boolean textEnabled) {
+        return new RoleplayTurnResponseMapper(delivery, textEnabled);
     }
 
     @Bean

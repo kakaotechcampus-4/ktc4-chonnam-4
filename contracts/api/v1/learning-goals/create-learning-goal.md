@@ -22,6 +22,7 @@
 - 저장 전 정리: 모든 문자열의 앞뒤 공백을 지우고 안쪽 연속 공백(전각 공백 포함)을 한 칸으로 줄입니다. situationType·category가 공백뿐이면 null입니다. 목록은 같은 값을 한 번만 남기고 입력 순서를 지킵니다. 응답은 정리한 값입니다.
 - 등장인물은 `{id, role}`입니다. role은 인물 설명이고 실제 이름을 넣지 않습니다(서버는 실명 여부를 검사하지 않으므로 FE·강사 안내로 지킵니다). id를 생략·null·빈 문자열로 두면 `OTHER`(공백만 있는 id는 형식 오류 422), 같은 id가 여럿이면 role 글자 순서로 첫 인물만 그대로 두고 나머지는 `FRIEND_2`처럼 번호를 붙입니다. `LEARNER`(역할극의 아이 자리)는 거부합니다.
 - 조건 오류는 422 `INVALID_GOAL_CONDITIONS`이며 `fieldErrors[].field`가 문제 칸을 요청 기준 위치로 가리킵니다(예: `forbiddenExpressions[1]`, `characters[0].id`). 목록의 null/공백 원소, 그리고 피할 표현이 필수 요소나 등장인물 role 안에 들어 있는 경우(띄어쓰기·대소문자 무시)입니다. 이런 조건은 시나리오 생성 결과 검사를 늘 실패시키기 때문입니다.
+- 목록 상한: 등장인물 5명, 필수 요소 5개(각 50자), 피할 표현 10개(각 30자)까지입니다. 개수는 정리(중복 제거) 전 요청 기준입니다. 넘으면 422 `VALIDATION_FAILED`이고 `fieldErrors[].field`가 넘친 목록(`characters`) 또는 항목(`requiredElements[5]`)을 가리킵니다. 저장한 조건이 시나리오 생성 입력에 그대로 들어가므로 크기를 묶어 둡니다.
 - contentHash는 정리한 값으로 계산하되 목록을 정렬해 넣습니다. 칩 순서만 다른 목표는 같은 해시입니다. 이미 저장된 목표의 해시는 다시 계산하지 않습니다.
 - 활동 배정에서는 이 API를 먼저 호출하고 goalId를 넘기는 방식 대신 ACT-01에 goal 내용을 넣어 원자 저장합니다. 이 단독 생성 API는 별도로 유지됩니다.
 
@@ -54,11 +55,11 @@
 | title | string | 예 | 아니오 | 최대200자 |
 | situationType | string \| null | 아니오 | 예 | 상황 설명 문장, 최대200자, 선택. 공백만이면 null |
 | category | string \| null | 아니오 | 예 | 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null |
-| characters | GoalCharacter[] \| null | 아니오 | 예 | 추가 등장인물 `{id, role}`; 누락/null은 [] |
+| characters | GoalCharacter[] \| null | 아니오 | 예 | 추가 등장인물 `{id, role}`, 최대5명; 누락/null은 [] |
 | characters[].id | string \| null | 아니오 | 예 | 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 생략/null/""은 OTHER, 공백만은 422, LEARNER 불가 |
 | characters[].role | string | 예 | 아니오 | 인물 설명, 최대50자, 보이는 글자 1자 이상·제어 문자 불가. 실제 이름 금지(서버 미검사) |
-| requiredElements | string[] \| null | 아니오 | 예 | 아이가 대화에서 해 볼 행동. 빈/공백/null 원소는 조건 오류 |
-| forbiddenExpressions | string[] \| null | 아니오 | 예 | 역할극에 나오면 안 되는 말. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 |
+| requiredElements | string[] \| null | 아니오 | 예 | 아이가 대화에서 해 볼 행동, 최대5개·각 50자. 빈/공백/null 원소는 조건 오류 |
+| forbiddenExpressions | string[] \| null | 아니오 | 예 | 역할극에 나오면 안 되는 말, 최대10개·각 30자. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 |
 | parentGoalId | UUID \| null | 아니오 | 예 | 접근 가능한 동일 아동의 이전 목표 |
 
 ~~~json

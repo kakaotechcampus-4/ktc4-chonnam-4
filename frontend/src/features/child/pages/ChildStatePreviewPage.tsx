@@ -9,6 +9,7 @@ import {
   ExpiredState,
   NetworkState,
   StateDialog,
+  TooManyTriesState,
 } from "../components/state"
 
 const DIALOG_PREVIEWS = [
@@ -17,6 +18,7 @@ const DIALOG_PREVIEWS = [
   { key: "microphone", label: "마이크 권한" },
   { key: "expired", label: "코드 만료" },
   { key: "network", label: "네트워크" },
+  { key: "tooMany", label: "요청 많음" },
 ] as const
 
 type DialogPreviewKey = (typeof DIALOG_PREVIEWS)[number]["key"]
@@ -57,6 +59,9 @@ function ChildStatePreviewPage() {
       </StateDialog>
       <StateDialog open={openDialog === "network"}>
         <NetworkState onRetry={close} />
+      </StateDialog>
+      <StateDialog open={openDialog === "tooMany"}>
+        <TooManyTriesState waitSeconds={5} onRetry={close} />
       </StateDialog>
     </ChildLayout>
   )

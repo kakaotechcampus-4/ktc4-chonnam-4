@@ -12,7 +12,7 @@ type RecordingEndReason = "manual" | "timeout"
 /**
  * 역할극 "듣고 있어요" 화면 (C-RP-02 녹음 진행).
  * 화면에 올라온 순간부터 30초를 세고, "다 말했어요"를 누르거나 시간이 다 되면 onFinish로 알린다.
- * 실제 녹음·STT는 S6에서 붙이고, 지금은 화면과 시간 제한만 있다.
+ * 녹음은 RoleplayComposer 가 녹음을 시작한 뒤 이 화면을 띄우고, onFinish 에서 끝낸다(lib/voiceRecorder).
  */
 function VoiceRecordingPanel({ onFinish }: { onFinish: (reason: RecordingEndReason) => void }) {
   const handleTimeout = useCallback(() => onFinish("timeout"), [onFinish])

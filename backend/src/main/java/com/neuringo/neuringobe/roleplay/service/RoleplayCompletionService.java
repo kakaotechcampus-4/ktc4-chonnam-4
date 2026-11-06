@@ -5,6 +5,7 @@ import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointCommand;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointStore;
+import com.neuringo.neuringobe.ai.application.roleplay.RoleplayStoredTurnSafetyLimit;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
 import com.neuringo.neuringobe.roleplay.application.RoleplayActivityGoalEvaluator.Decision;
@@ -102,7 +103,9 @@ public class RoleplayCompletionService {
                             }
                             boolean maximumTurnReached =
                                     maximumLearningTurnReached(command, plan, deadline);
-                            if (maximumTurnReached
+                            boolean safetyLimitReached =
+                                    RoleplayStoredTurnSafetyLimit.reached(command.turnNumber());
+                            if ((maximumTurnReached || safetyLimitReached)
                                     && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
                                             || !"CLOSING".equals(command.responseType()))) {
                                 status.setRollbackOnly();
@@ -110,13 +113,23 @@ public class RoleplayCompletionService {
                             }
                             observations.save(plan);
                             if (plan.proposal().decision() == Decision.ACHIEVED
-                                    || maximumTurnReached) {
+                                    || maximumTurnReached
+                                    || safetyLimitReached) {
                                 boolean firstCompletion =
                                         completion.completeAfterRoleplay(activity);
-                                retention.completeNormallyAndDelete(
-                                        command.sessionId(),
-                                        command.childId(),
-                                        command.activityId());
+                                if (safetyLimitReached
+                                        && !maximumTurnReached
+                                        && plan.proposal().decision() != Decision.ACHIEVED) {
+                                    retention.completeAtStoredTurnSafetyLimitAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                } else {
+                                    retention.completeNormallyAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                }
                                 if (firstCompletion) {
                                     // 리스너는 커밋 뒤(AFTER_COMMIT)에만 돈다. 롤백되면 이벤트도 사라진다.
                                     events.publishEvent(

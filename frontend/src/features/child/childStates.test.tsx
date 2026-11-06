@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 import type { UserEvent } from "@testing-library/user-event"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { http, HttpResponse } from "msw"
@@ -14,6 +14,7 @@ import {
 import { server } from "@/test/msw/server"
 import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 import * as api from "./api"
+import { CAMERA_MODEL_VERSION } from "./camera/faceExpressionModel"
 
 // S2-YOON-01 아동 화면 오류·로딩·재입력 점검, S3-YOON-01 상태 규칙 통일 확인 (VS-003·006·010).
 // 아동 화면은 모두 실제 API(contracts/api/v1)를 부르고, 테스트는 MSW 가짜 서버(test/msw/handlers.ts)로 대신한다.
@@ -249,6 +250,56 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
   })
 })
 
+describe("답·힌트·대화를 보내다 세션이 끝나면(401) 다시 하기 대신 다시 입장하게 한다", () => {
+  // 명세 공통 규칙 "아동401은 재입장 안내". 다시 하기로 같은 요청을 보내도 계속 401이라 아이가 빠져나갈 수 없었다(S8 회귀 점검 D1·D2).
+  const sessionLost = ({ request }: { request: Request }) =>
+    apiError(401, "AUTHENTICATION_REQUIRED", "인증이 필요합니다.", new URL(request.url).pathname)
+  const HINT_URL = "*/api/v1/activity-quiz-items/:activityQuizId/hints"
+
+  async function expectReentry(user: UserEvent, path: RegExp) {
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("다시 들어와 줘")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "다시 하기" })).not.toBeInTheDocument()
+    const before = sentTo(path).length
+    await user.click(within(dialog).getByRole("button", { name: "코드 입력하기" }))
+
+    expect(await screen.findByText("입장 코드를 입력해줘!")).toBeInTheDocument()
+    // 같은 요청을 다시 보내지 않는다.
+    expect(sentTo(path)).toHaveLength(before)
+  }
+
+  it("퀴즈 답을 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.put(ATTEMPT_URL, sessionLost))
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`)
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/attempt$/)
+  })
+
+  it("틀린 뒤 힌트를 받다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(HINT_URL, sessionLost))
+    // 두 번째 문항(친구 감정 상황, 정답 슬픔)에서 일부러 틀려 힌트를 받게 한다.
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`, { quizFinished: 1 })
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/hints$/)
+  })
+
+  it("역할극 대화를 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(TEXT_INPUT_URL, sessionLost))
+    const { user } = openRoleplay()
+
+    const input = await openTextComposer(user)
+    await user.type(input, "아플 것 같아{Enter}")
+
+    await expectReentry(user, /\/text-inputs$/)
+  })
+})
+
 describe("코드 입력 화면은 만료·연결 끊김·서버 오류를 틀린 코드와 따로 알린다", () => {
   it("코드를 숫자로 바꾸지 않고 앞자리 0까지 그대로 보낸다", async () => {
     const sent: unknown[] = []
@@ -314,6 +365,44 @@ describe("코드 입력 화면은 만료·연결 끊김·서버 오류를 틀린
 
     expect(await screen.findByText(GREETING)).toBeInTheDocument()
   })
+
+  // 서버 앞 nginx 가 막으면 본문이 HTML 이고 Retry-After 가 없을 수 있다. 백엔드가 막으면 공통 오류 JSON 과 Retry-After 가 온다.
+  it.each([
+    ["nginx 가 막은 429(HTML, 대기 시간 없음)", () => new HttpResponse("<html>429 Too Many Requests</html>", { status: 429, headers: { "Content-Type": "text/html" } }), "1분", 60_000],
+    ["서버가 막은 429(JSON, Retry-After 3초)", () => HttpResponse.json({ error: { code: "TOO_MANY_REQUESTS", message: "요청이 너무 많습니다." } }, { status: 429, headers: { "Retry-After": "3" } }), "3초", 3_000],
+  ])("%s 는 쉬어 가기 모달로 알리고, 기다리는 동안 다시 보내지 않다가 시간이 지나면 같은 코드로 입장한다", async (_name, failure, waitText, waitMs) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.post(ENTRY_URL, failure, { once: true }))
+      const { user } = renderRoutes(router.routes, "/child")
+
+      await pressCode(user, VALID_CODE)
+      await user.click(screen.getByRole("button", { name: "입장하기" }))
+
+      const dialog = await screen.findByRole("dialog")
+      expect(within(dialog).getByText("조금 쉬었다가 다시 해 보자")).toBeInTheDocument()
+      expect(within(dialog).getByText(`${waitText} 뒤에 다시 할 수 있어요.`)).toBeInTheDocument()
+      // 틀린 코드나 일반 오류로 보여 주지 않고, 입력한 코드도 비우지 않는다.
+      expect(screen.queryByText("잠깐 문제가 있었어요")).not.toBeInTheDocument()
+      expect(screen.queryByText("코드가 맞지 않아요. 다시 눌러볼까?")).not.toBeInTheDocument()
+      expect(screen.getByRole("group", { hidden: true })).toHaveAttribute("aria-label", "입력한 숫자 4개")
+
+      // 기다리는 동안에는 다시 하기가 막혀 있고, 키보드 Enter 로도 다시 보내지 않는다.
+      const retry = within(dialog).getByRole("button", { name: "다시 하기" })
+      expect(retry).toBeDisabled()
+      await user.keyboard("{Enter}")
+      expect(sentTo(/child-access-sessions$/)).toHaveLength(1)
+
+      act(() => vi.advanceTimersByTime(waitMs))
+      expect(await within(dialog).findByText("이제 다시 해도 괜찮아요.")).toBeInTheDocument()
+      await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
+
+      expect(await screen.findByText(GREETING)).toBeInTheDocument()
+      expect(vi.mocked(api.verifyAccessCode).mock.calls.map(([code]) => code)).toEqual([VALID_CODE, VALID_CODE])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는다", () => {
@@ -355,7 +444,7 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
               firstResponse: "기쁨",
               firstResponseCorrect: false,
               expressionMatchResult: "NOT_ANALYZABLE",
-              cameraModelVersion: api.CAMERA_NOT_CONNECTED,
+              cameraModelVersion: CAMERA_MODEL_VERSION,
               usedHintTypes: [],
               finalResponse: "기쁨",
               resolvedAfterHint: false,

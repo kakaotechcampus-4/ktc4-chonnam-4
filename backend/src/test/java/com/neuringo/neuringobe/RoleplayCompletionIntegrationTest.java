@@ -753,6 +753,149 @@ class RoleplayCompletionIntegrationTest {
                 limitEvents);
     }
 
+    @Test
+    void tenthStoredTurnTechnicallyCompletesWithoutLearningHistoryAndReplaysOnce() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        advanceStoredTurnsToNine(f);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 9);
+        var plan = RoleplayObservationTestPlans.forCommand(command, false);
+        var service = completionWithLimit(20);
+
+        var committed =
+                (RoleplayCheckpointStore.Committed)
+                        service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start());
+        assertThat(committed.replayed()).isFalse();
+        assertThat(turns(f)).isEqualTo(10);
+        assertThat(canonicalTurns(f)).isZero();
+        assertThat(records(f)).isEqualTo(1);
+        assertThat(activity(f))
+                .containsEntry("status", "COMPLETED")
+                .containsEntry("reward_issued_at", Timestamp.from(NOW));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select completion_kind from roleplay_session where session_id=?",
+                                String.class,
+                                f.session))
+                .isEqualTo("TECHNICAL_STORED_TURN_LIMIT");
+        assertThat(
+                        jdbc.queryForObject(
+                                "select decision from roleplay_goal_assessment where session_id=? and turn_id=?",
+                                String.class,
+                                f.session,
+                                command.turnId()))
+                .isEqualTo("IN_PROGRESS");
+
+        var replay =
+                (RoleplayCheckpointStore.Committed)
+                        service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start());
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.turnId()).isEqualTo(committed.turnId());
+        assertThat(turns(f)).isEqualTo(10);
+        assertThat(records(f)).isEqualTo(1);
+    }
+
+    @Test
+    void tenthStoredTurnRejectsAnotherQuestionWithoutSaving() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        advanceStoredTurnsToNine(f);
+        var command =
+                command(
+                        f,
+                        UUID.randomUUID(),
+                        "a".repeat(64),
+                        9,
+                        "GUIDING_QUESTION",
+                        "PROBE_EMOTION");
+
+        assertThat(
+                        completionWithLimit(20)
+                                .commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, false),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Conflict.class);
+        assertThat(turns(f)).isEqualTo(9);
+        assertThat(records(f)).isZero();
+        assertThat(activity(f)).containsEntry("status", "IN_PROGRESS");
+    }
+
+    @Test
+    void tenthStoredTurnRollsBackFailedRewardAndCanRetry() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        advanceStoredTurnsToNine(f);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 9);
+        var plan = RoleplayObservationTestPlans.forCommand(command, false);
+        var service = completionWithLimit(20);
+        String constraint = "test_safety_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc.execute(
+                "alter table learning_record add constraint "
+                        + constraint
+                        + " check (activity_id <> '"
+                        + f.activity
+                        + "'::uuid)");
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    service.commitApprovedTurn(
+                                            command, plan, RoleplayTurnDeadline.start()))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            assertThat(turns(f)).isEqualTo(9);
+            assertThat(records(f)).isZero();
+            assertThat(activity(f)).containsEntry("status", "IN_PROGRESS");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select completion_kind from roleplay_session where session_id=?",
+                                    String.class,
+                                    f.session))
+                    .isNull();
+        } finally {
+            jdbc.execute("alter table learning_record drop constraint " + constraint);
+        }
+        assertThat(service.commitApprovedTurn(command, plan, RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        assertThat(turns(f)).isEqualTo(10);
+        assertThat(records(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select completion_kind from roleplay_session where session_id=?",
+                                String.class,
+                                f.session))
+                .isEqualTo("TECHNICAL_STORED_TURN_LIMIT");
+    }
+
+    @Test
+    void achievedGoalAtTenthStoredTurnKeepsNormalCompletion() {
+        var f = fixture(ActivityType.ROLEPLAY);
+        advanceStoredTurnsToNine(f);
+        var command = command(f, UUID.randomUUID(), "a".repeat(64), 9);
+
+        assertThat(
+                        completionWithLimit(20)
+                                .commitApprovedTurn(
+                                        command,
+                                        RoleplayObservationTestPlans.forCommand(command, true),
+                                        RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        assertThat(turns(f)).isEqualTo(10);
+        assertThat(records(f)).isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select completion_kind from roleplay_session where session_id=?",
+                                String.class,
+                                f.session))
+                .isEqualTo("NORMAL");
+    }
+
+    private void advanceStoredTurnsToNine(Fixture f) {
+        for (int version = 1; version < 9; version++) {
+            assertThat(
+                            checkpoints.commit(
+                                    command(f, UUID.randomUUID(), "a".repeat(64), version),
+                                    RoleplayTurnDeadline.start()))
+                    .isInstanceOf(RoleplayCheckpointStore.Committed.class);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {1, 2})
     void maximumTurnCompletesWithoutChangingTheUnachievedGoalAndReplaysOnce(int maximum) {

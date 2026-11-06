@@ -7,15 +7,22 @@ import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
+import {
+  RoleplayComposer,
+  type RoleplayInputMode,
+  type VoiceResult,
+} from "../components/roleplay/RoleplayComposer"
+import type { VoiceRecorderError } from "../lib/voiceRecorder"
 import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
+import { SessionLostDialog } from "../components/state/LoadErrorDialog"
+import { isSessionLost } from "../components/state/sessionLost"
 import {
   ChildApiError,
   getActivityStatus,
   myActivitiesQueryKey,
   roleplaySessionQueryKey,
-  sendRoleplayText,
+  sendRoleplayTurn,
   startRoleplay,
   type RoleplaySpeaker,
   type RoleplayTurnInput,
@@ -104,10 +111,19 @@ function RoleplayStoppedView({ onHome }: { onHome: () => void }) {
 // 서버 고정 안내 문구가 비어 올 때(NOTICE_UNAVAILABLE) 대신 보여 주는 깡총이 말. API-RPL-04 공통 재입력 문구와 같다.
 const FALLBACK_NOTICE = "다시 한 번만 말해줄래?"
 
+// 녹음이 서버에 가기 전에 끝났을 때 깡총이가 하는 말.
+const VOICE_TIMEOUT_NOTICE = "시간이 다 됐어. 조금 짧게 다시 말해줄래?"
+const VOICE_UNAVAILABLE_NOTICE: Record<VoiceRecorderError, string> = {
+  denied: "마이크를 쓸 수 없어. 선생님께 마이크를 켜 달라고 하거나 글자로 알려줄래?",
+  unsupported: "여기서는 말로 답할 수 없어. 글자로 알려줄래?",
+  failed: "마이크를 찾지 못했어. 글자로 알려줄래?",
+}
+
 /**
  * 역할극 화면 (C-RP-02·04·06, VS-010·011·013).
- * 시작·이어 하기는 API-RPL-01, 글자 답은 API-RPL-05 로 보낸다. 완료·스탬프는 서버가 정하므로 대화가 이어질 때마다
- * 활동 상태(API-ACT-04)를 읽어 COMPLETED 면 마무리한다. 말로 답하기(API-RPL-04)·일시 중단(C-RP-05)은 아직 연결하지 않았다.
+ * 시작·이어 하기는 API-RPL-01, 말로 답하기는 API-RPL-04(녹음 파일 → 서버 STT), 글자 답은 API-RPL-05 로 보낸다.
+ * 완료·스탬프는 서버가 정하므로 대화가 이어질 때마다 활동 상태(API-ACT-04)를 읽어 COMPLETED 면 마무리한다.
+ * 음성 실패가 쌓여 서버가 글자를 권하면(SUGGEST_TEXT_KEEP_VOICE) 글자 모드로 바꾸고 마이크는 그대로 둔다. 일시 중단(C-RP-05)은 아직 연결하지 않았다.
  */
 function ChildRoleplayPage() {
   const navigate = useNavigate()
@@ -116,6 +132,7 @@ function ChildRoleplayPage() {
   const childName = useChildSessionStore((state) => state.childName) ?? ""
 
   const [replies, setReplies] = useState<ThreadMessage[]>([])
+  const [inputMode, setInputMode] = useState<RoleplayInputMode>("voice")
   const [isFinished, setIsFinished] = useState(false)
   const [isStopped, setIsStopped] = useState(false)
   const [isWrappedUp, setIsWrappedUp] = useState(false)
@@ -152,12 +169,18 @@ function ChildRoleplayPage() {
 
   const turnMutation = useMutation({
     mutationFn: async (input: RoleplayTurnInput) => {
-      const result = await sendRoleplayText(input)
+      const result = await sendRoleplayTurn(input)
       // 대화가 이어졌으면 서버가 활동을 끝냈는지 본다. 실패하면 같은 키로 다시 보내 저장된 결과를 받는다.
       const completed = result.status === "DELIVERED" && (await getActivityStatus(activityId ?? "")) === "COMPLETED"
       return { result, completed }
     },
-    onSuccess: ({ result, completed }) => {
+    onSuccess: ({ result, completed }, input) => {
+      // 말로 답한 턴은 서버가 알아들은 문장(표준 발화)을 아이 말풍선으로 보여 준다. 글자 답은 보낼 때 이미 보여 줬다.
+      // 같은 키 재전송(replayed)은 acceptedInput 이 null 이라 아이 말풍선 없이 대답만 이어 간다.
+      if (input.kind === "voice" && result.acceptedInput) {
+        const spoken = result.acceptedInput
+        setReplies((prev) => [...prev, { id: nextId("child"), speaker: "child", text: spoken, inputMode: "voice" }])
+      }
       for (const message of result.messages) {
         if (message.speaker === "rabbit") showRabbitHint(message.text)
         else setReplies((prev) => [...prev, { id: nextId("reply"), ...message }])
@@ -165,6 +188,8 @@ function ChildRoleplayPage() {
       if (result.status === "NOTICE_UNAVAILABLE" && result.messages.length === 0 && result.action !== "STOP_DIALOGUE") {
         showRabbitHint(FALLBACK_NOTICE)
       }
+      // 음성 실패가 3번 쌓이면 서버가 글자를 권한다. 글자 모드로 바꾸되 마이크 버튼은 남겨 다시 말할 수 있게 한다.
+      if (result.action === "SUGGEST_TEXT_KEEP_VOICE") setInputMode("text")
       if (result.status === "STOPPED" || result.action === "STOP_DIALOGUE") setIsStopped(true)
       if (completed) {
         setIsFinished(true)
@@ -218,16 +243,26 @@ function ChildRoleplayPage() {
     return <Navigate to={`/child/quiz/${activityId}`} replace />
   }
 
-  const send = (text: string, inputMode: RoleplayInputMode) => {
+  const sendText = (text: string) => {
     if (!session) return
-    setReplies((prev) => [...prev, { id: nextId("child"), speaker: "child", text, inputMode }])
+    setReplies((prev) => [...prev, { id: nextId("child"), speaker: "child", text, inputMode: "text" }])
     // 새 답은 새 키. 응답을 못 받아 다시 보낼 때만 같은 키를 쓴다.
-    turnMutation.mutate({ sessionId: session.sessionId, text, requestKey: crypto.randomUUID() })
+    turnMutation.mutate({ kind: "text", sessionId: session.sessionId, text, requestKey: crypto.randomUUID() })
   }
 
-  // 말로 답하기(API-RPL-04)는 아직 연결하지 않았다. "듣고 있어요" 화면이 끝나면 깡총이가 글자로 답하도록 안내한다.
-  const handleVoiceFinish = () => {
-    showRabbitHint("말로 답하기는 아직 준비 중이야. 글자로 알려줄래?")
+  // 녹음이 끝나면 음성 파일을 서버로 보낸다(API-RPL-04). 새 녹음은 새 키, 다시 보내기는 같은 키·같은 파일이다.
+  const handleVoiceResult = (result: VoiceResult) => {
+    if (result.type === "audio") {
+      if (!session) return
+      turnMutation.mutate({ kind: "voice", sessionId: session.sessionId, audio: result.audio, requestKey: crypto.randomUUID() })
+      return
+    }
+    if (result.type === "timeout") {
+      showRabbitHint(VOICE_TIMEOUT_NOTICE)
+      return
+    }
+    showRabbitHint(VOICE_UNAVAILABLE_NOTICE[result.reason])
+    setInputMode("text")
   }
 
   const goHome = () => navigate("/child/activities", { replace: true })
@@ -275,8 +310,10 @@ function ChildRoleplayPage() {
               <RoleplayStoppedView onHome={goHome} />
             ) : (
               <RoleplayComposer
-                onSend={send}
-                onVoiceFinish={handleVoiceFinish}
+                mode={inputMode}
+                onModeChange={setInputMode}
+                onSend={sendText}
+                onVoiceResult={handleVoiceResult}
                 disabled={turnMutation.isPending}
               />
             )}
@@ -290,7 +327,7 @@ function ChildRoleplayPage() {
         message="역할극을 불러오지 못했어요"
         onRetry={retryLoad}
       />
-      <StateDialog open={showSendError}>
+      <StateDialog open={showSendError && !isSessionLost(turnMutation.error)}>
         {/* 같은 키로 다시 보내 턴이 중복 생성되지 않게 한다 (VS-011 재전송). 처리 중(202)이었어도 같은 키로 결과를 받는다. */}
         <ErrorState
           onRetry={() => {
@@ -298,6 +335,8 @@ function ChildRoleplayPage() {
           }}
         />
       </StateDialog>
+      {/* 대화를 보내다 세션이 끝나면(401) 다시 하기로는 빠져나갈 수 없어 다시 입장하게 한다. */}
+      <SessionLostDialog open={showSendError && isSessionLost(turnMutation.error)} />
     </ChildLayout>
   )
 }

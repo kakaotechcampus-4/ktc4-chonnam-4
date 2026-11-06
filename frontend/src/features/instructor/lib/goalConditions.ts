@@ -2,7 +2,7 @@
  * 역할극 추가 조건(시안 T-ACT-04)의 보기와 모순 규칙.
  * 필수 요소는 아이가 대화에서 해 볼 행동이고, 보기는 시안의 세 항목이다. 관계도 시안의 세 보기이고, 고른 관계가 등장인물 id 가 된다.
  * 목록 관리가 생기면 이 파일만 바꾼다.
- * 서버는 두 목록 모두 값 목록을 검사하지 않고 문자열로 받는다.
+ * 서버는 두 목록 모두 값 목록을 검사하지 않고 문자열로 받는다. 개수와 글자 수 상한만 서버(CreateLearningGoalRequest)와 같게 둔다.
  */
 
 export const REQUIRED_ELEMENT_PRESETS = ['감정을 확인하는 질문 1회', '위로 표현 1회', '함께 할 행동 제안'] as const
@@ -19,6 +19,10 @@ export const OTHER_CHARACTER_ID = 'OTHER'
 
 export const SITUATION_MAX = 200
 export const CHARACTER_ROLE_MAX = 50
+/** 서버 상한과 같다. 필수 요소(5개, 각 50자)는 화면이 보기 세 개에서만 고르게 해 따로 두지 않는다. */
+export const CHARACTER_COUNT_MAX = 5
+export const FORBIDDEN_COUNT_MAX = 10
+export const FORBIDDEN_EXPRESSION_MAX = 30
 
 /**
  * 등장인물. 팀 명세 예시·시나리오 생성과 같은 {id, role} 모양이다. role 은 인물 설명(예: "넘어진 친구"), id 는 아이와의 관계 종류다.

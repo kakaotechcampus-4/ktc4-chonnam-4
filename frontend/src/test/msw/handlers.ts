@@ -288,6 +288,8 @@ type StoredRoleplaySession = {
   status: "IN_PROGRESS" | "PAUSED" | "COMPLETED"
   openingId: string
   turns: { key: string; text: string; turnId: string; response: RoleplayTurnBody }[]
+  /** 음성 실패 횟수(API-RPL-04). 3번부터 SUGGEST_TEXT_KEEP_VOICE 다. 정상 입력으로 줄지 않는다. */
+  voiceFailures: number
 }
 
 /** 역할극 첫 질문(승인 시나리오 opening_prompts 대신). 대본은 두 번째 답에서 목표를 달성해 활동이 완료된다. */
@@ -595,6 +597,15 @@ function nextActionOf(activity: StoredActivity): NextAction {
 /** 목록·상세 응답의 활동. 생성 응답(ACT-01)에는 준비 상태를 싣지 않는다. */
 function toListedActivity(stored: StoredActivity) {
   return { ...toActivity(stored), nextAction: nextActionOf(stored), blockedReason: null }
+}
+
+/**
+ * 아동 세션의 활동 목록 항목(API-ACT-02 아동 응답, #116 ChildActivityResponse). 서버처럼 이 5개 칸만 준다.
+ * 평가 정보(지원 수준·기본값 적용 여부)와 목표·시나리오 ID 는 키 자체가 없다.
+ */
+function toChildListedActivity(stored: StoredActivity) {
+  const { activityId, activityType, status, completedAt } = toActivity(stored)
+  return { activityId, activityType, status, completedAt, nextAction: nextActionOf(stored) }
 }
 
 /** 화면 테스트에서 그 배정 문항에 저장된 답안을 본다. */
@@ -1040,6 +1051,38 @@ function roleplayStartBody(session: StoredRoleplaySession, activity: StoredActiv
   }
 }
 
+function roleplayReinput(action: "REQUEST_NEW_INPUT" | "SUGGEST_TEXT_KEEP_VOICE"): RoleplayTurnBody {
+  return {
+    status: "REINPUT_REQUIRED",
+    action,
+    messages: [roleplayMessage("HINT", ROLEPLAY_REINPUT_NOTICE)],
+    acceptedInput: null,
+    checkpointVersion: null,
+    replayed: false,
+  }
+}
+
+/** 대본(ROLEPLAY_SCRIPT)대로 답하고 마지막 답에서 활동을 완료한다(서버 RoleplayCompletionService). */
+function deliverRoleplayTurn(session: StoredRoleplaySession, activity: StoredActivity, text: string): RoleplayTurnBody {
+  const delivered = session.turns.filter((turn) => turn.response.status === "DELIVERED").length
+  const reply = ROLEPLAY_SCRIPT[Math.min(delivered, ROLEPLAY_SCRIPT.length - 1)]
+  if (delivered + 1 >= ROLEPLAY_SCRIPT.length) {
+    completeActivity(activity)
+    session.status = "COMPLETED"
+  }
+  return {
+    status: "DELIVERED",
+    action: "NONE",
+    messages: [roleplayMessage("DIALOGUE", reply)],
+    acceptedInput: text,
+    checkpointVersion: session.turns.length + 1,
+    replayed: false,
+  }
+}
+
+/** 음성 실패가 3번 쌓이면 서버가 글자 입력을 권한다(API-RPL-04). */
+const VOICE_FAILURES_BEFORE_TEXT = 3
+
 export const handlers = [
   http.get("*/api/v1/csrf", () => HttpResponse.json(envelope(CSRF))),
 
@@ -1390,7 +1433,9 @@ export const handlers = [
       return invalidRequest(path)
     }
     const list = activities.filter((a) => a.childId === childId).reverse()
-    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toListedActivity)))
+    // 응답 종류는 서버처럼 인증 주체로 정한다. 아동 세션이면 아동용 5개 칸, 강사면 전체 칸이다.
+    const toItem = asChild ? toChildListedActivity : toListedActivity
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toItem)))
   }),
 
   // 활동 배정. 서버처럼 목표를 함께 저장하고 유형별 구성대로 문항을 붙인다. 같은 요청 키는
@@ -1825,7 +1870,7 @@ export const handlers = [
       scenarioId: crypto.randomUUID(),
       status: "IN_PROGRESS",
       openingId: crypto.randomUUID(),
-      turns: [],
+      turns: [], voiceFailures: 0,
     }
     roleplaySessions.set(activityId, session)
     return HttpResponse.json(envelope(roleplayStartBody(session, activity)), { status: 201 })
@@ -1856,34 +1901,56 @@ export const handlers = [
       return apiError(409, "ROLEPLAY_CONFLICT", "진행 중인 역할극이 아닙니다.", path)
     }
     const text = body.text.trim().replace(/\s+/g, " ")
-    let response: RoleplayTurnBody
-    if (!text) {
-      response = {
-        status: "REINPUT_REQUIRED",
-        action: "REQUEST_NEW_INPUT",
-        messages: [roleplayMessage("HINT", ROLEPLAY_REINPUT_NOTICE)],
-        acceptedInput: null,
-        checkpointVersion: null,
-        replayed: false,
-      }
-    } else {
-      const delivered = session.turns.filter((turn) => turn.response.status === "DELIVERED").length
-      const reply = ROLEPLAY_SCRIPT[Math.min(delivered, ROLEPLAY_SCRIPT.length - 1)]
-      response = {
-        status: "DELIVERED",
-        action: "NONE",
-        messages: [roleplayMessage("DIALOGUE", reply)],
-        acceptedInput: text,
-        checkpointVersion: session.turns.length + 1,
-        replayed: false,
-      }
-      // 마지막 대본 답에서 목표를 달성해 활동·세션을 완료한다(서버 RoleplayCompletionService).
-      if (delivered + 1 >= ROLEPLAY_SCRIPT.length) {
-        completeActivity(activity)
-        session.status = "COMPLETED"
-      }
-    }
+    const response = text ? deliverRoleplayTurn(session, activity, text) : roleplayReinput("REQUEST_NEW_INPUT")
     session.turns.push({ key, text: body.text, turnId: crypto.randomUUID(), response })
+    return HttpResponse.json(envelope(response))
+  }),
+
+  // 말로 답하기(API-RPL-04). 가짜 STT 는 음성 파일의 바이트를 UTF-8 글자로 읽어 그대로 알아들은 말로 쓴다(테스트가 정한다).
+  // 비었거나 공백뿐이면 잘 안 들린 것으로 보고 재입력이고, 3번째 실패부터 SUGGEST_TEXT_KEEP_VOICE 다.
+  // 같은 키·같은 바이트는 저장된 결과를 replayed=true 로 돌려주고, 같은 키에 다른 바이트는 409 다.
+  http.post("*/api/v1/roleplay-sessions/:sessionId/voice-inputs", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const childId = requireChild(request)
+    if (childId instanceof Response) return childId
+    const path = new URL(request.url).pathname
+    const sessionId = String(params.sessionId)
+    const key = request.headers.get("Idempotency-Key")
+    if (!UUID_FORMAT.test(sessionId) || !key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    if (!request.headers.get("Content-Type")?.startsWith("multipart/form-data")) {
+      return apiError(415, "UNSUPPORTED_MEDIA_TYPE", "지원하지 않는 형식입니다.", path)
+    }
+    const form = await request.formData().catch(() => null)
+    const audio = form?.get("audio")
+    if (!audio || typeof audio === "string") return invalidRequest(path)
+    const bytes = await audio.text()
+    const session = [...roleplaySessions.values()].find((s) => s.sessionId === sessionId)
+    const activity = session && activities.find((a) => a.activityId === session.activityId && a.childId === childId)
+    if (!session || !activity) return apiError(404, "ROLEPLAY_NOT_FOUND", "역할극을 찾을 수 없습니다.", path)
+    const fingerprint = `voice:${audio.type}:${bytes}`
+    const previous = session.turns.find((turn) => turn.key === key)
+    if (previous) {
+      if (previous.text !== fingerprint) return apiError(409, "ROLEPLAY_CONFLICT", "다른 입력에 사용한 키입니다.", path)
+      const action =
+        previous.response.status === "REINPUT_REQUIRED" && session.voiceFailures >= VOICE_FAILURES_BEFORE_TEXT
+          ? "SUGGEST_TEXT_KEEP_VOICE"
+          : previous.response.action
+      return HttpResponse.json(envelope({ ...previous.response, action, acceptedInput: null, replayed: true }))
+    }
+    if (session.status !== "IN_PROGRESS") {
+      return apiError(409, "ROLEPLAY_CONFLICT", "진행 중인 역할극이 아닙니다.", path)
+    }
+    const transcript = bytes.trim().replace(/\s+/g, " ")
+    let response: RoleplayTurnBody
+    if (!audio.type.startsWith("audio/") || !transcript) {
+      session.voiceFailures += 1
+      response = roleplayReinput(
+        session.voiceFailures >= VOICE_FAILURES_BEFORE_TEXT ? "SUGGEST_TEXT_KEEP_VOICE" : "REQUEST_NEW_INPUT"
+      )
+    } else {
+      response = deliverRoleplayTurn(session, activity, transcript)
+    }
+    session.turns.push({ key, text: fingerprint, turnId: crypto.randomUUID(), response })
     return HttpResponse.json(envelope(response))
   }),
 ]

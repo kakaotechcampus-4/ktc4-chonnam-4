@@ -78,7 +78,7 @@ public record LlmRequest(
                     Objects.requireNonNull(traceContext.childId(), "childId is required");
             case SCENARIO_GENERATION ->
                     Objects.requireNonNull(traceContext.classId(), "classId is required");
-            case CAUSE_ANALYSIS -> {
+            case INPUT_VALIDATION, CAUSE_ANALYSIS -> {
                 Objects.requireNonNull(traceContext.sessionId(), "sessionId is required");
                 Objects.requireNonNull(traceContext.turnId(), "turnId is required");
             }
