@@ -372,7 +372,7 @@
   {
     "id": "API-CLS-04",
     "fn": "updateClassroom",
-    "draft": true,
+    "draft": false,
     "method": "PATCH",
     "route": "/api/v1/classrooms/{classId}",
     "args": {
@@ -520,7 +520,7 @@
   {
     "id": "API-CLS-09",
     "fn": "updateChild",
-    "draft": true,
+    "draft": false,
     "method": "PATCH",
     "route": "/api/v1/children/{childId}",
     "args": {
@@ -1187,7 +1187,7 @@
       "data": {
         "hintId": "70000000-0000-4000-8000-000000000001",
         "hintOrder": 1,
-        "type": "SITUATION_CUE",
+        "type": "OBSERVABLE_FACE_CUE",
         "text": "친구가 넘어져서 아플 수 있어요."
       },
       "meta": {
@@ -1219,7 +1219,7 @@
         "activityId": "40000000-0000-4000-8000-000000000001",
         "validQuestionCount": 3,
         "correctQuestionCount": 2,
-        "overallAccuracy": 0.6666666666666666,
+        "overallAccuracy": 0.666667,
         "totalHintCount": 1,
         "resolvedAfterHintCount": 1,
         "scenarioLevel": "L2",
@@ -1245,64 +1245,83 @@
   {
     "id": "API-SCN-01",
     "fn": "prepareScenario",
-    "draft": true,
+    "draft": false,
     "method": "POST",
-    "route": "/api/v1/scenarios",
+    "route": "/api/v1/activities/{activityId}/scenario-review",
     "args": {
+      "activityId": "40000000-0000-4000-8000-000000000001",
       "body": {
-        "childId": "10000000-0000-4000-8000-000000000001",
-        "goalId": "30000000-0000-4000-8000-000000000001"
+        "action": "START_OR_RESUME"
       },
       "idempotencyKey": "89000000-0000-4000-8000-000000000001"
     },
     "response": {
       "data": {
-        "scenarioId": "80000000-0000-4000-8000-000000000001",
-        "version": 1,
-        "goalId": "30000000-0000-4000-8000-000000000001",
-        "scenarioSource": "NEWLY_GENERATED",
-        "status": "DRAFT",
-        "scenarioLevel": "L1",
-        "title": "넘어져서 우는 친구",
-        "summary": "친구가 넘어져서 울고 있다.",
-        "scenarioFacts": [
-          "친구가 넘어졌다.",
-          "친구가 울고 있다."
-        ],
-        "prohibitedInferences": [
-          "일부러 넘어졌다고 단정하지 않는다."
-        ],
-        "characters": [
-          {
-            "id": "FRIEND",
-            "role": "친구"
+        "reviewId": "70000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "conditions": {
+          "title": "차례를 기다려요",
+          "category": null,
+          "situationType": null,
+          "characters": [],
+          "requiredElements": [],
+          "forbiddenExpressions": [],
+          "scenarioLevel": "L2"
+        },
+        "scenario": {
+          "scenarioId": "80000000-0000-4000-8000-000000000001",
+          "scenarioVersion": 1,
+          "scenarioLevel": "L2",
+          "title": "넘어져서 우는 친구",
+          "summary": "놀이터에서 친구가 미끄럼틀 앞에서 넘어져 울었다.",
+          "characters": [
+            {
+              "id": "LEARNER",
+              "role": "학습자"
+            },
+            {
+              "id": "FRIEND",
+              "role": "넘어진 친구"
+            }
+          ],
+          "scenarioFacts": [
+            "친구가 미끄럼틀로 뛰어갔다.",
+            "친구가 넘어졌다.",
+            "친구가 울었다."
+          ],
+          "microGoals": [
+            {
+              "microGoalId": "81000000-0000-4000-8000-000000000001",
+              "description": "친구가 넘어졌다는 사실을 말하기",
+              "requiredEvidence": [
+                "넘어졌다는 것을 말하거나 묻는다."
+              ],
+              "achievementExample": "너 넘어졌구나, 괜찮아?"
+            }
+          ],
+          "startingQuestions": {
+            "S0": "친구에게 무슨 일이 있었어?",
+            "S1": "친구가 미끄럼틀 앞에서 울고 있어. 무슨 일이 있었을까?",
+            "S2": "친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?"
+          },
+          "startingQuestionGoalIds": {
+            "S0": "81000000-0000-4000-8000-000000000001",
+            "S1": "81000000-0000-4000-8000-000000000001",
+            "S2": "81000000-0000-4000-8000-000000000001"
           }
-        ],
-        "microGoals": [
-          {
-            "microGoalId": "81000000-0000-4000-8000-000000000001",
-            "description": "친구의 몸과 마음을 표현한다.",
-            "requiredEvidence": [
-              "상황에 맞는 감정을 표현함"
-            ]
-          }
-        ],
-        "openingPrompts": {
-          "S0": "친구는 어떤 기분일까?",
-          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
         }
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
       }
     },
-    "status": 201,
+    "status": 200,
     "key": true,
     "mode": "instructor",
     "form": false,
     "expectedStatuses": [
-      201,
-      202
+      200
     ],
     "conditional": false,
     "unavailable": false
@@ -1432,59 +1451,32 @@
   {
     "id": "API-SCN-04",
     "fn": "reviewScenario",
-    "draft": true,
-    "method": "PATCH",
-    "route": "/api/v1/scenarios/{scenarioId}",
+    "draft": false,
+    "method": "PUT",
+    "route": "/api/v1/activities/{activityId}/scenario",
     "args": {
-      "scenarioId": "80000000-0000-4000-8000-000000000001",
+      "activityId": "40000000-0000-4000-8000-000000000001",
       "body": {
-        "version": 1,
-        "status": "APPROVED"
-      }
+        "reviewId": "70000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "scenarioId": "80000000-0000-4000-8000-000000000001",
+        "scenarioVersion": 1
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000002"
     },
     "response": {
       "data": {
-        "scenarioId": "80000000-0000-4000-8000-000000000001",
-        "version": 1,
-        "goalId": "30000000-0000-4000-8000-000000000001",
-        "scenarioSource": "NEWLY_GENERATED",
-        "status": "DRAFT",
-        "scenarioLevel": "L1",
-        "title": "넘어져서 우는 친구",
-        "summary": "친구가 넘어져서 울고 있다.",
-        "scenarioFacts": [
-          "친구가 넘어졌다.",
-          "친구가 울고 있다."
-        ],
-        "prohibitedInferences": [
-          "일부러 넘어졌다고 단정하지 않는다."
-        ],
-        "characters": [
-          {
-            "id": "FRIEND",
-            "role": "친구"
-          }
-        ],
-        "microGoals": [
-          {
-            "microGoalId": "81000000-0000-4000-8000-000000000001",
-            "description": "친구의 몸과 마음을 표현한다.",
-            "requiredEvidence": [
-              "상황에 맞는 감정을 표현함"
-            ]
-          }
-        ],
-        "openingPrompts": {
-          "S0": "친구는 어떤 기분일까?",
-          "S1": "친구가 넘어져서 울고 있어. 어떤 기분일까?"
-        }
+        "reviewId": "70000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "outcome": "CONFIRMED",
+        "closedAt": "2026-11-04T09:00:00Z"
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
       }
     },
     "status": 200,
-    "key": false,
+    "key": true,
     "mode": "instructor",
     "form": false,
     "expectedStatuses": [
@@ -1561,19 +1553,34 @@
   {
     "id": "API-SCN-06",
     "fn": "deleteScenario",
-    "draft": true,
+    "draft": false,
     "method": "DELETE",
-    "route": "/api/v1/scenarios/{scenarioId}",
+    "route": "/api/v1/activities/{activityId}/scenario-review",
     "args": {
-      "scenarioId": "80000000-0000-4000-8000-000000000001"
+      "activityId": "40000000-0000-4000-8000-000000000001",
+      "body": {
+        "reviewId": "70000000-0000-4000-8000-000000000001",
+        "revision": 1
+      },
+      "idempotencyKey": "89000000-0000-4000-8000-000000000003"
     },
-    "response": null,
-    "status": 204,
-    "key": false,
+    "response": {
+      "data": {
+        "reviewId": "70000000-0000-4000-8000-000000000001",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "outcome": "CANCELLED",
+        "closedAt": "2026-11-04T09:00:00Z"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": true,
     "mode": "instructor",
     "form": false,
     "expectedStatuses": [
-      204
+      200
     ],
     "conditional": false,
     "unavailable": false
@@ -1613,54 +1620,26 @@
   },
   {
     "id": "API-SCN-08",
-    "fn": "listRoleplayScenarios",
+    "fn": "listScenarioApprovals",
     "draft": false,
     "method": "GET",
-    "route": "/api/v1/children/{childId}/roleplay-scenarios",
-    "args": {
-      "childId": "10000000-0000-4000-8000-000000000001",
-      "query": {
-        "goalTitle": "친구 마음 공감하기"
-      }
-    },
+    "route": "/api/v1/scenario-approvals",
+    "args": {},
     "response": {
-      "data": {
-        "childId": "10000000-0000-4000-8000-000000000001",
-        "scenarioLevel": "L2",
-        "initialSupportLevel": "S1",
-        "items": [
-          {
-            "scenarioId": "80000000-0000-4000-8000-000000000002",
-            "scenarioVersion": 1,
-            "scenarioLevel": "L2",
-            "title": "놀이터에서 넘어진 친구",
-            "summary": "쉬는 시간에 친구가 놀이터에서 넘어졌다.",
-            "microGoals": [
-              "친구의 속상한 마음 알아보기",
-              "위로하는 말 하기"
-            ],
-            "approvedAt": "2026-10-28T10:00:00+09:00",
-            "lastUsedAt": null,
-            "usedByOtherChildren": 0,
-            "reuseApprovalRequired": false
-          },
-          {
-            "scenarioId": "80000000-0000-4000-8000-000000000001",
-            "scenarioVersion": 1,
-            "scenarioLevel": "L2",
-            "title": "교실에서 넘어진 친구",
-            "summary": "교실에서 친구가 의자에 걸려 넘어졌다.",
-            "microGoals": [
-              "친구의 속상한 마음 알아보기",
-              "넘어진 이유 말하기"
-            ],
-            "approvedAt": "2026-10-20T10:00:00+09:00",
-            "lastUsedAt": "2026-10-30T09:10:00+09:00",
-            "usedByOtherChildren": 1,
-            "reuseApprovalRequired": true
-          }
-        ]
-      },
+      "data": [
+        {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "30000000-0000-4000-8000-000000000001",
+          "childName": "테스트 아동",
+          "classId": "11000000-0000-4000-8000-000000000001",
+          "className": "테스트 학급",
+          "goalId": "50000000-0000-4000-8000-000000000001",
+          "goalTitle": "차례를 기다려요",
+          "scenarioLevel": "L2",
+          "waitingSince": "2026-11-05T09:00:00Z",
+          "state": "WAITING"
+        }
+      ],
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
       }
@@ -1841,6 +1820,7 @@
         "action": "NONE",
         "messages": [
           {
+            "speakerRole": "DIALOGUE",
             "text": "친구는 왜 그런 기분이 들었을까?",
             "speech": {
               "available": false,
@@ -1870,35 +1850,47 @@
   {
     "id": "API-RPL-05",
     "fn": "submitTextInput",
-    "draft": true,
+    "draft": false,
     "method": "POST",
     "route": "/api/v1/roleplay-sessions/{sessionId}/text-inputs",
     "args": {
       "sessionId": "82000000-0000-4000-8000-000000000001",
       "body": {
-        "clientInputId": "84000000-0000-4000-8000-000000000001",
         "text": "친구가 아프고 속상할 것 같아요."
       },
       "idempotencyKey": "89000000-0000-4000-8000-000000000001"
     },
     "response": {
       "data": {
-        "inputId": "84000000-0000-4000-8000-000000000001",
-        "turnId": "85000000-0000-4000-8000-000000000001",
-        "status": "PROCESSING"
+        "status": "DELIVERED",
+        "action": "NONE",
+        "messages": [
+          {
+            "speakerRole": "DIALOGUE",
+            "text": "친구는 왜 그런 기분이 들었을까?",
+            "speech": {
+              "available": false,
+              "url": null
+            }
+          }
+        ],
+        "acceptedInput": "친구가 아프고 속상할 것 같아요.",
+        "checkpointVersion": 2,
+        "replayed": false
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
       }
     },
-    "status": 202,
+    "status": 200,
     "key": true,
     "mode": "child",
     "form": false,
     "expectedStatuses": [
+      200,
       202
     ],
-    "conditional": false,
+    "conditional": true,
     "unavailable": false
   },
   {
@@ -2073,7 +2065,7 @@
         "quiz": {
           "validQuestionCount": 3,
           "correctQuestionCount": 2,
-          "overallAccuracy": 0.6666666666666666,
+          "overallAccuracy": 0.666667,
           "resolvedAfterHintCount": 1
         },
         "roleplay": {
@@ -2160,7 +2152,7 @@
           "quizAccuracy": {
             "numerator": 2,
             "denominator": 3,
-            "value": 0.6666666666666666
+            "value": 0.666667
           },
           "quizHintRecovery": {
             "numerator": 1,
@@ -2233,7 +2225,7 @@
           "quiz": {
             "validQuestionCount": 3,
             "correctQuestionCount": 2,
-            "overallAccuracy": 0.6666666666666666,
+            "overallAccuracy": 0.666667,
             "resolvedAfterHintCount": 1
           },
           "roleplay": {
@@ -2320,7 +2312,7 @@
             "quizAccuracy": {
               "numerator": 2,
               "denominator": 3,
-              "value": 0.6666666666666666
+              "value": 0.666667
             },
             "quizHintRecovery": {
               "numerator": 1,

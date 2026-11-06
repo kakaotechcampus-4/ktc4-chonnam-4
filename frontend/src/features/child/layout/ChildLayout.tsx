@@ -1,12 +1,11 @@
 import * as React from "react"
-import { useNavigate } from "react-router-dom"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation } from "@tanstack/react-query"
 import { LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Character } from "../components/Character"
 import { ErrorState, StateDialog } from "../components/state"
 import { ChildApiError, exitChildSession } from "../api"
-import { useChildSessionStore } from "../store/childSessionStore"
+import { useLeaveChildSession } from "../hooks/useLeaveChildSession"
 import { useWarnBeforeUnload } from "../hooks/useWarnBeforeUnload"
 
 /**
@@ -36,18 +35,10 @@ function ChildLayout({
   wide?: boolean
   children: React.ReactNode
 }) {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const endSession = useChildSessionStore((state) => state.endSession)
   useWarnBeforeUnload()
 
   // 서버 세션이 끝난 뒤에만 이 브라우저의 아동 상태·캐시를 지우고 코드 입력 화면으로 돌아간다 (VS-003, API-IAM-09).
-  // 뒤로 가기로 활동 화면이 다시 열리지 않도록 replace 로 이동한다.
-  const finishExit = () => {
-    endSession()
-    navigate("/child", { replace: true })
-    queryClient.removeQueries({ queryKey: ["child"] })
-  }
+  const finishExit = useLeaveChildSession()
 
   const exitMutation = useMutation({
     mutationFn: exitChildSession,

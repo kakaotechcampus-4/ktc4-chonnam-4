@@ -69,7 +69,7 @@ class RoleplayResourceCheckpointTest {
                                             (RoleplayFixtures.input("placeholder")).scenario()),
                                     pipeline(false, null, null),
                                     RoleplayTurnDeadline.start());
-            assertThat(result).isInstanceOf(RoleplayTurnOutcome.InputNoticeUnavailable.class);
+            assertThat(result).isInstanceOf(RoleplayTurnOutcome.InputRetry.class);
         }
         assertThat(Files.exists(file)).isFalse();
         assertThatThrownBy(resource::request).isInstanceOf(IllegalStateException.class);
@@ -339,7 +339,10 @@ class RoleplayResourceCheckpointTest {
                 request -> {
                     throw new AssertionError("Rejected input cannot call TTS");
                 },
-                text -> new RoleplayInputProcessor.Accepted("test"),
+                text ->
+                        new RoleplayInputProcessor.Accepted(
+                                "test",
+                                new RoleplayInputProcessor.Assessment(0.93, true, true, false)),
                 new RoleplayPromptFactory(JsonMapper.builder().build(), null),
                 new StructuredLlmExecutor(
                         request -> {

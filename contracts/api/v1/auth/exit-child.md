@@ -1,6 +1,6 @@
 # API-IAM-09 · 아동 사용 종료
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -58,7 +58,7 @@ HTTP 204.
 
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
+| 401 | AUTHENTICATION_REQUIRED | 서버에 아동 세션이 이미 없음(서버 재시작·만료). 다시 보내도 같은 401이므로 이미 종료된 것으로 보고 화면 상태·캐시만 정리한 뒤 코드 입력 화면으로 이동 |
 | 403 | ACCESS_DENIED | 역할 권한 |
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
@@ -79,7 +79,7 @@ HTTP 204.
 }
 ~~~
 
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. 단, 이 사용 종료 요청의 401은 종료하려던 세션이 이미 없다는 뜻이라 오류로 알리지 않고 위 표대로 종료 완료로 처리합니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
 
 ## 6. 복사 가능한 TypeScript
 
@@ -137,6 +137,6 @@ curl -i -X DELETE "$NEURINGO_API_ORIGIN/api/v1/child-access-sessions/current" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-YOON-01` · `S8-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessSessionController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessSessionController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

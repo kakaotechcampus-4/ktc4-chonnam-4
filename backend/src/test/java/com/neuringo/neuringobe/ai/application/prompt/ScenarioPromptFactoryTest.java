@@ -31,8 +31,8 @@ class ScenarioPromptFactoryTest {
         LlmRequest request = factory.generation(trace(), attempts(), 1, input("L1")).request();
 
         assertThat(request.operation()).isEqualTo(AiOperation.SCENARIO_GENERATION);
-        assertThat(request.promptVersion()).isEqualTo("scenario-generation/v1");
-        assertThat(request.responseSchemaVersion()).isEqualTo("generated-scenario/v1");
+        assertThat(request.promptVersion()).isEqualTo("scenario-generation/v2");
+        assertThat(request.responseSchemaVersion()).isEqualTo("generated-scenario/v2");
         assertThat(request.policyVersion()).isEqualTo("CONTENT-MVP-001");
         assertThat(request.systemPrompt()).contains("시나리오 생성 에이전트");
 
@@ -240,9 +240,40 @@ class ScenarioPromptFactoryTest {
         assertFailure("L1", json -> json.put("ai_role", "LEARNER"), "AI_ROLE_INVALID");
         assertFailure("L1", json -> json.put("ai_role", "TEACHER"), "AI_ROLE_INVALID");
 
-        GeneratedScenario asCharacter =
-                parse("L1", scenario(json -> json.put("ai_role", "FRIEND")));
+        assertFailure("L1", json -> json.put("ai_role", "FRIEND"), "CHARACTERS_INVALID");
+
+        GeneratedScenario asCharacter = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
         assertThat(asCharacter.aiRole()).isEqualTo("FRIEND");
+        assertThat(asCharacter.characters().get(1).speechStyle()).isEqualTo("반말, 짧은 문장");
+    }
+
+    @Test
+    void characterOpeningLinesNeedNotAskButAskAtMostOnce() {
+        GeneratedScenario parsed = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
+        assertThat(parsed.startingQuestions().get("S0")).isEqualTo("(훌쩍이며) 흐윽…");
+
+        assertFailure(
+                "L1",
+                json -> {
+                    asFriend(json);
+                    questions(json).put("S1", "아야… 넘어졌어? 너 봤어?");
+                },
+                "QUESTION_FORMAT_INVALID");
+        assertFailure(
+                "L1", json -> questions(json).put("S0", "(훌쩍이며) 흐윽…"), "QUESTION_FORMAT_INVALID");
+    }
+
+    @Test
+    void approvedCharacterScenarioCarriesPersonaIntoRoleplay() {
+        GeneratedScenario parsed = parse("L1", scenario(ScenarioPromptFactoryTest::asFriend));
+        Map<String, UUID> ids = new LinkedHashMap<>();
+        parsed.microGoals().forEach(goal -> ids.put(goal.id(), UUID.randomUUID()));
+
+        RoleplayTurnInput.Scenario roleplay =
+                ScenarioPromptFactory.toRoleplayScenario(parsed, "친구의 감정을 이해하고 공감하기", ids);
+
+        assertThat(roleplay.aiCharacter().id()).isEqualTo("FRIEND");
+        assertThat(roleplay.aiCharacter().personality()).isEqualTo("소심하고 잘 우는 편");
     }
 
     @Test
@@ -325,6 +356,25 @@ class ScenarioPromptFactoryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void startingQuestionsRequireExplicitExistingGoalIds() {
+        assertFailure(
+                "L1",
+                value -> value.remove("starting_question_goal_ids"),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+        assertFailure(
+                "L1",
+                value ->
+                        value.put(
+                                "starting_question_goal_ids",
+                                Map.of("S0", "MG-99", "S1", "MG-01", "S2", "MG-01")),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+        assertFailure(
+                "L1",
+                value -> value.put("starting_question_goal_ids", Map.of("S0", "MG-01")),
+                "STARTING_QUESTION_GOAL_IDS_INVALID");
+    }
+
     // --- fixtures
 
     private void assertFailure(String level, Consumer<Map<String, Object>> edit, String reason) {
@@ -350,7 +400,7 @@ class ScenarioPromptFactoryTest {
                 "EMOTION_RECOGNITION",
                 "놀이터",
                 List.of(Map.of("id", "FRIEND", "role", "같은 반 친구")),
-                List.of("친구의 표정을 보는 장면"),
+                List.of("친구의 표정을 보고 기분 말하기"),
                 List.of("싸움"));
     }
 
@@ -403,6 +453,7 @@ class ScenarioPromptFactoryTest {
                                 "S0", "아까 놀이터에서 무슨 일이 있었는지 봤어?",
                                 "S1", "친구가 미끄럼틀 앞에서 울고 있어. 무슨 일이 있었을까?",
                                 "S2", "친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?")));
+        json.put("starting_question_goal_ids", Map.of("S0", "MG-01", "S1", "MG-01", "S2", "MG-01"));
         edit.accept(json);
         return json;
     }
@@ -429,6 +480,16 @@ class ScenarioPromptFactoryTest {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> goals(Map<String, Object> json) {
         return (List<Map<String, Object>>) json.get("micro_goals");
+    }
+
+    /** AI 가 넘어진 친구를 1인칭으로 연기하는 시나리오로 바꾼다. */
+    private static void asFriend(Map<String, Object> json) {
+        json.put("ai_role", "FRIEND");
+        characters(json).get(1).put("personality", "소심하고 잘 우는 편");
+        characters(json).get(1).put("speech_style", "반말, 짧은 문장");
+        questions(json).put("S0", "(훌쩍이며) 흐윽…");
+        questions(json).put("S1", "(무릎을 감싸 쥐며) 아야… 나 방금 미끄럼틀 앞에서…");
+        questions(json).put("S2", "(울먹이며) 넘어진 건지… 미끄러진 건지… 정신이 없어.");
     }
 
     @SuppressWarnings("unchecked")

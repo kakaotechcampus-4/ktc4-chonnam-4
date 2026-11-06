@@ -40,6 +40,7 @@ final class ScenarioOutputParser {
         EVIDENCE_NOT_CONDITION,
         EVIDENCE_COPIES_FACT,
         STARTING_QUESTIONS_INVALID,
+        STARTING_QUESTION_GOAL_IDS_INVALID,
         QUESTION_FORMAT_INVALID,
         TOO_LONG,
         FORBIDDEN_EXPRESSION_USED,
@@ -148,7 +149,16 @@ final class ScenarioOutputParser {
             checkEvidence(goal.requiredEvidence(), scenario.scenarioFacts());
         }
 
-        checkStartingQuestions(scenario.startingQuestions());
+        checkStartingQuestions(scenario.startingQuestions(), !NARRATOR.equals(scenario.aiRole()));
+        check(
+                scenario.startingQuestionGoalIds().keySet().equals(STARTING_SUPPORT_LEVELS)
+                        && scenario.startingQuestionGoalIds().values().stream()
+                                .allMatch(
+                                        id ->
+                                                scenario.microGoals().stream()
+                                                        .anyMatch(goal -> goal.id().equals(id))),
+                ScenarioFailure.STARTING_QUESTION_GOAL_IDS_INVALID,
+                "starting_question_goal_ids");
         checkLengths(scenario);
 
         Set<String> characterIds =
@@ -203,6 +213,20 @@ final class ScenarioOutputParser {
                 NARRATOR.equals(role) || (!LEARNER.equals(role) && ids.contains(role)),
                 ScenarioFailure.AI_ROLE_INVALID,
                 "ai_role");
+        // AI 가 연기하는 인물은 대화 내내 같은 성격·말투를 지켜야 해서 둘 다 있어야 한다.
+        characters.stream()
+                .filter(character -> character.id().equals(role))
+                .forEach(
+                        character ->
+                                check(
+                                        hasText(character.personality())
+                                                && hasText(character.speechStyle()),
+                                        ScenarioFailure.CHARACTERS_INVALID,
+                                        "characters.persona"));
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /**
@@ -254,7 +278,9 @@ final class ScenarioOutputParser {
         return text == null ? "" : PUNCTUATION.matcher(text).replaceAll("");
     }
 
-    private static void checkStartingQuestions(Map<String, String> questions) {
+    /** 안내자의 시작 질문은 질문 하나로 끝난다. 캐릭터의 첫 대사는 묻지 않아도 되고, 묻는다면 한 번만 묻는다. */
+    private static void checkStartingQuestions(
+            Map<String, String> questions, boolean characterVoice) {
         check(
                 questions.keySet().equals(STARTING_SUPPORT_LEVELS),
                 ScenarioFailure.STARTING_QUESTIONS_INVALID,
@@ -263,7 +289,9 @@ final class ScenarioOutputParser {
             String text = question == null ? "" : question.strip();
             long marks = text.chars().filter(ch -> ch == '?').count();
             check(
-                    marks == 1 && text.endsWith("?"),
+                    characterVoice
+                            ? !text.isEmpty() && marks <= 1
+                            : marks == 1 && text.endsWith("?"),
                     ScenarioFailure.QUESTION_FORMAT_INVALID,
                     "starting_questions");
             check(

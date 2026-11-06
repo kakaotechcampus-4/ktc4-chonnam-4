@@ -262,6 +262,39 @@ describe("instructor api 명세", () => {
     await expect(listClassrooms()).rejects.toMatchObject({ status: 409, code: "CONFLICT" })
   })
 
+  it("조회·CSRF·변경 요청 모두 명세의 Accept: application/json 을 싣는다", async () => {
+    const accepts: string[] = []
+    server.events.on("request:start", ({ request }) => {
+      accepts.push(`${request.method} ${new URL(request.url).pathname} ${request.headers.get("Accept")}`)
+    })
+    try {
+      await listClassrooms()
+      await createClassroom("햇살반")
+    } finally {
+      server.events.removeAllListeners("request:start")
+    }
+
+    expect(accepts).toEqual([
+      "GET /api/v1/classrooms application/json",
+      "GET /api/v1/csrf application/json",
+      "POST /api/v1/classrooms application/json",
+    ])
+  })
+
+  it("경로의 ID 는 명세 예제처럼 encodeURIComponent 로 넣는다", async () => {
+    let seen: string | null = null
+    server.use(
+      http.get("*/api/v1/classrooms/:classId", ({ request }) => {
+        seen = new URL(request.url).pathname
+        return HttpResponse.json(envelope(fixtures.classroomA1))
+      }),
+    )
+
+    await getClassroom("a/b?c")
+
+    expect(seen).toBe("/api/v1/classrooms/a%2Fb%3Fc")
+  })
+
   it("학급 조회는 envelope 의 학급 하나를 돌려준다", async () => {
     await expect(getClassroom(fixtures.classroomA1.classId)).resolves.toEqual(fixtures.classroomA1)
   })
@@ -283,7 +316,7 @@ describe("instructor api 명세", () => {
 
     expect(seen).toEqual({
       path: `/api/v1/classrooms/${fixtures.classroomA1.classId}/children`,
-      contentType: "application/json",
+      contentType: "application/json; charset=utf-8",
       body: { displayName: "김하늘" },
     })
   })

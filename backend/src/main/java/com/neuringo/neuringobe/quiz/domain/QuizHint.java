@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.quiz.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -48,7 +49,7 @@ public class QuizHint {
         this.hintOrder = hintOrder;
         this.hintType = hintType;
         this.hintText = hintText;
-        this.issuedAt = issuedAt;
+        this.issuedAt = StoredTime.normalize(issuedAt);
     }
 
     public UUID getHintId() {

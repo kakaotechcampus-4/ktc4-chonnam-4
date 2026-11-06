@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.quiz.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -74,7 +75,7 @@ public class QuizResult {
         this.difficultyFallbackReason = decision.fallbackApplied() ? "NO_VALID_QUESTIONS" : null;
         this.initialDifficultyUsed = initialDifficultyUsed;
         this.policyVersion = decision.policyVersion();
-        this.snapshottedAt = snapshottedAt;
+        this.snapshottedAt = StoredTime.normalize(snapshottedAt);
     }
 
     public UUID getActivityId() {

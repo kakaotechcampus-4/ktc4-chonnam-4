@@ -106,6 +106,12 @@ function ChildDetailPage() {
               아동 삭제
             </button>
             <Link
+              to={`/classrooms/${child.classId}/children/${child.childId}/edit`}
+              className={cn(outlineButtonClass, 'h-8 px-3.5')}
+            >
+              정보 수정
+            </Link>
+            <Link
               to={`/activities/new?classId=${child.classId}&childId=${child.childId}`}
               className={cn(primaryButtonClass, 'h-8 px-3.5')}
             >

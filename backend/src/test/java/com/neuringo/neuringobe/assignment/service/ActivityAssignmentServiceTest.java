@@ -58,7 +58,7 @@ class ActivityAssignmentServiceTest {
                 .willReturn(
                         Optional.of(
                                 new Child(childId, UUID.randomUUID(), "김하늘", ChildStatus.ACTIVE)));
-        given(goalService.newGoal(childId, GOAL_REQUEST, authentication))
+        given(goalService.newGoal(childId, GOAL_REQUEST, "goal.", authentication))
                 .willReturn(goal(goalId, childId));
         given(activities.findByIdempotencyKey(key)).willReturn(Optional.empty());
         given(activities.existsByChildIdAndActivityType(childId, ActivityType.FIRST_COMBINED))
@@ -68,8 +68,7 @@ class ActivityAssignmentServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(
-                                                childId, null, GOAL_REQUEST, null, null),
+                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)
@@ -86,15 +85,14 @@ class ActivityAssignmentServiceTest {
                 .willReturn(
                         Optional.of(
                                 new Child(childId, UUID.randomUUID(), "김하늘", ChildStatus.PAUSED)));
-        given(goalService.newGoal(childId, GOAL_REQUEST, authentication))
+        given(goalService.newGoal(childId, GOAL_REQUEST, "goal.", authentication))
                 .willReturn(goal(UUID.randomUUID(), childId));
         given(activities.findByIdempotencyKey(key)).willReturn(Optional.empty());
 
         assertThatThrownBy(
                         () ->
                                 service.assign(
-                                        new CreateActivityRequest(
-                                                childId, null, GOAL_REQUEST, null, null),
+                                        new CreateActivityRequest(childId, null, GOAL_REQUEST),
                                         key,
                                         authentication))
                 .isInstanceOf(ApiException.class)

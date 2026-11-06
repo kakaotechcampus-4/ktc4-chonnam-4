@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.activity.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -74,7 +75,7 @@ public class Activity {
         this.goalId = goalId;
         this.idempotencyKey = idempotencyKey;
         this.status = ActivityStatus.NOT_STARTED;
-        this.assignedAt = assignedAt;
+        this.assignedAt = StoredTime.normalize(assignedAt);
     }
 
     public UUID getActivityId() {
@@ -136,7 +137,15 @@ public class Activity {
     public void start(Instant now) {
         if (status == ActivityStatus.NOT_STARTED) {
             status = ActivityStatus.IN_PROGRESS;
-            startedAt = now;
+            startedAt = StoredTime.normalize(now);
+        }
+    }
+
+    /** 최초 시작 시각을 보존하면서 중단된 활동만 재개한다. */
+    public void resume(Instant now) {
+        if (status == ActivityStatus.PAUSED || status == ActivityStatus.RECOVERY_NEEDED) {
+            status = ActivityStatus.IN_PROGRESS;
+            if (startedAt == null) startedAt = StoredTime.normalize(now);
         }
     }
 
@@ -150,17 +159,11 @@ public class Activity {
         }
         status = ActivityStatus.COMPLETED;
         if (startedAt == null) {
-            startedAt = now;
+            startedAt = StoredTime.normalize(now);
         }
-        completedAt = now;
-        rewardIssuedAt = now;
+        completedAt = StoredTime.normalize(now);
+        rewardIssuedAt = StoredTime.normalize(now);
         return true;
-    }
-
-    /** 역할극 단독 활동은 강사가 배정할 때 고른 승인 시나리오를 처음부터 붙인다. */
-    public void selectScenario(UUID selectedScenarioId) {
-        scenarioId = selectedScenarioId;
-        scenarioSource = "INSTRUCTOR_SELECTED";
     }
 
     public void applyInitialDifficulty(String supportLevel, boolean fallbackApplied) {

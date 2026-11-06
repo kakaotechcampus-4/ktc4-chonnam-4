@@ -1,4 +1,5 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from './auth/tokenStorage'
+import type { GoalCharacter } from './lib/goalConditions'
 
 // 배포 빌드는 같은 출처의 /api/v1 을 넘긴다(frontend/Dockerfile 의 VITE_API_BASE_URL). 없으면 로컬·E2E 처럼 localhost:8080
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1'
@@ -213,6 +214,11 @@ type RequestOptions = {
   headers?: Record<string, string>
 }
 
+// API 명세(contracts/api/v1 의 각 API 문서 "Headers·쿠키" 표)의 공통 헤더. 모든 요청은 공통 envelope(JSON)을 받겠다고 알리고,
+// JSON 본문은 charset 을 밝혀 보낸다. 경로의 ID 는 명세 예제(examples/endpoints.ts)처럼 encodeURIComponent 로 넣는다.
+const JSON_TYPE = 'application/json'
+const JSON_BODY_TYPE = 'application/json; charset=utf-8'
+
 type CsrfToken = {
   headerName: string
   token: string
@@ -221,7 +227,7 @@ type CsrfToken = {
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 재사용하지 않고 변경 요청 직전에 받아온다.
 // 서버가 헤더 이름도 함께 내려주므로 프론트에 하드코딩하지 않는다.
 async function fetchCsrfToken(signal: AbortSignal): Promise<CsrfToken> {
-  const res = await send(`${API_BASE_URL}/csrf`, { credentials: 'include', signal })
+  const res = await send(`${API_BASE_URL}/csrf`, { credentials: 'include', headers: { Accept: JSON_TYPE }, signal })
   return parseApiResponse<CsrfToken>(res)
 }
 
@@ -231,7 +237,7 @@ function readRequest<T>(path: string): Promise<T> {
     // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.
     const res = await send(`${API_BASE_URL}${path}`, {
       credentials: 'include',
-      headers: authHeaders(session),
+      headers: { Accept: JSON_TYPE, ...authHeaders(session) },
       signal,
     })
     redirectToLoginOnUnauthorized(res, session)
@@ -240,7 +246,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -259,7 +265,8 @@ function writeRequest<T>(
       method,
       credentials: 'include',
       headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        Accept: JSON_TYPE,
+        ...(body === undefined ? {} : { 'Content-Type': JSON_BODY_TYPE }),
         ...headers,
         [csrf.headerName]: csrf.token,
         ...authHeaders(session),
@@ -338,29 +345,39 @@ export function createClassroom(name: string): Promise<Classroom> {
 }
 
 export function getClassroom(classId: string): Promise<Classroom> {
-  return readRequest<Classroom>(`/classrooms/${classId}`)
+  return readRequest<Classroom>(`/classrooms/${encodeURIComponent(classId)}`)
+}
+
+/** 학급명만 고친다. */
+export function updateClassroom(classId: string, name: string): Promise<Classroom> {
+  return writeRequest<Classroom>('PATCH', `/classrooms/${encodeURIComponent(classId)}`, { name })
 }
 
 /** 학급과 그 학급의 아동·기록을 모두 영구 삭제한다(ADR 2026-10-04). */
 export function deleteClassroom(classId: string): Promise<void> {
-  return writeRequest<void>('DELETE', `/classrooms/${classId}`)
+  return writeRequest<void>('DELETE', `/classrooms/${encodeURIComponent(classId)}`)
 }
 
 export function listChildren(classId: string): Promise<Child[]> {
-  return readRequest<Child[]>(`/classrooms/${classId}/children`)
+  return readRequest<Child[]>(`/classrooms/${encodeURIComponent(classId)}/children`)
 }
 
 export function getChild(childId: string): Promise<Child> {
-  return readRequest<Child>(`/children/${childId}`)
+  return readRequest<Child>(`/children/${encodeURIComponent(childId)}`)
+}
+
+/** 아동 이름만 고친다. 학급은 옮기지 않는다. */
+export function updateChild(childId: string, displayName: string): Promise<Child> {
+  return writeRequest<Child>('PATCH', `/children/${encodeURIComponent(childId)}`, { displayName })
 }
 
 /** 아동과 그 아동의 목표·활동·퀴즈 응답·결과·입장 코드를 영구 삭제한다(ADR 2026-10-04). */
 export function deleteChild(childId: string): Promise<void> {
-  return writeRequest<void>('DELETE', `/children/${childId}`)
+  return writeRequest<void>('DELETE', `/children/${encodeURIComponent(childId)}`)
 }
 
 export function createChild(classId: string, displayName: string): Promise<Child> {
-  return writeRequest<Child>('POST', `/classrooms/${classId}/children`, { displayName })
+  return writeRequest<Child>('POST', `/classrooms/${encodeURIComponent(classId)}/children`, { displayName })
 }
 
 export type AccessCode = {
@@ -375,7 +392,7 @@ export type AccessCode = {
  * requestKey 는 "코드 받기" 한 번에 하나다. 응답을 못 받아 다시 보낼 때 같은 키를 쓰면 같은 코드가 돌아온다.
  */
 export function issueChildCode(childId: string, requestKey: string): Promise<AccessCode> {
-  return writeRequest<AccessCode>('POST', `/children/${childId}/access-codes`, undefined, {
+  return writeRequest<AccessCode>('POST', `/children/${encodeURIComponent(childId)}/access-codes`, undefined, {
     headers: { 'Idempotency-Key': requestKey },
   })
 }
@@ -389,7 +406,8 @@ export type LearningGoal = {
   title: string
   situationType: string | null
   category: string | null
-  characters: Record<string, unknown>[]
+  // 서버가 정리해 저장한 등장인물. 비운 id 는 OTHER, 겹친 id 는 FRIEND_2 처럼 번호가 붙는다(API-GOAL-01).
+  characters: { id: string; role: string }[]
   requiredElements: string[]
   forbiddenExpressions: string[]
   contentHash: string
@@ -401,14 +419,19 @@ export type LearningGoalInput = {
   category?: string
   // 추천을 채택해 만드는 다음 활동은 지금 목표를 이어받는다(서버가 같은 아동의 목표인지 확인한다).
   parentGoalId?: string
+  // 역할극 추가 조건(시안 T-ACT-04). 모두 선택이다. 상황은 장면 설명 문장이다.
+  situationType?: string
+  characters?: GoalCharacter[]
+  requiredElements?: string[]
+  forbiddenExpressions?: string[]
 }
 
 export function listLearningGoals(childId: string): Promise<LearningGoal[]> {
-  return readRequest<LearningGoal[]>(`/children/${childId}/learning-goals`)
+  return readRequest<LearningGoal[]>(`/children/${encodeURIComponent(childId)}/learning-goals`)
 }
 
 export function getLearningGoal(goalId: string): Promise<LearningGoal> {
-  return readRequest<LearningGoal>(`/learning-goals/${goalId}`)
+  return readRequest<LearningGoal>(`/learning-goals/${encodeURIComponent(goalId)}`)
 }
 
 
@@ -435,6 +458,9 @@ export type Activity = {
   startedAt: string | null
   completedAt: string | null
   rewardIssuedAt: string | null
+  /** 목록·상세에서만 오는 서버 계산 다음 동작(API-ACT-02·03). 생성 응답에는 없다. */
+  nextAction?: 'QUIZ' | 'WAIT_FOR_SCENARIO' | 'ROLEPLAY' | 'NONE' | 'BLOCKED'
+  blockedReason?: string | null
 }
 
 export type QuizType = 'SELF_EMOTION_SITUATION' | 'OTHER_EMOTION_SITUATION' | 'OTHER_EMOTION_IMAGE'
@@ -467,7 +493,7 @@ export async function listChildActivities(childId: string): Promise<Activity[]> 
   const all: Activity[] = []
   for (let page = 0; ; page++) {
     const batch = await readRequest<Activity[]>(
-      `/children/${childId}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
+      `/children/${encodeURIComponent(childId)}/activities?page=${page}&size=${ACTIVITY_PAGE_SIZE}`,
     )
     all.push(...batch)
     if (batch.length < ACTIVITY_PAGE_SIZE) return all
@@ -475,7 +501,7 @@ export async function listChildActivities(childId: string): Promise<Activity[]> 
 }
 
 export function getActivity(activityId: string): Promise<ActivityDetail> {
-  return readRequest<ActivityDetail>(`/activities/${activityId}`)
+  return readRequest<ActivityDetail>(`/activities/${encodeURIComponent(activityId)}`)
 }
 
 /**
@@ -488,7 +514,6 @@ export function createActivity(
   activityType: ActivityType,
   goal: LearningGoalInput | null,
   requestKey: string,
-  scenario?: RoleplayScenarioChoice,
 ): Promise<Activity> {
   return writeRequest<Activity>(
     'POST',
@@ -497,14 +522,10 @@ export function createActivity(
       childId,
       activityType,
       ...(goal ? { goal } : {}),
-      ...(scenario ? { scenarioId: scenario.scenarioId, reuseApproved: scenario.reuseApproved } : {}),
     },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }
-
-/** 역할극 단독 배정에서 강사가 고른 승인 시나리오. 다른 아동이 쓴 승인본이면 reuseApproved 로 재사용을 승인한다. */
-export type RoleplayScenarioChoice = { scenarioId: string; reuseApproved: boolean }
 
 export type QuizResult = {
   activityId: string
@@ -522,7 +543,137 @@ export type QuizResult = {
 
 /** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
 export function getQuizResult(activityId: string): Promise<QuizResult> {
-  return readRequest<QuizResult>(`/activities/${activityId}/quiz-result`)
+  return readRequest<QuizResult>(`/activities/${encodeURIComponent(activityId)}/quiz-result`)
+}
+
+export type ScenarioCharacter = { id: string; role: string }
+
+export type ScenarioMicroGoal = {
+  microGoalId: string
+  description: string
+  requiredEvidence: string[]
+  achievementExample: string | null
+}
+
+/** 검토 중인 시나리오 한 개(재사용 후보 또는 새로 만든 것). 후보 목록·개수는 서버가 내리지 않는다. */
+export type ReviewScenario = {
+  scenarioId: string
+  /** 콘텐츠 버전. 검토 번호(revision)와 다르다 */
+  scenarioVersion: number
+  scenarioLevel: string
+  title: string
+  summary: string
+  characters: ScenarioCharacter[]
+  scenarioFacts: string[]
+  microGoals: ScenarioMicroGoal[]
+  /** S0·S1·S2 시작 질문 */
+  startingQuestions: Record<string, string>
+  /** 시작 질문마다 이어지는 작은 목표 ID */
+  startingQuestionGoalIds: Record<string, string>
+}
+
+/** 이번 활동의 목표와 조건. 서버에 저장된 값이다. */
+export type ReviewConditions = {
+  title: string
+  category: string | null
+  situationType: string | null
+  characters: Record<string, unknown>[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+  scenarioLevel: string
+}
+
+export type ScenarioReview = {
+  reviewId: string
+  activityId: string
+  /** 검토 번호. 다음 동작에 그대로 돌려보내고, 이보다 낮은 번호의 늦은 응답은 버린다 */
+  revision: number
+  conditions: ReviewConditions
+  scenario: ReviewScenario
+}
+
+export type ScenarioReviewAction =
+  | { action: 'START_OR_RESUME' }
+  | { action: 'NEXT'; reviewId: string; revision: number }
+
+/** 고친 칸만 싣는다. 사실·등장인물·시작 질문은 고칠 수 없다. */
+export type ScenarioEdits = {
+  title?: string
+  summary?: string
+  microGoals?: { microGoalId: string; description?: string; requiredEvidence?: string[] }[]
+}
+
+export type ScenarioConfirmation = {
+  reviewId: string
+  revision: number
+  scenarioId: string
+  scenarioVersion: number
+  edits?: ScenarioEdits
+}
+
+/** 확정·취소 결과. 최종 시나리오 ID 는 활동 상세의 scenarioId 로 확인한다. */
+export type ScenarioReviewClosure = {
+  reviewId: string
+  activityId: string
+  outcome: 'CONFIRMED' | 'CANCELLED'
+  closedAt: string
+}
+
+/**
+ * 검토 시작·이어 보기(START_OR_RESUME)와 다른 후보(NEXT). 후보가 없거나 다 넘기면 같은 요청 안에서 새로 만들어 오래 걸릴 수 있다.
+ * 응답을 못 받아 다시 보낼 때는 같은 키와 같은 본문을 쓴다.
+ */
+export function prepareScenarioReview(
+  activityId: string,
+  action: ScenarioReviewAction,
+  requestKey: string,
+): Promise<ScenarioReview> {
+  return writeRequest<ScenarioReview>('POST', `/activities/${encodeURIComponent(activityId)}/scenario-review`, action, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [승인]: 보고 있는 시나리오를 (고친 내용이 있으면 새 버전으로) 이 활동에 붙인다. */
+export function confirmScenarioReview(
+  activityId: string,
+  confirmation: ScenarioConfirmation,
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('PUT', `/activities/${encodeURIComponent(activityId)}/scenario`, confirmation, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [검토 그만하기]: 이번 검토를 끝낸다. 활동은 계속 시나리오를 기다린다. */
+export function cancelScenarioReview(
+  activityId: string,
+  review: { reviewId: string; revision: number },
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('DELETE', `/activities/${encodeURIComponent(activityId)}/scenario-review`, review, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+export type ScenarioApprovalState = 'WAITING' | 'IN_REVIEW'
+
+/** 승인 대기함의 한 줄. 시나리오를 기다리는 최초 결합 활동 하나다. */
+export type ScenarioApprovalItem = {
+  activityId: string
+  childId: string
+  childName: string
+  classId: string
+  className: string
+  goalId: string
+  goalTitle: string
+  scenarioLevel: string
+  waitingSince: string
+  state: ScenarioApprovalState
+}
+
+/** 내 학급에서 시나리오 승인을 기다리는 활동. 기다린 순서대로 온다. */
+export function listScenarioApprovals(): Promise<ScenarioApprovalItem[]> {
+  return readRequest<ScenarioApprovalItem[]>('/scenario-approvals')
 }
 
 // ── 리포트·추천·다음 역할극 난이도 (contracts/api/v1/reports-recommendations) ──
@@ -698,40 +849,4 @@ export function decideRecommendation(
 /** 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다. */
 export function getRoleplayDifficulty(childId: string): Promise<RoleplayDifficulty> {
   return readRequest<RoleplayDifficulty>(`/children/${childId}/roleplay-difficulty`)
-}
-
-export type RoleplayScenarioCandidate = {
-  scenarioId: string
-  scenarioVersion: number
-  scenarioLevel: ScenarioLevel
-  title: string
-  summary: string | null
-  // 보여 주는 순서일 뿐 통과 순서가 아니다.
-  microGoals: string[]
-  approvedAt: string | null
-  // 이 시나리오가 붙은 활동이 마지막으로 배정된 시각. 쓰인 적이 없으면 null.
-  lastUsedAt: string | null
-  usedByOtherChildren: number
-  reuseApprovalRequired: boolean
-}
-
-export type RoleplayScenarioCandidates = {
-  childId: string
-  scenarioLevel: ScenarioLevel
-  initialSupportLevel: SupportLevel
-  // 마지막으로 쓰인 지 오래된 것(안 쓰인 것이 맨 앞) → 최근 승인본 순.
-  items: RoleplayScenarioCandidate[]
-}
-
-/**
- * 역할극 단독 배정에서 고를 승인 시나리오. 배정할 목표와 같은 내용·다음 역할극 난이도 레벨의 승인본 중 이 아동이 아직 쓰지 않은 것이다.
- * 학급은 보지 않는다. 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다.
- */
-export function listRoleplayScenarios(
-  childId: string,
-  goal: { title: string; category?: string | null },
-): Promise<RoleplayScenarioCandidates> {
-  const params = new URLSearchParams({ goalTitle: goal.title })
-  if (goal.category) params.set('goalCategory', goal.category)
-  return readRequest<RoleplayScenarioCandidates>(`/children/${childId}/roleplay-scenarios?${params}`)
 }

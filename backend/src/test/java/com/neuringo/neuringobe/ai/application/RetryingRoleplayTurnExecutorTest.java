@@ -52,6 +52,7 @@ class RetryingRoleplayTurnExecutorTest {
         assertThat(steps.calls).containsExactly("A", "G", "E", "E");
         assertThat(steps.evaluatedCandidates.get(0)).isSameAs(steps.evaluatedCandidates.get(1));
         assertThat(steps.contexts.get(3).stageAttempt()).isEqualTo(2);
+        assertThat(steps.contexts.get(3).rejectedCandidates()).isEmpty();
     }
 
     @Test
@@ -121,6 +122,7 @@ class RetryingRoleplayTurnExecutorTest {
         RoleplayRetryContext retry = steps.contexts.get(3);
         assertThat(retry.rejectedCandidates()).hasSize(1);
         var rejected = retry.rejectedCandidates().getFirst();
+        assertThat(rejected.analysis()).isSameAs(steps.generatedAnalyses.getFirst());
         assertThat(rejected.candidate()).isSameAs(steps.evaluatedCandidates.getFirst());
         assertThat(rejected.evaluation().revisionInstruction().required())
                 .containsExactly("ask one question");
@@ -138,7 +140,45 @@ class RetryingRoleplayTurnExecutorTest {
         assertThat(steps.generatedAnalyses.get(0)).isNotSameAs(steps.generatedAnalyses.get(1));
         assertThat(steps.contexts.get(3).attempts().analysisAttempt()).isEqualTo(2);
         assertThat(steps.contexts.get(3).rejectedCandidates()).hasSize(1);
+        assertThat(steps.contexts.get(3).rejectedCandidates().getFirst().analysis())
+                .isSameAs(steps.generatedAnalyses.getFirst());
         assertThat(steps.generatedIds).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void repeatedReanalysisRetainsEachRejectedAnalysisWithItsOwnCandidate() {
+        steps.decisions.addAll(List.of(EvaluationDecision.REANALYZE, EvaluationDecision.REANALYZE));
+
+        var result = (RoleplayTurnResult.Ready) executor.execute(TURN, steps);
+
+        assertThat(steps.calls).containsExactly("A", "G", "E", "A", "G", "E", "A", "G", "E");
+        var firstRetry = steps.contexts.get(3).rejectedCandidates();
+        var secondRetry = steps.contexts.get(6).rejectedCandidates();
+        assertThat(firstRetry).hasSize(1);
+        assertThat(secondRetry).hasSize(2);
+        assertThat(secondRetry.getFirst()).isSameAs(firstRetry.getFirst());
+        assertThat(secondRetry.getFirst().analysis()).isSameAs(steps.generatedAnalyses.get(0));
+        assertThat(secondRetry.getLast().analysis()).isSameAs(steps.generatedAnalyses.get(1));
+        assertThat(secondRetry.getLast().candidate()).isSameAs(steps.evaluatedCandidates.get(1));
+        assertThat(result.analysis()).isSameAs(steps.generatedAnalyses.get(2));
+        assertThat(secondRetry).noneMatch(rejected -> rejected.analysis() == result.analysis());
+    }
+
+    @Test
+    void rejectedHistoryCannotAttachAnalysisFromAnotherTurn() {
+        steps.decisions.add(EvaluationDecision.REANALYZE);
+        executor.execute(TURN, steps);
+        var rejected = steps.contexts.get(3).rejectedCandidates().getFirst();
+        var foreign =
+                (RoleplayTurnResult.Ready) executor.execute(UUID.randomUUID(), new ScriptedSteps());
+
+        assertThatThrownBy(
+                        () ->
+                                new RoleplayRetryContext.RejectedCandidate(
+                                        foreign.analysis(),
+                                        rejected.candidate(),
+                                        rejected.evaluation()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

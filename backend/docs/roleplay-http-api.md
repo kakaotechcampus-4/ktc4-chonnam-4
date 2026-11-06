@@ -5,6 +5,8 @@
 이 문서는 백엔드 구현의 계약과 단계별 검증 이력을 기록한다. 외부 API 명세 초안이나 FE 계약 합의를 대신하지 않는다.
 이번 문서 충돌 해결에서 프론트엔드를 추가 수정하거나 배포하지 않았다.
 
+S6-JIN-01의 현재 입력 계약은 [음성 입력](../../contracts/api/v1/roleplay/submit-voice-input.md)과 [텍스트 입력](../../contracts/api/v1/roleplay/submit-text-input.md)을 따른다. 아래 과거 검증 수치와 당시 미구현 항목은 각 기록 시점의 이력이다.
+
 ## 완료·보상과 학습 결과를 읽는 기준
 
 활동 완료·보상, 목표 달성 판정 및 후속 난이도는 [완료·보상 연동 계약](roleplay-completion-integration.md)의 현재 적용 기준을 따른다.
@@ -40,8 +42,8 @@
 - `Content-Type`: multipart/form-data. 브라우저 FormData의 boundary를 수동 설정하지 않는다.
 - `audio`: 필수 파일 파트. filename은 저장 경로에 쓰지 않는다.
 - 아동 ID, 활동 ID, 후보 ID, 지문을 요청에서 받지 않는다. 활동은 본인 세션에서 조회한다.
-- clientInputId/recordedDurationMs는 이번 API 계약에 추가하지 않았다. 실제 길이/디코딩 검증은 미구현이다.
-- 선언 MIME은 AudioFormat으로 정규화한 뒤 주입된 허용 목록과 대조한다. 실제 컨테이너/코덱 판별을 의미하지 않는다.
+- clientInputId/recordedDurationMs는 이번 API 계약에 추가하지 않았다. 실제 형식·디코딩 프레임·30초 길이를 검사한다.
+- 선언 MIME은 AudioFormat으로 정규화하고, 실제 컨테이너·코덱 결과와 함께 허용 목록을 검사한다.
 
 ## 응답
 
@@ -53,16 +55,18 @@
 | 200 | data.status=DELIVERED | DB에 확정된 응답 또는 동일 입력 재전송 |
 | 200 | REINPUT_REQUIRED / RETRY_REQUIRED / STOPPED / NOTICE_UNAVAILABLE | 승인 안내와 행동 또는 미확정 안내 부재. 학습 턴 저장 성공과 구분 |
 | 202 | PROCESSING, action=WAIT | 같은 세션·키·입력의 요청이 이미 실행 중. 완료 판정 아님 |
-| 400 | 공통 요청 오류 / VOICE_UPLOAD_EMPTY | UUID·필수 헤더/파트 형식 오류 또는 빈 파일 |
+| 400 | 공통 요청 오류 | UUID·필수 헤더/파트 형식 오류 |
 | 401 | AUTHENTICATION_REQUIRED | 아동 입장 필요 |
 | 403 | ACCESS_DENIED / CSRF_TOKEN_INVALID | 아동 권한 또는 CSRF 실패 |
 | 404 | ROLEPLAY_NOT_FOUND | 본인 세션/활동이 없거나 아동이 비활성 |
 | 409 | ROLEPLAY_CONFLICT | 같은 키의 다른 입력 또는 체크포인트 충돌. 원인을 단정하지 않음 |
-| 413 | VOICE_UPLOAD_TOO_LARGE 또는 서블릿 공통 오류 | 실측 업로드/전체 multipart 크기 초과 |
-| 415 | VOICE_UPLOAD_FORMAT 또는 공통 Content-Type 오류 | 허용되지 않은 선언 MIME/요청 형식 |
+| 413 | 서블릿 공통 오류 | 음성 요청으로 식별할 수 없는 전체 multipart 크기 초과 |
+| 415 | 공통 Content-Type 오류 | 지원하지 않는 요청 형식 |
 | 503 | ROLEPLAY_CONTEXT_UNAVAILABLE | 승인 콘텐츠/진행 상태가 없거나 일치하지 않음, 또는 활동 목표를 판정할 수 없음 |
 | 503 | ROLEPLAY_BUSY | 처리 용량 부족. 재시도는 같은 요청 키·입력으로 판단 |
 | 500 | INTERNAL_ERROR | 저장/IO/예상하지 못한 제공자·발행 장애. 내부 원문 비노출 |
+
+빈 파일·손상·미지원 음성 형식·검사 도구 장애·제출된 크기/30초 초과는 인증과 세션 소유권을 확인한 뒤 음성 실패로 기록하고 HTTP 200 `REINPUT_REQUIRED`로 안내한다. 세 번째 음성 실패부터 `SUGGEST_TEXT_KEEP_VOICE`를 반환하며 음성 입력은 계속 허용한다.
 
 200/202 data 필드는 status, action, messages(text, speech.available/url), acceptedInput,
 checkpointVersion, replayed이다. 신규 정상 응답에는 검증된 표준 발화 acceptedInput이 있으며,
@@ -134,9 +138,9 @@ STT/TTS 어댑터에는 내부 재시도가 없다. 다른 제공자를 연결�
 
 ## 시간 제한과 삭제 범위
 
-컨트롤러 진입 후 하나의 예산을 인증 조회·spool·대기·STT·LLM 재시도·TTS·체크포인트에 공유한다.
-서블릿 multipart 파싱은 컨트롤러 진입 전이며 별도의 서버 크기 제한을 적용한다. 차단된 DB/입력 IO의 물리적
-취소, 네트워크 업로드 시간, COMMIT/음성 발행 경계에 대한 제품 계약은 최종 확정이 필요하다.
+백엔드가 음성 요청을 받기 시작할 때부터 하나의 예산을 multipart 파싱·인증 조회·spool·대기·STT·LLM 재시도·TTS·체크포인트에 공유한다.
+브라우저의 업로드 시작부터 60초를 적용하려면 프록시와 FE 연동이 더 필요하다. 차단된 DB/입력 IO의 물리적
+취소와 정확히 60초 안의 응답은 보장하지 않는다.
 실행 중 늦은 제공자 응답은 다음 단계나 DB 저장으로 진행할 수 없다. 물리적으로 멈추지 않는 작업은
 작업이 종료될 때까지 처리권을 보유한다. 큐 포화는 503이며 무제한 대기를 만들지 않는다.
 STT·LLM·TTS는 [호출별 예산](roleplay-call-budget.md)을 전달받아 설정 상한과 남은 턴 시간 중 작은 값을
@@ -150,7 +154,7 @@ STT·LLM·TTS는 [호출별 예산](roleplay-call-budget.md)을 전달받아 설
 multipart 요청으로 검증했다. 승인 콘텐츠/표준화·안전/AI/음성 주소는 테스트 코드의 대체 구현이다.
 로컬 HTTP 서버 테스트만 Secure 세션 쿠키를 비활성으로 설정했다. 운영 쿠키 설정은 변경하지 않았다.
 
-미정/후속 연동: 위 운영 포트, 공개 MIME/크기·디코딩/녹음 길이 정책, 확정 안내 문구,
+당시 미정/후속 연동: 위 운영 포트, 공개 MIME/크기·디코딩/녹음 길이 정책, 확정 안내 문구,
 음성 실패 누적 범위/초기화, 원본/STT/실패 후보의 DEC-008 보관 수명주기,
 완료·보상·기록 연결, 턴/목표별 상한,
 멱등 결과 보관 기간 및 제공자 저장/학습 이용 계약. 이번 작업으로 S1-JIN-02 전체의 운영 완료를 선언하지 않는다.

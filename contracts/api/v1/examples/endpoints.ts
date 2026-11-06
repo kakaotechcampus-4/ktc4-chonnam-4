@@ -1,4 +1,4 @@
-// 구현 함수 36개·조건부 음성 함수 1개. 2026-10-31 리포트·추천 작업 브랜치 기준.
+// 구현 함수 42개·조건부 음성·텍스트 입력 함수 2개. 2026-11-06 develop e09bbbf + PR #90 리포트·추천 기준.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -205,6 +205,25 @@ export function deleteClassroom(
   });
 }
 
+export interface UpdateClassroomArgs {
+  classId: T.UUID;
+  body: T.ClassBody;
+}
+
+export function updateClassroom(
+  api: ApiClient,
+  args: UpdateClassroomArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ClassData>> {
+  return api.request<T.ClassData>("/api/v1/classrooms/" + encodeURIComponent(args.classId), {
+    method: "PATCH",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    body: args.body
+  });
+}
+
 export interface CreateChildArgs {
   classId: T.UUID;
   body: T.ChildBody;
@@ -272,6 +291,25 @@ export function deleteChild(
     auth: "instructor",
     expectedStatuses: [204],
     signal: options.signal,
+  });
+}
+
+export interface UpdateChildArgs {
+  childId: T.UUID;
+  body: T.ChildBody;
+}
+
+export function updateChild(
+  api: ApiClient,
+  args: UpdateChildArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ChildData>> {
+  return api.request<T.ChildData>("/api/v1/children/" + encodeURIComponent(args.childId), {
+    method: "PATCH",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    body: args.body
   });
 }
 
@@ -522,6 +560,28 @@ export function submitVoiceInput(
   });
 }
 
+export interface SubmitTextInputArgs {
+  sessionId: T.UUID;
+  body: T.TextInputBody;
+  idempotencyKey: T.UUID;
+}
+
+export function submitTextInput(
+  api: ApiClient,
+  args: SubmitTextInputArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.RoleplayVoiceData>> {
+  return api.request<T.RoleplayVoiceData>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
+    method: "POST",
+    auth: "child",
+    expectedStatuses: [200, 202],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    conditional: true,
+    body: args.body
+  });
+}
+
 export interface StartRoleplayArgs {
   activityId: T.UUID;
   idempotencyKey: T.UUID;
@@ -538,6 +598,84 @@ export function startRoleplay(
     expectedStatuses: [200, 201],
     signal: options.signal,
     idempotencyKey: args.idempotencyKey
+  });
+}
+
+export interface PrepareScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioReviewBody;
+  idempotencyKey: T.UUID;
+}
+
+export function prepareScenario(
+  api: ApiClient,
+  args: PrepareScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewData>> {
+  return api.request<T.ScenarioReviewData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario-review", {
+    method: "POST",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+
+export interface ReviewScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioConfirmBody;
+  idempotencyKey: T.UUID;
+}
+
+export function reviewScenario(
+  api: ApiClient,
+  args: ReviewScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewClosure>> {
+  return api.request<T.ScenarioReviewClosure>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario", {
+    method: "PUT",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+
+export interface DeleteScenarioArgs {
+  activityId: T.UUID;
+  body: T.ScenarioReviewCancelBody;
+  idempotencyKey: T.UUID;
+}
+
+export function deleteScenario(
+  api: ApiClient,
+  args: DeleteScenarioArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioReviewClosure>> {
+  return api.request<T.ScenarioReviewClosure>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/scenario-review", {
+    method: "DELETE",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal,
+    idempotencyKey: args.idempotencyKey,
+    body: args.body
+  });
+}
+
+export type ListScenarioApprovalsArgs = Record<string, never>;
+
+export function listScenarioApprovals(
+  api: ApiClient,
+  _args: ListScenarioApprovalsArgs = {},
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioApprovalItem[]>> {
+  return api.request<T.ScenarioApprovalItem[]>("/api/v1/scenario-approvals", {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
   });
 }
 
@@ -644,27 +782,6 @@ export function getRoleplayDifficulty(
   options: CallOptions = {}
 ): Promise<T.ApiResponse<T.RoleplayDifficultyData>> {
   return api.request<T.RoleplayDifficultyData>("/api/v1/children/" + encodeURIComponent(args.childId) + "/roleplay-difficulty", {
-    method: "GET",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal
-  });
-}
-
-export interface ListRoleplayScenariosArgs {
-  childId: T.UUID;
-  query: {
-    goalTitle: string;
-    goalCategory?: string;
-  };
-}
-
-export function listRoleplayScenarios(
-  api: ApiClient,
-  args: ListRoleplayScenariosArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.RoleplayScenarioCandidatesData>> {
-  return api.request<T.RoleplayScenarioCandidatesData>("/api/v1/children/" + encodeURIComponent(args.childId) + "/roleplay-scenarios" + queryString(args.query), {
     method: "GET",
     auth: "instructor",
     expectedStatuses: [200],

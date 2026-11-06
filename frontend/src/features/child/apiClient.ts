@@ -61,24 +61,35 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return body.data
 }
 
+/** 조회 요청. 읽기만 하므로 CSRF 토큰이 필요 없다. signal 은 React Query 가 화면을 떠날 때 요청을 끊는 데 쓴다. */
+export async function childGetRequest<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return parseResponse<T>(await send(`${API_BASE_URL}${path}`, { headers: { Accept: "application/json" }, signal }))
+}
+
 type CsrfToken = { headerName: string; token: string }
 
 // 토큰은 요청마다 다르게 인코딩되어 내려오므로 변경 요청 직전에 받는다. 헤더 이름도 서버가 정한다.
 async function fetchCsrfToken(): Promise<CsrfToken> {
-  return parseResponse<CsrfToken>(await send(`${API_BASE_URL}/csrf`, {}))
+  return parseResponse<CsrfToken>(await send(`${API_BASE_URL}/csrf`, { headers: { Accept: "application/json" } }))
 }
 
 /**
  * CSRF 토큰을 붙인 변경 요청. 실패해도 자동으로 다시 보내지 않는다(CSRF 403 포함).
- * 다시 보낼지는 화면이 아이에게 "다시 하기"를 보여 주고 정한다.
+ * 다시 보낼지는 화면이 아이에게 "다시 하기"를 보여 주고 정한다. 다시 보낼 때는 같은 본문·같은 Idempotency-Key 를 쓴다.
  */
-export async function childWriteRequest<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function childWriteRequest<T>(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+  { idempotencyKey }: { idempotencyKey?: string } = {}
+): Promise<T> {
   const csrf = await fetchCsrfToken()
   const res = await send(`${API_BASE_URL}${path}`, {
     method,
     headers: {
       Accept: "application/json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(body === undefined ? {} : { "Content-Type": "application/json; charset=utf-8" }),
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       [csrf.headerName]: csrf.token,
     },
     body: body === undefined ? undefined : JSON.stringify(body),

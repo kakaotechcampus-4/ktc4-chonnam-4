@@ -101,7 +101,31 @@ public record RoleplayGoalResponseHistory(
             String supportLevel,
             String responseType,
             String strategyUsed,
-            RoleplayInputContext inputContext) {
+            RoleplayInputContext inputContext,
+            boolean mascotHintDelivered) {
+        public Response(
+                UUID turnId,
+                UUID candidateId,
+                int turnNumber,
+                long checkpointVersion,
+                UUID microGoalId,
+                String supportLevel,
+                String responseType,
+                String strategyUsed,
+                RoleplayInputContext inputContext) {
+            this(
+                    turnId,
+                    candidateId,
+                    turnNumber,
+                    checkpointVersion,
+                    microGoalId,
+                    supportLevel,
+                    responseType,
+                    strategyUsed,
+                    inputContext,
+                    false);
+        }
+
         public Response {
             Objects.requireNonNull(turnId);
             Objects.requireNonNull(candidateId);
