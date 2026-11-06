@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 import type { UserEvent } from "@testing-library/user-event"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { http, HttpResponse } from "msw"
@@ -313,6 +313,44 @@ describe("코드 입력 화면은 만료·연결 끊김·서버 오류를 틀린
     await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
 
     expect(await screen.findByText(GREETING)).toBeInTheDocument()
+  })
+
+  // 서버 앞 nginx 가 막으면 본문이 HTML 이고 Retry-After 가 없을 수 있다. 백엔드가 막으면 공통 오류 JSON 과 Retry-After 가 온다.
+  it.each([
+    ["nginx 가 막은 429(HTML, 대기 시간 없음)", () => new HttpResponse("<html>429 Too Many Requests</html>", { status: 429, headers: { "Content-Type": "text/html" } }), "1분", 60_000],
+    ["서버가 막은 429(JSON, Retry-After 3초)", () => HttpResponse.json({ error: { code: "TOO_MANY_REQUESTS", message: "요청이 너무 많습니다." } }, { status: 429, headers: { "Retry-After": "3" } }), "3초", 3_000],
+  ])("%s 는 쉬어 가기 모달로 알리고, 기다리는 동안 다시 보내지 않다가 시간이 지나면 같은 코드로 입장한다", async (_name, failure, waitText, waitMs) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.post(ENTRY_URL, failure, { once: true }))
+      const { user } = renderRoutes(router.routes, "/child")
+
+      await pressCode(user, VALID_CODE)
+      await user.click(screen.getByRole("button", { name: "입장하기" }))
+
+      const dialog = await screen.findByRole("dialog")
+      expect(within(dialog).getByText("조금 쉬었다가 다시 해 보자")).toBeInTheDocument()
+      expect(within(dialog).getByText(`${waitText} 뒤에 다시 할 수 있어요.`)).toBeInTheDocument()
+      // 틀린 코드나 일반 오류로 보여 주지 않고, 입력한 코드도 비우지 않는다.
+      expect(screen.queryByText("잠깐 문제가 있었어요")).not.toBeInTheDocument()
+      expect(screen.queryByText("코드가 맞지 않아요. 다시 눌러볼까?")).not.toBeInTheDocument()
+      expect(screen.getByRole("group", { hidden: true })).toHaveAttribute("aria-label", "입력한 숫자 4개")
+
+      // 기다리는 동안에는 다시 하기가 막혀 있고, 키보드 Enter 로도 다시 보내지 않는다.
+      const retry = within(dialog).getByRole("button", { name: "다시 하기" })
+      expect(retry).toBeDisabled()
+      await user.keyboard("{Enter}")
+      expect(sentTo(/child-access-sessions$/)).toHaveLength(1)
+
+      act(() => vi.advanceTimersByTime(waitMs))
+      expect(await within(dialog).findByText("이제 다시 해도 괜찮아요.")).toBeInTheDocument()
+      await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
+
+      expect(await screen.findByText(GREETING)).toBeInTheDocument()
+      expect(vi.mocked(api.verifyAccessCode).mock.calls.map(([code]) => code)).toEqual([VALID_CODE, VALID_CODE])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

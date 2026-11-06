@@ -1,6 +1,6 @@
 import { ChildApiError, childGetRequest, childWriteRequest } from "./apiClient"
 
-export { ChildApiError, NETWORK_ERROR } from "./apiClient"
+export { ChildApiError, NETWORK_ERROR, TOO_MANY_REQUESTS } from "./apiClient"
 
 /**
  * 아동 흐름 API (contracts/api/v1).

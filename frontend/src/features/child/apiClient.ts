@@ -17,13 +17,28 @@ export class ChildApiError extends Error {
   /** 서버 응답이 없으면 0 */
   readonly status: number
   readonly code: string
+  /** 429 응답의 Retry-After(초). 헤더가 없거나 읽을 수 없으면 비어 있다. */
+  readonly retryAfterSeconds?: number
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, retryAfterSeconds?: number) {
     super(message)
     this.name = "ChildApiError"
     this.status = status
     this.code = code
+    this.retryAfterSeconds = retryAfterSeconds
   }
+}
+
+/** 요청이 너무 많아 서버나 앞단 프록시(nginx)가 막은 응답. */
+export const TOO_MANY_REQUESTS = 429
+
+// Retry-After 는 초(숫자) 또는 HTTP 날짜로 온다. 둘 다 아니면 화면이 기본 대기 시간을 쓰게 비워 둔다.
+function parseRetryAfter(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined
+  if (/^\d+$/.test(value.trim())) return Number(value.trim())
+  const until = Date.parse(value)
+  if (Number.isNaN(until)) return undefined
+  return Math.max(0, Math.ceil((until - Date.now()) / 1000))
 }
 
 type ApiErrorBody = { error: { code: string; message: string } }
@@ -51,9 +66,11 @@ async function send(url: string, init: RequestInit): Promise<Response> {
 // 화면은 message 가 아니라 status·code 로 나눈다. message 는 화면에 그대로 보여 주지 않는다.
 async function parseResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    // nginx 가 막은 429 는 본문이 HTML 이라 code 를 알 수 없다. 화면은 429 를 status 로 나누고, 기다릴 시간은 헤더로 받는다.
+    const retryAfter = res.status === TOO_MANY_REQUESTS ? parseRetryAfter(res.headers.get("Retry-After")) : undefined
     const body: unknown = await res.json().catch(() => null)
-    if (isApiErrorBody(body)) throw new ChildApiError(res.status, body.error.code, body.error.message)
-    throw new ChildApiError(res.status, UNEXPECTED_ERROR, `요청을 처리하지 못했습니다. (HTTP ${res.status})`)
+    if (isApiErrorBody(body)) throw new ChildApiError(res.status, body.error.code, body.error.message, retryAfter)
+    throw new ChildApiError(res.status, UNEXPECTED_ERROR, `요청을 처리하지 못했습니다. (HTTP ${res.status})`, retryAfter)
   }
   // 사용 종료(204)처럼 본문이 없는 성공 응답은 읽지 않는다.
   if (res.status === 204) return undefined as T
