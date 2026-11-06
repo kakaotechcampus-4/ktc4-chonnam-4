@@ -44,6 +44,8 @@ createSessionTokenStore의 기본 키는 예제입니다. 기존 FE 저장소와
 
 JSON은 Content-Type application/json입니다. FormData는 boundary를 브라우저가 지정하므로 Content-Type을 수동 지정하지 않습니다. 쿠키 Secure/SameSite·CORS·HTTPS는 배포 브라우저/서버에서 따로 검증합니다. Mock 통과가 이를 보장하지 않습니다.
 
+응답의 시각 필드(`assignedAt`·`expiresAt`·`createdAt`·`respondedAt` 등)는 서버가 DB 저장 해상도인 마이크로초 단위로 맞춘 값입니다. 같은 자원을 처음 받은 응답과 같은 키 재전송·재조회 응답의 시각은 같습니다. 소수점 아래 자릿수는 고정이 아니며(0~6자리, 끝자리 0 생략) 오프셋도 API마다 다를 수 있으므로, 문자열 길이에 기대지 말고 시점으로 파싱해 비교합니다.
+
 ## 5. 활동 생성·목록·문항
 
 현재 POST /activities는 {childId, activityType, goal}입니다. goalId를 보내는 방식이 아닙니다. 목표·활동·문항을 원자 저장하고 Idempotency-Key 필수, 신규201/재전송200입니다.
@@ -53,7 +55,7 @@ JSON은 Content-Type application/json입니다. FormData는 boundary를 브라�
 | FIRST_COMBINED (생략/null 기본) | goal 필수 | 아동당1회·유형별1개 총3문항 |
 | SELF_EMOTION_QUIZ | goal 금지 | 최초 결합 COMPLETED 후10문항 |
 | OTHER_EMOTION_QUIZ | goal 금지 | 최초 결합 COMPLETED 후 상황7+이미지3문항 |
-| ROLEPLAY | goal 필수 | 현재422 ACTIVITY_TYPE_NOT_AVAILABLE |
+| ROLEPLAY | goal 필수 | 다음 역할극 난이도가 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY |
 
 독립 퀴즈는 같은 아동·유형의 NOT_STARTED 중복을 차단합니다. 필요한 문항이 모자라면 배정을 거부하고 일부만 만들지 않습니다. 배정 문항은 재조회 시 유지합니다. GET /quiz-items와 GET /quiz-items/{itemId}는 현재 미제공입니다.
 

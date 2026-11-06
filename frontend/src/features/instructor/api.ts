@@ -246,7 +246,7 @@ function readRequest<T>(path: string): Promise<T> {
 }
 
 function writeRequest<T>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   { authenticated = true, headers = {} }: RequestOptions = {},
@@ -417,6 +417,8 @@ export type LearningGoal = {
 export type LearningGoalInput = {
   title: string
   category?: string
+  // 추천을 채택해 만드는 다음 활동은 지금 목표를 이어받는다(서버가 같은 아동의 목표인지 확인한다).
+  parentGoalId?: string
   // 역할극 추가 조건(시안 T-ACT-04). 모두 선택이다. 상황은 장면 설명 문장이다.
   situationType?: string
   characters?: GoalCharacter[]
@@ -436,8 +438,8 @@ export function getLearningGoal(goalId: string): Promise<LearningGoal> {
 export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
 
 /**
- * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈를 배정한다.
- * 역할극은 역할극 API 가 생기기 전이라 서버가 받지 않는다.
+ * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈와 역할극을 배정한다.
+ * 역할극 단독 활동은 마친 역할극이 있어야(다음 역할극 난이도가 있어야) 서버가 받는다.
  */
 export type ActivityType = 'FIRST_COMBINED' | 'SELF_EMOTION_QUIZ' | 'OTHER_EMOTION_QUIZ' | 'ROLEPLAY'
 
@@ -516,7 +518,11 @@ export function createActivity(
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, activityType, ...(goal ? { goal } : {}) },
+    {
+      childId,
+      activityType,
+      ...(goal ? { goal } : {}),
+    },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }
@@ -538,4 +544,309 @@ export type QuizResult = {
 /** 퀴즈가 아직 끝나지 않았으면 409 QUIZ_NOT_COMPLETED 다. */
 export function getQuizResult(activityId: string): Promise<QuizResult> {
   return readRequest<QuizResult>(`/activities/${encodeURIComponent(activityId)}/quiz-result`)
+}
+
+export type ScenarioCharacter = { id: string; role: string }
+
+export type ScenarioMicroGoal = {
+  microGoalId: string
+  description: string
+  requiredEvidence: string[]
+  achievementExample: string | null
+}
+
+/** 검토 중인 시나리오 한 개(재사용 후보 또는 새로 만든 것). 후보 목록·개수는 서버가 내리지 않는다. */
+export type ReviewScenario = {
+  scenarioId: string
+  /** 콘텐츠 버전. 검토 번호(revision)와 다르다 */
+  scenarioVersion: number
+  scenarioLevel: string
+  title: string
+  summary: string
+  characters: ScenarioCharacter[]
+  scenarioFacts: string[]
+  microGoals: ScenarioMicroGoal[]
+  /** S0·S1·S2 시작 질문 */
+  startingQuestions: Record<string, string>
+  /** 시작 질문마다 이어지는 작은 목표 ID */
+  startingQuestionGoalIds: Record<string, string>
+}
+
+/** 이번 활동의 목표와 조건. 서버에 저장된 값이다. */
+export type ReviewConditions = {
+  title: string
+  category: string | null
+  situationType: string | null
+  characters: Record<string, unknown>[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+  scenarioLevel: string
+}
+
+export type ScenarioReview = {
+  reviewId: string
+  activityId: string
+  /** 검토 번호. 다음 동작에 그대로 돌려보내고, 이보다 낮은 번호의 늦은 응답은 버린다 */
+  revision: number
+  conditions: ReviewConditions
+  scenario: ReviewScenario
+}
+
+export type ScenarioReviewAction =
+  | { action: 'START_OR_RESUME' }
+  | { action: 'NEXT'; reviewId: string; revision: number }
+
+/** 고친 칸만 싣는다. 사실·등장인물·시작 질문은 고칠 수 없다. */
+export type ScenarioEdits = {
+  title?: string
+  summary?: string
+  microGoals?: { microGoalId: string; description?: string; requiredEvidence?: string[] }[]
+}
+
+export type ScenarioConfirmation = {
+  reviewId: string
+  revision: number
+  scenarioId: string
+  scenarioVersion: number
+  edits?: ScenarioEdits
+}
+
+/** 확정·취소 결과. 최종 시나리오 ID 는 활동 상세의 scenarioId 로 확인한다. */
+export type ScenarioReviewClosure = {
+  reviewId: string
+  activityId: string
+  outcome: 'CONFIRMED' | 'CANCELLED'
+  closedAt: string
+}
+
+/**
+ * 검토 시작·이어 보기(START_OR_RESUME)와 다른 후보(NEXT). 후보가 없거나 다 넘기면 같은 요청 안에서 새로 만들어 오래 걸릴 수 있다.
+ * 응답을 못 받아 다시 보낼 때는 같은 키와 같은 본문을 쓴다.
+ */
+export function prepareScenarioReview(
+  activityId: string,
+  action: ScenarioReviewAction,
+  requestKey: string,
+): Promise<ScenarioReview> {
+  return writeRequest<ScenarioReview>('POST', `/activities/${encodeURIComponent(activityId)}/scenario-review`, action, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [승인]: 보고 있는 시나리오를 (고친 내용이 있으면 새 버전으로) 이 활동에 붙인다. */
+export function confirmScenarioReview(
+  activityId: string,
+  confirmation: ScenarioConfirmation,
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('PUT', `/activities/${encodeURIComponent(activityId)}/scenario`, confirmation, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** [검토 그만하기]: 이번 검토를 끝낸다. 활동은 계속 시나리오를 기다린다. */
+export function cancelScenarioReview(
+  activityId: string,
+  review: { reviewId: string; revision: number },
+  requestKey: string,
+): Promise<ScenarioReviewClosure> {
+  return writeRequest<ScenarioReviewClosure>('DELETE', `/activities/${encodeURIComponent(activityId)}/scenario-review`, review, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+export type ScenarioApprovalState = 'WAITING' | 'IN_REVIEW'
+
+/** 승인 대기함의 한 줄. 시나리오를 기다리는 최초 결합 활동 하나다. */
+export type ScenarioApprovalItem = {
+  activityId: string
+  childId: string
+  childName: string
+  classId: string
+  className: string
+  goalId: string
+  goalTitle: string
+  scenarioLevel: string
+  waitingSince: string
+  state: ScenarioApprovalState
+}
+
+/** 내 학급에서 시나리오 승인을 기다리는 활동. 기다린 순서대로 온다. */
+export function listScenarioApprovals(): Promise<ScenarioApprovalItem[]> {
+  return readRequest<ScenarioApprovalItem[]>('/scenario-approvals')
+}
+
+// ── 리포트·추천·다음 역할극 난이도 (contracts/api/v1/reports-recommendations) ──
+
+export type SupportLevel = 'S0' | 'S1' | 'S2' | 'S3'
+export type ScenarioLevel = 'L1' | 'L2' | 'L3'
+
+/** 서버가 센 값의 분자·분모. 작은 분모를 퍼센트 대신 "3개 중 2개"로 보이려고 함께 받는다. */
+export type RatioView = { numerator: number; denominator: number; value: number }
+
+export type ObservationStatus = 'EXPLICIT' | 'IMPLICIT' | 'NOT_EXPRESSED' | 'MISUNDERSTOOD' | 'CONTRADICTORY'
+
+/** 혼자·처음 지원으로·지원을 더 받고·답을 듣고·못 함·제외 */
+export type GoalStatus =
+  | 'NO_SUPPORT_NEEDED'
+  | 'REACHED_AT_START'
+  | 'EXTRA_SUPPORT'
+  | 'ANSWER_GIVEN'
+  | 'NOT_REACHED'
+  | 'EXCLUDED'
+
+export type ReportGoal = {
+  microGoalId: string
+  title: string
+  startSupport: SupportLevel
+  finalSupport: SupportLevel
+  result: string
+  status: GoalStatus
+  criteria: { description: string; status: ObservationStatus | null }[]
+  // 지원 단계와 기준으로 만든 짧은 문장. 아동 발화 원문이 아니다.
+  observations: string[]
+}
+
+export type ReportDifficultyDecision = {
+  decisionType: 'FOLLOW_UP'
+  scenarioLevel: ScenarioLevel
+  previousLevel: ScenarioLevel
+  nextSupportLevel: SupportLevel
+  direction: 'LOWER' | 'KEEP' | 'RAISE'
+  reason: string
+  scoreRate: RatioView | null
+  consecutiveUpgradeCandidates: number
+  policyVersion: string
+}
+
+export type ReportNarrativeItem = { text: string; evidenceIds: string[] }
+
+export type LearningReport = {
+  recordId: string
+  activityId: string
+  childId: string
+  completedAt: string
+  summary: string
+  // 역할극 단독 활동은 퀴즈가 없다.
+  quiz: {
+    validQuestionCount: number
+    correctQuestionCount: number
+    overallAccuracy: number | null
+    resolvedAfterHintCount: number
+  } | null
+  roleplay: {
+    scenarioLevel: ScenarioLevel
+    startSupportLevel: SupportLevel
+    goals: ReportGoal[]
+    observations: string[]
+    effectiveSupport: string[]
+    technicalExclusions: string[]
+  }
+  difficultyDecision: ReportDifficultyDecision
+  metrics: {
+    roleplayScore: RatioView | null
+    goalAchievement: RatioView | null
+    independentAchievement: RatioView | null
+    quizAccuracy: RatioView | null
+    quizHintRecovery: RatioView | null
+    validGoalCount: number
+    excludedGoalCount: number
+  }
+  narrative: {
+    observations: ReportNarrativeItem[]
+    effectiveSupports: ReportNarrativeItem[]
+    difficultPoints: ReportNarrativeItem[]
+  } | null
+}
+
+export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND'
+export type RecommendationDecision = 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT'
+export type RejectionReason = 'NOT_NOW' | 'NOT_SUITABLE' | 'ALREADY_PLANNED' | 'OTHER'
+
+export type SuggestedGoal = {
+  // 확장(EXTEND)은 강사가 넓힐 목표를 써야 해서 비어 있다.
+  title: string | null
+  category: string | null
+  parentGoalId: string | null
+}
+
+export type Recommendation = {
+  recommendationId: string
+  recordId: string
+  activityId: string
+  childId: string
+  type: RecommendationType
+  displayOrder: number
+  suggestedGoal: SuggestedGoal
+  reason: string
+  reasonCode: string
+  basisGoalTitle: string | null
+  evidence: string[]
+  evidenceSufficiency: 'SUFFICIENT' | 'LIMITED' | 'INSUFFICIENT'
+  decision: RecommendationDecision | null
+  decidedGoal: SuggestedGoal | null
+  rejectionReason: RejectionReason | null
+  createdGoalId: string | null
+  policyVersion: string
+  createdAt: string
+  decidedAt: string | null
+}
+
+export type RecommendationDecisionInput = {
+  decision: RecommendationDecision
+  goal?: { title: string; category?: string | null; parentGoalId?: string | null }
+  rejectionReason?: RejectionReason
+}
+
+export type RoleplayDifficulty = {
+  childId: string
+  scenarioLevel: ScenarioLevel
+  initialSupportLevel: SupportLevel
+  previousLevel: ScenarioLevel
+  direction: 'LOWER' | 'KEEP' | 'RAISE'
+  reason: string
+  scoreNumerator: number
+  scoreDenominator: number
+  consecutiveUpgradeCandidates: number
+  policyVersion: string
+  sourceActivityId: string
+  // AI 요약이 실패해 리포트가 404여도 이 기록으로 추천을 읽는다.
+  sourceRecordId: string | null
+  decidedAt: string
+}
+
+/**
+ * 완료한 리포트만 온다. AI 요약을 만드는 중이거나 만들지 못한 리포트는 없는 것과 같은 404 LEARNING_RECORD_NOT_FOUND 다.
+ */
+export function getLearningReport(activityId: string): Promise<LearningReport> {
+  return readRequest<LearningReport>(`/activities/${activityId}/learning-record`)
+}
+
+/** 최근 완료 순. 학급 요약·추천 화면은 아동마다 첫 몇 개만 읽는다. */
+export function listLearningReports(childId: string, size = 5): Promise<LearningReport[]> {
+  return readRequest<LearningReport[]>(`/learning-records?childId=${childId}&page=0&size=${size}`)
+}
+
+/** 추천은 AI 요약과 따로 만들어져서 리포트가 아직 없어도 있을 수 있다. */
+export function listRecommendations(recordId: string): Promise<Recommendation[]> {
+  return readRequest<Recommendation[]>(`/learning-records/${recordId}/recommendations`)
+}
+
+/**
+ * 결정만 남기고 활동은 만들지 않는다(자동 배정 금지). 채택 뒤 활동 만들기는 화면이 따로 연다.
+ * requestKey 는 결정 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 쓴다.
+ */
+export function decideRecommendation(
+  recommendationId: string,
+  input: RecommendationDecisionInput,
+  requestKey: string,
+): Promise<Recommendation> {
+  return writeRequest<Recommendation>('PATCH', `/recommendations/${recommendationId}`, input, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다. */
+export function getRoleplayDifficulty(childId: string): Promise<RoleplayDifficulty> {
+  return readRequest<RoleplayDifficulty>(`/children/${childId}/roleplay-difficulty`)
 }

@@ -1,5 +1,40 @@
 # API v1 변경 이력
 
+## 2026-11-06 — 리포트·추천·다음 역할극 난이도(PR #90), 역할극 단독도 PR #101 검토 흐름으로
+
+- 기준은 develop `f017637` 위 `feature/roleplay-report-integration` 작업 브랜치(PR #90)입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 59개 ID 중 구현 42개·조건부 구현 2개·설계 13개·미제공 2개입니다. [API-REC-01~05](./reports-recommendations/get-learning-report.md)를 설계에서 구현으로 바꾸고 다음 역할극 난이도 조회 [API-REC-06](./reports-recommendations/get-roleplay-difficulty.md)(`GET /api/v1/children/{childId}/roleplay-difficulty`)을 더했습니다.
+- 리포트의 `quiz`·`roleplay`·`difficultyDecision`은 서버가 기록에서 센 값이고, `metrics`(분자·분모)와 `narrative`(AI 항목과 근거 ID)가 있습니다. 추천 유형은 REINFORCE·REPEAT·APPLY·EXTEND, 충분성은 SUFFICIENT·LIMITED·INSUFFICIENT, 거절 이유는 NOT_NOW·NOT_SUITABLE·ALREADY_PLANNED·OTHER입니다. 채택해도 서버는 목표·활동을 만들지 않아 `createdGoalId`는 늘 null입니다.
+- 추천 결정(API-REC-05)은 같은 키·같은 입력이면 앞 결과를 200으로, 같은 키·다른 입력이면 409 `IDEMPOTENCY_KEY_REUSED`, 확정 뒤 다시 결정하면 409 `RECOMMENDATION_ALREADY_DECIDED`입니다.
+- [API-ACT-01](./activities/create-activity.md): ROLEPLAY(역할극 단독)를 배정할 수 있습니다. 최초 결합 완료와 다음 역할극 난이도가 있어야 하고(없으면 409 `ROLEPLAY_DIFFICULTY_NOT_READY`), 배정 때 레벨·시작 지원을 활동에 고정합니다. 요청에 시나리오를 받지 않고 응답의 `scenarioId`는 null입니다.
+- 역할극 단독의 시나리오는 최초 결합과 같은 [API-SCN-08](./scenarios/list-scenario-approvals.md) 승인 대기함 → [API-SCN-01](./scenarios/prepare-scenario.md) 준비·다음 후보 → [API-SCN-04](./scenarios/review-scenario.md) 확정으로 붙습니다. 승인 대기함의 `scenarioLevel`·`waitingSince`는 퀴즈 결과 대신 활동에 고정한 난이도·고정 시각입니다.
+- 검토 입력 지문에 역할극 단독은 고정 난이도의 결정 ID(`source_decision_id`)·고정 지원 수준을 더 넣습니다. 그 활동의 고정값이 바뀌면 이전 검토 확정은 409 `SCENARIO_REVIEW_INPUT_CHANGED`이고, 다른 역할극이 끝나 새 결정이 생긴 것만으로는 바뀌지 않습니다. 최초 결합의 지문은 그대로입니다.
+- 작업 브랜치에만 있던 역할극 단독 후보 조회(`GET /api/v1/children/{childId}/roleplay-scenarios`), 배정 요청의 `scenarioId`·`reuseApproved`, 422 `SCENARIO_REQUIRED`·`SCENARIO_NOT_MATCHED`·`SCENARIO_REUSE_NOT_APPROVED`·`SCENARIO_NOT_ALLOWED`는 PR #101 회의 결정에 따라 지웠습니다. develop에 들어간 적 없는 계약입니다.
+- [API-ACT-02](./activities/list-child-activities.md)·[API-ACT-03](./activities/get-activity.md)의 `nextAction`은 역할극 단독도 고정 난이도를 근거로 판정합니다(확정 전 `WAIT_FOR_SCENARIO`).
+
+## 2026-11-06 — 아동용 활동 목록 응답 분리
+
+- develop e09bbbf 기반 refactor/child-activity-response 작업본입니다. PR #99 리뷰 r4480037266 및 FE 답변 r4488412186을 반영합니다. 운영 배포 완료를 뜻하지 않습니다.
+- ACT-02는 검증된 아동 세션에 activityId/activityType/status/completedAt/nextAction 5개만 반환합니다. 지원 수준·기본값 여부·목표/시나리오 ID·내부 차단 사유 등은 JSON에서 제외합니다.
+- 담당 강사 응답, 활동 생성·상세·status 응답, 내부 준비 상태 계산·권한·페이지·읽기 전용 동작은 유지합니다. 새 Endpoint나 DB 마이그레이션은 없습니다.
+- 동봉 TypeScript 타입·fixture·함수 및 실제 FE 코드는 직접 변경하지 않았습니다. 아동 FE의 현행 5개 필드 매핑은 유지할 수 있으며 주석·공유 계약 타입 동기화와 실제 브라우저 확인은 후속입니다.
+- 퀴즈 결과 API의 아동 평가 정보 응답은 이번 목록 분리와 별도 검토 항목입니다.
+
+
+## 2026-11-06 — 시나리오 승인 대기 활동 목록
+
+- 기준은 develop `d1a7b0e`(PR #100·#101·#103 병합) 위의 `feature/scenario-review-screens` 작업 브랜치입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 58개 ID 중 구현 36개·조건부 구현 2개·설계 18개·미제공 2개입니다.
+- 추가: [API-SCN-08](./scenarios/list-scenario-approvals.md) 승인 대기 활동 목록(콘텐츠·승인 → 승인 대기함). 퀴즈로 난이도가 정해졌고 시나리오가 없는 내 학급의 최초 결합 활동을 기다린 순서대로 주고, `state`는 `WAITING`(검토 전)·`IN_REVIEW`(서버에 남은 검토 있음)입니다.
+
+## 2026-11-05 — 저장 시각 마이크로초 정규화(#104)
+
+- 기준은 `fix/instant-micros-precision` 작업 브랜치입니다. 원격 병합·운영 배포를 뜻하지 않습니다.
+- 필드 이름·타입은 그대로입니다. 서버가 시각을 저장하기 전에 마이크로초 아래 자리를 버려, 처음 응답(메모리 값)과 재전송·재조회 응답(DB 값)의 시각이 같아집니다. 전에는 처음 응답만 나노초(예: `.512881776`)였고 재전송 응답은 DB가 반올림한 값(`.512882`)이었습니다.
+- 영향 API: [API-ACT-01](./activities/create-activity.md)·[API-ACT-02](./activities/list-child-activities.md)·[API-ACT-03](./activities/get-activity.md)의 `assignedAt`, [API-IAM-07](./auth/issue-child-code.md)의 `expiresAt`, [API-IAM-03](./auth/login.md)의 `expiresAt`, [API-GOAL-01](./learning-goals/create-learning-goal.md)·[API-GOAL-03](./learning-goals/get-learning-goal.md)의 `createdAt`, [API-QUIZ-04](./quizzes/put-quiz-attempt.md)·[API-QUIZ-05](./quizzes/get-quiz-attempt.md)의 `respondedAt`.
+- [API-QUIZ-04](./quizzes/put-quiz-attempt.md)·[API-QUIZ-05](./quizzes/get-quiz-attempt.md)의 `respondedAt`은 PR #103에서 같은 방식(마이크로초 절삭)으로 먼저 맞췄고, 이번 변경은 나머지 저장 시각으로 넓히고 공통 함수 하나로 묶습니다.
+- 공통 규칙은 [integration-guide.md](./integration-guide.md) 4절에 적었습니다. DB 컬럼·기존 데이터는 바꾸지 않습니다.
+
 ## 2026-11-05 — develop `7376e91`(PR #101·#103) 반영
 
 - 공유 예제: [API-SCN-01](./scenarios/prepare-scenario.md) prepareScenario(POST `/activities/{activityId}/scenario-review`), [API-SCN-04](./scenarios/review-scenario.md) reviewScenario(PUT `/activities/{activityId}/scenario`), [API-SCN-06](./scenarios/delete-scenario.md) deleteScenario(DELETE `/activities/{activityId}/scenario-review`)를 실제 계약으로 바꿔 `examples/endpoints.ts`로 옮겼습니다. 목차는 구현 35개·조건부 2개·설계 18개·미제공 2개이며, 공유 예제 검사가 다시 통과합니다.

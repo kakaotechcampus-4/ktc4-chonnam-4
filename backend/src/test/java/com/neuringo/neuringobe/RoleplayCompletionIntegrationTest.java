@@ -738,6 +738,8 @@ class RoleplayCompletionIntegrationTest {
     @Autowired
     com.neuringo.neuringobe.roleplay.service.RoleplayCanonicalRetentionService limitRetention;
 
+    @Autowired org.springframework.context.ApplicationEventPublisher limitEvents;
+
     private RoleplayCompletionService completionWithLimit(int maximum) {
         return new RoleplayCompletionService(
                 checkpoints,
@@ -747,7 +749,8 @@ class RoleplayCompletionIntegrationTest {
                 limitRetention,
                 observations,
                 transactionManager,
-                new com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties(maximum, 1));
+                new com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties(maximum, 1),
+                limitEvents);
     }
 
     @ParameterizedTest

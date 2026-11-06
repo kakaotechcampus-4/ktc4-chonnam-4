@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.learningrecord.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -26,7 +27,7 @@ public class LearningRecord {
     public LearningRecord(UUID recordId, UUID activityId, Instant createdAt) {
         this.recordId = recordId;
         this.activityId = activityId;
-        this.createdAt = createdAt;
+        this.createdAt = StoredTime.normalize(createdAt);
     }
 
     public UUID getRecordId() {

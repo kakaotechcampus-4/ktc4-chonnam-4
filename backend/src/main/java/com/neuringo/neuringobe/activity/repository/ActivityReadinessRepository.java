@@ -94,18 +94,21 @@ public class ActivityReadinessRepository {
                         AND q.types=(CAST(:composition AS jsonb) -> a.activity_type)
                         AND q.finalized<q.assigned THEN 'INCOMPLETE'
                     ELSE 'INVALID' END AS quiz_state,
-                coalesce(a.activity_type='FIRST_COMBINED' AND g.child_id=a.child_id
+                coalesce((a.activity_type='FIRST_COMBINED' AND g.child_id=a.child_id
                     AND r.initial_difficulty_used AND a.initial_support_level=r.initial_support_level
                     AND a.difficulty_fallback_applied=r.difficulty_fallback_applied
                     AND r.scenario_level IN ('L1','L2','L3') AND r.initial_support_level IN ('S0','S1','S2','S3')
                     AND r.valid_question_count>=0 AND r.correct_question_count>=0
                     AND r.correct_question_count<=r.valid_question_count
                     AND (r.valid_question_count>0 OR r.difficulty_fallback_applied)
-                    AND length(btrim(r.policy_version))>0 AND length(btrim(g.content_hash))>0, false) AS difficulty_ready,
+                    AND length(btrim(r.policy_version))>0 AND length(btrim(g.content_hash))>0)
+                    OR (a.activity_type='ROLEPLAY' AND g.child_id=a.child_id
+                    AND a.initial_support_level=d.initial_support_level AND NOT a.difficulty_fallback_applied
+                    AND length(btrim(g.content_hash))>0), false) AS difficulty_ready,
                 CASE WHEN a.scenario_id IS NULL THEN 'UNASSIGNED'
                     WHEN EXISTS (SELECT 1 FROM activity_approved_scenario v
                         WHERE v.activity_id=a.activity_id AND v.scenario_id=a.scenario_id
-                            AND (s.session_count>0 OR v.scenario_level=r.scenario_level))
+                            AND (s.session_count>0 OR v.scenario_level=coalesce(r.scenario_level, d.scenario_level)))
                         AND (s.session_count=0 OR s.scenario_matches)
                         AND EXISTS (SELECT 1 FROM scenario_micro_goal mg WHERE mg.scenario_id=a.scenario_id)
                         AND NOT EXISTS (SELECT 1 FROM scenario_micro_goal mg WHERE mg.scenario_id=a.scenario_id
@@ -116,15 +119,18 @@ public class ActivityReadinessRepository {
                                 ELSE true END))
                         AND (s.session_count>0 OR EXISTS (
                             SELECT 1 FROM scenario sc JOIN scenario_opening_focus f ON f.scenario_id=sc.scenario_id
-                            WHERE sc.scenario_id=a.scenario_id AND f.support_level=r.initial_support_level
-                                AND jsonb_typeof(sc.opening_prompts -> r.initial_support_level)='string'
-                                AND length(btrim(sc.opening_prompts ->> r.initial_support_level))>0))
+                            WHERE sc.scenario_id=a.scenario_id
+                                AND f.support_level=coalesce(r.initial_support_level, d.initial_support_level)
+                                AND jsonb_typeof(sc.opening_prompts -> coalesce(r.initial_support_level, d.initial_support_level))='string'
+                                AND length(btrim(sc.opening_prompts ->> coalesce(r.initial_support_level, d.initial_support_level)))>0))
                     THEN 'READY' ELSE 'INVALID' END AS scenario_state,
                 CASE WHEN s.session_count=0 THEN 'ABSENT'
                     WHEN s.session_count>1 THEN 'AMBIGUOUS'
                     WHEN s.resumable THEN 'RESUMABLE' ELSE 'INVALID' END AS session_state
             FROM page a JOIN quiz q USING(activity_id) JOIN sessions s USING(activity_id)
             LEFT JOIN quiz_result r ON r.activity_id=a.activity_id
+            -- 역할극 단독은 퀴즈 결과 대신 배정 때 고정한 다음 역할극 난이도가 레벨·시작 지원의 근거다.
+            LEFT JOIN roleplay_activity_difficulty d ON d.activity_id=a.activity_id AND a.activity_type='ROLEPLAY'
             LEFT JOIN learning_goal g ON g.goal_id=a.goal_id
             """,
                 parameters,

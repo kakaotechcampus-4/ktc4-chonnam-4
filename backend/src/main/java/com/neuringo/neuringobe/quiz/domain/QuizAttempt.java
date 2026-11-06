@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.quiz.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,7 +9,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -83,7 +83,7 @@ public class QuizAttempt {
         this.technicalFailureReason = technicalFailureReason;
         this.excludedFromScoring = excludedFromScoring;
         // 최초 응답과 DB 재조회 응답이 같은 시각을 사용하도록 저장 정밀도에 맞춘다.
-        this.respondedAt = respondedAt.truncatedTo(ChronoUnit.MICROS);
+        this.respondedAt = StoredTime.normalize(respondedAt);
         this.status = "DRAFT";
     }
 
@@ -148,6 +148,6 @@ public class QuizAttempt {
         this.itemCorrect = correct;
         this.resolvedAfterHint = resolved;
         this.status = "FINALIZED";
-        this.finalizedAt = now;
+        this.finalizedAt = StoredTime.normalize(now);
     }
 }

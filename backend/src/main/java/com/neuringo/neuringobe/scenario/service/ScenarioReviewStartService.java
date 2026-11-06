@@ -10,12 +10,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ScenarioReviewStartService {
-    private final InitialScenarioPreparationService preparations;
+    private final ScenarioReviewInputService preparations;
     private final ScenarioCandidateQueryService candidates;
     private final ScenarioReviewTransactions transactions;
 
     public ScenarioReviewStartService(
-            InitialScenarioPreparationService preparations,
+            ScenarioReviewInputService preparations,
             ScenarioCandidateQueryService candidates,
             ScenarioReviewTransactions transactions) {
         this.preparations = preparations;

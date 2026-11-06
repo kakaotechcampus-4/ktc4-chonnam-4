@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.goal.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -80,7 +81,7 @@ public class LearningGoal {
         this.requiredElements = requiredElements;
         this.forbiddenExpressions = forbiddenExpressions;
         this.contentHash = contentHash;
-        this.createdAt = createdAt;
+        this.createdAt = StoredTime.normalize(createdAt);
     }
 
     public UUID getGoalId() {

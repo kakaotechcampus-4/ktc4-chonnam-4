@@ -7,7 +7,10 @@ import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
 import { ChildEditPage } from './features/instructor/pages/ChildEditPage'
 import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
 import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
+import { RecommendationsPage } from './features/instructor/pages/RecommendationsPage'
 import { AccountPage } from './features/instructor/pages/AccountPage'
+import { ContentApprovalPage } from './features/instructor/pages/ContentApprovalPage'
+import { ScenarioReviewPage } from './features/instructor/pages/ScenarioReviewPage'
 import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
 import { RequireInstructorAuth } from './features/instructor/auth/RequireInstructorAuth'
@@ -86,6 +89,30 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ActivityReportPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/recommendations',
+    element: (
+      <RequireInstructorAuth>
+        <RecommendationsPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/content',
+    element: (
+      <RequireInstructorAuth>
+        <ContentApprovalPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/activities/:activityId/scenario',
+    element: (
+      <RequireInstructorAuth>
+        <ScenarioReviewPage />
       </RequireInstructorAuth>
     ),
   },

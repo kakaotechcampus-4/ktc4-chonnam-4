@@ -1,16 +1,24 @@
 package com.neuringo.neuringobe;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.codeUnits;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaFieldAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchCondition;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.library.GeneralCodingRules;
 import jakarta.persistence.Entity;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.repository.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +49,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>일반 규칙: 필드 주입을 쓰지 않는다(생성자 주입). System.out·printStackTrace·java.util.logging 을 쓰지 않는다 — 로그는
  * SLF4J 로만 남겨야 로그 개인정보 규칙(VS-017, 아동 이름·발화를 로그에 남기지 않는다)을 한곳에서 지킬 수 있다.
+ *
+ * <p>저장 시각 규칙(#104): 엔티티의 {@link Instant} 필드에 값을 넣는 생성자·메서드는 {@link StoredTime#normalize} 를 거친다.
+ * 나노초 값을 그대로 두면 저장 직후 응답(메모리 값)과 재조회 응답(DB 가 마이크로초로 반올림한 값)이 달라진다.
  *
  * <p>ArchUnit 은 core 만 쓰고 일반 JUnit 테스트 안에서 규칙을 검사한다(별도 테스트 엔진 없음).
  */
@@ -187,5 +198,52 @@ class ArchitectureTest {
     void logsOnlyThroughSlf4j() {
         GeneralCodingRules.NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS.check(MAIN_CLASSES);
         GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING.check(MAIN_CLASSES);
+    }
+
+    @Test
+    void entityTimestampsAreNormalizedToStoredResolution() {
+        codeUnits()
+                .that()
+                .areDeclaredInClassesThat()
+                .areAnnotatedWith(Entity.class)
+                .should(normalizeInstantFieldsTheySet())
+                .because("나노초 시각을 그대로 저장하면 저장 직후 응답과 재조회 응답이 달라진다(#104)")
+                .check(MAIN_CLASSES);
+    }
+
+    private static ArchCondition<JavaCodeUnit> normalizeInstantFieldsTheySet() {
+        return new ArchCondition<>("Instant 필드에 값을 넣으면 StoredTime.normalize 를 거친다") {
+            @Override
+            public void check(JavaCodeUnit codeUnit, ConditionEvents events) {
+                boolean setsInstant =
+                        codeUnit.getFieldAccesses().stream()
+                                .filter(
+                                        access ->
+                                                access.getAccessType()
+                                                        == JavaFieldAccess.AccessType.SET)
+                                .anyMatch(
+                                        access ->
+                                                access.getTarget()
+                                                        .getRawType()
+                                                        .isEquivalentTo(Instant.class));
+                if (!setsInstant) {
+                    return;
+                }
+                boolean normalizes =
+                        codeUnit.getMethodCallsFromSelf().stream()
+                                .anyMatch(
+                                        call ->
+                                                call.getTargetOwner()
+                                                                .isEquivalentTo(StoredTime.class)
+                                                        && call.getName().equals("normalize"));
+                if (!normalizes) {
+                    events.add(
+                            SimpleConditionEvent.violated(
+                                    codeUnit,
+                                    codeUnit.getFullName()
+                                            + " 가 Instant 필드에 StoredTime.normalize 없이 값을 넣는다"));
+                }
+            }
+        };
     }
 }

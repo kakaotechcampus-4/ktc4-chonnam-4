@@ -38,6 +38,7 @@ describe("라우팅 표", () => {
     ["/classrooms", "햇살반"],
     ["/classrooms/new", "기본 정보"],
     [`/classrooms/${A1}`, "학급 상세 · 햇살반"],
+    ["/recommendations", "학급"],
   ])("로그인하면 %s 는 약속한 화면을 연다", async (path, text) => {
     signIn()
     const { router: memoryRouter } = renderRoutes(router.routes, path)

@@ -1619,6 +1619,42 @@
     "unavailable": false
   },
   {
+    "id": "API-SCN-08",
+    "fn": "listScenarioApprovals",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/scenario-approvals",
+    "args": {},
+    "response": {
+      "data": [
+        {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "30000000-0000-4000-8000-000000000001",
+          "childName": "테스트 아동",
+          "classId": "11000000-0000-4000-8000-000000000001",
+          "className": "테스트 학급",
+          "goalId": "50000000-0000-4000-8000-000000000001",
+          "goalTitle": "차례를 기다려요",
+          "scenarioLevel": "L2",
+          "waitingSince": "2026-11-05T09:00:00Z",
+          "state": "WAITING"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
     "id": "API-RPL-01",
     "fn": "startRoleplay",
     "draft": false,
@@ -2013,7 +2049,7 @@
   {
     "id": "API-REC-01",
     "fn": "getLearningReport",
-    "draft": true,
+    "draft": false,
     "method": "GET",
     "route": "/api/v1/activities/{activityId}/learning-record",
     "args": {
@@ -2024,8 +2060,8 @@
         "recordId": "86000000-0000-4000-8000-000000000001",
         "activityId": "40000000-0000-4000-8000-000000000001",
         "childId": "10000000-0000-4000-8000-000000000001",
-        "completedAt": "2026-10-06T12:10:00+09:00",
-        "summary": "친구의 상황과 감정을 연결해 설명했어요.",
+        "completedAt": "2026-10-31T14:20:00+09:00",
+        "summary": "감정 이름은 혼자 말했고, 이유는 두 선택지를 듣고 말했어요.",
         "quiz": {
           "validQuestionCount": 3,
           "correctQuestionCount": 2,
@@ -2033,18 +2069,124 @@
           "resolvedAfterHintCount": 1
         },
         "roleplay": {
+          "scenarioLevel": "L2",
+          "startSupportLevel": "S1",
+          "goals": [
+            {
+              "microGoalId": "87000000-0000-4000-8000-000000000001",
+              "title": "감정 이름 말하기",
+              "startSupport": "S1",
+              "finalSupport": "S1",
+              "result": "REACHED",
+              "status": "REACHED_AT_START",
+              "criteria": [
+                {
+                  "description": "속상한 감정",
+                  "status": "EXPLICIT"
+                }
+              ],
+              "observations": [
+                "상황 단서를 들은 뒤 속상한 감정을 분명히 말함"
+              ]
+            },
+            {
+              "microGoalId": "87000000-0000-4000-8000-000000000002",
+              "title": "감정의 이유 말하기",
+              "startSupport": "S1",
+              "finalSupport": "S2",
+              "result": "REACHED",
+              "status": "EXTRA_SUPPORT",
+              "criteria": [
+                {
+                  "description": "넘어져서 아픈 이유",
+                  "status": "EXPLICIT"
+                }
+              ],
+              "observations": [
+                "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+                "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
+              ]
+            }
+          ],
           "observations": [
-            "상황 단서를 받은 뒤 감정과 사건을 연결함"
+            "상황 단서를 들은 뒤 속상한 감정을 분명히 말함",
+            "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+            "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
           ],
           "effectiveSupport": [
-            "상황 단서"
+            "두 선택지"
           ],
           "technicalExclusions": []
         },
         "difficultyDecision": {
-          "decisionType": "INITIAL",
+          "decisionType": "FOLLOW_UP",
           "scenarioLevel": "L2",
-          "policyVersion": "example-policy-v1"
+          "previousLevel": "L2",
+          "nextSupportLevel": "S1",
+          "direction": "KEEP",
+          "reason": "SCORE_IN_KEEP_RANGE",
+          "scoreRate": {
+            "numerator": 9,
+            "denominator": 12,
+            "value": 0.75
+          },
+          "consecutiveUpgradeCandidates": 0,
+          "policyVersion": "FOLLOW_UP_ROLEPLAY_V1"
+        },
+        "metrics": {
+          "roleplayScore": {
+            "numerator": 9,
+            "denominator": 12,
+            "value": 0.75
+          },
+          "goalAchievement": {
+            "numerator": 2,
+            "denominator": 2,
+            "value": 1.0
+          },
+          "independentAchievement": {
+            "numerator": 1,
+            "denominator": 2,
+            "value": 0.5
+          },
+          "quizAccuracy": {
+            "numerator": 2,
+            "denominator": 3,
+            "value": 0.666667
+          },
+          "quizHintRecovery": {
+            "numerator": 1,
+            "denominator": 1,
+            "value": 1.0
+          },
+          "validGoalCount": 2,
+          "excludedGoalCount": 0
+        },
+        "narrative": {
+          "observations": [
+            {
+              "text": "감정 이름은 처음 단서만으로 말했어요.",
+              "evidenceIds": [
+                "E3"
+              ]
+            }
+          ],
+          "effectiveSupports": [
+            {
+              "text": "두 선택지를 들은 뒤 이유를 분명히 말했어요.",
+              "evidenceIds": [
+                "E7"
+              ]
+            }
+          ],
+          "difficultPoints": [
+            {
+              "text": "이유는 처음에 일부만 말했어요.",
+              "evidenceIds": [
+                "E6"
+              ]
+            }
+          ]
         }
       },
       "meta": {
@@ -2064,7 +2206,7 @@
   {
     "id": "API-REC-02",
     "fn": "listLearningReports",
-    "draft": true,
+    "draft": false,
     "method": "GET",
     "route": "/api/v1/learning-records",
     "args": {
@@ -2078,8 +2220,8 @@
           "recordId": "86000000-0000-4000-8000-000000000001",
           "activityId": "40000000-0000-4000-8000-000000000001",
           "childId": "10000000-0000-4000-8000-000000000001",
-          "completedAt": "2026-10-06T12:10:00+09:00",
-          "summary": "친구의 상황과 감정을 연결해 설명했어요.",
+          "completedAt": "2026-10-31T14:20:00+09:00",
+          "summary": "감정 이름은 혼자 말했고, 이유는 두 선택지를 듣고 말했어요.",
           "quiz": {
             "validQuestionCount": 3,
             "correctQuestionCount": 2,
@@ -2087,18 +2229,124 @@
             "resolvedAfterHintCount": 1
           },
           "roleplay": {
+            "scenarioLevel": "L2",
+            "startSupportLevel": "S1",
+            "goals": [
+              {
+                "microGoalId": "87000000-0000-4000-8000-000000000001",
+                "title": "감정 이름 말하기",
+                "startSupport": "S1",
+                "finalSupport": "S1",
+                "result": "REACHED",
+                "status": "REACHED_AT_START",
+                "criteria": [
+                  {
+                    "description": "속상한 감정",
+                    "status": "EXPLICIT"
+                  }
+                ],
+                "observations": [
+                  "상황 단서를 들은 뒤 속상한 감정을 분명히 말함"
+                ]
+              },
+              {
+                "microGoalId": "87000000-0000-4000-8000-000000000002",
+                "title": "감정의 이유 말하기",
+                "startSupport": "S1",
+                "finalSupport": "S2",
+                "result": "REACHED",
+                "status": "EXTRA_SUPPORT",
+                "criteria": [
+                  {
+                    "description": "넘어져서 아픈 이유",
+                    "status": "EXPLICIT"
+                  }
+                ],
+                "observations": [
+                  "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+                  "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
+                ]
+              }
+            ],
             "observations": [
-              "상황 단서를 받은 뒤 감정과 사건을 연결함"
+              "상황 단서를 들은 뒤 속상한 감정을 분명히 말함",
+              "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+              "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
             ],
             "effectiveSupport": [
-              "상황 단서"
+              "두 선택지"
             ],
             "technicalExclusions": []
           },
           "difficultyDecision": {
-            "decisionType": "INITIAL",
+            "decisionType": "FOLLOW_UP",
             "scenarioLevel": "L2",
-            "policyVersion": "example-policy-v1"
+            "previousLevel": "L2",
+            "nextSupportLevel": "S1",
+            "direction": "KEEP",
+            "reason": "SCORE_IN_KEEP_RANGE",
+            "scoreRate": {
+              "numerator": 9,
+              "denominator": 12,
+              "value": 0.75
+            },
+            "consecutiveUpgradeCandidates": 0,
+            "policyVersion": "FOLLOW_UP_ROLEPLAY_V1"
+          },
+          "metrics": {
+            "roleplayScore": {
+              "numerator": 9,
+              "denominator": 12,
+              "value": 0.75
+            },
+            "goalAchievement": {
+              "numerator": 2,
+              "denominator": 2,
+              "value": 1.0
+            },
+            "independentAchievement": {
+              "numerator": 1,
+              "denominator": 2,
+              "value": 0.5
+            },
+            "quizAccuracy": {
+              "numerator": 2,
+              "denominator": 3,
+              "value": 0.666667
+            },
+            "quizHintRecovery": {
+              "numerator": 1,
+              "denominator": 1,
+              "value": 1.0
+            },
+            "validGoalCount": 2,
+            "excludedGoalCount": 0
+          },
+          "narrative": {
+            "observations": [
+              {
+                "text": "감정 이름은 처음 단서만으로 말했어요.",
+                "evidenceIds": [
+                  "E3"
+                ]
+              }
+            ],
+            "effectiveSupports": [
+              {
+                "text": "두 선택지를 들은 뒤 이유를 분명히 말했어요.",
+                "evidenceIds": [
+                  "E7"
+                ]
+              }
+            ],
+            "difficultPoints": [
+              {
+                "text": "이유는 처음에 일부만 말했어요.",
+                "evidenceIds": [
+                  "E6"
+                ]
+              }
+            ]
           }
         }
       ],
@@ -2119,7 +2367,7 @@
   {
     "id": "API-REC-03",
     "fn": "listRecommendations",
-    "draft": true,
+    "draft": false,
     "method": "GET",
     "route": "/api/v1/learning-records/{recordId}/recommendations",
     "args": {
@@ -2128,19 +2376,31 @@
     "response": {
       "data": [
         {
-          "recommendationId": "87000000-0000-4000-8000-000000000001",
+          "recommendationId": "88000000-0000-4000-8000-000000000001",
           "recordId": "86000000-0000-4000-8000-000000000001",
-          "type": "EXAMPLE_EXTENSION",
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "type": "REPEAT",
+          "displayOrder": 1,
           "suggestedGoal": {
-            "title": "감정과 이유를 설명하기"
+            "title": "넘어진 친구의 속상한 마음 알아보기",
+            "category": "EMPATHY",
+            "parentGoalId": "50000000-0000-4000-8000-000000000001"
           },
-          "reason": "상황 단서가 효과적이었어요.",
+          "reason": "'감정의 이유 말하기' 목표는 두 선택지를 받고 도달했어요. 다른 장면으로 한 번 더 해 봐요.",
+          "reasonCode": "REACHED_WITH_EXTRA_SUPPORT",
+          "basisGoalTitle": "감정의 이유 말하기",
           "evidence": [
-            "감정을 사건에 연결함"
+            "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
           ],
-          "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+          "evidenceSufficiency": "SUFFICIENT",
           "decision": null,
-          "createdGoalId": null
+          "decidedGoal": null,
+          "rejectionReason": null,
+          "createdGoalId": null,
+          "policyVersion": "RECOMMENDATION_V1",
+          "createdAt": "2026-10-31T14:20:01+09:00",
+          "decidedAt": null
         }
       ],
       "meta": {
@@ -2160,7 +2420,7 @@
   {
     "id": "API-REC-04",
     "fn": "getRecommendation",
-    "draft": true,
+    "draft": false,
     "method": "GET",
     "route": "/api/v1/recommendations/{recommendationId}",
     "args": {
@@ -2168,19 +2428,31 @@
     },
     "response": {
       "data": {
-        "recommendationId": "87000000-0000-4000-8000-000000000001",
+        "recommendationId": "88000000-0000-4000-8000-000000000001",
         "recordId": "86000000-0000-4000-8000-000000000001",
-        "type": "EXAMPLE_EXTENSION",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "type": "REPEAT",
+        "displayOrder": 1,
         "suggestedGoal": {
-          "title": "감정과 이유를 설명하기"
+          "title": "넘어진 친구의 속상한 마음 알아보기",
+          "category": "EMPATHY",
+          "parentGoalId": "50000000-0000-4000-8000-000000000001"
         },
-        "reason": "상황 단서가 효과적이었어요.",
+        "reason": "'감정의 이유 말하기' 목표는 두 선택지를 받고 도달했어요. 다른 장면으로 한 번 더 해 봐요.",
+        "reasonCode": "REACHED_WITH_EXTRA_SUPPORT",
+        "basisGoalTitle": "감정의 이유 말하기",
         "evidence": [
-          "감정을 사건에 연결함"
+          "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
         ],
-        "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
+        "evidenceSufficiency": "SUFFICIENT",
         "decision": null,
-        "createdGoalId": null
+        "decidedGoal": null,
+        "rejectionReason": null,
+        "createdGoalId": null,
+        "policyVersion": "RECOMMENDATION_V1",
+        "createdAt": "2026-10-31T14:20:01+09:00",
+        "decidedAt": null
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
@@ -2199,39 +2471,43 @@
   {
     "id": "API-REC-05",
     "fn": "decideRecommendation",
-    "draft": true,
+    "draft": false,
     "method": "PATCH",
     "route": "/api/v1/recommendations/{recommendationId}",
     "args": {
       "recommendationId": "87000000-0000-4000-8000-000000000001",
       "body": {
-        "decision": "MODIFIED_ACCEPT",
-        "goal": {
-          "title": "친구의 마음을 설명하고 도움을 제안하기",
-          "requiredElements": [
-            "상황에 맞는 도움 한 가지"
-          ],
-          "forbiddenExpressions": []
-        },
-        "rejectionReason": null
+        "decision": "ACCEPT"
       },
       "idempotencyKey": "89000000-0000-4000-8000-000000000001"
     },
     "response": {
       "data": {
-        "recommendationId": "87000000-0000-4000-8000-000000000001",
+        "recommendationId": "88000000-0000-4000-8000-000000000001",
         "recordId": "86000000-0000-4000-8000-000000000001",
-        "type": "EXAMPLE_EXTENSION",
+        "activityId": "40000000-0000-4000-8000-000000000001",
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "type": "REPEAT",
+        "displayOrder": 1,
         "suggestedGoal": {
-          "title": "감정과 이유를 설명하기"
+          "title": "넘어진 친구의 속상한 마음 알아보기",
+          "category": "EMPATHY",
+          "parentGoalId": "50000000-0000-4000-8000-000000000001"
         },
-        "reason": "상황 단서가 효과적이었어요.",
+        "reason": "'감정의 이유 말하기' 목표는 두 선택지를 받고 도달했어요. 다른 장면으로 한 번 더 해 봐요.",
+        "reasonCode": "REACHED_WITH_EXTRA_SUPPORT",
+        "basisGoalTitle": "감정의 이유 말하기",
         "evidence": [
-          "감정을 사건에 연결함"
+          "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
         ],
-        "evidenceSufficiency": "EXAMPLE_SUFFICIENT",
-        "decision": null,
-        "createdGoalId": null
+        "evidenceSufficiency": "SUFFICIENT",
+        "decision": "ACCEPT",
+        "decidedGoal": null,
+        "rejectionReason": null,
+        "createdGoalId": null,
+        "policyVersion": "RECOMMENDATION_V1",
+        "createdAt": "2026-10-31T14:20:01+09:00",
+        "decidedAt": "2026-10-31T15:02:00+09:00"
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
@@ -2239,6 +2515,45 @@
     },
     "status": 200,
     "key": true,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
+    "id": "API-REC-06",
+    "fn": "getRoleplayDifficulty",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/children/{childId}/roleplay-difficulty",
+    "args": {
+      "childId": "10000000-0000-4000-8000-000000000001"
+    },
+    "response": {
+      "data": {
+        "childId": "10000000-0000-4000-8000-000000000001",
+        "scenarioLevel": "L2",
+        "initialSupportLevel": "S1",
+        "previousLevel": "L2",
+        "direction": "KEEP",
+        "reason": "SCORE_IN_KEEP_RANGE",
+        "scoreNumerator": 9,
+        "scoreDenominator": 12,
+        "consecutiveUpgradeCandidates": 0,
+        "policyVersion": "FOLLOW_UP_ROLEPLAY_V1",
+        "sourceActivityId": "40000000-0000-4000-8000-000000000001",
+        "sourceRecordId": "86000000-0000-4000-8000-000000000001",
+        "decidedAt": "2026-10-31T14:20:01+09:00"
+      },
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
     "mode": "instructor",
     "form": false,
     "expectedStatuses": [
