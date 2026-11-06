@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.ai.application.prompt;
 
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
+import com.neuringo.neuringobe.roleplay.application.RoleplayStoredTurnSafetyLimit;
 import java.util.Set;
 
 /** 확정 도움 이력과 충돌하는 추가 유도·지원 되돌리기를 차단한다. */
@@ -25,9 +26,10 @@ public final class RoleplaySupportDecisionRules {
         var next = analysis.nextStrategy();
         RoleplayCodes.requireOneOf(
                 RoleplayCodes.SUPPORT_LEVELS, next.recommendedSupportLevel(), "supportLevel");
-        if (state.learningTurnCount() != null
-                && state.learningTurnCount() >= state.maximumTurnCount()
-                && !analysis.learningState().equals("NOT_ASSESSABLE")
+        if ((RoleplayStoredTurnSafetyLimit.reached(state.turnCount())
+                        || (state.learningTurnCount() != null
+                                && state.learningTurnCount() >= state.maximumTurnCount()
+                                && !analysis.learningState().equals("NOT_ASSESSABLE")))
                 && (!next.type().equals("CLOSE_ROLEPLAY")
                         || !next.targetMicroGoalId().equals(state.currentMicroGoalId())
                         || !next.recommendedSupportLevel().equals(state.currentSupportLevel()))) {

@@ -8,6 +8,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
 import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
+import com.neuringo.neuringobe.roleplay.application.RoleplayStoredTurnSafetyLimit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -219,10 +220,11 @@ public final class RoleplayPromptFactory {
                         MAX_RESPONSE_LENGTH,
                         characterVoice,
                         mascotHint.isPresent(),
-                        input.state().learningTurnCount() != null
-                                && input.state().learningTurnCount()
-                                        >= input.state().maximumTurnCount()
-                                && !analysis.learningState().equals("NOT_ASSESSABLE")));
+                        RoleplayStoredTurnSafetyLimit.reached(input.state().turnCount())
+                                || (input.state().learningTurnCount() != null
+                                        && input.state().learningTurnCount()
+                                                >= input.state().maximumTurnCount()
+                                        && !analysis.learningState().equals("NOT_ASSESSABLE"))));
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */
@@ -376,6 +378,8 @@ public final class RoleplayPromptFactory {
         stateSection.put("current_micro_goal_prompt_count", state.currentMicroGoalPromptCount());
         stateSection.put("answer_revealed", state.answerRevealed());
         stateSection.put("turn_count", state.turnCount());
+        stateSection.put(
+                "maximum_stored_turn_count", RoleplayStoredTurnSafetyLimit.MAXIMUM_STORED_TURNS);
         stateSection.put("learning_turn_count", state.learningTurnCount());
         stateSection.put(
                 "current_micro_goal_learning_support_turn",
