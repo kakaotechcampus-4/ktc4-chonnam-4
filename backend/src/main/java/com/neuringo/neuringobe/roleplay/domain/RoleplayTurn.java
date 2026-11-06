@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.roleplay.domain;
 
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointCommand;
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -126,7 +127,7 @@ public class RoleplayTurn {
             }
         }
         checkpointVersion = version;
-        committedAt = now;
+        committedAt = StoredTime.normalize(now);
     }
 
     public UUID getTurnId() {

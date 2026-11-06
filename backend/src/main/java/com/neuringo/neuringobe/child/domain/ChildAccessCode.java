@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.child.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -56,8 +57,8 @@ public class ChildAccessCode {
         this.idempotencyKey = idempotencyKey;
         this.codeDigest = codeDigest;
         this.derivationCounter = derivationCounter;
-        this.issuedAt = issuedAt;
-        this.expiresAt = expiresAt;
+        this.issuedAt = StoredTime.normalize(issuedAt);
+        this.expiresAt = StoredTime.normalize(expiresAt);
         this.active = true;
     }
 
