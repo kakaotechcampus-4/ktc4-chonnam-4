@@ -30,6 +30,9 @@ public class RoleplayHttpTestConfiguration {
     }
 
     public static class State {
+        public String inputJudgment =
+                "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
+        public String transcriptionText = "synthetic raw private input";
         public final List<String> calls = new CopyOnWriteArrayList<>();
         public final List<LlmRequest> llmRequests = new CopyOnWriteArrayList<>();
         private final Map<AiOperation, Queue<AiFailureType>> llmFailures =
@@ -75,6 +78,9 @@ public class RoleplayHttpTestConfiguration {
         }
 
         public void reset() {
+            inputJudgment =
+                    "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
+            transcriptionText = "synthetic raw private input";
             calls.clear();
             llmRequests.clear();
             llmFailures.clear();
@@ -259,7 +265,7 @@ public class RoleplayHttpTestConfiguration {
             }
             return success(
                     new SpeechTranscription(
-                            "synthetic raw private input",
+                            state.transcriptionText,
                             state.lowConfidence ? 0.39 : 0.9,
                             "test-vendor",
                             "test-model",
@@ -318,6 +324,7 @@ public class RoleplayHttpTestConfiguration {
             boolean maximumReached = maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
             String json =
                     switch (request.operation()) {
+                        case INPUT_VALIDATION -> state.inputJudgment;
                         case CAUSE_ANALYSIS ->
                                 RoleplayFixtures.analysisJson(
                                         maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",

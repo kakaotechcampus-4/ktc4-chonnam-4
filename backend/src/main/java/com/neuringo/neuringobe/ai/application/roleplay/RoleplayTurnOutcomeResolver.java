@@ -89,10 +89,13 @@ public final class RoleplayTurnOutcomeResolver {
         return switch (operation) {
             case RESPONSE_EVALUATION -> guidance(Kind.SAFETY_CHECK_ERROR, Action.RETRY_TURN);
             case RESPONSE_GENERATION -> guidance(Kind.SAFE_FALLBACK, Action.REQUEST_NEW_INPUT);
-            case INITIAL_DIFFICULTY_DECISION,
+            case INPUT_VALIDATION,
+                            INITIAL_DIFFICULTY_DECISION,
                             SCENARIO_GENERATION,
                             CAUSE_ANALYSIS,
                             NEXT_DIFFICULTY_DECISION,
+                            REPORT_GENERATION,
+                            REPORT_REVIEW,
                             SPEECH_TRANSCRIPTION,
                             SPEECH_SYNTHESIS ->
                     throw new IllegalArgumentException("Unexpected fallback operation");

@@ -71,11 +71,14 @@ public record LlmRequest(
 
     private static void validateTraceContext(AiOperation operation, AiTraceContext traceContext) {
         switch (operation) {
-            case INITIAL_DIFFICULTY_DECISION, NEXT_DIFFICULTY_DECISION ->
+            case INITIAL_DIFFICULTY_DECISION,
+                            NEXT_DIFFICULTY_DECISION,
+                            REPORT_GENERATION,
+                            REPORT_REVIEW ->
                     Objects.requireNonNull(traceContext.childId(), "childId is required");
             case SCENARIO_GENERATION ->
                     Objects.requireNonNull(traceContext.classId(), "classId is required");
-            case CAUSE_ANALYSIS -> {
+            case INPUT_VALIDATION, CAUSE_ANALYSIS -> {
                 Objects.requireNonNull(traceContext.sessionId(), "sessionId is required");
                 Objects.requireNonNull(traceContext.turnId(), "turnId is required");
             }

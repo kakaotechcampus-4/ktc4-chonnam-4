@@ -133,7 +133,7 @@ class ActivityTypeAssignmentIntegrationTest {
     }
 
     @Test
-    void goalMustMatchTheTypeAndRoleplayIsNotAvailableYet() {
+    void goalMustMatchTheTypeAndRoleplayNeedsAFollowUpDifficulty() {
         assertError(
                 assign(childId, null, "FIRST_COMBINED"),
                 HttpStatus.UNPROCESSABLE_CONTENT,
@@ -144,11 +144,12 @@ class ActivityTypeAssignmentIntegrationTest {
                 assign(childId, GOAL, "SELF_EMOTION_QUIZ"),
                 HttpStatus.UNPROCESSABLE_CONTENT,
                 "GOAL_NOT_ALLOWED");
+        // 역할극을 마친 적이 없어 다음 역할극 난이도가 없으면 역할극 단독 활동을 배정하지 않는다.
         assertError(
                 assign(childId, GOAL, "ROLEPLAY"),
-                HttpStatus.UNPROCESSABLE_CONTENT,
-                "ACTIVITY_TYPE_NOT_AVAILABLE");
-        // 거절된 독립 퀴즈 요청은 목표를 남기지 않는다. 남은 목표는 최초 결합의 것 하나다.
+                HttpStatus.CONFLICT,
+                "ROLEPLAY_DIFFICULTY_NOT_READY");
+        // 거절된 독립 퀴즈·역할극 요청은 목표를 남기지 않는다. 남은 목표는 최초 결합의 것 하나다.
         assertThat(
                         JsonPath.<List<String>>read(
                                 TestFixtures.body(

@@ -69,6 +69,7 @@ class ApiContractTest {
         Map<String, String> values = new HashMap<>();
         values.put("classId", classId.toString());
         values.put("unknownClassId", UUID.randomUUID().toString());
+        values.put("unknownId", UUID.randomUUID().toString());
         values.put("malformedId", "not-a-uuid");
         values.put("instructorId", instructor.userId().toString());
         values.put("instructorEmail", instructor.email());

@@ -96,6 +96,24 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/activities/{activityId}/learning-record",
+                            "LEARNING_RECORD_NOT_FOUND"),
+                    Map.entry("GET /api/v1/learning-records", "CHILD_NOT_FOUND"),
+                    // 학습 기록·추천 ID 는 역할극을 마쳐야 생겨서 이 고정 자원에는 없다. 남의 기록·추천을 숨기는 것은
+                    // LearningReportApiIntegrationTest 가 실제 완료 기록으로 확인한다.
+                    Map.entry(
+                            "GET /api/v1/learning-records/{recordId}/recommendations",
+                            "LEARNING_RECORD_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/recommendations/{recommendationId}",
+                            "RECOMMENDATION_NOT_FOUND"),
+                    Map.entry(
+                            "PATCH /api/v1/recommendations/{recommendationId}",
+                            "RECOMMENDATION_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/children/{childId}/roleplay-difficulty",
+                            "CHILD_NOT_FOUND"),
                     // 목록: B 에게 A 의 학급이 보이지 않는다(아래 listsOnlyOwnClassrooms).
                     Map.entry("GET /api/v1/classrooms", "LIST"));
 
@@ -314,7 +332,38 @@ class OwnershipPatrolIntegrationTest {
                 get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                         "/api/v1/activity-quiz-items/%s/attempt",
-                        Owned::activityQuizId));
+                        Owned::activityQuizId),
+                get(
+                        "GET /api/v1/activities/{activityId}/learning-record",
+                        "/api/v1/activities/%s/learning-record",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/learning-records",
+                        "/api/v1/learning-records?childId=%s",
+                        Owned::childId),
+                get(
+                        "GET /api/v1/learning-records/{recordId}/recommendations",
+                        "/api/v1/learning-records/%s/recommendations",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/recommendations/{recommendationId}",
+                        "/api/v1/recommendations/%s",
+                        Owned::activityId),
+                Arguments.of(
+                        "PATCH /api/v1/recommendations/{recommendationId}",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.patch()
+                                                        .uri(
+                                                                "/api/v1/recommendations/%s"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"decision\":\"DEFER\"}")),
+                get(
+                        "GET /api/v1/children/{childId}/roleplay-difficulty",
+                        "/api/v1/children/%s/roleplay-difficulty",
+                        Owned::childId));
     }
 
     private static Arguments get(
