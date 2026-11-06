@@ -26,6 +26,8 @@ public final class SpringAiLlmProvider implements LlmProvider {
     private final Duration requestTimeout;
     private final int maxRetries;
     private final String model;
+    private final Integer maxOutputTokens;
+    private final String reasoningEffort;
 
     public SpringAiLlmProvider(
             ChatModel chatModel,
@@ -34,12 +36,38 @@ public final class SpringAiLlmProvider implements LlmProvider {
             Duration requestTimeout,
             int maxRetries,
             String model) {
+        this(
+                chatModel,
+                failureClassifier,
+                providerName,
+                requestTimeout,
+                maxRetries,
+                model,
+                null,
+                null);
+    }
+
+    /**
+     * @param maxOutputTokens 출력 토큰 상한. 추론 모델은 추론 토큰도 이 상한에 들어가서, 너무 낮으면 JSON 이 중간에 잘린다
+     * @param reasoningEffort 추론 강도. null 이면 보내지 않는다
+     */
+    public SpringAiLlmProvider(
+            ChatModel chatModel,
+            OpenAiFailureClassifier failureClassifier,
+            String providerName,
+            Duration requestTimeout,
+            int maxRetries,
+            String model,
+            Integer maxOutputTokens,
+            String reasoningEffort) {
         this.chatModel = Objects.requireNonNull(chatModel);
         this.failureClassifier = Objects.requireNonNull(failureClassifier);
         this.providerName = Objects.requireNonNull(providerName);
         this.requestTimeout = Objects.requireNonNull(requestTimeout);
         this.maxRetries = maxRetries;
         this.model = model;
+        this.maxOutputTokens = maxOutputTokens;
+        this.reasoningEffort = reasoningEffort;
     }
 
     @Override
@@ -96,6 +124,12 @@ public final class SpringAiLlmProvider implements LlmProvider {
                 OpenAiChatOptions.builder().timeout(timeout).maxRetries(retries);
         if (model != null && !model.isBlank()) {
             options.model(model);
+        }
+        if (maxOutputTokens != null) {
+            options.maxCompletionTokens(maxOutputTokens);
+        }
+        if (reasoningEffort != null) {
+            options.reasoningEffort(reasoningEffort);
         }
         return options.build();
     }

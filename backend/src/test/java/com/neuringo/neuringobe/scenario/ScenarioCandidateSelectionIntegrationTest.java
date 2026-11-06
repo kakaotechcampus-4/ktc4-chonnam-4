@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.neuringo.neuringobe.IntegrationTest;
+import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
@@ -18,9 +19,11 @@ import com.neuringo.neuringobe.scenario.domain.ScenarioApprovalConditions;
 import com.neuringo.neuringobe.scenario.dto.ScenarioCandidateSelection;
 import com.neuringo.neuringobe.scenario.repository.ScenarioCandidateContentRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioCandidateRepository;
+import com.neuringo.neuringobe.scenario.service.FollowUpScenarioPreparationService;
 import com.neuringo.neuringobe.scenario.service.InitialScenarioPreparationService;
 import com.neuringo.neuringobe.scenario.service.ScenarioApprovalRegistry;
 import com.neuringo.neuringobe.scenario.service.ScenarioCandidateQueryService;
+import com.neuringo.neuringobe.scenario.service.ScenarioReviewInputService;
 import com.neuringo.neuringobe.scenario.support.ScenarioPoolTestIsolation;
 import com.neuringo.neuringobe.user.domain.UserRole;
 import java.util.List;
@@ -55,6 +58,8 @@ class ScenarioCandidateSelectionIntegrationTest {
     @Autowired private ScenarioCandidateContentRepository contents;
     @Autowired private LearningGoalService goals;
     @Autowired private ChildRepository children;
+    @Autowired private ActivityRepository activityRepository;
+    @Autowired private FollowUpScenarioPreparationService followUpPreparations;
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private JsonMapper json;
 
@@ -415,7 +420,10 @@ class ScenarioCandidateSelectionIntegrationTest {
                                 null,
                                 "INITIAL_QUIZ_V2"));
         var preparation = new InitialScenarioPreparationService(difficulties, goals, children);
-        return new ScenarioCandidateQueryService(preparation, candidates, contents);
+        var inputs =
+                new ScenarioReviewInputService(
+                        activityRepository, preparation, followUpPreparations);
+        return new ScenarioCandidateQueryService(inputs, candidates, contents);
     }
 
     private Authentication auth(UUID instructor) {

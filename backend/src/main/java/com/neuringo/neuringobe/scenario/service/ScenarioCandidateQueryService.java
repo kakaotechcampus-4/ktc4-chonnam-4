@@ -4,9 +4,9 @@ import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.scenario.domain.ScenarioApprovalConditions;
 import com.neuringo.neuringobe.scenario.dto.ApprovedScenarioVersion;
-import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
 import com.neuringo.neuringobe.scenario.dto.ScenarioCandidateCriteria;
 import com.neuringo.neuringobe.scenario.dto.ScenarioCandidateSelection;
+import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import com.neuringo.neuringobe.scenario.repository.ScenarioCandidateContentRepository;
 import com.neuringo.neuringobe.scenario.repository.ScenarioCandidateRepository;
 import java.util.ArrayList;
@@ -28,12 +28,12 @@ public class ScenarioCandidateQueryService {
     private static final Logger log = LoggerFactory.getLogger(ScenarioCandidateQueryService.class);
     private static final Pattern WHITESPACE =
             Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
-    private final InitialScenarioPreparationService preparations;
+    private final ScenarioReviewInputService preparations;
     private final ScenarioCandidateRepository candidates;
     private final ScenarioCandidateContentRepository contents;
 
     public ScenarioCandidateQueryService(
-            InitialScenarioPreparationService preparations,
+            ScenarioReviewInputService preparations,
             ScenarioCandidateRepository candidates,
             ScenarioCandidateContentRepository contents) {
         this.preparations = preparations;
@@ -48,21 +48,21 @@ public class ScenarioCandidateQueryService {
     }
 
     ScenarioCandidateSelection selectPrepared(
-            InitialScenarioPreparation input, Authentication authentication) {
+            ScenarioPreparationInput input, Authentication authentication) {
         return select(input, authentication, System.nanoTime(), null);
     }
 
     ScenarioCandidateSelection selectForCandidate(
-            InitialScenarioPreparation input, Authentication authentication, UUID candidate) {
+            ScenarioPreparationInput input, Authentication authentication, UUID candidate) {
         return select(input, authentication, System.nanoTime(), candidate);
     }
 
     private ScenarioCandidateSelection select(
-            InitialScenarioPreparation input,
+            ScenarioPreparationInput input,
             Authentication authentication,
             long started,
             UUID candidateId) {
-        UUID activityId = input.initialDifficulty().activityId();
+        UUID activityId = input.difficulty().activityId();
         var goal = input.learningGoal();
         ScenarioCandidateCriteria criteria;
         try {
@@ -79,10 +79,10 @@ public class ScenarioCandidateQueryService {
             criteria =
                     new ScenarioCandidateCriteria(
                             ((AuthenticatedUser) authentication.getPrincipal()).userId(),
-                            input.initialDifficulty().childId(),
+                            input.difficulty().childId(),
                             new ScenarioApprovalConditions(
                                     goal.title(),
-                                    input.initialDifficulty().scenarioLevel(),
+                                    input.difficulty().scenarioLevel(),
                                     goal.category(),
                                     goal.situationType(),
                                     roles,

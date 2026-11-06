@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiError,
   createActivity,
+  getRoleplayDifficulty,
   listChildActivities,
   listChildren,
   listClassrooms,
@@ -12,6 +13,7 @@ import {
   type Child,
   type Classroom,
 } from '../api'
+import { SUPPORT_LABELS } from '../lib/reportLabels'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { WizardStepper, type WizardStep } from '../components/WizardStepper'
@@ -58,7 +60,7 @@ type StepKey = 'target' | 'type' | 'goal' | 'conditions' | 'confirm'
 
 // 동작하는 단계만 둔다. 시안의 난이도 결과 단계는 보여 줄 값이 생기면 이 배열에 끼운다.
 // 난이도는 아이가 첫 퀴즈를 마친 뒤 서버가 정해서, 배정하는 지금은 보여 줄 값이 없다.
-// 독립 퀴즈는 학습 목표도 역할극도 없어 목표·추가 조건 단계를 건너뛴다.
+// 독립 퀴즈는 학습 목표도 역할극도 없어 목표·추가 조건 단계를 건너뛴다. 역할극 단독은 최초 결합처럼 목표·추가 조건을 받는다.
 const ALL_STEPS: WizardStep<StepKey>[] = [
   { key: 'target', label: '대상' },
   { key: 'type', label: '유형' },
@@ -78,7 +80,9 @@ const STEP_TITLES: Record<StepKey, string> = {
 const QUIZ_TYPES = ['SELF_EMOTION_QUIZ', 'OTHER_EMOTION_QUIZ'] as const
 
 function isAssignableType(value: string | null): value is ActivityType {
-  return value === 'FIRST_COMBINED' || value === 'SELF_EMOTION_QUIZ' || value === 'OTHER_EMOTION_QUIZ'
+  return (
+    value === 'FIRST_COMBINED' || value === 'SELF_EMOTION_QUIZ' || value === 'OTHER_EMOTION_QUIZ' || value === 'ROLEPLAY'
+  )
 }
 
 /** 확인 단계에 보일 문항 구성. 서버 QuizAssignmentService.COMPOSITION 과 맞춘다. */
@@ -86,29 +90,36 @@ const COMPOSITION_TEXT: Record<ActivityType, string> = {
   FIRST_COMBINED: '검증된 문항 중에서 유형별로 1개씩, 3문항이 자동으로 준비돼요. 역할극은 준비되는 대로 이어져요.',
   SELF_EMOTION_QUIZ: '내 감정 상황 문항 10개가 자동으로 준비돼요.',
   OTHER_EMOTION_QUIZ: '상대 감정 상황 문항 7개와 표정 그림 문항 3개가 자동으로 준비돼요.',
-  ROLEPLAY: '',
+  ROLEPLAY: '문항 없이 역할극만 해요. 배정한 뒤 시나리오를 검토해 확정하면 아동이 시작할 수 있어요.',
 }
 
 /**
  * 아동의 지난 활동으로 지금 고를 수 있는 유형을 정한다. 최초 결합은 아동당 한 번이고,
- * 그것을 마친 뒤에 독립 퀴즈가 열린다. 역할극은 아직 없다. 서버도 같은 규칙으로 막는다.
+ * 그것을 마친 뒤에 독립 퀴즈와 역할극이 열린다. 역할극은 다음 난이도가 있어야 서버가 받는다(확인 단계에서 알린다).
  * V10 이 예전 활동을 모두 최초 결합으로 바꿔 한 아동에게 여럿 있을 수 있으므로, 서버처럼 마친 것이 하나라도 있는지 본다.
  */
 function typeAvailability(activities: Activity[]): Availability {
   const firsts = activities.filter((a) => a.activityType === 'FIRST_COMBINED')
+  const firstDone = firsts.some((a) => a.status === 'COMPLETED')
   return {
     firstCombined: firsts.length === 0,
-    quiz: firsts.some((a) => a.status === 'COMPLETED'),
+    quiz: firstDone,
+    roleplay: firstDone,
   }
 }
 
-type Availability = { firstCombined: boolean; quiz: boolean }
+type Availability = { firstCombined: boolean; quiz: boolean; roleplay: boolean }
 
 /** 유형 선택 화면 위 안내. 아동이 지금 어느 단계인지에 맞춰 다음에 열리는 것을 알린다. */
 function typeGuide(availability: Availability): string {
   if (availability.firstCombined) return '처음 배정하는 아동은 최초 결합 활동부터 시작해요.'
-  if (!availability.quiz) return '최초 결합 활동을 마치면 표정 퀴즈를 만들 수 있어요.'
-  return '최초 결합 활동을 마쳐서 표정 퀴즈를 만들 수 있어요.'
+  if (!availability.quiz) return '최초 결합 활동을 마치면 표정 퀴즈와 역할극을 만들 수 있어요.'
+  return '최초 결합 활동을 마쳐서 표정 퀴즈와 역할극을 만들 수 있어요.'
+}
+
+/** 최초 결합과 역할극은 학습 목표와 역할극 추가 조건이 있어야 한다. */
+function needsGoalFor(type: ActivityType | null): boolean {
+  return type === 'FIRST_COMBINED' || type === 'ROLEPLAY'
 }
 
 /**
@@ -125,7 +136,12 @@ function resolveType(
   if (!availability) return null
   if (isAssignableType(requested)) {
     if (requested === sentType) return requested
-    const allowed = requested === 'FIRST_COMBINED' ? availability.firstCombined : availability.quiz
+    const allowed =
+      requested === 'FIRST_COMBINED'
+        ? availability.firstCombined
+        : requested === 'ROLEPLAY'
+          ? availability.roleplay
+          : availability.quiz
     return allowed ? requested : null
   }
   return availability.firstCombined && !availability.quiz ? 'FIRST_COMBINED' : null
@@ -163,14 +179,18 @@ const ASSIGN_ERROR_MESSAGES: Record<string, string> = {
   FIRST_ACTIVITY_NOT_COMPLETED: '최초 활동을 마친 뒤에 배정할 수 있어요.',
   QUIZ_ITEMS_UNAVAILABLE: '배정할 수 있는 승인된 퀴즈 문항이 모자라요. 운영 담당자에게 문항 등록을 요청해 주세요.',
   INVALID_GOAL_CONDITIONS: '피할 표현이 필수 요소와 겹쳐요. 이전 단계에서 추가 조건을 고쳐 주세요.',
+  ROLEPLAY_DIFFICULTY_NOT_READY: '아직 마친 역할극이 없어 다음 역할극 난이도가 없어요. 최초 결합 활동의 역할극을 먼저 마쳐 주세요.',
+  GOAL_NOT_FOUND: '이어받을 이전 목표를 찾을 수 없어요. 목표를 다시 골라 주세요.',
 }
 
 /**
  * 활동 만들기 (시안의 활동 만들기 화면을 줄인 마법사).
- * 대상 아동 한 명 → 활동 유형 → 학습 목표·역할극 추가 조건(최초 결합만) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
+ * 대상 아동 한 명 → 활동 유형 → 학습 목표·역할극 추가 조건(최초 결합·역할극) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
+ * 역할극 단독은 배정한 뒤 바로 그 활동의 시나리오 검토 화면으로 간다. 시나리오는 최초 결합과 같은 검토·확정(API-SCN-01·04)에서 붙는다.
  *
  * 단계·학급·아동·유형은 주소(?step=&classId=&childId=&type=)에 두어 새로고침해도 남는다. 아동 상세의 "활동 만들기"는
  * 대상을 채워 연다. 목표·조건 입력은 화면 상태라 새로고침하면 목표 단계부터 다시 한다.
+ * 리포트의 추천을 채택하면 goalTitle·goalCategory·parentGoalId 가 함께 와서 직접 입력 칸을 채워 연다. 이전 목표는 처음 연 아동에게만 쓴다.
  */
 function ActivityCreatePage() {
   const navigate = useNavigate()
@@ -180,11 +200,21 @@ function ActivityCreatePage() {
   const childId = searchParams.get('childId')
   const requestedType = searchParams.get('type')
 
-  const [goalTab, setGoalTab] = useState<GoalTab>('preset')
+  // 추천에서 넘어온 목표. 단계를 옮기면 주소에서 빠지므로 처음 값만 화면 상태로 들고 있는다.
+  const [prefill] = useState(() => ({
+    childId: searchParams.get('childId'),
+    title: searchParams.get('goalTitle'),
+    category: searchParams.get('goalCategory'),
+    parentGoalId: searchParams.get('parentGoalId'),
+  }))
+  const [goalTab, setGoalTab] = useState<GoalTab>(prefill.title !== null ? 'custom' : 'preset')
   const [categoryFilter, setCategoryFilter] = useState<GoalCategory>('EMOTION_RECOGNITION')
   const [presetId, setPresetId] = useState<string | null>(null)
-  const [customTitle, setCustomTitle] = useState('')
-  const [customCategory, setCustomCategory] = useState<GoalCategory | null>(null)
+  const [customTitle, setCustomTitle] = useState(prefill.title ?? '')
+  const [customCategory, setCustomCategory] = useState<GoalCategory | null>(
+    prefill.category && isGoalCategory(prefill.category) ? prefill.category : null
+  )
+  const parentGoalId = prefill.parentGoalId && prefill.childId === childId ? prefill.parentGoalId : null
   const [conditions, setConditions] = useState<Conditions>(EMPTY_CONDITIONS)
   // 이 화면에서 이 아동에게 보낸 배정의 유형. 응답을 못 받았을 때 다시 보낼 수 있게 남긴다.
   const [sent, setSent] = useState<{ childId: string; type: ActivityType } | null>(null)
@@ -204,9 +234,17 @@ function ActivityCreatePage() {
   })
   const availability = activitiesQuery.data ? typeAvailability(activitiesQuery.data) : null
   const activityType = resolveType(requestedType, availability, sent?.childId === childId ? sent.type : null)
-  const needsGoal = activityType === 'FIRST_COMBINED'
+  const needsGoal = needsGoalFor(activityType)
   const steps =
     activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal' && s.key !== 'conditions')
+  // 역할극은 지난 역할극으로 정한 다음 난이도로 배정된다. 확인 단계에서 무엇으로 시작하는지 미리 보인다.
+  const difficultyQuery = useQuery({
+    queryKey: ['children', childId, 'roleplay-difficulty'],
+    queryFn: () => getRoleplayDifficulty(childId!),
+    enabled: !!child && activityType === 'ROLEPLAY',
+  })
+  // 다음 난이도를 못 읽었으면 역할극은 배정하지 않는다(서버도 409 ROLEPLAY_DIFFICULTY_NOT_READY 로 막는다).
+  const roleplayNotReady = activityType === 'ROLEPLAY' && !difficultyQuery.data
   // 저장 전에 화면에서 먼저 막는다. 서버도 같은 규칙으로 거절한다.
   const contradictions = contradictingForbidden(
     conditions.requiredElements,
@@ -265,7 +303,7 @@ function ActivityCreatePage() {
 
   // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 목표와 활동을 하나만 남긴다(ADR D4).
   // 대상·유형·목표가 바뀌면 다른 배정이므로 새 키를 쓴다.
-  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${JSON.stringify(conditions)}` : ''}`
+  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${parentGoalId}|${JSON.stringify(conditions)}` : ''}`
   const attemptRef = useRef<{ submission: string; requestKey: string } | null>(null)
   const isSubmittingRef = useRef(false)
 
@@ -291,6 +329,7 @@ function ActivityCreatePage() {
           ? {
               title: choice.title,
               ...(choice.category ? { category: choice.category } : {}),
+              ...(parentGoalId ? { parentGoalId } : {}),
               ...conditionsPayload(extra),
             }
           : null,
@@ -304,7 +343,13 @@ function ActivityCreatePage() {
   })
 
   function handleAssign() {
-    if (!child || !activityType || (needsGoal && (!goal || contradictions.length > 0)) || isSubmittingRef.current) {
+    if (
+      !child ||
+      !activityType ||
+      (needsGoal && (!goal || contradictions.length > 0)) ||
+      roleplayNotReady ||
+      isSubmittingRef.current
+    ) {
       return
     }
     isSubmittingRef.current = true
@@ -314,8 +359,13 @@ function ActivityCreatePage() {
       {
         // 아동 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 배정 중 사이드바·뒤로가기로
         // 다른 화면에 간 뒤 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
-        onSuccess: (_activity, { target }) => {
-          navigate(`/classrooms/${target.classId}/children/${target.childId}`)
+        // 역할극 단독은 시나리오가 아직 없어 아동이 시작할 수 없다. 바로 그 활동의 시나리오 검토로 보내 확정까지 잇는다.
+        onSuccess: (activity, { target }) => {
+          navigate(
+            activity.activityType === 'ROLEPLAY'
+              ? `/activities/${activity.activityId}/scenario`
+              : `/classrooms/${target.classId}/children/${target.childId}`
+          )
         },
         onSettled: () => {
           isSubmittingRef.current = false
@@ -553,6 +603,40 @@ function ActivityCreatePage() {
                   {COMPOSITION_TEXT[activityType]}
                 </span>
               </dd>
+              {activityType === 'ROLEPLAY' && (
+                <>
+                  <dt className="text-[var(--instructor-text-muted)]">난이도</dt>
+                  <dd>
+                    {difficultyQuery.isLoading ? (
+                      <span className="text-[var(--instructor-text-muted)]">불러오는 중...</span>
+                    ) : difficultyQuery.data ? (
+                      <>
+                        <span className="font-semibold">
+                          {difficultyQuery.data.scenarioLevel} · 시작 지원 {SUPPORT_LABELS[difficultyQuery.data.initialSupportLevel]}
+                        </span>
+                        <span className="block text-xs text-[var(--instructor-text-muted)]">
+                          지난 역할극 결과로 정한 다음 난이도예요. 배정하면 이 활동에 고정되고, 시나리오 후보도 이 난이도로 찾아요.
+                        </span>
+                      </>
+                    ) : difficultyQuery.error instanceof ApiError &&
+                      difficultyQuery.error.code === 'ROLEPLAY_DIFFICULTY_NOT_FOUND' ? (
+                      <span className="text-[var(--instructor-warning-fg)]">
+                        아직 마친 역할극이 없어 다음 난이도가 없어요. 배정할 수 없어요.
+                      </span>
+                    ) : (
+                      <span className="text-[var(--instructor-warning-fg)]">
+                        {describeError(difficultyQuery.error, '다음 역할극 난이도를 불러오지 못했어요.')}
+                      </span>
+                    )}
+                  </dd>
+                </>
+              )}
+              {parentGoalId && (
+                <>
+                  <dt className="text-[var(--instructor-text-muted)]">이어받는 목표</dt>
+                  <dd className="text-[var(--instructor-text-muted)]">리포트의 추천에서 고른 지난 목표를 이어받아요.</dd>
+                </>
+              )}
             </dl>
           </section>
 
@@ -574,7 +658,7 @@ function ActivityCreatePage() {
             <button
               type="button"
               onClick={handleAssign}
-              disabled={assignMutation.isPending}
+              disabled={assignMutation.isPending || roleplayNotReady}
               className={primaryButtonClass}
             >
               <ButtonLabel pending={assignMutation.isPending} label="배정하기" pendingLabel="배정 중..." />
@@ -1090,7 +1174,7 @@ function TypeStep({
     return <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
   }
 
-  // 화면 순서대로. 역할극은 아직 열리지 않는다.
+  // 화면 순서대로. 역할극은 최초 결합을 마친 뒤 열린다.
   const cards = [
     {
       enabled: availability.firstCombined,
@@ -1102,7 +1186,11 @@ function TypeStep({
       checked: isQuizSelected,
       select: () => !isQuizSelected && onSelect('SELF_EMOTION_QUIZ'),
     },
-    { enabled: false, checked: false, select: () => {} },
+    {
+      enabled: availability.roleplay,
+      checked: selected === 'ROLEPLAY',
+      select: () => onSelect('ROLEPLAY'),
+    },
   ]
   const checkedIndex = cards.findIndex((card) => card.enabled && card.checked)
   const tabStop = checkedIndex >= 0 ? checkedIndex : cards.findIndex((card) => card.enabled)
@@ -1183,8 +1271,9 @@ function TypeStep({
           tabbable={tabStop === 2}
           title="역할극만"
           description="상황 시나리오로 대화를 주고받으며 공감 표현을 연습합니다."
+          // 시안 T-ACT-02 문구. 역할극 단독은 배정한 뒤 강사가 시나리오를 검토·확정해야 아동이 시작한다(PR #101).
           meta={['예상 소요 10~15분', '시나리오 승인 필요']}
-          disabledReason="역할극은 준비 중이에요."
+          disabledReason={availability.roleplay ? undefined : '최초 활동을 마치면 열려요.'}
           checked={cards[2].checked}
           onSelect={cards[2].select}
         />

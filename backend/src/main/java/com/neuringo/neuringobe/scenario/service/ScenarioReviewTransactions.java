@@ -6,10 +6,10 @@ import com.neuringo.neuringobe.child.security.ChildAccessScope;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.scenario.dto.ApprovedScenarioVersion;
-import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
 import com.neuringo.neuringobe.scenario.dto.ScenarioConfirmationPreparation;
 import com.neuringo.neuringobe.scenario.dto.ScenarioEdits;
 import com.neuringo.neuringobe.scenario.dto.ScenarioGenerationContext;
+import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import com.neuringo.neuringobe.scenario.dto.ScenarioReviewClosure;
 import com.neuringo.neuringobe.scenario.dto.ScenarioReviewSnapshot;
 import com.neuringo.neuringobe.scenario.dto.ScenarioReviewStartAttempt;
@@ -34,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class ScenarioReviewTransactions {
-    private final InitialScenarioPreparationService preparations;
+    private final ScenarioReviewInputService preparations;
     private final ScenarioReviewRepository reviews;
     private final ChildAccessScope access;
     private final ScenarioDraftRepository drafts;
@@ -43,7 +43,7 @@ public class ScenarioReviewTransactions {
     private final JsonMapper json;
 
     public ScenarioReviewTransactions(
-            InitialScenarioPreparationService preparations,
+            ScenarioReviewInputService preparations,
             ScenarioReviewRepository reviews,
             ChildAccessScope access,
             ScenarioDraftRepository drafts,
@@ -61,15 +61,15 @@ public class ScenarioReviewTransactions {
 
     @Transactional
     public ScenarioReviewStartAttempt resume(
-            InitialScenarioPreparation expected, UUID requestId, Authentication authentication) {
+            ScenarioPreparationInput expected, UUID requestId, Authentication authentication) {
         var existing = start(expected, requestId, authentication, null, null);
         return new ScenarioReviewStartAttempt(
-                existing.orElse(null), reviews.epoch(expected.initialDifficulty().activityId()));
+                existing.orElse(null), reviews.epoch(expected.difficulty().activityId()));
     }
 
     @Transactional
     public ScenarioReviewSnapshot createOrResume(
-            InitialScenarioPreparation expected,
+            ScenarioPreparationInput expected,
             UUID requestId,
             Authentication authentication,
             List<ApprovedScenarioVersion> candidates,
@@ -79,12 +79,12 @@ public class ScenarioReviewTransactions {
     }
 
     private Optional<ScenarioReviewSnapshot> start(
-            InitialScenarioPreparation expected,
+            ScenarioPreparationInput expected,
             UUID requestId,
             Authentication authentication,
             List<ApprovedScenarioVersion> candidates,
             Long expectedEpoch) {
-        UUID activity = expected.initialDifficulty().activityId();
+        UUID activity = expected.difficulty().activityId();
         var currentInput = lockAndPrepare(activity, authentication);
         UUID instructor = ((AuthenticatedUser) authentication.getPrincipal()).userId();
         var receipt = reviews.request(activity, requestId);
@@ -117,7 +117,7 @@ public class ScenarioReviewTransactions {
             throw conflict("SCENARIO_REVIEW_INPUT_CHANGED", "기존 검토의 입력과 일치하지 않습니다.");
         if (receipt.isPresent() && !review.reviewId().equals(receipt.get().get("review_id")))
             throw conflict("SCENARIO_REVIEW_CLOSED", "이전 검토의 요청 식별자입니다.");
-        var available = reviews.firstAvailable(review, currentInput.initialDifficulty().childId());
+        var available = reviews.firstAvailable(review, currentInput.difficulty().childId());
         Integer position = available.map(c -> c.position()).orElse(null);
         boolean moved = !Objects.equals(position, review.currentPosition());
         if (moved && !created && receipt.isPresent()) {
@@ -184,7 +184,7 @@ public class ScenarioReviewTransactions {
         reviews.reject(reviewId, review.currentPosition());
         var available =
                 reviews.firstAvailableFrom(
-                        review, input.initialDifficulty().childId(), review.currentPosition() + 1);
+                        review, input.difficulty().childId(), review.currentPosition() + 1);
         Integer position = available.map(c -> c.position()).orElse(null);
         reviews.setPosition(reviewId, position, true);
         available.ifPresent(c -> reviews.recordPresentation(instructor, c.scenario().scenarioId()));
@@ -313,7 +313,7 @@ public class ScenarioReviewTransactions {
             UUID scenarioId,
             int version,
             Authentication authentication) {
-        UUID activityId = prepared.input().initialDifficulty().activityId();
+        UUID activityId = prepared.input().difficulty().activityId();
         var input = lockAndPrepare(activityId, authentication);
         UUID instructor = ((AuthenticatedUser) authentication.getPrincipal()).userId();
         String requestFingerprint =
@@ -325,7 +325,7 @@ public class ScenarioReviewTransactions {
             throw conflict("SCENARIO_ALREADY_ASSIGNED", "이미 시나리오가 배정된 활동입니다.");
         if (!fingerprint(prepared.input()).equals(fingerprint(input)))
             throw conflict("SCENARIO_REVIEW_INPUT_CHANGED", "승인 확인 중 준비 입력이 변경되었습니다.");
-        if (!confirmations.lockChild(input.initialDifficulty().childId()))
+        if (!confirmations.lockChild(input.difficulty().childId()))
             throw conflict("SCENARIO_CANDIDATE_INVALID", "활동을 배정할 학생 상태가 아닙니다.");
         var review =
                 reviews.find(activityId)
@@ -355,7 +355,7 @@ public class ScenarioReviewTransactions {
                         : scenarioId;
         int assignedVersion = changed ? Math.addExact(version, 1) : version;
         String assignedSource = changed ? "EDITED" : source;
-        if (confirmations.used(input.initialDifficulty().childId(), assignedId, activityId))
+        if (confirmations.used(input.difficulty().childId(), assignedId, activityId))
             throw conflict("SCENARIO_ALREADY_USED", "학생에게 이미 배정된 시나리오입니다.");
         if (changed || source.equals("GENERATED")) {
             confirmations.approveDraft(assignedId);
@@ -369,7 +369,7 @@ public class ScenarioReviewTransactions {
                 instructor,
                 assignedId,
                 assignedVersion,
-                input.initialDifficulty().scenarioLevel(),
+                input.difficulty().scenarioLevel(),
                 digest(confirmations.contentBody(assignedId)),
                 approvedAt);
         if (!changed && source.equals("REUSE"))
@@ -410,7 +410,7 @@ public class ScenarioReviewTransactions {
                 reviews.find(expected.activityId())
                         .orElseThrow(() -> conflict("SCENARIO_REVIEW_CLOSED", "검토가 종료되었습니다."));
         validateGenerationReview(expected, input, review, authentication);
-        var available = reviews.firstAvailable(review, input.initialDifficulty().childId());
+        var available = reviews.firstAvailable(review, input.difficulty().childId());
         var current =
                 new ScenarioReviewSnapshot(
                         review.reviewId(),
@@ -442,7 +442,7 @@ public class ScenarioReviewTransactions {
                 reviews.find(expected.activityId())
                         .orElseThrow(() -> conflict("SCENARIO_REVIEW_CLOSED", "검토가 종료되었습니다."));
         validateGenerationReview(expected, input, review, authentication);
-        var available = reviews.firstAvailable(review, input.initialDifficulty().childId());
+        var available = reviews.firstAvailable(review, input.difficulty().childId());
         if (available.isPresent()) {
             var selected = available.get();
             return new ScenarioReviewSnapshot(
@@ -471,7 +471,7 @@ public class ScenarioReviewTransactions {
 
     private void validateGenerationReview(
             ScenarioReviewSnapshot expected,
-            InitialScenarioPreparation input,
+            ScenarioPreparationInput input,
             com.neuringo.neuringobe.scenario.dto.ScenarioReviewState review,
             Authentication authentication) {
         if (reviews.isAssigned(expected.activityId()))
@@ -485,8 +485,7 @@ public class ScenarioReviewTransactions {
             throw conflict("SCENARIO_REVIEW_INPUT_CHANGED", "기존 검토의 입력과 일치하지 않습니다.");
     }
 
-    private InitialScenarioPreparation lockAndPrepare(
-            UUID activity, Authentication authentication) {
+    private ScenarioPreparationInput lockAndPrepare(UUID activity, Authentication authentication) {
         lockParents(activity, authentication);
         return preparations.prepare(activity, authentication);
     }
@@ -503,7 +502,7 @@ public class ScenarioReviewTransactions {
         return user.userId();
     }
 
-    private String fingerprint(InitialScenarioPreparation input) {
+    private String fingerprint(ScenarioPreparationInput input) {
         return ScenarioInputFingerprint.of(input);
     }
 

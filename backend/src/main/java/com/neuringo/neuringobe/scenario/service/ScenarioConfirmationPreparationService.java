@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class ScenarioConfirmationPreparationService {
-    private final InitialScenarioPreparationService preparations;
+    private final ScenarioReviewInputService preparations;
     private final ScenarioConfirmationRepository confirmations;
     private final ScenarioCandidateQueryService candidates;
     private final ScenarioDraftRepository drafts;
@@ -26,7 +26,7 @@ public class ScenarioConfirmationPreparationService {
     private final ScenarioEditApplier editApplier;
 
     public ScenarioConfirmationPreparationService(
-            InitialScenarioPreparationService preparations,
+            ScenarioReviewInputService preparations,
             ScenarioConfirmationRepository confirmations,
             ScenarioCandidateQueryService candidates,
             ScenarioDraftRepository drafts,
@@ -118,7 +118,7 @@ public class ScenarioConfirmationPreparationService {
     }
 
     private ScenarioApprovalConditions confirmedConditions(
-            com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation input,
+            com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput input,
             GeneratedScenario content) {
         var goal = input.learningGoal();
         var roles =

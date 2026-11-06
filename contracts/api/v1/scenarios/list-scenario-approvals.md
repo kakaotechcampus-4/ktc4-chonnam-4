@@ -17,7 +17,7 @@
 
 ## 2. 용도·중요 규칙
 
-- 로그인한 강사의 학급에서 퀴즈로 난이도가 정해졌고 시나리오가 아직 없는 최초 결합 활동을 기다린 순서(퀴즈 결과 시각)대로 모은다. 빈 목록도 정상이다.
+- 로그인한 강사의 학급에서 난이도가 정해졌고 시나리오가 아직 없는 활동을 기다린 순서대로 모은다. 최초 결합은 퀴즈로 난이도가 정해진 때(퀴즈 결과 시각), 역할극 단독은 배정 때 다음 역할극 난이도를 고정한 때부터 기다린다. 빈 목록도 정상이다.
 - 재사용 후보는 이미 있는 공용 승인본이라 그 아동을 위한 시나리오 행이 없다. 그래서 시나리오가 아니라 활동을 한 줄로 보여 준다. 시나리오 목록(API-SCN-02)과 목적이 다르다.
 - `state`: 검토를 시작해 서버에 남은 검토가 있으면 `IN_REVIEW`, 아직 시작하지 않았으면 `WAITING`.
 - FE는 두 상태 모두 같은 검토 화면으로 들어가 [준비·복원·다음 후보](./prepare-scenario.md)의 `START_OR_RESUME`를 보낸다. `IN_REVIEW`면 보던 후보에서 이어 본다.
@@ -77,15 +77,15 @@ HTTP 200.
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| data[].activityId | UUID | 예 | 아니오 | 시나리오를 기다리는 최초 결합 활동 |
+| data[].activityId | UUID | 예 | 아니오 | 시나리오를 기다리는 최초 결합 또는 역할극 단독 활동 |
 | data[].childId | UUID | 예 | 아니오 | 담당 아동 |
 | data[].childName | string | 예 | 아니오 | 아동 표시 이름 |
 | data[].classId | UUID | 예 | 아니오 | 내 학급 |
 | data[].className | string | 예 | 아니오 | 학급 이름 |
 | data[].goalId | UUID | 예 | 아니오 | 학습 목표 |
 | data[].goalTitle | string | 예 | 아니오 | 목표 문장 |
-| data[].scenarioLevel | ScenarioLevel | 예 | 아니오 | 퀴즈로 정해진 난이도 |
-| data[].waitingSince | ISODateTime | 예 | 아니오 | 기다리기 시작한 때(퀴즈 결과 시각) |
+| data[].scenarioLevel | ScenarioLevel | 예 | 아니오 | 퀴즈로 정해진 난이도. 역할극 단독은 배정 때 고정한 다음 역할극 난이도 |
+| data[].waitingSince | ISODateTime | 예 | 아니오 | 기다리기 시작한 때(퀴즈 결과 시각. 역할극 단독은 난이도 고정 시각) |
 | data[].state | string | 예 | 아니오 | `WAITING` · `IN_REVIEW` |
 
 meta.traceId는 필수 문자열입니다. 빈 배열도 정상입니다.
@@ -159,5 +159,5 @@ curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/scenario-approvals" \
 
 - 관련 Task ID: `S4-BAE-02`
 - 코드 근거: `backend/src/main/java/com/neuringo/neuringobe/scenario/controller/ScenarioApprovalController.java` · `scenario/service/ScenarioApprovalService.java`
-- 이번 구현은 최초 결합 활동만 대상입니다. 페이지 나누기·필터는 아직 없습니다.
+- 최초 결합과 역할극 단독(2026-11-06, PR #90) 활동이 대상입니다. 페이지 나누기·필터는 아직 없습니다.
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)

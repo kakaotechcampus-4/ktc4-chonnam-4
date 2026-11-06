@@ -17,6 +17,7 @@ import com.openai.errors.OpenAIIoException;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -50,6 +51,37 @@ class SpringAiLlmProviderTest {
         SpringAiLlmProvider provider = provider(chatModel);
 
         assertThatThrownBy(() -> provider.complete(request())).isSameAs(internalError);
+    }
+
+    @Test
+    void sendsOutputLimitAndReasoningEffortOnlyWhenConfigured() {
+        AtomicReference<Object> sent = new AtomicReference<>();
+        IllegalStateException stop = new IllegalStateException("stop after capture");
+        ChatModel capture =
+                prompt -> {
+                    sent.set(prompt.getOptions());
+                    throw stop;
+                };
+
+        SpringAiLlmProvider configured =
+                new SpringAiLlmProvider(
+                        capture,
+                        new OpenAiFailureClassifier(),
+                        "test-provider",
+                        Duration.ofSeconds(10),
+                        0,
+                        "test-model",
+                        1500,
+                        "low");
+        assertThatThrownBy(() -> configured.complete(request())).isSameAs(stop);
+        OpenAiChatOptions options = (OpenAiChatOptions) sent.get();
+        assertThat(options.getMaxCompletionTokens()).isEqualTo(1500);
+        assertThat(options.getReasoningEffort()).isEqualTo("low");
+
+        assertThatThrownBy(() -> provider(capture).complete(request())).isSameAs(stop);
+        OpenAiChatOptions defaults = (OpenAiChatOptions) sent.get();
+        assertThat(defaults.getMaxCompletionTokens()).isNull();
+        assertThat(defaults.getReasoningEffort()).isNull();
     }
 
     @Test

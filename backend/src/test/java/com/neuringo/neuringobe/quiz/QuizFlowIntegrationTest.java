@@ -44,7 +44,8 @@ import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.service.InitialRoleplayStartQueryService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayStartService;
-import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
+import com.neuringo.neuringobe.scenario.dto.ScenarioDifficultyBasis;
+import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import com.neuringo.neuringobe.scenario.service.InitialScenarioPreparationService;
 import com.neuringo.neuringobe.support.TestInstructors;
 import com.neuringo.neuringobe.user.domain.UserRole;
@@ -463,10 +464,10 @@ class QuizFlowIntegrationTest {
                 jdbc.queryForMap("SELECT * FROM quiz_result WHERE activity_id = ?", activityId);
         Map<String, Object> activitySnapshot =
                 jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId);
-        InitialScenarioPreparation preparation =
+        ScenarioPreparationInput preparation =
                 scenarioPreparations.prepare(
                         activityId, instructorAuthentication(TestInstructors.id("teacher-quiz")));
-        assertThat(preparation.initialDifficulty()).isEqualTo(evidence);
+        assertThat(preparation.difficulty()).isEqualTo(ScenarioDifficultyBasis.initial(evidence));
         assertThat(preparation.learningGoal().goalId()).isEqualTo(applied.getGoalId());
         assertThat(preparation.reuseKey().scenarioLevel()).isEqualTo("L2");
         assertThat(preparation.reuseKey().classId())
@@ -539,6 +540,11 @@ class QuizFlowIntegrationTest {
         mvc.perform(get("/api/v1/children/{id}/activities", childId).session(childSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].initialSupportLevel").doesNotExist())
+                .andExpect(jsonPath("$.data[1].initialSupportLevel").doesNotExist());
+        mvc.perform(
+                        get("/api/v1/children/{id}/activities", childId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[1].initialSupportLevel").value("S0"));
         assertThat(
                         jdbc.queryForMap(
@@ -579,7 +585,7 @@ class QuizFlowIntegrationTest {
         Map<String, Object> activitySnapshot =
                 jdbc.queryForMap("SELECT * FROM activity WHERE activity_id = ?", activityId);
 
-        InitialScenarioPreparation prepared =
+        ScenarioPreparationInput prepared =
                 scenarioPreparations.prepare(
                         activityId, instructorAuthentication(TestInstructors.id("teacher-quiz")));
 
@@ -595,13 +601,13 @@ class QuizFlowIntegrationTest {
                 .isEqualTo(goal.get("forbiddenExpressions"));
         assertThat(prepared.reuseKey())
                 .isEqualTo(
-                        new InitialScenarioPreparation.ReuseKey(
+                        new ScenarioPreparationInput.ReuseKey(
                                 children.findById(childId).orElseThrow().getClassId(),
                                 prepared.learningGoal().contentHash(),
                                 "L3"));
-        assertThat(prepared.initialDifficulty().activityId()).isEqualTo(activityId);
-        assertThat(prepared.initialDifficulty().initialSupportLevel()).isEqualTo("S0");
-        assertThat(prepared.initialDifficulty().policyVersion()).isEqualTo("INITIAL_QUIZ_V2");
+        assertThat(prepared.difficulty().activityId()).isEqualTo(activityId);
+        assertThat(prepared.difficulty().initialSupportLevel()).isEqualTo("S0");
+        assertThat(prepared.difficulty().policyVersion()).isEqualTo("INITIAL_QUIZ_V2");
         assertThat(mapper.writeValueAsString(prepared)).doesNotContain("퀴즈 아동");
         assertThat(
                         scenarioPreparations.prepare(
@@ -645,16 +651,16 @@ class QuizFlowIntegrationTest {
         completeAssignedQuiz(secondActivity, !difference.equals("LEVEL"));
         Authentication teacher = instructorAuthentication(TestInstructors.id("teacher-quiz"));
 
-        InitialScenarioPreparation first = scenarioPreparations.prepare(firstActivity, teacher);
-        InitialScenarioPreparation second = scenarioPreparations.prepare(secondActivity, teacher);
+        ScenarioPreparationInput first = scenarioPreparations.prepare(firstActivity, teacher);
+        ScenarioPreparationInput second = scenarioPreparations.prepare(secondActivity, teacher);
 
         if (difference.equals("SAME")) {
             assertThat(second.reuseKey()).isEqualTo(first.reuseKey());
         } else {
             assertThat(second.reuseKey()).isNotEqualTo(first.reuseKey());
         }
-        assertThat(second.initialDifficulty().activityId()).isNotEqualTo(firstActivity);
-        assertThat(second.initialDifficulty().childId()).isEqualTo(secondChild);
+        assertThat(second.difficulty().activityId()).isNotEqualTo(firstActivity);
+        assertThat(second.difficulty().childId()).isEqualTo(secondChild);
     }
 
     @Test
@@ -1121,10 +1127,10 @@ class QuizFlowIntegrationTest {
         assertThat(legacy.difficultyFallbackApplied()).isTrue();
         assertThat(legacy.difficultyFallbackReason()).isEqualTo("LEGACY_UNSPECIFIED");
         assertThat(legacy.policyVersion()).isEqualTo("INITIAL_QUIZ_V1");
-        InitialScenarioPreparation prepared =
+        ScenarioPreparationInput prepared =
                 scenarioPreparations.prepare(
                         activityId, instructorAuthentication(TestInstructors.id("teacher-quiz")));
-        assertThat(prepared.initialDifficulty()).isEqualTo(legacy);
+        assertThat(prepared.difficulty()).isEqualTo(ScenarioDifficultyBasis.initial(legacy));
         assertThat(prepared.reuseKey().scenarioLevel()).isEqualTo("L1");
         UUID scenarioId = saveScenarioForActivity(activityId, "APPROVED", "L1");
         assignLegacyScenario(activityId, scenarioId);

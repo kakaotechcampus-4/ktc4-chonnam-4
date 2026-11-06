@@ -24,9 +24,9 @@ import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.dto.InitialDifficultyEvidence;
 import com.neuringo.neuringobe.quiz.service.InitialDifficultyQueryService;
 import com.neuringo.neuringobe.scenario.domain.ScenarioApprovalConditions;
-import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
 import com.neuringo.neuringobe.scenario.dto.ScenarioCandidateSelection;
 import com.neuringo.neuringobe.scenario.dto.ScenarioEdits;
+import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import com.neuringo.neuringobe.scenario.dto.ScenarioReviewClosure;
 import com.neuringo.neuringobe.scenario.dto.ScenarioReviewSnapshot;
 import com.neuringo.neuringobe.scenario.repository.ScenarioCandidateContentRepository;
@@ -68,7 +68,7 @@ class ScenarioReviewStartIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ScenarioReviewStartService starts;
     @Autowired private ScenarioReviewTransactions transactions;
-    @Autowired private InitialScenarioPreparationService preparations;
+    @Autowired private ScenarioReviewInputService preparations;
     @Autowired private ScenarioCandidateQueryService queries;
     @Autowired private ScenarioCandidateRepository candidates;
     @Autowired private ScenarioCandidateContentRepository contents;
@@ -2612,12 +2612,12 @@ class ScenarioReviewStartIntegrationTest {
     }
 
     private ScenarioReviewStartService facadeWithSelectionHook(
-            Consumer<InitialScenarioPreparation> hook) {
+            Consumer<ScenarioPreparationInput> hook) {
         var query =
                 new ScenarioCandidateQueryService(preparations, candidates, contents) {
                     @Override
                     ScenarioCandidateSelection selectPrepared(
-                            InitialScenarioPreparation input, Authentication authentication) {
+                            ScenarioPreparationInput input, Authentication authentication) {
                         var selected = super.selectPrepared(input, authentication);
                         hook.accept(input);
                         return selected;
