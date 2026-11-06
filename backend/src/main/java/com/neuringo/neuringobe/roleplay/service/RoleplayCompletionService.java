@@ -9,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
 import com.neuringo.neuringobe.roleplay.application.RoleplayActivityGoalEvaluator.Decision;
 import com.neuringo.neuringobe.roleplay.application.RoleplayGoalObservationPlan;
+import com.neuringo.neuringobe.roleplay.application.RoleplayStoredTurnSafetyLimit;
 import com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
@@ -95,7 +96,9 @@ public class RoleplayCompletionService {
                             }
                             boolean maximumTurnReached =
                                     maximumLearningTurnReached(command, plan, deadline);
-                            if (maximumTurnReached
+                            boolean safetyLimitReached =
+                                    RoleplayStoredTurnSafetyLimit.reached(command.turnNumber());
+                            if ((maximumTurnReached || safetyLimitReached)
                                     && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
                                             || !"CLOSING".equals(command.responseType()))) {
                                 status.setRollbackOnly();
@@ -103,12 +106,22 @@ public class RoleplayCompletionService {
                             }
                             observations.save(plan);
                             if (plan.proposal().decision() == Decision.ACHIEVED
-                                    || maximumTurnReached) {
+                                    || maximumTurnReached
+                                    || safetyLimitReached) {
                                 completion.completeAfterRoleplay(activity);
-                                retention.completeNormallyAndDelete(
-                                        command.sessionId(),
-                                        command.childId(),
-                                        command.activityId());
+                                if (safetyLimitReached
+                                        && !maximumTurnReached
+                                        && plan.proposal().decision() != Decision.ACHIEVED) {
+                                    retention.completeAtStoredTurnSafetyLimitAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                } else {
+                                    retention.completeNormallyAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                }
                             }
                         }
                         deadline.requireActive();
