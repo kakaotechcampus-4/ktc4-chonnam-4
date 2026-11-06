@@ -135,8 +135,11 @@ export function useExpressionCamera(enabled: boolean) {
     setStartCount((count) => count + 1)
   }, [])
 
+  // 답을 내면(enabled=false) 카메라를 끄고 "off"로 알린다. 다만 처음부터 카메라를 못 썼으면(권한 거부·장치 없음)
+  // 그 상태를 그대로 둔다. "off"면 사진 틀에 "표정을 잘 보여줬어!"가 떠서, 카메라 없이 고른 아이에게 사실과 다른 말이 된다.
+  const cameraNeverWorked = status === "denied" || status === "unavailable"
   return {
-    status: enabled ? status : ("off" as const),
+    status: enabled || cameraNeverWorked ? status : ("off" as const),
     faceFound: enabled && status === "ready" && faceFound,
     attachVideo,
     readScores,

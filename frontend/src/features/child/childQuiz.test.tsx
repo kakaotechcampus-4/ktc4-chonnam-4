@@ -331,6 +331,34 @@ describe("내 감정 문항은 셀프 카메라로 고른 표정을 따라 지�
     expect(getUserMedia).toHaveBeenCalledTimes(2)
   })
 
+  // 카메라를 못 쓴 아이에게 답을 낸 뒤 "표정을 잘 보여줬어!"라고 하지 않는다(S8 회귀 점검 D7).
+  it.each([
+    ["권한을 거부해", new DOMException("denied", "NotAllowedError")],
+    ["기기에 카메라가 없어", new DOMException("no camera", "NotFoundError")],
+  ])("%s 카메라를 못 쓰면 답을 낸 뒤에도 카메라 없이 골랐다고 안내한다", async (_name, error) => {
+    getUserMedia.mockRejectedValue(error)
+    const { user } = openQuiz()
+
+    expect(await screen.findByText("카메라 없이 골라도 괜찮아!")).toBeInTheDocument()
+    await user.click(screen.getByRole("radio", { name: /슬픔/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    expect(await screen.findByText("네 마음을 알려줘서 고마워!")).toBeInTheDocument()
+    expect(screen.getByText("카메라 없이 골라도 괜찮아!")).toBeInTheDocument()
+    expect(screen.queryByText("표정을 잘 보여줬어!")).not.toBeInTheDocument()
+  })
+
+  it("카메라로 표정을 보여 줬으면 답을 낸 뒤 표정을 잘 보여줬다고 한다", async () => {
+    camera.scores = scores({ happy: 0.9, neutral: 0.1 })
+    const { user } = openQuiz()
+
+    expect(await screen.findByText("카메라 준비 완료 · 얼굴을 찾았어요")).toBeInTheDocument()
+    await user.click(screen.getByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    expect(await screen.findByText("표정을 잘 보여줬어!")).toBeInTheDocument()
+  })
+
   it("카메라가 켜지는 동안에는 확인 버튼을 막는다", async () => {
     getUserMedia.mockReturnValue(new Promise(() => {}))
     const { user } = openQuiz()
