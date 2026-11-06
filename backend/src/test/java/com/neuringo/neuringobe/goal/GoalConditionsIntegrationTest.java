@@ -22,6 +22,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *       배정에서는 요청 검증 오류처럼 {@code goal.} 이 붙는다. 목표도 활동도 저장되지 않는다.
  *   <li>정리: 저장된 목표(응답·조회)에 정리한 값이 입력 순서대로 남는다.
  *   <li>상황 길이: 상황 설명 문장은 200자까지 저장되고 201자는 422 다(DB 칸과 요청 검증이 같은 길이).
+ *   <li>목록 상한: 등장인물 5명, 필수 요소 5개(각 50자), 피할 표현 10개(각 30자)까지 저장되고, 넘으면 422 VALIDATION_FAILED 가 넘친
+ *       목록이나 항목을 가리킨다.
  * </ul>
  */
 @LocalProfileIntegrationTest
@@ -216,6 +218,101 @@ class GoalConditionsIntegrationTest {
                 .bodyJson()
                 .extractingPath("$.error.fieldErrors[0].field")
                 .isEqualTo("forbiddenExpressions[0]");
+    }
+
+    @Test
+    void keepsConditionListsUpToTheirLimits() {
+        List<Map<String, String>> fiveCharacters =
+                List.of("가", "나", "다", "라", "마").stream()
+                        .map(role -> Map.of("id", "FRIEND", "role", role + " 친구"))
+                        .toList();
+        List<String> fiveRequired =
+                List.of("가", "나", "다", "라", "마").stream()
+                        .map(prefix -> prefix + "요".repeat(49))
+                        .toList();
+        List<String> tenForbidden =
+                List.of("ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ").stream()
+                        .map(prefix -> prefix + "말".repeat(29))
+                        .toList();
+
+        assertThat(
+                        saveGoal(
+                                Map.of(
+                                        "title", "상한",
+                                        "characters", fiveCharacters,
+                                        "requiredElements", fiveRequired,
+                                        "forbiddenExpressions", tenForbidden)))
+                .hasStatus(HttpStatus.CREATED);
+    }
+
+    @Test
+    void rejectsConditionListsOverTheirLimitsAndSavesNothing() {
+        List<Map<String, String>> sixCharacters =
+                List.of("가", "나", "다", "라", "마", "바").stream()
+                        .map(role -> Map.of("id", "FRIEND", "role", role + " 친구"))
+                        .toList();
+
+        assertFieldErrors(
+                saveGoal(Map.of("title", "상한", "characters", sixCharacters)), "characters");
+        assertFieldErrors(
+                saveGoal(
+                        Map.of(
+                                "title",
+                                "상한",
+                                "requiredElements",
+                                List.of("가", "나", "다", "라", "마", "바"))),
+                "requiredElements");
+        assertFieldErrors(
+                saveGoal(
+                        Map.of(
+                                "title",
+                                "상한",
+                                "requiredElements",
+                                List.of("짧은 행동", "요".repeat(51)))),
+                "requiredElements[1]");
+        assertFieldErrors(
+                saveGoal(
+                        Map.of(
+                                "title",
+                                "상한",
+                                "forbiddenExpressions",
+                                List.of("ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ"))),
+                "forbiddenExpressions");
+        assertFieldErrors(
+                saveGoal(Map.of("title", "상한", "forbiddenExpressions", List.of("말".repeat(31)))),
+                "forbiddenExpressions[0]");
+        assertThat(goalsOfChild()).isEmpty();
+    }
+
+    @Test
+    void assignmentRejectsAnOverLimitGoalListAndSavesNothing() {
+        MvcTestResult result =
+                fixtures.postJsonWithKey(
+                        fixtures.instructor(),
+                        "/api/v1/activities",
+                        Map.of(
+                                "childId",
+                                childId,
+                                "goal",
+                                Map.of(
+                                        "title",
+                                        "상한",
+                                        "forbiddenExpressions",
+                                        List.of("말".repeat(31)))),
+                        UUID.randomUUID());
+
+        assertFieldErrors(result, "goal.forbiddenExpressions[0]");
+        assertThat(goalsOfChild()).isEmpty();
+    }
+
+    private static void assertFieldErrors(MvcTestResult result, String field) {
+        assertThat(result).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(result).bodyJson().extractingPath("$.error.code").isEqualTo("VALIDATION_FAILED");
+        assertThat(result)
+                .bodyJson()
+                .extractingPath("$.error.fieldErrors[*].field")
+                .asArray()
+                .containsExactly(field);
     }
 
     private MvcTestResult saveGoal(Map<String, Object> body) {
