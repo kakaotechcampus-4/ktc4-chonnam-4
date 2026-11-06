@@ -539,6 +539,11 @@ class QuizFlowIntegrationTest {
         mvc.perform(get("/api/v1/children/{id}/activities", childId).session(childSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].initialSupportLevel").doesNotExist())
+                .andExpect(jsonPath("$.data[1].initialSupportLevel").doesNotExist());
+        mvc.perform(
+                        get("/api/v1/children/{id}/activities", childId)
+                                .with(TestInstructors.instructor("teacher-quiz")))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[1].initialSupportLevel").value("S0"));
         assertThat(
                         jdbc.queryForMap(
