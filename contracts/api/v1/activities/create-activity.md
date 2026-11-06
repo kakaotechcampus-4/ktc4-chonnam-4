@@ -22,10 +22,11 @@
 - childId와 activityType, 필요한 경우 goal 내용을 함께 전달합니다. 기존 goalId 필드는 현재 계약이 아닙니다. 목표 저장·활동 생성·문항 배정은 한 트랜잭션이며 실패 시 함께 롤백됩니다.
 - Idempotency-Key(UUID)는 필수입니다. 같은 키·같은 아동/유형/목표 내용·parentGoalId이면 기존 활동을 200, 새 배정은 201로 반환합니다. 동일 키의 다른 요청(목표 내용이 같아도 parentGoalId가 다르면 포함)은 409 IDEMPOTENCY_KEY_REUSED입니다.
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
-- ROLEPLAY는 enum에 있지만 현재 422 ACTIVITY_TYPE_NOT_AVAILABLE로 거부합니다. 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
+- ROLEPLAY(역할극 단독)는 최초 결합 완료 뒤에 배정하고 goal이 필수입니다. 이 아동의 다음 역할극 난이도(API-REC-06)가 있어야 하며, 없으면 409 ROLEPLAY_DIFFICULTY_NOT_READY입니다. 배정 때 그 레벨·시작 지원을 활동에 고정하고(`initialSupportLevel`), 퀴즈 문항은 붙이지 않습니다(2026-10-31 작업 브랜치). 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
 - goal 내용의 정리·등장인물 `{id, role}`·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
 - 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
+- ROLEPLAY도 배정 응답의 scenarioId는 null이고 요청에 시나리오를 받지 않습니다(2026-11-06, PR #101 회의 결정 반영). 강사가 [API-SCN-08](../scenarios/list-scenario-approvals.md) 승인 대기함에서 활동을 열어 [API-SCN-01](../scenarios/prepare-scenario.md) 준비·다음 후보 → [API-SCN-04](../scenarios/review-scenario.md) 확정을 거쳐야 활동에 붙습니다. 이때 검토 입력의 레벨은 배정 때 이 활동에 고정한 다음 역할극 난이도이고, 검토 입력 지문에 그 결정 ID가 들어갑니다. 다른 역할극이 끝나 새 결정이 생겨도 이 활동의 고정값과 진행 중 검토는 바뀌지 않습니다.
 
 ## 3. 요청
 
@@ -53,7 +54,7 @@
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
 | childId | UUID | 예 | 아니오 | 담당 아동 UUID |
-| activityType | ActivityType \| null | 아니오 | 예 | 생략/null은 FIRST_COMBINED. ROLEPLAY는 현재 422로 거부 |
+| activityType | ActivityType \| null | 아니오 | 예 | 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) |
 | goal | GoalBody \| null | 아니오 | 예 | FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 |
 
 ~~~json
@@ -103,8 +104,8 @@ HTTP 201 / 200.
 | data.childId | UUID | 예 | 아니오 | 아동 |
 | data.goalId | UUID \| null | 예 | 예 | 목표. 독립 퀴즈는 null |
 | data.activityType | ActivityType | 예 | 아니오 | 활동 유형 |
-| data.scenarioId | UUID \| null | 예 | 예 | 현재 생성 시 null |
-| data.scenarioSource | string \| null | 예 | 예 | 현재 null; 연결 방식 보완 |
+| data.scenarioId | UUID \| null | 예 | 예 | 생성 시 null. 강사 확정(API-SCN-04) 뒤 연결 |
+| data.scenarioSource | string \| null | 예 | 예 | 생성 시 null. 확정 뒤 REUSE·GENERATED·EDITED |
 | data.initialSupportLevel | SupportLevel \| null | 예 | 예 | 초기 지원; 아동 평가 projection 합의 필요 |
 | data.difficultyFallbackApplied | boolean | 예 | 아니오 | 기본값 적용 |
 | data.status | ActivityStatus | 예 | 아니오 | 수행 상태; 준비상태와 구분 |
@@ -134,7 +135,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 409 | FIRST_ACTIVITY_NOT_COMPLETED | 최초 결합 미완료 |
 | 422 | GOAL_REQUIRED | 최초 결합/역할극 목표 누락 |
 | 422 | GOAL_NOT_ALLOWED | 독립 퀴즈에 목표 입력 |
-| 422 | ACTIVITY_TYPE_NOT_AVAILABLE | 현재 ROLEPLAY 배정 불가 |
+| 409 | ROLEPLAY_DIFFICULTY_NOT_READY | 마친 역할극이 없어 다음 역할극 난이도가 없음. 역할극 단독 배정 불가 |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
 | 422 | INVALID_GOAL_CONDITIONS | 빈 원소, LEARNER id, 피할 표현이 필수 요소·등장인물 role과 겹침. `fieldErrors`의 `goal.` 경로로 칸 표시 |
 | 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |
@@ -196,7 +197,7 @@ export interface GoalBody {
 export interface ActivityBody {
   /** 담당 아동 UUID */
   childId: UUID;
-  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 현재 422로 거부 */
+  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) */
   activityType?: ActivityType | null;
   /** FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 */
   goal?: GoalBody | null;

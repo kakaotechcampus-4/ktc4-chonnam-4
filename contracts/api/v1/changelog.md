@@ -7,6 +7,18 @@
   - `TOO_MANY_REQUESTS`(nginx): 같은 접속 IP 의 입장 요청이 분당 60번(한꺼번에 60번)을 넘으면 `Retry-After: 60`.
 - 다른 Endpoint·성공 응답·기존 오류 코드는 바뀌지 않습니다.
 
+## 2026-11-06 — 리포트·추천·다음 역할극 난이도(PR #90), 역할극 단독도 PR #101 검토 흐름으로
+
+- 기준은 develop `f017637` 위 `feature/roleplay-report-integration` 작업 브랜치(PR #90)입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 59개 ID 중 구현 42개·조건부 구현 2개·설계 13개·미제공 2개입니다. [API-REC-01~05](./reports-recommendations/get-learning-report.md)를 설계에서 구현으로 바꾸고 다음 역할극 난이도 조회 [API-REC-06](./reports-recommendations/get-roleplay-difficulty.md)(`GET /api/v1/children/{childId}/roleplay-difficulty`)을 더했습니다.
+- 리포트의 `quiz`·`roleplay`·`difficultyDecision`은 서버가 기록에서 센 값이고, `metrics`(분자·분모)와 `narrative`(AI 항목과 근거 ID)가 있습니다. 추천 유형은 REINFORCE·REPEAT·APPLY·EXTEND, 충분성은 SUFFICIENT·LIMITED·INSUFFICIENT, 거절 이유는 NOT_NOW·NOT_SUITABLE·ALREADY_PLANNED·OTHER입니다. 채택해도 서버는 목표·활동을 만들지 않아 `createdGoalId`는 늘 null입니다.
+- 추천 결정(API-REC-05)은 같은 키·같은 입력이면 앞 결과를 200으로, 같은 키·다른 입력이면 409 `IDEMPOTENCY_KEY_REUSED`, 확정 뒤 다시 결정하면 409 `RECOMMENDATION_ALREADY_DECIDED`입니다.
+- [API-ACT-01](./activities/create-activity.md): ROLEPLAY(역할극 단독)를 배정할 수 있습니다. 최초 결합 완료와 다음 역할극 난이도가 있어야 하고(없으면 409 `ROLEPLAY_DIFFICULTY_NOT_READY`), 배정 때 레벨·시작 지원을 활동에 고정합니다. 요청에 시나리오를 받지 않고 응답의 `scenarioId`는 null입니다.
+- 역할극 단독의 시나리오는 최초 결합과 같은 [API-SCN-08](./scenarios/list-scenario-approvals.md) 승인 대기함 → [API-SCN-01](./scenarios/prepare-scenario.md) 준비·다음 후보 → [API-SCN-04](./scenarios/review-scenario.md) 확정으로 붙습니다. 승인 대기함의 `scenarioLevel`·`waitingSince`는 퀴즈 결과 대신 활동에 고정한 난이도·고정 시각입니다.
+- 검토 입력 지문에 역할극 단독은 고정 난이도의 결정 ID(`source_decision_id`)·고정 지원 수준을 더 넣습니다. 그 활동의 고정값이 바뀌면 이전 검토 확정은 409 `SCENARIO_REVIEW_INPUT_CHANGED`이고, 다른 역할극이 끝나 새 결정이 생긴 것만으로는 바뀌지 않습니다. 최초 결합의 지문은 그대로입니다.
+- 작업 브랜치에만 있던 역할극 단독 후보 조회(`GET /api/v1/children/{childId}/roleplay-scenarios`), 배정 요청의 `scenarioId`·`reuseApproved`, 422 `SCENARIO_REQUIRED`·`SCENARIO_NOT_MATCHED`·`SCENARIO_REUSE_NOT_APPROVED`·`SCENARIO_NOT_ALLOWED`는 PR #101 회의 결정에 따라 지웠습니다. develop에 들어간 적 없는 계약입니다.
+- [API-ACT-02](./activities/list-child-activities.md)·[API-ACT-03](./activities/get-activity.md)의 `nextAction`은 역할극 단독도 고정 난이도를 근거로 판정합니다(확정 전 `WAIT_FOR_SCENARIO`).
+
 ## 2026-11-06 — 아동용 활동 목록 응답 분리
 
 - develop e09bbbf 기반 refactor/child-activity-response 작업본입니다. PR #99 리뷰 r4480037266 및 FE 답변 r4488412186을 반영합니다. 운영 배포 완료를 뜻하지 않습니다.

@@ -103,6 +103,23 @@ neuringo:
     model: ${AI_MODEL:}
     request-timeout: ${AI_TIMEOUT:10s}
     max-retries: ${AI_MAX_RETRIES:0}
+    # 비우면 보내지 않는다. 엘리스 게이트웨이는 비스트리밍 출력 2,000토큰(추론 포함)까지만 받는다.
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:}
+    reasoning-effort: ${AI_REASONING_EFFORT:}
+    # 호출 목적별 모델 경로. base-url 과 model 이 둘 다 있을 때만 켜지고, 비어 있으면 위 기본 모델로 간다.
+    routes:
+      report-generation:
+        base-url: ${AI_REPORT_GENERATION_BASE_URL:}
+        model: ${AI_REPORT_GENERATION_MODEL:}
+        request-timeout: ${AI_REPORT_GENERATION_TIMEOUT:60s}
+        max-output-tokens: ${AI_REPORT_GENERATION_MAX_OUTPUT_TOKENS:2000}
+        reasoning-effort: ${AI_REPORT_GENERATION_REASONING_EFFORT:}
+      report-review:
+        base-url: ${AI_REPORT_REVIEW_BASE_URL:}
+        model: ${AI_REPORT_REVIEW_MODEL:}
+        request-timeout: ${AI_REPORT_REVIEW_TIMEOUT:90s}
+        max-output-tokens: ${AI_REPORT_REVIEW_MAX_OUTPUT_TOKENS:2000}
+        reasoning-effort: ${AI_REPORT_REVIEW_REASONING_EFFORT:}
     stt:
       provider: ${STT_PROVIDER:none}
       provider-name: ${STT_PROVIDER_NAME:openai}
@@ -122,3 +139,15 @@ neuringo:
       language: ${TTS_LANGUAGE:kor}
       audio-format: ${TTS_AUDIO_FORMAT:mp3}
       request-timeout: ${TTS_TIMEOUT:15s}
+  # 역할극 리포트·다음 난이도·추천(backend/docs/roleplay-report-integration.md).
+  report:
+    workers: ${REPORT_WORKERS:1}
+    queue-capacity: ${REPORT_QUEUE_CAPACITY:50}
+    stale-after: ${REPORT_STALE_AFTER:10m}
+    max-attempts: ${REPORT_MAX_ATTEMPTS:3}
+    # 팀 결정 대기: L1(S2 시작) 역할극 만점에서도 확장 추천을 낼지. true 가 지금 정책이다.
+    extend-from-lowest-level: ${REPORT_EXTEND_FROM_LOWEST_LEVEL:true}
+    difficulty:
+      # 팀 결정 대기: 상향 후보 기준(기본 80)과 빠른 상향(기본 끔, DEC-014). 바꾸면 정책 버전 뒤에 값이 붙는다.
+      upgrade-threshold-percent: ${REPORT_UPGRADE_THRESHOLD_PERCENT:80}
+      fast-upgrade-percent: ${REPORT_FAST_UPGRADE_PERCENT:}

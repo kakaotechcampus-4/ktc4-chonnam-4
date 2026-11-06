@@ -23,7 +23,7 @@ const linkClass =
   'text-[var(--instructor-link)] hover:underline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--instructor-focus)]'
 
 /**
- * 콘텐츠·승인 관리 → 승인 대기함(시안 T-CNT). 시나리오를 기다리는 최초 결합 활동을 기다린 순서대로 한 줄씩 보여 준다.
+ * 콘텐츠·승인 관리 → 승인 대기함(시안 T-CNT). 시나리오를 기다리는 최초 결합·역할극 단독 활동을 기다린 순서대로 한 줄씩 보여 준다.
  * 재사용 후보는 이미 있는 공용 시나리오라 이 아동을 위한 시나리오가 따로 없어, 시안의 시나리오 중심 열 대신 아동·목표 중심으로 보인다.
  * 검토하다 나간 활동은 "검토 중"으로 남아 같은 자리에서 이어 본다(시안 메모 4-1). 시나리오 목록·상세·버전 이력 탭과 일괄 승인은 아직 없다.
  */
@@ -91,7 +91,7 @@ function ContentApprovalPage() {
           <Notice tone="error">{describeError(error, '승인 대기 목록을 불러오지 못했습니다.')}</Notice>
         ) : items.length === 0 ? (
           <p className="text-sm text-[var(--instructor-text-muted)]">
-            승인을 기다리는 활동이 없습니다. 아동이 첫 활동의 퀴즈를 마치면 여기에 보입니다.
+            승인을 기다리는 활동이 없습니다. 아동이 첫 활동의 퀴즈를 마치거나 역할극 단독 활동을 배정하면 여기에 보입니다.
           </p>
         ) : (
           <>

@@ -10,8 +10,8 @@ import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.GeneratedScenario;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.goal.dto.LearningGoalResponse;
-import com.neuringo.neuringobe.scenario.dto.InitialScenarioPreparation;
 import com.neuringo.neuringobe.scenario.dto.ScenarioGenerationContext;
+import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -61,7 +61,7 @@ public class ScenarioGenerationService {
                                 goal.requiredElements(),
                                 goal.forbiddenExpressions()),
                         ScenarioGenerationInput.Difficulty.of(
-                                context.input().initialDifficulty().scenarioLevel()),
+                                context.input().difficulty().scenarioLevel()),
                         previous == null
                                 ? null
                                 : new ScenarioGenerationInput.Revision(
@@ -73,7 +73,7 @@ public class ScenarioGenerationService {
                         requestId,
                         context.snapshot().activityId(),
                         context.input().reuseKey().classId(),
-                        context.input().initialDifficulty().childId(),
+                        context.input().difficulty().childId(),
                         null,
                         null,
                         null,
@@ -128,7 +128,7 @@ public class ScenarioGenerationService {
     }
 
     @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
-    public void validateStored(InitialScenarioPreparation input, GeneratedScenario scenario) {
+    public void validateStored(ScenarioPreparationInput input, GeneratedScenario scenario) {
         var goal = input.learningGoal();
         var conditions =
                 new ScenarioGenerationInput(
@@ -139,13 +139,12 @@ public class ScenarioGenerationService {
                                 goal.characters(),
                                 goal.requiredElements(),
                                 goal.forbiddenExpressions()),
-                        ScenarioGenerationInput.Difficulty.of(
-                                input.initialDifficulty().scenarioLevel()),
+                        ScenarioGenerationInput.Difficulty.of(input.difficulty().scenarioLevel()),
                         null);
         var trace =
                 new AiTraceContext(
                         UUID.randomUUID(),
-                        input.initialDifficulty().activityId(),
+                        input.difficulty().activityId(),
                         input.reuseKey().classId(),
                         null,
                         null,

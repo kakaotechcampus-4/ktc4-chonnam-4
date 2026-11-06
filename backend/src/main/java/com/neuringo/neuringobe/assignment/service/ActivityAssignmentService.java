@@ -17,6 +17,7 @@ import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
 import com.neuringo.neuringobe.goal.service.LearningGoalService;
 import com.neuringo.neuringobe.quiz.domain.QuizItem;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
+import com.neuringo.neuringobe.scenario.service.FollowUpDifficultyService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -52,6 +53,7 @@ public class ActivityAssignmentService {
     private final LearningGoalService goalService;
     private final ChildAccessScope access;
     private final QuizAssignmentService quizAssignment;
+    private final FollowUpDifficultyService followUpDifficulties;
     private final TransactionTemplate transaction;
 
     public ActivityAssignmentService(
@@ -61,6 +63,7 @@ public class ActivityAssignmentService {
             LearningGoalService goalService,
             ChildAccessScope access,
             QuizAssignmentService quizAssignment,
+            FollowUpDifficultyService followUpDifficulties,
             PlatformTransactionManager transactionManager) {
         this.activities = activities;
         this.children = children;
@@ -68,6 +71,7 @@ public class ActivityAssignmentService {
         this.goalService = goalService;
         this.access = access;
         this.quizAssignment = quizAssignment;
+        this.followUpDifficulties = followUpDifficulties;
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
@@ -97,8 +101,11 @@ public class ActivityAssignmentService {
      * 최초 결합 1회는 예전 활동이 남은 DB 에서 마이그레이션이 깨지지 않도록 인덱스를 두지 않아 이 잠금이 유일한 방어선이다. DB 의 UNIQUE(요청 키)·부분
      * UNIQUE(시작 전 아동·독립 퀴즈 유형)는 마지막 장치다.
      *
-     * <p>유형 규칙: 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에만 다른 유형을 배정한다. 최초 결합·역할극은 목표가 있어야 하고 독립 퀴즈는 없어야 한다. 역할극은
-     * 역할극 API 가 생기기 전까지 배정하지 않는다.
+     * <p>유형 규칙: 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에만 다른 유형을 배정한다. 최초 결합·역할극은 목표가 있어야 하고 독립 퀴즈는 없어야 한다.
+     *
+     * <p>역할극 단독 활동은 퀴즈 문항 없이 만들고, 이 아동의 가장 최근 다음 역할극 난이도(VS-016)를 활동에 고정한다. 마친 역할극이 없어 난이도가 없으면
+     * 배정하지 않는다. 시나리오는 배정 때 붙이지 않는다. 최초 결합과 같이 강사가 공통 검토(PR #101 START_OR_RESUME·NEXT → 확정 PUT)에서 고정
+     * 난이도를 입력으로 후보를 확인하고 확정할 때 연결된다(FollowUpScenarioPreparationService).
      *
      * <p>목표는 확인을 모두 통과한 뒤에 저장한다. 그 뒤에 실패해도 같은 트랜잭션이라 함께 롤백된다.
      */
@@ -143,12 +150,6 @@ public class ActivityAssignmentService {
             throw new ApiException(
                     HttpStatus.CONFLICT, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.");
         }
-        if (type == ActivityType.ROLEPLAY) {
-            throw new ApiException(
-                    HttpStatus.UNPROCESSABLE_CONTENT,
-                    "ACTIVITY_TYPE_NOT_AVAILABLE",
-                    "역할극 활동은 아직 배정할 수 없습니다.");
-        }
         if (type == ActivityType.FIRST_COMBINED) {
             if (activities.existsByChildIdAndActivityType(
                     request.childId(), ActivityType.FIRST_COMBINED)) {
@@ -169,6 +170,9 @@ public class ActivityAssignmentService {
                     request.childId(), type, ActivityStatus.NOT_STARTED)) {
                 throw duplicateAssignment();
             }
+        }
+        if (type == ActivityType.ROLEPLAY) {
+            return assignRoleplay(request, requestKey, goal);
         }
 
         List<QuizItem> picks = quizAssignment.pickItems(type);
@@ -192,6 +196,39 @@ public class ActivityAssignmentService {
                                 requestKey,
                                 Instant.now()));
         quizAssignment.attach(created.getActivityId(), picks);
+        return new Assignment(ActivityResponse.from(created), true);
+    }
+
+    /**
+     * 역할극 단독 활동. 아동 행을 잠근 트랜잭션 안이라 같은 아동의 역할극 완료가 난이도를 바꾸는 중에 섞이지 않는다. 시나리오 없이 만들고(scenarioId
+     * null), 강사가 승인 대기함·검토 화면에서 확정한다.
+     */
+    private Assignment assignRoleplay(
+            CreateActivityRequest request, UUID requestKey, LearningGoal goal) {
+        followUpDifficulties
+                .latestForChild(request.childId())
+                .orElseThrow(
+                        () ->
+                                new ApiException(
+                                        HttpStatus.CONFLICT,
+                                        "ROLEPLAY_DIFFICULTY_NOT_READY",
+                                        "마친 역할극이 없어 다음 역할극 난이도를 정하지 못했습니다."));
+        UUID goalId = goals.save(goal).getGoalId();
+        Activity roleplay =
+                new Activity(
+                        UUID.randomUUID(),
+                        request.childId(),
+                        ActivityType.ROLEPLAY,
+                        goalId,
+                        requestKey,
+                        Instant.now());
+        Activity created = activities.saveAndFlush(roleplay);
+        var pinned =
+                followUpDifficulties
+                        .pinForActivity(created.getActivityId(), request.childId())
+                        .orElseThrow();
+        created.applyInitialDifficulty(pinned.getInitialSupportLevel().name(), false);
+        activities.saveAndFlush(created);
         return new Assignment(ActivityResponse.from(created), true);
     }
 

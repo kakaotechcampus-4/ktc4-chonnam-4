@@ -43,21 +43,25 @@ public class ActivityCompletionService {
     /**
      * 활동 행을 잠그고 서버가 역할극 완료 조건을 확인한 뒤 호출한다. 목표 달성 또는 최대 턴 종료의 판단과 최초 결합의 퀴즈 완료 확인은 호출자가 맡는다. 이 메서드는
      * 목표 미달을 달성으로 바꾸거나 후속 난이도를 결정하지 않는다.
+     *
+     * @return 이번 호출로 처음 완료됐으면 true. 이미 완료된 활동이면 false 라서, 호출자는 완료 뒤 작업(리포트 준비)을 한 번만 시작할 수 있다
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void completeAfterRoleplay(Activity lockedActivity) {
+    public boolean completeAfterRoleplay(Activity lockedActivity) {
         var type = lockedActivity.getActivityType();
         if (type != ActivityType.FIRST_COMBINED && type != ActivityType.ROLEPLAY) {
             throw new IllegalArgumentException("역할극으로 완료할 수 없는 활동 유형입니다.");
         }
-        complete(lockedActivity);
+        return complete(lockedActivity);
     }
 
-    private void complete(Activity lockedActivity) {
+    private boolean complete(Activity lockedActivity) {
         Instant now = clock.instant();
         if (lockedActivity.complete(now)) {
             records.saveAndFlush(
                     new LearningRecord(UUID.randomUUID(), lockedActivity.getActivityId(), now));
+            return true;
         }
+        return false;
     }
 }
