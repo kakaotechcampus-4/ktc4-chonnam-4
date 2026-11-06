@@ -24,13 +24,18 @@ BASE="http://127.0.0.1:$PORT"
 
 random_hex() { od -An -tx1 -N"$1" /dev/urandom | tr -d ' \n'; }
 compose() { docker compose -f deploy/compose.dev.yml -p "$PROJECT" "$@"; }
-cleanup() { compose down --volumes --remove-orphans >/dev/null 2>&1 || true; }
+APP_ENV_FILE=$(mktemp)
+cleanup() { compose down --volumes --remove-orphans >/dev/null 2>&1 || true; rm -f "$APP_ENV_FILE"; }
 
 # compose.dev.yml 은 .env 대신 이 환경변수를 읽는다. DB 계정은 실행마다 새로 만든다.
 DB_USERNAME="smoke_$(random_hex 4)"
 DB_PASSWORD=$(random_hex 16)
 export APP_IMAGE=$BACKEND_IMAGE WEB_IMAGE SPRING_PROFILES_ACTIVE=local APP_BIND=127.0.0.1 APP_PORT=$PORT
 export DB_NAME=neuringo_smoke DB_USERNAME DB_PASSWORD
+# 아동 입장 코드 HMAC 비밀키(32바이트 이상). 서버에서는 Parameter Store 값이 env_file(neuringo.env)로 들어온다.
+# 없으면 입장 코드를 확인할 때 백엔드가 500 을 낸다. 실행마다 새로 만든다(scripts/e2e.sh 와 같은 방식).
+printf 'CHILD_ACCESS_HMAC_SECRET=%s\n' "$(random_hex 32)" >"$APP_ENV_FILE"
+export APP_ENV_FILE
 
 echo "▶ 이미지 빌드 ($BACKEND_IMAGE, $WEB_IMAGE)"
 docker build -t "$BACKEND_IMAGE" backend
