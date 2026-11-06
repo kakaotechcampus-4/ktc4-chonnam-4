@@ -53,5 +53,7 @@ ROLEPLAY_ALLOWED_FORMATS?=roleplay/http/allowed-formats
 ROLEPLAY_WORKER_COUNT?=roleplay/http/worker-count
 ROLEPLAY_QUEUE_CAPACITY?=roleplay/http/queue-capacity
 ROLEPLAY_TURN_BUDGET?=roleplay/http/turn-budget
+ROLEPLAY_TEXT_ENABLED?=roleplay/text/enabled
+ROLEPLAY_TEXT_MAXIMUM_CHARACTERS?=roleplay/text/maximum-characters
 ROLEPLAY_MAXIMUM_TURN_COUNT?=roleplay/progress/maximum-turn-count
 ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL?=roleplay/progress/maximum-support-turns-per-micro-goal
