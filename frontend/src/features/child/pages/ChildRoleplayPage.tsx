@@ -49,7 +49,8 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
   if (message.speaker === "child") {
     return (
       <div className={`${COLUMN} flex items-center justify-end gap-2`}>
-        <p className="max-w-[80%] rounded-[var(--child-radius-card)] rounded-br-md bg-[#EDE9FE] px-5 py-3 text-lg font-medium text-[var(--child-text)] shadow-sm">
+        {/* 띄어쓰기 없이 긴 답("ㅋㅋㅋ…" 200자 등)도 말풍선 안에서 줄을 바꾼다. 안 그러면 화면이 가로로 넘친다. */}
+        <p className="max-w-[80%] rounded-[var(--child-radius-card)] rounded-br-md bg-[#EDE9FE] px-5 py-3 text-lg font-medium wrap-anywhere text-[var(--child-text)] shadow-sm">
           “{message.text}”
         </p>
         <span
@@ -199,7 +200,8 @@ function ChildRoleplayPage() {
     },
   })
 
-  // 새 말풍선이 생기면 맨 아래로 내려 보여준다.
+  // 새 말풍선이 생기면 맨 아래(입력창 아래)로 내려, 최신 말풍선과 입력창이 함께 보이게 한다.
+  // 대화 끝으로만 내리면 입력창이 화면 밖으로 밀려 아이가 직접 스크롤해야 했다.
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [replies.length, turnMutation.isPending])
@@ -298,7 +300,6 @@ function ChildRoleplayPage() {
                 생각하고 있어요…
               </SpeechBubble>
             ) : null}
-            <div ref={threadEndRef} />
           </div>
 
           <div className={COLUMN}>
@@ -318,6 +319,7 @@ function ChildRoleplayPage() {
               />
             )}
           </div>
+          <div ref={threadEndRef} />
         </div>
       ) : null}
 

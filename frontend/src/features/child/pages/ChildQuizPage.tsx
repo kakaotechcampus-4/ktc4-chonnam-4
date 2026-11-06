@@ -296,11 +296,13 @@ function QuizQuestionView({
         </ChildButton>
       )}
 
-      {isSelf ? (
+      {/* 고르는 동안에만 보이는 안내라, 답을 낸 뒤에는 빼서 결과·다음 버튼이 한 화면에 들어오게 한다. */}
+      {isSelf && isAnswering ? (
         <div className="flex items-start justify-between gap-3">
           <p className="text-sm text-[#6B6776]">다른 마음도 괜찮아요. 내 마음과 가장 가까운 표정을 골라요.</p>
-          {/* Figma 오른쪽 아래 깡총이 자리. 장식이라 읽지 않는다. */}
-          <div aria-hidden="true" className="hidden shrink-0 md:block">
+          {/* Figma 오른쪽 아래 깡총이 자리. 장식이라 읽지 않는다.
+              갤럭시 탭 가로(1138×712)처럼 높이가 낮은 화면에서는 이 그림 때문에 화면이 세로로 넘쳐 숨긴다. */}
+          <div aria-hidden="true" className="hidden shrink-0 md:block [@media(max-height:50rem)]:hidden">
             <Character name="rabbit" size="md" />
           </div>
         </div>
