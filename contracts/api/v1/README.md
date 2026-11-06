@@ -1,5 +1,7 @@
 # 느링고 API v1 명세
 
+> 2026-11-06 활동 목록 응답 분리 작업본: 본인 아동 세션은 activityId/activityType/status/completedAt/nextAction만 받고, 담당 강사는 기존 응답을 받습니다. [ACT-02](./activities/list-child-activities.md)의 인증별 스키마를 따릅니다. 실제 FE·공유 TypeScript 예제는 이번 수정에서 변경하지 않았습니다.
+
 > 계약 갱신: 2026-11-05 · develop `7376e91`(PR #101·#103 병합). 2026-11-04 develop [`bab136d`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/bab136d86b0642fd8446b3299fe09de3e9eb4a4e) 기준으로 구현·조건부 API를 다시 대조한 뒤, #101 시나리오 검토 API와 #103 준비 상태(nextAction)를 공유 예제에 반영했습니다. 변경 내역은 [changelog](./changelog.md)의 2026-11-05·2026-11-04 항목을 봅니다.
 
 > S4-JIN-02 작업본(2026-11-05): [ACT-02 목록](./activities/list-child-activities.md)과 [ACT-03 상세](./activities/get-activity.md)에 서버 계산 nextAction/blockedReason을 추가했습니다. 생성·status 응답은 유지합니다. [RPL-01](./roleplay/start-roleplay.md)은 저장 근거 검사 후 중단된 역할극을 재개합니다. 퀴즈도 새 답변·새 힌트 저장에서 검사 후 재개합니다. 백엔드 전체 빌드·회귀는 통과했습니다. 실제 프론트엔드·공유 TypeScript 예제 반영과 브라우저 연동·배포 검증은 남아 있습니다.
@@ -14,7 +16,7 @@
 
 ## 현재 제공 범위
 
-develop `7376e91`에 API-SCN-08을 더한 기준 58개 API ID 중 **구현36개 · 조건부 구현2개 · 설계18개 · 미제공2개**입니다(시나리오 준비·확정·취소 API-SCN-01·04·06이 PR #101로 구현, 승인 대기 활동 목록 API-SCN-08이 이 브랜치로 구현). 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했습니다. 실제 FE 아동 화면은 퀴즈(QUIZ-03·04·05·06)·완료 확인(ACT-04)·역할극 시작(RPL-01)·글자 입력(RPL-05)을 실제 API로 부르고, 말로 답하기(RPL-04)는 아직 연결하지 않았습니다.
+develop `f017637`에 리포트·추천·다음 역할극 난이도(API-REC-01~06)를 더한 `feature/roleplay-report-integration`(PR #90) 기준 59개 API ID 중 **구현42개 · 조건부 구현2개 · 설계13개 · 미제공2개**입니다(시나리오 준비·확정·취소 API-SCN-01·04·06은 PR #101, 승인 대기 활동 목록 API-SCN-08은 PR #108로 구현). 역할극 단독(ROLEPLAY) 활동의 시나리오도 같은 검토·확정 흐름으로 배정합니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했습니다. 실제 FE 아동 화면은 퀴즈(QUIZ-03·04·05·06)·완료 확인(ACT-04)·역할극 시작(RPL-01)·글자 입력(RPL-05)을 실제 API로 부르고, 말로 답하기(RPL-04)는 아직 연결하지 않았습니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
@@ -129,11 +131,12 @@ develop `7376e91`에 API-SCN-08을 더한 기준 58개 API ID 중 **구현36개 
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-REC-01 · 완료 리포트 단건 조회](./reports-recommendations/get-learning-report.md) | GET | `/api/v1/activities/{activityId}/learning-record` | 설계 | getLearningReport |
-| [API-REC-02 · 아동 완료 리포트 목록 조회](./reports-recommendations/list-learning-reports.md) | GET | `/api/v1/learning-records` | 설계 | listLearningReports |
-| [API-REC-03 · 학습 기록 추천 목록 조회](./reports-recommendations/list-recommendations.md) | GET | `/api/v1/learning-records/{recordId}/recommendations` | 설계 | listRecommendations |
-| [API-REC-04 · 추천 상세 조회](./reports-recommendations/get-recommendation.md) | GET | `/api/v1/recommendations/{recommendationId}` | 설계 | getRecommendation |
-| [API-REC-05 · 추천 채택·수정 채택·보류·거절](./reports-recommendations/decide-recommendation.md) | PATCH | `/api/v1/recommendations/{recommendationId}` | 설계 | decideRecommendation |
+| [API-REC-01 · 완료 리포트 단건 조회](./reports-recommendations/get-learning-report.md) | GET | `/api/v1/activities/{activityId}/learning-record` | 구현 | getLearningReport |
+| [API-REC-02 · 아동 완료 리포트 목록 조회](./reports-recommendations/list-learning-reports.md) | GET | `/api/v1/learning-records` | 구현 | listLearningReports |
+| [API-REC-03 · 학습 기록 추천 목록 조회](./reports-recommendations/list-recommendations.md) | GET | `/api/v1/learning-records/{recordId}/recommendations` | 구현 | listRecommendations |
+| [API-REC-04 · 추천 상세 조회](./reports-recommendations/get-recommendation.md) | GET | `/api/v1/recommendations/{recommendationId}` | 구현 | getRecommendation |
+| [API-REC-05 · 추천 채택·수정 채택·보류·거절](./reports-recommendations/decide-recommendation.md) | PATCH | `/api/v1/recommendations/{recommendationId}` | 구현 | decideRecommendation |
+| [API-REC-06 · 다음 역할극 난이도 조회](./reports-recommendations/get-roleplay-difficulty.md) | GET | `/api/v1/children/{childId}/roleplay-difficulty` | 구현 | getRoleplayDifficulty |
 
 ## 변경과 검증 절차
 
@@ -145,6 +148,6 @@ develop `7376e91`에 API-SCN-08을 더한 기준 58개 API ID 중 **구현36개 
 node --experimental-strip-types v1/examples/verify-examples.mjs
 ~~~
 
-검사는 JSON·57개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
+검사는 JSON·59개 ID/문서·함수 누락·relative 링크·인증/CSRF/멱등 전송·조건부/설계 차단·200/201/202/204·현재 계약의 회귀를 네트워크 없이 확인합니다. 실제 DB/외부 AI/브라우저 쿠키·CORS·기능 인수를 대신하지 않습니다. 복사한 FE 프로젝트에서는 해당 설정으로 TypeScript 검사와 빌드도 실행합니다.
 
 [fixtures.json](./examples/fixtures.json)은 합성 예제이며 DB seed가 아닙니다. 본문/실명/토큰/비밀번호/원본 음성은 Git·Issue·로그에 올리지 않습니다.

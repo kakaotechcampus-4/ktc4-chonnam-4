@@ -7,6 +7,7 @@ import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
 import { ChildEditPage } from './features/instructor/pages/ChildEditPage'
 import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
 import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
+import { RecommendationsPage } from './features/instructor/pages/RecommendationsPage'
 import { AccountPage } from './features/instructor/pages/AccountPage'
 import { ContentApprovalPage } from './features/instructor/pages/ContentApprovalPage'
 import { ScenarioReviewPage } from './features/instructor/pages/ScenarioReviewPage'
@@ -88,6 +89,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ActivityReportPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/recommendations',
+    element: (
+      <RequireInstructorAuth>
+        <RecommendationsPage />
       </RequireInstructorAuth>
     ),
   },

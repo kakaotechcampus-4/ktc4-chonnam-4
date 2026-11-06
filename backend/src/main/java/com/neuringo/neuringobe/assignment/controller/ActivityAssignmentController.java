@@ -3,7 +3,6 @@ package com.neuringo.neuringobe.assignment.controller;
 import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
-import com.neuringo.neuringobe.assignment.dto.ActivityReadResponse;
 import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.assignment.service.ActivityAssignmentService;
 import com.neuringo.neuringobe.assignment.service.ActivityReadQueryService;
@@ -57,13 +56,13 @@ public class ActivityAssignmentController {
     }
 
     @GetMapping("/api/v1/children/{childId}/activities")
-    public ApiResponse<List<ActivityReadResponse>> list(
+    public ApiResponse<List<?>> list(
             @PathVariable UUID childId,
             @RequestParam(required = false) ActivityStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication) {
-        List<ActivityReadResponse> activities =
+        List<?> activities =
                 sensitiveReads.read(
                         authentication,
                         SensitiveReadLog.Target.CHILD_ACTIVITIES,
