@@ -25,7 +25,7 @@ public interface RoleplayTurnRepository extends JpaRepository<RoleplayTurn, UUID
 
     @Modifying(flushAutomatically = true)
     @Query(
-            "update RoleplayTurn t set t.canonicalUtterance = null where t.sessionId = :session and t.canonicalUtterance is not null")
+            "update RoleplayTurn t set t.canonicalUtterance = null, t.inputQuality = null where t.sessionId = :session and t.canonicalUtterance is not null")
     int deleteCanonicalUtterances(@Param("session") UUID sessionId);
 
     /** Permanent deletion only; delete owning sessions in the same transaction before commit. */

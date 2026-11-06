@@ -43,11 +43,11 @@ public class JdbcRoleplayProgressSource implements RoleplayProgressSource {
                 join child c on c.child_id=s.child_id
                 join learning_goal g on g.goal_id=a.goal_id and g.child_id=c.child_id
                 join scenario sc on sc.scenario_id=s.scenario_id and sc.scenario_version=s.scenario_version
+                join activity_approved_scenario av on av.activity_id=a.activity_id and av.scenario_id=sc.scenario_id and av.scenario_version=sc.scenario_version
                 where s.session_id=? and s.child_id=? and s.activity_id=? and a.goal_id=?
                   and s.scenario_id=? and a.scenario_id=s.scenario_id and s.scenario_version=?
                   and s.row_version=? and s.status='IN_PROGRESS' and a.status='IN_PROGRESS'
                   and c.status='ACTIVE' and sc.status='APPROVED'
-                  and sc.goal_content_hash=g.content_hash
                 """,
                         (rs, n) ->
                                 new Saved(

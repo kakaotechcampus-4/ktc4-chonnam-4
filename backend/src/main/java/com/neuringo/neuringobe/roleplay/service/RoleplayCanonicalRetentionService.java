@@ -15,12 +15,20 @@ public class RoleplayCanonicalRetentionService {
     private static final Duration INCOMPLETE_RETENTION = Duration.ofHours(24);
     private final RoleplaySessionRepository sessions;
     private final RoleplayTurnRepository turns;
+    private final RoleplayVoiceFailureStore failures;
     private final Clock clock;
+    private final RoleplayRetentionGate retentionGate;
 
     public RoleplayCanonicalRetentionService(
-            RoleplaySessionRepository sessions, RoleplayTurnRepository turns, Clock clock) {
+            RoleplaySessionRepository sessions,
+            RoleplayTurnRepository turns,
+            RoleplayVoiceFailureStore failures,
+            RoleplayRetentionGate retentionGate,
+            Clock clock) {
         this.sessions = sessions;
         this.turns = turns;
+        this.failures = failures;
+        this.retentionGate = retentionGate;
         this.clock = clock;
     }
 
@@ -36,6 +44,7 @@ public class RoleplayCanonicalRetentionService {
                                                 "Owned roleplay session not found"));
         session.completeNormally(clock.instant());
         int erased = turns.deleteCanonicalUtterances(sessionId);
+        failures.deleteBySessionId(sessionId);
         sessions.flush();
         return erased;
     }
@@ -47,7 +56,24 @@ public class RoleplayCanonicalRetentionService {
         for (var session : sessions.findRetainingExpiredForUpdate(cutoff)) {
             // Recheck locked state; concurrent checkpoint writes acquire the same session lock.
             if (session.requiresCanonicalCleanup(cutoff)) {
+                var lease = retentionGate.tryEnterCleanup(session.getSessionId());
+                if (lease.isEmpty()) continue;
+                try {
+                    org.springframework.transaction.support.TransactionSynchronizationManager
+                            .registerSynchronization(
+                                    new org.springframework.transaction.support
+                                            .TransactionSynchronization() {
+                                        @Override
+                                        public void afterCompletion(int status) {
+                                            lease.get().close();
+                                        }
+                                    });
+                } catch (RuntimeException failure) {
+                    lease.get().close();
+                    throw failure;
+                }
                 erased += turns.deleteCanonicalUtterances(session.getSessionId());
+                failures.deleteBySessionId(session.getSessionId());
             }
         }
         return erased;

@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.roleplay.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -96,7 +97,7 @@ public class RoleplaySession {
         session.status = "IN_PROGRESS";
         session.currentSupportLevel = initialSupportLevel;
         session.currentMicroGoalId = initialMicroGoalId;
-        session.lastActivityAt = Objects.requireNonNull(now);
+        session.lastActivityAt = StoredTime.normalize(Objects.requireNonNull(now));
         return session;
     }
 
@@ -131,7 +132,7 @@ public class RoleplaySession {
     public void completeNormally(Instant now) {
         if (!"COMPLETED".equals(status)) {
             status = "COMPLETED";
-            lastActivityAt = now;
+            lastActivityAt = StoredTime.normalize(now);
         }
     }
 
@@ -161,6 +162,15 @@ public class RoleplaySession {
                 && nextTurn == lastTurnNumber + 1;
     }
 
+    /** 활동만 중단됐던 경우에도 버전을 갱신해 재개 전 요청의 저장을 막는다. */
+    public void resume(Instant now) {
+        if (!Set.of("IN_PROGRESS", "PAUSED").contains(status)) {
+            throw new IllegalStateException("재개할 수 없는 역할극 세션입니다.");
+        }
+        status = "IN_PROGRESS";
+        lastActivityAt = StoredTime.normalize(Objects.requireNonNull(now));
+    }
+
     public void advance(
             UUID turnId, int turnNumber, UUID goalId, String supportLevel, Instant now) {
         if (!"IN_PROGRESS".equals(status) || turnNumber != lastTurnNumber + 1)
@@ -169,6 +179,6 @@ public class RoleplaySession {
         lastTurnNumber = turnNumber;
         currentMicroGoalId = goalId;
         currentSupportLevel = supportLevel;
-        lastActivityAt = now;
+        lastActivityAt = StoredTime.normalize(now);
     }
 }

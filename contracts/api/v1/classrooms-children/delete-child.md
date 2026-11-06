@@ -1,6 +1,8 @@
 # API-CLS-10 · 아동 즉시 영구 삭제
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 2026-11-05 S4-JIN-01 작업본 V39: 본인 아동의 학습 데이터는 기존 정책대로 영구 삭제한다. 공통 승인 콘텐츠와 다른 강사의 배정은 보존하며, 학급을 삭제하면 시나리오의 학급 연결만 NULL로 해제한다. 미완료 검토의 참조 없는 생성 초안은 정리한다. 공통 후보 API 전환은 아직 진행 중이다.
+
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -147,6 +149,6 @@ curl -i -X DELETE "$NEURINGO_API_ORIGIN/api/v1/children/${childId}" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-01` · `S4-JEONG-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/deletion/controller/DeletionController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/deletion/controller/DeletionController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

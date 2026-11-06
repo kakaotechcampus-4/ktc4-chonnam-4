@@ -83,11 +83,8 @@ public class InitialRoleplayStartQueryService {
         }
         var version =
                 scenarios
-                        .findMatchingApprovedVersion(
-                                activity.getScenarioId(),
-                                child.getClassId(),
-                                goal.getContentHash(),
-                                evidence.scenarioLevel())
+                        .findAssignedApprovedVersion(
+                                activityId, activity.getScenarioId(), evidence.scenarioLevel())
                         .orElseThrow(this::notReady);
         return new InitialRoleplayStartInput(evidence, version);
     }

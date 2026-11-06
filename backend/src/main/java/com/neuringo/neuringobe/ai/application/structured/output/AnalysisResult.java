@@ -1,6 +1,8 @@
 package com.neuringo.neuringobe.ai.application.structured.output;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplaySupportApplication;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -12,7 +14,29 @@ public record AnalysisResult(
         @JsonProperty("primary_gap") PrimaryGap primaryGap,
         @JsonProperty("next_strategy") NextStrategy nextStrategy,
         @JsonProperty("analysis_confidence") Double analysisConfidence,
-        @JsonProperty("goal_observation") GoalObservationOutput.Analysis goalObservation) {
+        @JsonProperty("goal_observation") GoalObservationOutput.Analysis goalObservation,
+        @JsonIgnore RoleplaySupportApplication.Decision supportAdjustment) {
+
+    public AnalysisResult(
+            UUID turnId,
+            String responseAct,
+            String relevance,
+            String learningState,
+            PrimaryGap primaryGap,
+            NextStrategy nextStrategy,
+            Double analysisConfidence,
+            GoalObservationOutput.Analysis goalObservation) {
+        this(
+                turnId,
+                responseAct,
+                relevance,
+                learningState,
+                primaryGap,
+                nextStrategy,
+                analysisConfidence,
+                goalObservation,
+                null);
+    }
 
     public AnalysisResult(
             UUID turnId,

@@ -12,44 +12,45 @@ const CARD_STYLES: Record<Emotion, string> = {
   UPSET: "bg-[#F1FAE6] border-[#8BCB4A]",
 }
 
-/** 표정 퀴즈 보기. 힌트 뒤에는 남은 보기(2개)만 넘겨받아 보여준다. */
+// 표정 그림이 없는 보기(시드에 없는 감정 글자)는 중립 카드로 보여 준다.
+const UNKNOWN_CARD_STYLE = "bg-white border-[#D9D5E6]"
+
+/** 표정 퀴즈 보기. 서버가 준 보기 글자를 그대로 고르고, 그 글자를 답으로 보낸다. */
 function EmotionChoices({
   choices,
-  selectedChoiceId,
+  selectedValue,
   onSelect,
   disabled = false,
 }: {
   choices: QuizChoice[]
-  selectedChoiceId: string | null
-  onSelect: (choiceId: string) => void
+  selectedValue: string | null
+  onSelect: (value: string) => void
   disabled?: boolean
 }) {
   return (
     <div role="radiogroup" aria-label="보기" className="grid grid-cols-2 gap-4">
       {choices.map((choice) => {
-        const isSelected = choice.choiceId === selectedChoiceId
+        const isSelected = choice.value === selectedValue
         return (
           <button
-            key={choice.choiceId}
+            key={choice.value}
             type="button"
             role="radio"
             aria-checked={isSelected}
             disabled={disabled}
-            onClick={() => onSelect(choice.choiceId)}
+            onClick={() => onSelect(choice.value)}
             className={cn(
               "relative flex min-h-24 items-center gap-3 break-keep rounded-[20px] border-2 px-4 py-3 text-left transition-transform outline-none select-none active:scale-[0.98] focus-visible:ring-3 focus-visible:ring-[var(--child-primary)]/50 disabled:opacity-60",
-              CARD_STYLES[choice.emotion],
+              choice.emotion ? CARD_STYLES[choice.emotion] : UNKNOWN_CARD_STYLE,
               // 선택한 카드는 감정 색 대신 보라 테두리를 굵게 둘러 한눈에 구분되게 한다.
               isSelected && "border-[3px] border-[#6654D9]"
             )}
           >
-            <EmotionFace emotion={choice.emotion} className="size-13" />
+            {choice.emotion ? <EmotionFace emotion={choice.emotion} className="size-13" /> : null}
             <span className="flex flex-col gap-0.5">
-              <span className="font-child-display text-xl font-extrabold text-[#252331]">{choice.label}</span>
+              <span className="font-child-display text-xl font-extrabold text-[#252331]">{choice.value}</span>
               {isSelected ? (
                 <span className="text-xs font-bold text-[#6654D9]">선택했어요</span>
-              ) : choice.description ? (
-                <span className="text-xs text-[#6B6776]">{choice.description}</span>
               ) : null}
             </span>
             {isSelected ? (

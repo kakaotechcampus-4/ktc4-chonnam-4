@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,13 +8,10 @@ import {
   listChildActivities,
   listChildren,
   listClassrooms,
-  listRoleplayScenarios,
   type Activity,
   type ActivityType,
   type Child,
   type Classroom,
-  type RoleplayScenarioCandidate,
-  type RoleplayScenarioChoice,
 } from '../api'
 import { SUPPORT_LABELS } from '../lib/reportLabels'
 import { describeError } from '../errorMessage'
@@ -25,6 +22,8 @@ import {
   cardClass,
   fieldLabelClass,
   filterButtonClass,
+  focusRingClass,
+  helperTextClass,
   inputClass,
   outlineButtonClass,
   primaryButtonClass,
@@ -42,18 +41,31 @@ import {
   type GoalCategory,
 } from '../lib/goalPresets'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
+import {
+  CHARACTER_ROLE_MAX,
+  REQUIRED_ELEMENT_PRESETS,
+  RELATION_OPTIONS,
+  SITUATION_MAX,
+  contradictingForbidden,
+  OTHER_CHARACTER_ID,
+  relationLabel,
+  type GoalCharacter,
+} from '../lib/goalConditions'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
+import { MaterialIcon } from '../components/MaterialIcon'
 
-type StepKey = 'target' | 'type' | 'goal' | 'confirm'
+type StepKey = 'target' | 'type' | 'goal' | 'conditions' | 'confirm'
 
-// 동작하는 단계만 둔다. 시안의 추가 조건·난이도 결과 단계는 역할극이 생기면 이 배열에 끼운다.
-// 독립 퀴즈는 학습 목표가 없어 목표 단계를 건너뛴다.
+// 동작하는 단계만 둔다. 시안의 난이도 결과 단계는 보여 줄 값이 생기면 이 배열에 끼운다.
+// 난이도는 아이가 첫 퀴즈를 마친 뒤 서버가 정해서, 배정하는 지금은 보여 줄 값이 없다.
+// 독립 퀴즈는 학습 목표도 역할극도 없어 목표·추가 조건 단계를 건너뛴다. 역할극 단독은 최초 결합처럼 목표·추가 조건을 받는다.
 const ALL_STEPS: WizardStep<StepKey>[] = [
   { key: 'target', label: '대상' },
   { key: 'type', label: '유형' },
   { key: 'goal', label: '목표' },
+  { key: 'conditions', label: '추가 조건' },
   { key: 'confirm', label: '확인 · 배정' },
 ]
 
@@ -61,6 +73,7 @@ const STEP_TITLES: Record<StepKey, string> = {
   target: '활동 만들기 — 대상 선택',
   type: '활동 유형 선택',
   goal: '학습 목표 설정',
+  conditions: '역할극 추가 조건',
   confirm: '확인 · 배정',
 }
 
@@ -77,7 +90,7 @@ const COMPOSITION_TEXT: Record<ActivityType, string> = {
   FIRST_COMBINED: '검증된 문항 중에서 유형별로 1개씩, 3문항이 자동으로 준비돼요. 역할극은 준비되는 대로 이어져요.',
   SELF_EMOTION_QUIZ: '내 감정 상황 문항 10개가 자동으로 준비돼요.',
   OTHER_EMOTION_QUIZ: '상대 감정 상황 문항 7개와 표정 그림 문항 3개가 자동으로 준비돼요.',
-  ROLEPLAY: '문항 없이 역할극만 해요. 아래에서 고른 승인 시나리오로 시작해요.',
+  ROLEPLAY: '문항 없이 역할극만 해요. 배정한 뒤 시나리오를 검토해 확정하면 아동이 시작할 수 있어요.',
 }
 
 /**
@@ -104,7 +117,7 @@ function typeGuide(availability: Availability): string {
   return '최초 결합 활동을 마쳐서 표정 퀴즈와 역할극을 만들 수 있어요.'
 }
 
-/** 최초 결합과 역할극은 학습 목표가 있어야 한다. */
+/** 최초 결합과 역할극은 학습 목표와 역할극 추가 조건이 있어야 한다. */
 function needsGoalFor(type: ActivityType | null): boolean {
   return type === 'FIRST_COMBINED' || type === 'ROLEPLAY'
 }
@@ -140,26 +153,43 @@ type GoalTab = 'preset' | 'custom'
 
 type GoalChoice = { title: string; category: GoalCategory | null }
 
+/** 역할극 추가 조건. 모두 선택이고, 비운 항목은 보내지 않는다(생성 쪽 기본값). */
+type Conditions = {
+  situation: string
+  characters: GoalCharacter[]
+  requiredElements: string[]
+  forbiddenExpressions: string[]
+}
+
+const EMPTY_CONDITIONS: Conditions = { situation: '', characters: [], requiredElements: [], forbiddenExpressions: [] }
+
+/** 배정 요청에 실을 조건. 빈 항목은 빼서, 조건을 하나도 고르지 않은 목표는 예전과 같은 요청이 된다. */
+function conditionsPayload({ situation, characters, requiredElements, forbiddenExpressions }: Conditions) {
+  return {
+    ...(situation.trim() ? { situationType: situation.trim() } : {}),
+    ...(characters.length > 0 ? { characters } : {}),
+    ...(requiredElements.length > 0 ? { requiredElements } : {}),
+    ...(forbiddenExpressions.length > 0 ? { forbiddenExpressions } : {}),
+  }
+}
+
 const ASSIGN_ERROR_MESSAGES: Record<string, string> = {
   DUPLICATE_ASSIGNMENT: '이 아동에게 같은 활동이 아직 시작하지 않은 채로 있어요. 활동 이력에서 확인해 주세요.',
   FIRST_ACTIVITY_EXISTS: '이 아동은 이미 최초 활동을 배정받았어요. 활동 이력에서 확인해 주세요.',
   FIRST_ACTIVITY_NOT_COMPLETED: '최초 활동을 마친 뒤에 배정할 수 있어요.',
   QUIZ_ITEMS_UNAVAILABLE: '배정할 수 있는 승인된 퀴즈 문항이 모자라요. 운영 담당자에게 문항 등록을 요청해 주세요.',
+  INVALID_GOAL_CONDITIONS: '피할 표현이 필수 요소와 겹쳐요. 이전 단계에서 추가 조건을 고쳐 주세요.',
   ROLEPLAY_DIFFICULTY_NOT_READY: '아직 마친 역할극이 없어 다음 역할극 난이도가 없어요. 최초 결합 활동의 역할극을 먼저 마쳐 주세요.',
   GOAL_NOT_FOUND: '이어받을 이전 목표를 찾을 수 없어요. 목표를 다시 골라 주세요.',
-  SCENARIO_REQUIRED: '역할극 시나리오를 골라 주세요.',
-  UNAPPROVED_SCENARIO: '고른 시나리오가 지금은 승인 상태가 아니에요. 목록을 새로 불러와 다시 골라 주세요.',
-  SCENARIO_NOT_MATCHED: '고른 시나리오가 이 목표나 다음 난이도와 맞지 않아요. 목록을 새로 불러와 다시 골라 주세요.',
-  SCENARIO_ALREADY_USED: '이 아동이 이미 해 본 시나리오예요. 다른 시나리오를 골라 주세요.',
-  SCENARIO_REUSE_NOT_APPROVED: '다른 아동이 쓴 시나리오예요. 재사용을 승인해야 배정할 수 있어요.',
 }
 
 /**
  * 활동 만들기 (시안의 활동 만들기 화면을 줄인 마법사).
- * 대상 아동 한 명 → 활동 유형 → 학습 목표(최초 결합·역할극) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
+ * 대상 아동 한 명 → 활동 유형 → 학습 목표·역할극 추가 조건(최초 결합·역할극) → 확인 후 배정. 퀴즈 문항은 서버가 유형별 구성대로 고른다.
+ * 역할극 단독은 배정한 뒤 바로 그 활동의 시나리오 검토 화면으로 간다. 시나리오는 최초 결합과 같은 검토·확정(API-SCN-01·04)에서 붙는다.
  *
  * 단계·학급·아동·유형은 주소(?step=&classId=&childId=&type=)에 두어 새로고침해도 남는다. 아동 상세의 "활동 만들기"는
- * 대상을 채워 연다. 목표 입력은 화면 상태라 새로고침하면 목표 단계부터 다시 한다.
+ * 대상을 채워 연다. 목표·조건 입력은 화면 상태라 새로고침하면 목표 단계부터 다시 한다.
  * 리포트의 추천을 채택하면 goalTitle·goalCategory·parentGoalId 가 함께 와서 직접 입력 칸을 채워 연다. 이전 목표는 처음 연 아동에게만 쓴다.
  */
 function ActivityCreatePage() {
@@ -185,6 +215,7 @@ function ActivityCreatePage() {
     prefill.category && isGoalCategory(prefill.category) ? prefill.category : null
   )
   const parentGoalId = prefill.parentGoalId && prefill.childId === childId ? prefill.parentGoalId : null
+  const [conditions, setConditions] = useState<Conditions>(EMPTY_CONDITIONS)
   // 이 화면에서 이 아동에게 보낸 배정의 유형. 응답을 못 받았을 때 다시 보낼 수 있게 남긴다.
   const [sent, setSent] = useState<{ childId: string; type: ActivityType } | null>(null)
 
@@ -204,13 +235,22 @@ function ActivityCreatePage() {
   const availability = activitiesQuery.data ? typeAvailability(activitiesQuery.data) : null
   const activityType = resolveType(requestedType, availability, sent?.childId === childId ? sent.type : null)
   const needsGoal = needsGoalFor(activityType)
-  const steps = activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal')
+  const steps =
+    activityType === null || needsGoal ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'goal' && s.key !== 'conditions')
   // 역할극은 지난 역할극으로 정한 다음 난이도로 배정된다. 확인 단계에서 무엇으로 시작하는지 미리 보인다.
   const difficultyQuery = useQuery({
     queryKey: ['children', childId, 'roleplay-difficulty'],
     queryFn: () => getRoleplayDifficulty(childId!),
     enabled: !!child && activityType === 'ROLEPLAY',
   })
+  // 다음 난이도를 못 읽었으면 역할극은 배정하지 않는다(서버도 409 ROLEPLAY_DIFFICULTY_NOT_READY 로 막는다).
+  const roleplayNotReady = activityType === 'ROLEPLAY' && !difficultyQuery.data
+  // 저장 전에 화면에서 먼저 막는다. 서버도 같은 규칙으로 거절한다.
+  const contradictions = contradictingForbidden(
+    conditions.requiredElements,
+    conditions.forbiddenExpressions,
+    conditions.characters.map((c) => c.role)
+  )
 
   const preset = GOAL_PRESETS.find((p) => p.id === presetId)
   const goal: GoalChoice | null =
@@ -222,35 +262,17 @@ function ActivityCreatePage() {
         ? { title: customTitle.trim(), category: customCategory }
         : null
 
-  // 역할극 단독은 강사가 상황과 작은 목표를 보고 승인 시나리오를 고른다. 대상·목표가 바뀌면 고른 것은 버린다.
-  const scenarioKey = `${childId}|${goal?.title}|${goal?.category}`
-  const [scenarioPick, setScenarioPick] = useState<{ key: string; scenarioId: string; reuseApproved: boolean } | null>(
-    null
-  )
-  const scenariosQuery = useQuery({
-    queryKey: ['children', childId, 'roleplay-scenarios', goal?.title, goal?.category ?? null],
-    queryFn: () => listRoleplayScenarios(childId!, goal!),
-    enabled: !!child && activityType === 'ROLEPLAY' && !!goal,
-  })
-  const pickedScenario =
-    scenarioPick?.key === scenarioKey
-      ? scenariosQuery.data?.items.find((item) => item.scenarioId === scenarioPick.scenarioId)
-      : undefined
-  const scenarioChoice: RoleplayScenarioChoice | null =
-    pickedScenario && (!pickedScenario.reuseApprovalRequired || scenarioPick?.reuseApproved)
-      ? { scenarioId: pickedScenario.scenarioId, reuseApproved: !!scenarioPick?.reuseApproved }
-      : null
-  const needsScenario = activityType === 'ROLEPLAY'
-
   // 주소의 단계가 앞 단계 입력 없이 열리면(새로고침 등) 채워야 할 단계로 돌려보낸다.
   const requestedStep = searchParams.get('step')
   let step: StepKey = 'target'
   if (child && requestedStep !== null && requestedStep !== 'target') {
     if (!activityType) {
       step = 'type'
-    } else if (requestedStep === 'confirm' && (!needsGoal || goal)) {
+    } else if (requestedStep === 'confirm' && (!needsGoal || (goal && contradictions.length === 0))) {
       step = 'confirm'
-    } else if (needsGoal && (requestedStep === 'goal' || requestedStep === 'confirm')) {
+    } else if (needsGoal && goal && (requestedStep === 'conditions' || requestedStep === 'confirm')) {
+      step = 'conditions'
+    } else if (needsGoal && (requestedStep === 'goal' || requestedStep === 'conditions' || requestedStep === 'confirm')) {
       step = 'goal'
     } else {
       step = 'type'
@@ -281,7 +303,7 @@ function ActivityCreatePage() {
 
   // 배정 한 번에 요청 키 하나. 응답을 못 받아 다시 누르면 같은 키로 보내 서버가 목표와 활동을 하나만 남긴다(ADR D4).
   // 대상·유형·목표가 바뀌면 다른 배정이므로 새 키를 쓴다.
-  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${parentGoalId}` : ''}|${scenarioChoice?.scenarioId ?? ''}|${scenarioChoice?.reuseApproved ?? ''}`
+  const submission = `${childId}|${activityType}|${needsGoal ? `${goal?.title}|${goal?.category}|${parentGoalId}|${JSON.stringify(conditions)}` : ''}`
   const attemptRef = useRef<{ submission: string; requestKey: string } | null>(null)
   const isSubmittingRef = useRef(false)
 
@@ -290,12 +312,12 @@ function ActivityCreatePage() {
       target,
       type,
       choice,
-      scenario,
+      extra,
     }: {
       target: Child
       type: ActivityType
       choice: GoalChoice | null
-      scenario: RoleplayScenarioChoice | null
+      extra: Conditions
     }) => {
       if (attemptRef.current?.submission !== submission) {
         attemptRef.current = { submission, requestKey: crypto.randomUUID() }
@@ -308,10 +330,10 @@ function ActivityCreatePage() {
               title: choice.title,
               ...(choice.category ? { category: choice.category } : {}),
               ...(parentGoalId ? { parentGoalId } : {}),
+              ...conditionsPayload(extra),
             }
           : null,
         attemptRef.current.requestKey,
-        scenario ?? undefined,
       )
     },
     // 아동 캐시는 화면을 떠났어도 갱신한다(활동은 이미 배정됐다).
@@ -324,8 +346,8 @@ function ActivityCreatePage() {
     if (
       !child ||
       !activityType ||
-      (needsGoal && !goal) ||
-      (needsScenario && !scenarioChoice) ||
+      (needsGoal && (!goal || contradictions.length > 0)) ||
+      roleplayNotReady ||
       isSubmittingRef.current
     ) {
       return
@@ -333,17 +355,17 @@ function ActivityCreatePage() {
     isSubmittingRef.current = true
     setSent({ childId: child.childId, type: activityType })
     assignMutation.mutate(
-      {
-        target: child,
-        type: activityType,
-        choice: needsGoal ? goal : null,
-        scenario: needsScenario ? scenarioChoice : null,
-      },
+      { target: child, type: activityType, choice: needsGoal ? goal : null, extra: conditions },
       {
         // 아동 상세 이동은 mutate 쪽 콜백에 둔다. 이 콜백은 화면이 사라지면 실행되지 않아, 배정 중 사이드바·뒤로가기로
         // 다른 화면에 간 뒤 응답이 도착해도 강제로 이동시키지 않는다. useMutation 쪽 onSuccess 는 화면이 사라져도 실행된다.
-        onSuccess: (_activity, { target }) => {
-          navigate(`/classrooms/${target.classId}/children/${target.childId}`)
+        // 역할극 단독은 시나리오가 아직 없어 아동이 시작할 수 없다. 바로 그 활동의 시나리오 검토로 보내 확정까지 잇는다.
+        onSuccess: (activity, { target }) => {
+          navigate(
+            activity.activityType === 'ROLEPLAY'
+              ? `/activities/${activity.activityId}/scenario`
+              : `/classrooms/${target.classId}/children/${target.childId}`
+          )
         },
         onSettled: () => {
           isSubmittingRef.current = false
@@ -527,15 +549,25 @@ function ActivityCreatePage() {
                 <button
                   type="button"
                   disabled={!goal}
-                  onClick={() => moveTo('confirm')}
+                  onClick={() => moveTo('conditions')}
                   className={cn(primaryButtonClass, 'flex-1')}
                 >
-                  다음 · 확인
+                  다음 · 추가 조건
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {step === 'conditions' && (
+        <ConditionsStep
+          value={conditions}
+          onChange={setConditions}
+          contradictions={contradictions}
+          onBack={() => moveTo('goal')}
+          onNext={() => moveTo('confirm')}
+        />
       )}
 
       {step === 'confirm' && child && activityType && (
@@ -561,6 +593,7 @@ function ActivityCreatePage() {
                       </span>
                     )}
                   </dd>
+                  <ConditionsSummary conditions={conditions} />
                 </>
               )}
               <dt className="text-[var(--instructor-text-muted)]">활동</dt>
@@ -582,12 +615,17 @@ function ActivityCreatePage() {
                           {difficultyQuery.data.scenarioLevel} · 시작 지원 {SUPPORT_LABELS[difficultyQuery.data.initialSupportLevel]}
                         </span>
                         <span className="block text-xs text-[var(--instructor-text-muted)]">
-                          지난 역할극 결과로 정한 다음 난이도예요. 배정하면 이 활동에 고정돼요.
+                          지난 역할극 결과로 정한 다음 난이도예요. 배정하면 이 활동에 고정되고, 시나리오 후보도 이 난이도로 찾아요.
                         </span>
                       </>
-                    ) : (
+                    ) : difficultyQuery.error instanceof ApiError &&
+                      difficultyQuery.error.code === 'ROLEPLAY_DIFFICULTY_NOT_FOUND' ? (
                       <span className="text-[var(--instructor-warning-fg)]">
                         아직 마친 역할극이 없어 다음 난이도가 없어요. 배정할 수 없어요.
+                      </span>
+                    ) : (
+                      <span className="text-[var(--instructor-warning-fg)]">
+                        {describeError(difficultyQuery.error, '다음 역할극 난이도를 불러오지 못했어요.')}
                       </span>
                     )}
                   </dd>
@@ -602,22 +640,6 @@ function ActivityCreatePage() {
             </dl>
           </section>
 
-          {needsScenario && goal && (
-            <ScenarioPicker
-              loading={scenariosQuery.isLoading}
-              error={scenariosQuery.error}
-              items={scenariosQuery.data?.items ?? null}
-              selectedId={pickedScenario?.scenarioId ?? null}
-              reuseApproved={scenarioPick?.key === scenarioKey && scenarioPick.reuseApproved}
-              onSelect={(scenarioId) => setScenarioPick({ key: scenarioKey, scenarioId, reuseApproved: false })}
-              onReuseApprovedChange={(approved) => {
-                if (pickedScenario) {
-                  setScenarioPick({ key: scenarioKey, scenarioId: pickedScenario.scenarioId, reuseApproved: approved })
-                }
-              }}
-            />
-          )}
-
           {assignMutation.isError && (
             <Notice tone="error" role="alert">
               {assignErrorMessage}
@@ -627,7 +649,7 @@ function ActivityCreatePage() {
           <div className="flex justify-between">
             <button
               type="button"
-              onClick={() => moveTo(needsGoal ? 'goal' : 'type')}
+              onClick={() => moveTo(needsGoal ? 'conditions' : 'type')}
               disabled={assignMutation.isPending}
               className={outlineButtonClass}
             >
@@ -636,7 +658,7 @@ function ActivityCreatePage() {
             <button
               type="button"
               onClick={handleAssign}
-              disabled={assignMutation.isPending || (needsScenario && !scenarioChoice)}
+              disabled={assignMutation.isPending || roleplayNotReady}
               className={primaryButtonClass}
             >
               <ButtonLabel pending={assignMutation.isPending} label="배정하기" pendingLabel="배정 중..." />
@@ -649,105 +671,321 @@ function ActivityCreatePage() {
 }
 
 /**
- * 역할극 단독 배정의 시나리오 고르기. 서버가 정한 순서(마지막으로 쓰인 지 오래된 것, 안 쓰인 것이 맨 앞 → 최근 승인본)대로 보인다.
- * 다른 아동이 쓴 승인본은 강사가 재사용을 승인해야 배정 버튼이 열린다.
+ * 역할극 추가 조건 (시안 T-ACT-04). 왼쪽은 상황·등장인물·관계, 오른쪽은 피할 표현·필수 요소다. 모두 선택 입력이다.
+ * 등장인물 칩에는 이름 대신 역할 설명을 적고 그 글자가 role 이 된다. 칩을 고른 뒤 관계 버튼을 누르면 그 관계가 칩의 id 가 된다
+ * (같은 버튼을 다시 누르면 OTHER 로 돌린다).
+ * 피할 표현이 필수 요소나 등장인물 안에 들어 있으면 그 칩에 "필수 요소·등장인물과 겹침"을 붙이고 다음으로 가지 못하게 한다.
  */
-function ScenarioPicker({
-  loading,
-  error,
-  items,
-  selectedId,
-  reuseApproved,
-  onSelect,
-  onReuseApprovedChange,
+function ConditionsStep({
+  value,
+  onChange,
+  contradictions,
+  onBack,
+  onNext,
 }: {
-  loading: boolean
-  error: unknown
-  items: RoleplayScenarioCandidate[] | null
-  selectedId: string | null
-  reuseApproved: boolean
-  onSelect: (scenarioId: string) => void
-  onReuseApprovedChange: (approved: boolean) => void
+  value: Conditions
+  onChange: (next: Conditions) => void
+  contradictions: number[]
+  onBack: () => void
+  onNext: () => void
 }) {
-  const selected = items?.find((item) => item.scenarioId === selectedId)
+  const [selectedRole, setSelectedRole] = useState<string | null>(null)
+  const selected = value.characters.find((c) => c.role === selectedRole) ?? null
+
+  function addCharacter(role: string) {
+    if (!value.characters.some((c) => c.role === role)) {
+      onChange({ ...value, characters: [...value.characters, { id: OTHER_CHARACTER_ID, role }] })
+    }
+    setSelectedRole(role)
+  }
+
+  function removeCharacter(role: string) {
+    onChange({ ...value, characters: value.characters.filter((c) => c.role !== role) })
+    if (selectedRole === role) setSelectedRole(null)
+  }
+
+  function toggleRelation(id: string) {
+    if (!selected) return
+    onChange({
+      ...value,
+      characters: value.characters.map((c) =>
+        c.role !== selected.role ? c : { id: c.id === id ? OTHER_CHARACTER_ID : id, role: c.role }
+      ),
+    })
+  }
+
+  function toggleRequired(element: string) {
+    const chosen = value.requiredElements.includes(element)
+    // 보기 순서대로 보낸다. 고른 순서가 달라도 같은 목표다.
+    const next = REQUIRED_ELEMENT_PRESETS.filter((e) => (e === element ? !chosen : value.requiredElements.includes(e)))
+    onChange({ ...value, requiredElements: next })
+  }
+
   return (
-    <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-label="역할극 시나리오">
-      <div>
-        <h2 className="text-sm font-semibold">역할극 시나리오</h2>
-        <p className="text-xs text-[var(--instructor-text-muted)]">
-          이 목표와 다음 난이도에 맞게 승인된 시나리오예요. 상황과 작은 목표를 보고 하나를 골라 주세요.
-        </p>
-      </div>
-      {loading ? (
-        <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
-      ) : error ? (
-        <Notice tone="error">
-          {error instanceof ApiError && error.code === 'ROLEPLAY_DIFFICULTY_NOT_FOUND'
-            ? '아직 마친 역할극이 없어 다음 난이도가 없어요. 시나리오를 고를 수 없어요.'
-            : describeError(error, '시나리오 목록을 불러오지 못했습니다.')}
-        </Notice>
-      ) : !items || items.length === 0 ? (
-        <p className="text-sm text-[var(--instructor-warning-fg)]">
-          이 목표와 난이도에 맞는 승인 시나리오가 없어요. 시나리오를 먼저 준비·승인해 주세요.
-        </p>
-      ) : (
-        <fieldset className="flex flex-col rounded-[var(--instructor-radius-control)] border border-[var(--instructor-border)]">
-          <legend className="sr-only">역할극 시나리오</legend>
-          {items.map((item) => (
-            <label
-              key={item.scenarioId}
-              className={cn(
-                'flex cursor-pointer items-start gap-3 border-b border-[var(--instructor-border-subtle)] px-4 py-4 last:border-b-0',
-                selectedId === item.scenarioId && 'bg-[var(--instructor-surface-muted)]'
-              )}
-            >
-              <input
-                type="radio"
-                name="roleplay-scenario"
-                checked={selectedId === item.scenarioId}
-                onChange={() => onSelect(item.scenarioId)}
+    <div className="flex flex-col gap-4">
+      <div className="grid flex-1 grid-cols-2 gap-4">
+        <div className="flex flex-col gap-4">
+          <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-labelledby="situation-heading">
+            <h2 id="situation-heading" className="text-sm font-semibold">
+              1. 상황
+            </h2>
+            <textarea
+              aria-labelledby="situation-heading"
+              value={value.situation}
+              onChange={(e) => onChange({ ...value, situation: e.target.value })}
+              maxLength={SITUATION_MAX}
+              rows={3}
+              placeholder="예: 쉬는 시간에 친구가 그림을 망쳐 속상해하고 있다."
+              className={cn(inputClass, 'h-[90px] resize-none py-3')}
+            />
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-col gap-3 p-5')} aria-labelledby="characters-heading">
+            <h2 id="characters-heading" className="text-sm font-semibold">
+              2. 등장인물
+            </h2>
+            <p className={helperTextClass}>이름 대신 역할로 적어 주세요.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {value.characters.map((c) => (
+                <Chip
+                  key={c.role}
+                  label={characterLabel(c)}
+                  pressed={c.role === selectedRole}
+                  onSelect={() => setSelectedRole(c.role)}
+                  onRemove={() => removeCharacter(c.role)}
+                  removeLabel={`${c.role} 빼기`}
+                />
+              ))}
+              <ChipAdder
+                label="인물 역할"
+                buttonLabel="인물 추가"
+                placeholder="예: 넘어진 친구"
+                maxLength={CHARACTER_ROLE_MAX}
+                onAdd={addCharacter}
               />
-              <span className="flex flex-col gap-1">
-                <span className={cn('text-sm', selectedId === item.scenarioId && 'font-semibold')}>
-                  {item.title}
-                  <span className={cn(badgeClass, 'ml-2')}>
-                    {item.usedByOtherChildren > 0 ? `다른 아동 ${item.usedByOtherChildren}명 사용` : '아직 안 쓰임'}
-                  </span>
-                </span>
-                {item.summary && <span className="text-xs">{item.summary}</span>}
-                {item.microGoals.length > 0 && (
-                  <ul className="list-disc pl-4 text-xs text-[var(--instructor-text-muted)]">
-                    {item.microGoals.map((microGoal, index) => (
-                      <li key={index}>{microGoal}</li>
-                    ))}
-                  </ul>
-                )}
-                <span className="text-xs text-[var(--instructor-text-muted)]">
-                  {item.scenarioLevel}
-                  {item.approvedAt && ` · 승인 ${formatDay(item.approvedAt)}`}
-                  {item.lastUsedAt && ` · 마지막 사용 ${formatDay(item.lastUsedAt)}`}
-                </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-      )}
-      {selected?.reuseApprovalRequired && (
-        <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" checked={reuseApproved} onChange={(e) => onReuseApprovedChange(e.target.checked)} />
-          <span>
-            다른 아동이 쓴 시나리오를 이 아동에게 다시 쓰는 것을 승인합니다.
-            <span className="block text-xs text-[var(--instructor-text-muted)]">승인해야 배정할 수 있어요.</span>
-          </span>
-        </label>
-      )}
-    </section>
+            </div>
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="relation-heading">
+            <h2 id="relation-heading" className="text-sm font-semibold">
+              3. 관계
+            </h2>
+            <p className={helperTextClass}>
+              {selected ? `${selected.role}은(는) 아이에게 어떤 사람인가요?` : '등장인물을 고르면 관계를 정할 수 있어요.'}
+            </p>
+            <div role="group" aria-labelledby="relation-heading" className="flex flex-wrap gap-2">
+              {RELATION_OPTIONS.map((relation) => (
+                <button
+                  key={relation.id}
+                  type="button"
+                  disabled={!selected}
+                  aria-pressed={selected?.id === relation.id}
+                  onClick={() => toggleRelation(relation.id)}
+                  className={cn(filterButtonClass, 'disabled:cursor-not-allowed disabled:text-[var(--instructor-text-disabled)]')}
+                >
+                  {relation.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="forbidden-heading">
+            <h2 id="forbidden-heading" className="text-sm font-semibold">
+              4. 피할 표현
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {value.forbiddenExpressions.map((expression, index) => (
+                <Chip
+                  key={expression}
+                  label={expression}
+                  tone="danger"
+                  conflict={contradictions.includes(index)}
+                  onRemove={() =>
+                    onChange({
+                      ...value,
+                      forbiddenExpressions: value.forbiddenExpressions.filter((e) => e !== expression),
+                    })
+                  }
+                  removeLabel={`${expression} 빼기`}
+                />
+              ))}
+              <ChipAdder
+                label="피할 표현"
+                buttonLabel="추가"
+                onAdd={(expression) =>
+                  !value.forbiddenExpressions.includes(expression) &&
+                  onChange({ ...value, forbiddenExpressions: [...value.forbiddenExpressions, expression] })
+                }
+              />
+            </div>
+            <p className={helperTextClass}>시나리오 생성 시 금지 목록으로 전달됩니다.</p>
+            {contradictions.length > 0 && (
+              <Notice tone="error" role="alert">
+                필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없어요. 겹친 표현을 빼거나 필수 요소·등장인물을 바꿔 주세요.
+              </Notice>
+            )}
+          </section>
+
+          <section className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')} aria-labelledby="required-heading">
+            <h2 id="required-heading" className="text-sm font-semibold">
+              5. 필수 요소
+            </h2>
+            <fieldset className="flex flex-col gap-3">
+              <legend className="sr-only">필수 요소</legend>
+              {REQUIRED_ELEMENT_PRESETS.map((element) => (
+                <label key={element} className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={value.requiredElements.includes(element)}
+                    onChange={() => toggleRequired(element)}
+                  />
+                  {element}
+                </label>
+              ))}
+            </fieldset>
+          </section>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <button type="button" onClick={onBack} className={outlineButtonClass}>
+          이전
+        </button>
+        <div className="flex items-center gap-4">
+          <span className={helperTextClass}>입력하지 않은 항목은 기본값으로 처리됩니다</span>
+          <button type="button" disabled={contradictions.length > 0} onClick={onNext} className={primaryButtonClass}>
+            다음 · 확인
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-/** 서버 시각(+09:00)의 날짜 부분. */
-function formatDay(value: string): string {
-  return value.slice(0, 10)
+/** 칩. 고를 수 있으면(onSelect) 누름 버튼이 되고, 빼기 버튼은 따로 둔다. 겹친 피할 표현은 색과 함께 글자로 알린다. */
+function Chip({
+  label,
+  pressed,
+  onSelect,
+  onRemove,
+  removeLabel,
+  tone = 'neutral',
+  conflict = false,
+}: {
+  label: string
+  pressed?: boolean
+  onSelect?: () => void
+  onRemove: () => void
+  removeLabel: string
+  tone?: 'neutral' | 'danger'
+  conflict?: boolean
+}) {
+  const text = conflict ? `${label} · 필수 요소·등장인물과 겹침` : label
+  return (
+    <span
+      className={cn(
+        'inline-flex h-[34px] items-center gap-1 rounded-full pr-1.5 pl-3 text-sm',
+        tone === 'danger'
+          ? 'bg-[var(--instructor-danger-bg)] text-[var(--instructor-danger-text)]'
+          : 'bg-[var(--instructor-surface-muted)]',
+        pressed && 'outline-2 outline-[var(--instructor-primary)]',
+        conflict && 'border-2 border-[var(--instructor-danger-fg)] font-semibold'
+      )}
+    >
+      {onSelect ? (
+        <button type="button" aria-pressed={pressed} onClick={onSelect} className={cn('rounded-full', focusRingClass)}>
+          {text}
+        </button>
+      ) : (
+        <span>{text}</span>
+      )}
+      {/* 빼기 버튼의 클릭 영역은 위아래로만 48px 로 넓힌다. 공통 클릭 영역처럼 좌우로도 넓히면 옆의 이름 버튼을 덮어, 이름을 눌러도 칩이 빠진다. */}
+      <button
+        type="button"
+        aria-label={removeLabel}
+        onClick={onRemove}
+        className={cn(
+          'relative inline-flex h-6 w-8 items-center justify-center rounded-full',
+          'after:absolute after:inset-x-0 after:top-1/2 after:h-12 after:-translate-y-1/2',
+          focusRingClass
+        )}
+      >
+        <MaterialIcon name="close" className="size-4" />
+      </button>
+    </span>
+  )
+}
+
+/** 칩 추가 입력. Enter 나 버튼으로 넣고, 앞뒤·안쪽 여러 칸 공백은 서버처럼 정리한다. 빈 값은 넣지 않는다. */
+function ChipAdder({
+  label,
+  buttonLabel,
+  placeholder,
+  maxLength,
+  onAdd,
+}: {
+  label: string
+  buttonLabel: string
+  placeholder?: string
+  maxLength?: number
+  onAdd: (value: string) => void
+}) {
+  const [draft, setDraft] = useState('')
+
+  function add() {
+    const value = draft.trim().replace(/\s+/g, ' ')
+    if (!value) return
+    onAdd(value)
+    setDraft('')
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input
+        aria-label={label}
+        value={draft}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          // 한글 조합 중 Enter 는 조합 확정이라 넣지 않는다.
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            add()
+          }
+        }}
+        className={cn(inputClass, 'h-[34px] w-36 text-sm')}
+      />
+      <button type="button" onClick={add} disabled={!draft.trim()} className={cn(outlineButtonClass, 'h-[34px] border-dashed px-3')}>
+        + {buttonLabel}
+      </button>
+    </span>
+  )
+}
+
+/** 등장인물 칩·확인 단계에 보일 글자. 관계를 골랐으면 괄호로 붙인다. */
+function characterLabel(character: GoalCharacter): string {
+  const relation = relationLabel(character.id)
+  return relation ? `${character.role}(${relation})` : character.role
+}
+
+/** 확인 단계에 보일 추가 조건. 입력한 것만 보인다. */
+function ConditionsSummary({ conditions }: { conditions: Conditions }) {
+  const rows: [string, string][] = []
+  if (conditions.situation.trim()) rows.push(['상황', conditions.situation.trim()])
+  if (conditions.characters.length > 0) {
+    rows.push(['등장인물', conditions.characters.map(characterLabel).join(', ')])
+  }
+  if (conditions.requiredElements.length > 0) rows.push(['필수 요소', conditions.requiredElements.join(', ')])
+  if (conditions.forbiddenExpressions.length > 0) rows.push(['피할 표현', conditions.forbiddenExpressions.join(', ')])
+  return rows.map(([term, detail]) => (
+    <Fragment key={term}>
+      <dt className="text-[var(--instructor-text-muted)]">{term}</dt>
+      <dd>{detail}</dd>
+    </Fragment>
+  ))
 }
 
 function TargetStep({
@@ -1033,7 +1271,7 @@ function TypeStep({
           tabbable={tabStop === 2}
           title="역할극만"
           description="상황 시나리오로 대화를 주고받으며 공감 표현을 연습합니다."
-          meta={['예상 소요 10~15분', '지난 역할극으로 정한 난이도']}
+          meta={['예상 소요 10~15분', '지난 역할극으로 정한 난이도', '시나리오 승인 필요']}
           disabledReason={availability.roleplay ? undefined : '최초 활동을 마치면 열려요.'}
           checked={cards[2].checked}
           onSelect={cards[2].select}
@@ -1045,7 +1283,7 @@ function TypeStep({
           이전
         </button>
         <button type="button" disabled={!selected} onClick={onNext} className={primaryButtonClass}>
-          {needsGoalFor(selected) ? '다음 · 학습 목표 설정' : '다음 · 확인'}
+          {selected === 'FIRST_COMBINED' ? '다음 · 학습 목표 설정' : '다음 · 확인'}
         </button>
       </div>
     </div>

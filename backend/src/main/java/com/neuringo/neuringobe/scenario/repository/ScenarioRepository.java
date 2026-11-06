@@ -31,8 +31,8 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
                 join activity a on a.scenario_id = s.scenario_id and a.activity_id = :activity
                 join child c on c.child_id = a.child_id
                 join learning_goal g on g.goal_id = a.goal_id and g.child_id = c.child_id
+                join activity_approved_scenario v on v.activity_id = a.activity_id and v.scenario_id = s.scenario_id and v.scenario_version = s.scenario_version
             where s.scenario_id = :id and s.scenario_version = :version and s.status = 'APPROVED'
-                and s.goal_content_hash = g.content_hash
                 and jsonb_typeof(s.opening_prompts) = 'object'
                 and jsonb_typeof(s.opening_prompts -> cast(:support as text)) = 'string'
             for share of s
@@ -66,42 +66,12 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
             @Param("goalHash") String goalHash,
             @Param("level") String level);
 
-    /** 역할극 단독 활동의 시나리오. 강사가 고른 승인본이라 학급은 보지 않고 목표 내용·고정 레벨만 다시 확인한다. */
-    @Query(
-            """
-            select new com.neuringo.neuringobe.scenario.dto.ApprovedScenarioVersion(s.scenarioId, s.scenarioVersion)
-            from Scenario s
-            where s.scenarioId = :scenarioId
-                and s.status = com.neuringo.neuringobe.scenario.domain.ScenarioStatus.APPROVED
-                and s.goalContentHash = :goalHash
-                and s.scenarioLevel = :level and s.scenarioVersion > 0
-            """)
-    Optional<ApprovedScenarioVersion> findApprovedVersionForGoal(
-            @Param("scenarioId") UUID scenarioId,
-            @Param("goalHash") String goalHash,
-            @Param("level") String level);
-
-    /** 배정 이력이 없는 동일 조건 승인본을 고르고, 연결이 끝날 때까지 승인 상태를 잠근다. */
     @Query(
             value =
-                    """
-                    select s.scenario_id from scenario s
-                    where s.status = 'APPROVED'
-                      and s.class_id = :classId
-                      and s.goal_content_hash = :goalHash
-                      and s.scenario_level = :level
-                      and s.scenario_version > 0
-                      and not exists (
-                          select 1 from activity a
-                          where a.child_id = :childId and a.scenario_id = s.scenario_id)
-                    order by s.created_at, s.scenario_id
-                    limit 1
-                    for share of s
-                    """,
+                    "SELECT scenario_id AS scenarioId, scenario_version AS version FROM activity_approved_scenario WHERE activity_id = :activity AND scenario_id = :scenario AND scenario_level = :level",
             nativeQuery = true)
-    Optional<UUID> findFirstUnusedApproved(
-            @Param("classId") UUID classId,
-            @Param("goalHash") String goalHash,
-            @Param("level") String level,
-            @Param("childId") UUID childId);
+    Optional<ApprovedScenarioVersion> findAssignedApprovedVersion(
+            @Param("activity") UUID activityId,
+            @Param("scenario") UUID scenarioId,
+            @Param("level") String level);
 }

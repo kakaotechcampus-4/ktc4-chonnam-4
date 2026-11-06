@@ -1,11 +1,11 @@
-import { childWriteRequest } from "./apiClient"
+import { ChildApiError, childGetRequest, childWriteRequest } from "./apiClient"
 
 export { ChildApiError, NETWORK_ERROR } from "./apiClient"
 
 /**
- * 아동 흐름 API.
- * 입장·사용 종료는 실제 서버(API-IAM-08·09)를 부른다. 활동·퀴즈·역할극·완료는 아직 mock 응답이다.
- * 실제 API로 바꿀 때 각 함수 안쪽만 바꾸고, 화면 코드는 그대로 둔다.
+ * 아동 흐름 API (contracts/api/v1).
+ * 입장·사용 종료(API-IAM-08·09), 활동 목록·완료 상태(API-ACT-02·04), 표정 퀴즈(API-QUIZ-03·04·05·06),
+ * 역할극 시작·글자 입력(API-RPL-01·05)을 실제 서버로 부른다. 말로 답하기(API-RPL-04)는 아직 연결하지 않았다.
  */
 
 export type ChildAccess = {
@@ -16,12 +16,6 @@ export type ChildAccess = {
 /** 입장 오류 코드 (API-IAM-08). 만료도 401 이다. */
 export const INVALID_ACCESS_CODE = "INVALID_ACCESS_CODE"
 export const ACCESS_CODE_EXPIRED = "ACCESS_CODE_EXPIRED"
-
-const MOCK_DELAY_MS = 500
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 type ChildEntryData = {
   childId: string
@@ -41,17 +35,50 @@ export function exitChildSession(): Promise<void> {
   return childWriteRequest<void>("DELETE", "/child-access-sessions/current")
 }
 
-export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"
+/** API-ACT-02 의 수행 상태. 일시 중단·복구 필요는 아이 화면에서 "진행 중"과 같게 보인다. */
+export type ChildActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "RECOVERY_NEEDED"
+
+export type ChildActivityType = "FIRST_COMBINED" | "SELF_EMOTION_QUIZ" | "OTHER_EMOTION_QUIZ" | "ROLEPLAY"
+
+/**
+ * 서버가 계산한 다음 학습 동작(API-ACT-02 nextAction). 화면은 이 값으로 갈 곳을 정한다.
+ * WAIT_FOR_SCENARIO 는 퀴즈를 마치고 선생님의 역할극 시나리오 확정을 기다리는 정상 상태다.
+ */
+export type ChildNextAction = "QUIZ" | "WAIT_FOR_SCENARIO" | "ROLEPLAY" | "NONE" | "BLOCKED"
 
 export type ChildActivity = {
   activityId: string
+  activityType: ChildActivityType
   title: string
   description: string
   status: ChildActivityStatus
+  nextAction: ChildNextAction
   quizCount: number
   roleplayCount: number
   /** 완료 시각(ISO). 홈 열기구에 캐릭터를 완료한 순서대로 태우는 데 쓴다. */
-  completedAt?: string
+  completedAt: string | null
+}
+
+/** 시작했지만 끝나지 않은 활동. 활동 소개에서 "이어서 하기"로 보이고, 다음 활동 제안에서 먼저 고른다. */
+export function isActivityInProgress(status: ChildActivityStatus) {
+  return status === "IN_PROGRESS" || status === "PAUSED" || status === "RECOVERY_NEEDED"
+}
+
+/** 다음 학습 동작으로 갈 화면. 퀴즈·역할극이 아니면(대기·차단·완료) 갈 곳이 없다. */
+export function nextActivityPath(activity: Pick<ChildActivity, "activityId" | "nextAction">): string | null {
+  if (activity.nextAction === "QUIZ") return `/child/quiz/${activity.activityId}`
+  if (activity.nextAction === "ROLEPLAY") return `/child/roleplay/${activity.activityId}`
+  return null
+}
+
+/** "표정 퀴즈 3개 + 역할극 1개"처럼 활동 구성을 보여 준다. 0개인 부분은 뺀다. */
+export function activityParts(activity: Pick<ChildActivity, "quizCount" | "roleplayCount">) {
+  return [
+    activity.quizCount > 0 ? `표정 퀴즈 ${activity.quizCount}개` : null,
+    activity.roleplayCount > 0 ? `역할극 ${activity.roleplayCount}개` : null,
+  ]
+    .filter(Boolean)
+    .join(" + ")
 }
 
 /** 세션이 다른 아동의 캐시를 섞어 쓰지 않도록 childId를 키에 포함한다. */
@@ -59,167 +86,257 @@ export function myActivitiesQueryKey(childId: string | null) {
   return ["child", childId, "activities"] as const
 }
 
-// Figma C-HOME-01 시안과 같은 3개 활동
-const MOCK_ACTIVITIES: ChildActivity[] = [
-  {
-    activityId: "mock-activity-1",
+// 서버 응답에는 아이에게 보여 줄 제목·설명이 없어서 활동 유형으로 정한다. 문항 수는 서버 배정 구성(QuizAssignmentService)과 같다.
+// 최초 결합·상대 감정 제목은 Figma C-HOME-01 시안 문구이고, 나머지 둘은 시안에 없어 임시로 정했다.
+const ACTIVITY_CONTENT: Record<
+  ChildActivityType,
+  Pick<ChildActivity, "title" | "description" | "quizCount" | "roleplayCount">
+> = {
+  FIRST_COMBINED: {
     title: "친구 마음 알아보기",
-    description: "넘어진 친구를 보고 어떤 마음일지 함께 생각해볼 거야",
-    status: "IN_PROGRESS",
+    description: "친구 표정을 보고 어떤 마음일지 함께 생각해볼 거야",
     quizCount: 3,
     roleplayCount: 1,
   },
-  {
-    activityId: "mock-activity-2",
-    title: "교실에서 있었던 일",
-    description: "교실에서 친구와 있었던 일을 떠올리며 마음을 표현해볼 거야",
-    status: "NOT_STARTED",
-    quizCount: 3,
-    roleplayCount: 1,
+  SELF_EMOTION_QUIZ: {
+    title: "내 마음 알아보기",
+    description: "여러 일을 떠올리며 내 마음을 표정으로 알려줄 거야",
+    quizCount: 10,
+    roleplayCount: 0,
   },
-  {
-    activityId: "mock-activity-3",
+  OTHER_EMOTION_QUIZ: {
     title: "상대방 마음 맞히기",
     description: "친구의 표정을 보고 어떤 마음인지 맞혀볼 거야",
-    status: "COMPLETED",
-    quizCount: 3,
-    roleplayCount: 1,
-    completedAt: "2026-09-29T10:00:00+09:00",
+    quizCount: 10,
+    roleplayCount: 0,
   },
-]
+  ROLEPLAY: {
+    title: "친구랑 이야기하기",
+    description: "친구랑 이야기하면서 내 마음을 전해볼 거야",
+    quizCount: 0,
+    roleplayCount: 1,
+  },
+}
 
-/** 현재 아동 세션에 배정된 활동만 돌려준다. 실제 API는 세션 쿠키로 아동을 식별한다 (VS-003). */
-export async function getMyActivities(): Promise<ChildActivity[]> {
-  await wait(MOCK_DELAY_MS)
-  // 완료 처리로 mock 상태가 바뀌므로, 캐시와 참조를 공유하지 않게 복사해서 돌려준다.
-  return MOCK_ACTIVITIES.map((activity) => ({ ...activity }))
+/** API-ACT-02 응답 중 아이 화면에 쓰는 필드. 지원 수준 같은 평가 정보는 받지만 화면으로 넘기지 않는다. */
+type ActivityData = {
+  activityId: string
+  activityType: ChildActivityType
+  status: ChildActivityStatus
+  nextAction: ChildNextAction
+  completedAt: string | null
+}
+
+// 한 아이에게 배정되는 활동은 많지 않아 서버 최대 크기(100) 한 쪽만 받는다.
+const ACTIVITY_PAGE_SIZE = 100
+
+/**
+ * 현재 아동 세션에 배정된 활동 (API-ACT-02, VS-003).
+ * 서버가 세션 쿠키의 아동과 경로의 childId 가 다르면 404 CHILD_NOT_FOUND 로 막는다(다른 아동 목록 차단).
+ */
+export async function getMyActivities(childId: string, signal?: AbortSignal): Promise<ChildActivity[]> {
+  const data = await childGetRequest<ActivityData[]>(
+    `/children/${encodeURIComponent(childId)}/activities?size=${ACTIVITY_PAGE_SIZE}`,
+    signal
+  )
+  return data.map((activity) => ({
+    activityId: activity.activityId,
+    activityType: activity.activityType,
+    status: activity.status,
+    nextAction: activity.nextAction,
+    completedAt: activity.completedAt,
+    ...ACTIVITY_CONTENT[activity.activityType],
+  }))
 }
 
 export type Emotion = "HAPPY" | "SAD" | "ANGRY" | "SURPRISED" | "UPSET"
+
+/** API-ACT-04. 완료·스탬프는 서버가 정하고 화면은 상태만 읽는다. 읽기만으로 완료가 실행되지 않는다. */
+export async function getActivityStatus(activityId: string, signal?: AbortSignal): Promise<ChildActivityStatus> {
+  const data = await childGetRequest<{ status: ChildActivityStatus }>(
+    `/activities/${encodeURIComponent(activityId)}/status`,
+    signal
+  )
+  return data.status
+}
+
+/** 완료 화면(C-DONE-02)으로 넘기는 값. 서버가 COMPLETED 를 확인해 준 활동만 넘긴다. */
+export type ActivityCompletion = { activityId: string }
 
 /** VS-005의 세 가지 퀴즈 유형 */
 export type QuizType = "SELF_EMOTION_SITUATION" | "OTHER_EMOTION_SITUATION" | "OTHER_EMOTION_IMAGE"
 
 export type QuizChoice = {
-  choiceId: string
-  emotion: Emotion
-  label: string
-  description?: string
+  /** 서버가 준 보기 글자 그대로. 답으로도 이 글자를 보낸다. */
+  value: string
+  /** 표정 그림. 모르는 감정 글자면 그림 없이 글자만 보여 준다. */
+  emotion: Emotion | null
 }
 
 export type QuizQuestion = {
-  questionId: string
+  /** 답·힌트를 보낼 때 쓰는 배정 문항 ID */
+  activityQuizId: string
+  questionOrder: number
   type: QuizType
-  /** 거북이가 들려주는 상황 설명 */
-  situation?: string
-  question: string
-  /** 이미지 제시 문항의 친구 얼굴. S1은 실제 사진 대신 감정 일러스트로 대신한다. */
-  imageEmotion?: Emotion
+  questionText: string
+  /** 이미지 제시 문항의 친구 얼굴 그림 주소 */
+  imageUrl: string | null
   choices: QuizChoice[]
 }
 
-export type QuizHint = {
-  level: 1 | 2
-  text: string
-  /** 힌트 뒤에 남겨 둘 보기 (정답 포함 2개) */
-  choiceIds: string[]
+/** 지금까지 낸 답. 다시 들어왔을 때 이어서 풀 문항과 단계를 정한다. */
+export type QuizAttempt = {
+  status: "DRAFT" | "FINALIZED"
+  firstResponse: string | null
+  /** 받은 힌트 수(0~2) */
+  hintCount: number
+  /** 최종 판정. 확정 전에는 첫 답 판정과 같다. */
+  itemCorrect: boolean
+  /** 카메라·이미지 문제로 점수에서 뺀 문항 */
+  excludedFromScoring: boolean
 }
 
-export type QuizAnswerResult =
-  | { result: "CORRECT" }
-  | { result: "INCORRECT"; hint: QuizHint }
-  | { result: "FINAL_INCORRECT" }
+export type QuizItemWithAttempt = QuizQuestion & { attempt: QuizAttempt | null }
 
-export type QuizAnswerInput = {
-  activityId: string
-  questionId: string
-  choiceId: string
-  /** 1: 첫 응답, 2·3: 힌트 뒤 재응답 */
-  attempt: number
+// 서버 보기 글자(V6 시드: 기쁨·슬픔·화남·놀람)를 표정 그림으로 바꾼다. 정답은 서버만 안다.
+const EMOTION_BY_WORD: Record<string, Emotion> = {
+  기쁨: "HAPPY",
+  슬픔: "SAD",
+  화남: "ANGRY",
+  놀람: "SURPRISED",
+  속상함: "UPSET",
 }
 
 export function quizQuestionsQueryKey(childId: string | null, activityId: string | undefined) {
   return ["child", childId, "quiz", activityId] as const
 }
 
-// Figma C-QZ-01~04 문구. 정답과 힌트는 서버(mock)에만 두고 화면으로는 보내지 않는다 (VS-006).
-const MOCK_QUIZ: (QuizQuestion & { answerChoiceId: string; hintTexts: [string, string]; hintChoiceIds: string[] })[] = [
-  {
-    questionId: "mock-quiz-1",
-    type: "SELF_EMOTION_SITUATION",
-    situation: "친구가 실수로 네 장난감을 밟아서 부서졌어.",
-    question: "지금 네 기분은 어때?",
-    choices: [
-      { choiceId: "q1-happy", emotion: "HAPPY", label: "기뻐요", description: "활짝 웃는 표정" },
-      { choiceId: "q1-sad", emotion: "SAD", label: "슬퍼요", description: "눈꼬리가 내려간 표정" },
-      { choiceId: "q1-angry", emotion: "ANGRY", label: "화나요", description: "눈썹을 찡그린 표정" },
-      { choiceId: "q1-surprised", emotion: "SURPRISED", label: "놀랐어요", description: "눈과 입을 동그랗게" },
-    ],
-    answerChoiceId: "q1-sad",
-    hintTexts: ["장난감이 부서지면 어떤 기분이 들지 떠올려 봐", "소중한 게 망가지면 눈물이 날 것 같은 마음이 들어"],
-    hintChoiceIds: ["q1-sad", "q1-angry"],
-  },
-  {
-    questionId: "mock-quiz-2",
-    type: "OTHER_EMOTION_SITUATION",
-    situation: "친구가 좋아하던 풍선이 하늘로 날아가 버렸어.",
-    question: "친구는 지금 어떤 표정일까?",
-    choices: [
-      { choiceId: "q2-happy", emotion: "HAPPY", label: "기쁜 얼굴" },
-      { choiceId: "q2-upset", emotion: "UPSET", label: "속상한 얼굴" },
-      { choiceId: "q2-angry", emotion: "ANGRY", label: "화난 얼굴" },
-      { choiceId: "q2-surprised", emotion: "SURPRISED", label: "놀란 얼굴" },
-    ],
-    answerChoiceId: "q2-upset",
-    hintTexts: ["좋아하던 걸 잃어버리면 어떤 마음일까?", "갖고 싶던 풍선이 멀리 가 버리면 속상한 마음이 들어"],
-    hintChoiceIds: ["q2-happy", "q2-upset"],
-  },
-  {
-    questionId: "mock-quiz-3",
-    type: "OTHER_EMOTION_IMAGE",
-    question: "이 친구는 지금 어떤 마음일까?",
-    imageEmotion: "SURPRISED",
-    choices: [
-      { choiceId: "q3-happy", emotion: "HAPPY", label: "기뻐요" },
-      { choiceId: "q3-sad", emotion: "SAD", label: "슬퍼요" },
-      { choiceId: "q3-surprised", emotion: "SURPRISED", label: "놀랐어요" },
-      { choiceId: "q3-upset", emotion: "UPSET", label: "속상해요" },
-    ],
-    answerChoiceId: "q3-surprised",
-    hintTexts: ["눈썹을 자세히 봐봐", "눈과 입이 동그랗게 커졌어"],
-    hintChoiceIds: ["q3-happy", "q3-surprised"],
-  },
-]
-
-export async function getQuizQuestions(activityId: string): Promise<QuizQuestion[]> {
-  void activityId
-  await wait(MOCK_DELAY_MS)
-  return MOCK_QUIZ.map((item) => ({
-    questionId: item.questionId,
-    type: item.type,
-    situation: item.situation,
-    question: item.question,
-    imageEmotion: item.imageEmotion,
-    choices: item.choices,
-  }))
+type AssignedQuizData = {
+  activityQuizId: string
+  questionOrder: number
+  quizType: QuizType
+  questionText: string
+  imageUrl: string | null
+  choices: string[]
 }
 
-/** 응답을 제출하면 서버가 판정한다. 첫 응답·힌트 2회·최종 응답 순서로 최대 3번 받는다 (VS-006). */
-export async function submitQuizAnswer(input: QuizAnswerInput): Promise<QuizAnswerResult> {
-  await wait(MOCK_DELAY_MS)
-  const item = MOCK_QUIZ.find((quiz) => quiz.questionId === input.questionId)
-  if (!item) throw new Error("알 수 없는 문항입니다.")
+type QuizAttemptData = {
+  firstResponse: string | null
+  usedHintTypes: string[]
+  itemCorrect: boolean
+  excludedFromScoring: boolean
+  status: "DRAFT" | "FINALIZED"
+}
 
-  if (input.choiceId === item.answerChoiceId) return { result: "CORRECT" }
-  if (input.attempt >= 3) return { result: "FINAL_INCORRECT" }
-
-  const level = input.attempt === 1 ? 1 : 2
+function toAttempt(data: QuizAttemptData): QuizAttempt {
   return {
-    result: "INCORRECT",
-    hint: { level, text: item.hintTexts[level - 1], choiceIds: item.hintChoiceIds },
+    status: data.status,
+    firstResponse: data.firstResponse,
+    hintCount: data.usedHintTypes.length,
+    itemCorrect: data.itemCorrect,
+    excludedFromScoring: data.excludedFromScoring,
   }
 }
 
+/** 답을 아직 내지 않은 문항은 404 ATTEMPT_NOT_FOUND 다(API-QUIZ-05). */
+async function getQuizAttempt(activityQuizId: string, signal?: AbortSignal): Promise<QuizAttempt | null> {
+  try {
+    const data = await childGetRequest<QuizAttemptData>(
+      `/activity-quiz-items/${encodeURIComponent(activityQuizId)}/attempt`,
+      signal
+    )
+    return toAttempt(data)
+  } catch (error) {
+    if (error instanceof ChildApiError && error.code === "ATTEMPT_NOT_FOUND") return null
+    throw error
+  }
+}
+
+/**
+ * 활동에 고정된 문항(API-QUIZ-03)과 문항마다 지금까지 낸 답(API-QUIZ-05).
+ * 다시 들어와도 다시 추첨하지 않으므로, 이미 확정한 문항은 건너뛰고 이어서 푼다.
+ */
+export async function getQuizQuestions(activityId: string, signal?: AbortSignal): Promise<QuizItemWithAttempt[]> {
+  const items = await childGetRequest<AssignedQuizData[]>(
+    `/activities/${encodeURIComponent(activityId)}/quiz-items`,
+    signal
+  )
+  const questions = [...items]
+    .sort((a, b) => a.questionOrder - b.questionOrder)
+    .map((item) => ({
+      activityQuizId: item.activityQuizId,
+      questionOrder: item.questionOrder,
+      type: item.quizType,
+      questionText: item.questionText,
+      imageUrl: item.imageUrl,
+      choices: item.choices.map((value) => ({ value, emotion: EMOTION_BY_WORD[value] ?? null })),
+    }))
+  const attempts = await Promise.all(questions.map((question) => getQuizAttempt(question.activityQuizId, signal)))
+  return questions.map((question, index) => ({ ...question, attempt: attempts[index] }))
+}
+
+/**
+ * 내 감정 문항은 서버가 카메라 표정 판정을 반드시 함께 받는다(API-QUIZ-04).
+ * 화면은 아직 카메라를 켜지 않으므로 "표정을 분석하지 못함"으로 보낸다. 서버는 이 문항을 점수에서 빼고 바로 확정한다.
+ * 표정 인식을 붙이면 실제 판정(MATCH·MISMATCH)과 모델 버전으로 바꾼다.
+ */
+export const CAMERA_NOT_CONNECTED = "camera-not-connected"
+
+function cameraFields(type: QuizType) {
+  return type === "SELF_EMOTION_SITUATION"
+    ? { expressionMatchResult: "NOT_ANALYZABLE", cameraModelVersion: CAMERA_NOT_CONNECTED }
+    : {}
+}
+
+export type QuizAnswerInput = {
+  activityQuizId: string
+  type: QuizType
+  /** 첫 답. 힌트 뒤 최종 답을 보낼 때도 처음 값 그대로 보낸다. */
+  firstResponse: string
+  /** 힌트 뒤 최종 답. 첫 답일 때는 없다. */
+  finalResponse?: string
+}
+
+/**
+ * 답 제출 (API-QUIZ-04). 첫 답이 맞거나 점수에서 빠지면 바로 확정(FINALIZED), 틀리면 DRAFT 로 남아 힌트를 받을 수 있다.
+ * 힌트 뒤 최종 답은 한 번만 보내고 그때 확정된다. 같은 본문을 다시 보내면 같은 결과가 온다(재전송 안전).
+ */
+export async function submitQuizAnswer(input: QuizAnswerInput): Promise<QuizAttempt> {
+  const data = await childWriteRequest<QuizAttemptData>(
+    "PUT",
+    `/activity-quiz-items/${encodeURIComponent(input.activityQuizId)}/attempt`,
+    {
+      firstResponse: input.firstResponse,
+      ...cameraFields(input.type),
+      ...(input.finalResponse === undefined ? {} : { finalResponse: input.finalResponse }),
+    }
+  )
+  return toAttempt(data)
+}
+
+export type QuizHint = { order: number; text: string }
+
+export type QuizHintInput = {
+  activityQuizId: string
+  /** 힌트 한 번에 하나. 응답을 못 받아 다시 보낼 때 같은 키를 써야 힌트가 한 번만 발급된다. */
+  requestKey: string
+}
+
+/** 문항에 준비된 힌트가 더 없거나 이미 2개를 받았다(API-QUIZ-06 409). */
+export const NO_MORE_HINTS = "NO_MORE_HINTS"
+
+/** 힌트 요청 (API-QUIZ-06). 첫 답이 틀린 뒤에만, 문항당 최대 2개다. */
+export async function requestQuizHint(input: QuizHintInput): Promise<QuizHint> {
+  const data = await childWriteRequest<{ hintOrder: number; text: string }>(
+    "POST",
+    `/activity-quiz-items/${encodeURIComponent(input.activityQuizId)}/hints`,
+    undefined,
+    { idempotencyKey: input.requestKey }
+  )
+  return { order: data.hintOrder, text: data.text }
+}
+
+/** 역할극 말풍선 주인. DIALOGUE 는 거북이(캐릭터 대사), HINT 는 깡총이(마스코트 힌트·고정 안내)다. */
 export type RoleplaySpeaker = "turtle" | "rabbit"
 
 export type RoleplayMessage = {
@@ -227,89 +344,98 @@ export type RoleplayMessage = {
   text: string
 }
 
-export type RoleplayScenario = {
-  scenarioId: string
-  /** 헤더에 보여줄 장소. 예: 놀이터에서 */
-  place: string
-  opening: RoleplayMessage
+export type RoleplaySessionStatus = "IN_PROGRESS" | "PAUSED" | "COMPLETED"
+
+export type RoleplaySession = {
+  sessionId: string
+  status: RoleplaySessionStatus
+  activityStatus: ChildActivityStatus
+  /** 첫 질문 또는 이어서 할 때 마지막 응답. 진행할 수 없는 상태면 비어 있다. */
+  messages: (RoleplayMessage & { id: string })[]
 }
 
-export type RoleplayTurnInput = {
-  activityId: string
-  turnIndex: number
-  text: string
-  /** 네트워크 재전송 시 같은 턴이 두 번 만들어지지 않도록 같은 값을 다시 보낸다 (VS-011). */
-  requestId: string
-}
-
-export type RoleplayTurnResult =
-  | { status: "DELIVERED"; reply: RoleplayMessage; isFinished: boolean }
-  /** 응답 생성·검증에 실패해 사전 승인된 고정 안내를 대신 보낸다. 턴은 소모하지 않는다 (VS-011·013). */
-  | { status: "FALLBACK"; reply: RoleplayMessage }
-
-export function roleplayScenarioQueryKey(childId: string | null, activityId: string | undefined) {
+export function roleplaySessionQueryKey(childId: string | null, activityId: string | undefined) {
   return ["child", childId, "roleplay", activityId] as const
 }
 
-// Figma C-RP-02 대사로 만든 mock 대본. 실제 응답은 STT→LLM→안전 검사를 거친다 (S1-JIN-02).
-const MOCK_ROLEPLAY_REPLIES: { reply: RoleplayMessage; isFinished: boolean }[] = [
-  {
-    reply: { speaker: "rabbit", text: "친구 눈썹이 아래로 축 처져 있어. 어떤 마음일 때 이런 표정이 될까?" },
-    isFinished: false,
-  },
-  {
-    reply: { speaker: "turtle", text: "맞아, 넘어지면 아프고 속상하지. 친구 마음을 잘 알아줬어!" },
-    isFinished: true,
-  },
-]
+type ServerMessage = { messageId?: string; speakerRole: "DIALOGUE" | "HINT"; text: string }
 
-export async function getRoleplayScenario(activityId: string): Promise<RoleplayScenario> {
-  void activityId
-  await wait(MOCK_DELAY_MS)
+function toMessage(message: ServerMessage): RoleplayMessage {
+  return { speaker: message.speakerRole === "HINT" ? "rabbit" : "turtle", text: message.text }
+}
+
+type RoleplayStartData = {
+  sessionId: string
+  status: RoleplaySessionStatus
+  activityStatus: ChildActivityStatus
+  delivery: { messages: (ServerMessage & { messageId: string })[] }
+}
+
+/**
+ * 역할극 시작·이어 하기 (API-RPL-01). 이미 세션이 있으면 새 키로 불러도 그 세션을 돌려준다.
+ * requestKey 는 화면에 머무는 동안 하나를 쓴다. 응답을 못 받아 다시 불러도 세션이 하나만 생긴다.
+ */
+export async function startRoleplay(activityId: string, requestKey: string): Promise<RoleplaySession> {
+  const data = await childWriteRequest<RoleplayStartData>(
+    "POST",
+    `/activities/${encodeURIComponent(activityId)}/roleplay-sessions`,
+    undefined,
+    { idempotencyKey: requestKey }
+  )
   return {
-    scenarioId: "mock-scenario-1",
-    place: "놀이터에서",
-    opening: { speaker: "turtle", text: "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?" },
+    sessionId: data.sessionId,
+    status: data.status,
+    activityStatus: data.activityStatus,
+    messages: data.delivery.messages.map((message) => ({ id: message.messageId, ...toMessage(message) })),
   }
 }
 
-// mock은 항상 대본대로 응답한다. 고정 안내(FALLBACK) 응답은 실제 API(S1-JIN-02)가 나오면 연동해 확인한다.
-export async function sendRoleplayTurn(input: RoleplayTurnInput): Promise<RoleplayTurnResult> {
-  await wait(MOCK_DELAY_MS * 2)
-  const scripted = MOCK_ROLEPLAY_REPLIES[Math.min(input.turnIndex, MOCK_ROLEPLAY_REPLIES.length - 1)]
-  return { status: "DELIVERED", ...scripted }
+export type RoleplayTurnInput = {
+  sessionId: string
+  text: string
+  /** 네트워크 재전송 시 같은 턴이 두 번 만들어지지 않도록 같은 값을 다시 보낸다 (VS-011). 새 답은 새 키. */
+  requestKey: string
 }
 
-export type ActivityCompletion = {
-  activityId: string
-  /** 이번 요청으로 스탬프가 지급됐는지. 정확도와 무관하게 활동당 1개다 (VS-013). */
-  stampGranted: boolean
+export type RoleplayTurnStatus =
+  | "DELIVERED"
+  | "REINPUT_REQUIRED"
+  | "RETRY_REQUIRED"
+  | "STOPPED"
+  | "NOTICE_UNAVAILABLE"
+  | "PROCESSING"
+
+export type RoleplayTurnAction =
+  | "NONE"
+  | "REQUEST_NEW_INPUT"
+  | "SUGGEST_TEXT_KEEP_VOICE"
+  | "RETRY_TURN"
+  | "STOP_DIALOGUE"
+  | "WAIT"
+
+export type RoleplayTurnResult = {
+  status: RoleplayTurnStatus
+  action: RoleplayTurnAction
+  /** 마스코트 힌트가 붙으면 [깡총이, 거북이] 순서로 온다. 고정 안내는 깡총이 하나다. */
+  messages: RoleplayMessage[]
 }
 
-export type CompleteActivityInput = {
-  activityId: string
-  /** 재전송해도 스탬프가 두 번 지급되지 않도록 같은 값을 다시 보낸다 (VS-013 중복 완료 방지). */
-  requestId: string
-}
-
-const mockCompletions = new Map<string, ActivityCompletion>()
+/** 같은 키의 요청을 서버가 아직 처리하고 있다(202). 같은 키로 다시 보내면 결과를 받는다. */
+export const ROLEPLAY_PROCESSING = "ROLEPLAY_PROCESSING"
 
 /**
- * 활동 완료 처리와 스탬프 지급.
- * 완료를 서버가 마지막 턴에서 자동 처리할지, FE가 요청할지는 API 계약이 아직 없다.
- * 서버 자동 처리로 정해지면 이 함수 안쪽만 "완료 결과 조회"로 바꾸고 화면은 그대로 둔다.
+ * 글자로 답하기 (API-RPL-05). 서버 기능(roleplay.text.enabled)이 꺼져 있으면 404 다.
+ * HTTP 200 이어도 status 가 DELIVERED 일 때만 대화가 이어진 것이다.
  */
-export async function completeActivity(input: CompleteActivityInput): Promise<ActivityCompletion> {
-  await wait(MOCK_DELAY_MS)
-  const previous = mockCompletions.get(input.requestId)
-  if (previous) return previous
-
-  const activity = MOCK_ACTIVITIES.find((item) => item.activityId === input.activityId)
-  if (!activity) throw new Error("알 수 없는 활동입니다.")
-
-  const completion = { activityId: activity.activityId, stampGranted: activity.status !== "COMPLETED" }
-  if (activity.status !== "COMPLETED") activity.completedAt = new Date().toISOString()
-  activity.status = "COMPLETED"
-  mockCompletions.set(input.requestId, completion)
-  return completion
+export async function sendRoleplayText(input: RoleplayTurnInput): Promise<RoleplayTurnResult> {
+  const data = await childWriteRequest<{ status: RoleplayTurnStatus; action: RoleplayTurnAction; messages: ServerMessage[] }>(
+    "POST",
+    `/roleplay-sessions/${encodeURIComponent(input.sessionId)}/text-inputs`,
+    { text: input.text },
+    { idempotencyKey: input.requestKey }
+  )
+  if (data.status === "PROCESSING") {
+    throw new ChildApiError(202, ROLEPLAY_PROCESSING, "아직 답을 만들고 있어요.")
+  }
+  return { status: data.status, action: data.action, messages: data.messages.map(toMessage) }
 }

@@ -1,6 +1,6 @@
 # API-QUIZ-01 · 검증 문항 풀 목록 조회
 
-> 미제공 — 2026-10-22 / develop `63e4314`. API ID는 과거 계약 추적용으로 유지합니다.
+> 미제공 — 2026-11-04 / develop `bab136d`. API ID는 과거 계약 추적용으로 유지합니다.
 
 ## 1. Endpoint
 
@@ -38,5 +38,5 @@
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S5-BAE-01`
-- 기준: [현재 공개 퀴즈 Controller](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
+- 기준: [현재 공개 퀴즈 Controller](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/quiz/controller/QuizController.java)
 - [공통 규칙](../integration-guide.md) · [API 목차](../README.md)

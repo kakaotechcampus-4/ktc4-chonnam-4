@@ -47,6 +47,11 @@ server:
         same-site: lax
 
 roleplay:
+  input:
+    stt-confidence-threshold: ${ROLEPLAY_STT_CONFIDENCE_THRESHOLD:0.40}
+  text:
+    enabled: ${ROLEPLAY_TEXT_ENABLED:false}
+    maximum-characters: ${ROLEPLAY_TEXT_MAXIMUM_CHARACTERS:}
   http:
     # S4 승인 시나리오와 입력 처리·음성 전달 구현이 준비된 뒤 명시적으로 켠다.
     enabled: ${ROLEPLAY_HTTP_ENABLED:false}

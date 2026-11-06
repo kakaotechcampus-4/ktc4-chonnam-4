@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.roleplay.application;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.model.AudioFormat;
 import com.neuringo.neuringobe.ai.application.model.SpeechTranscriptionRequest;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayAudioResource;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
@@ -34,18 +35,34 @@ public final class RoleplayVoiceInput {
                     "Upload does not match a new authenticated voice input");
         byte[] bytes = request.audio();
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update("neuringo:voice-input:v1\0".getBytes(StandardCharsets.UTF_8));
-            digest.update(request.format().name().getBytes(StandardCharsets.UTF_8));
-            digest.update((byte) 0);
+            MessageDigest digest = newFingerprintDigest(request.format(), null);
             digest.update(bytes);
             var fingerprint = HexFormat.of().formatHex(digest.digest());
             deadline.requireActive();
             return new RoleplayVoiceInput(request, fingerprint);
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 unavailable", impossible);
         } finally {
             Arrays.fill(bytes, (byte) 0);
+        }
+    }
+
+    /** 지원 형식은 정상 입력과 같은 지문을 쓰고, 알 수 없는 형식은 원래 MIME을 구분한다. */
+    public static MessageDigest newFingerprintDigest(AudioFormat format, String contentType) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            if (format != null) {
+                digest.update("neuringo:voice-input:v1\0".getBytes(StandardCharsets.UTF_8));
+                digest.update(format.name().getBytes(StandardCharsets.UTF_8));
+            } else {
+                digest.update(
+                        "neuringo:unknown-voice-format:v1\0".getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) (contentType == null ? 0 : 1));
+                if (contentType != null)
+                    digest.update(contentType.getBytes(StandardCharsets.UTF_8));
+            }
+            digest.update((byte) 0);
+            return digest;
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
         }
     }
 

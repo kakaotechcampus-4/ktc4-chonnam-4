@@ -5,7 +5,6 @@ import com.neuringo.neuringobe.activity.domain.ActivityStatus;
 import com.neuringo.neuringobe.activity.domain.ActivityType;
 import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
-import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
 import com.neuringo.neuringobe.assignment.dto.CreateActivityRequest;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
@@ -32,7 +31,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -144,7 +142,8 @@ public class ActivityAssignmentService {
         LearningGoal goal =
                 request.goal() == null
                         ? null
-                        : goalService.newGoal(request.childId(), request.goal(), authentication);
+                        : goalService.newGoal(
+                                request.childId(), request.goal(), "goal.", authentication);
 
         Activity prior = activities.findByIdempotencyKey(requestKey).orElse(null);
         if (prior != null) {
@@ -266,18 +265,6 @@ public class ActivityAssignmentService {
                 .isPresent();
     }
 
-    @Transactional(readOnly = true)
-    public ActivityDetailResponse detail(UUID activityId, Authentication authentication) {
-        Activity activity =
-                activities
-                        .findById(activityId)
-                        .orElseThrow(ActivityAssignmentService::activityNotFound);
-        access.requireOwnerOrInstructor(
-                authentication, activity.getChildId(), ActivityAssignmentService::activityNotFound);
-        return ActivityDetailResponse.of(
-                ActivityResponse.from(activity), quizAssignment.list(activityId, authentication));
-    }
-
     private static ApiException duplicateAssignment() {
         return new ApiException(
                 HttpStatus.CONFLICT, "DUPLICATE_ASSIGNMENT", "같은 활동이 시작 전 상태로 이미 있습니다.");
@@ -295,8 +282,4 @@ public class ActivityAssignmentService {
 
     /** created 가 false 면 같은 요청 키로 이미 만든 활동을 돌려준 것이다. */
     public record Assignment(ActivityResponse activity, boolean created) {}
-
-    private static ResourceNotFoundException activityNotFound() {
-        return new ResourceNotFoundException("ACTIVITY_NOT_FOUND", "활동을 찾을 수 없습니다.");
-    }
 }

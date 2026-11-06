@@ -1,6 +1,6 @@
 # API-GOAL-02 · 아동 목표 목록 조회
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -109,7 +109,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
 | 401 | INVALID_TOKEN | 강사 토큰 만료/위조; 입력·토큰 폐기 |
 | 403 | ACCESS_DENIED | 역할 권한 |
-| 404 | GOAL_NOT_FOUND | 대상 없음/소유권 숨김 |
+| 404 | CHILD_NOT_FOUND | 아동 없음/담당 범위 밖(소유권 숨김) |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 
 공통 오류 envelope 예시(message/traceId는 동적):
@@ -219,6 +219,6 @@ curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/children/${childId}/learning-goals" 
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/goal/dto/LearningGoalResponse.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/goal/dto/LearningGoalResponse.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

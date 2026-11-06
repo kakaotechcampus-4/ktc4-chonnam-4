@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.roleplay.service;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayCodes;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
+import com.neuringo.neuringobe.roleplay.application.RoleplayInputGoalAssessment;
 import com.neuringo.neuringobe.roleplay.application.RoleplayProgressPolicy;
 import com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties;
 import java.util.HashMap;
@@ -41,7 +42,8 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                        t.input_micro_goal_id,t.input_answer_revealed,
                        a.input_micro_goal_id as judged_goal,a.input_learning_state,a.scenario_id,
                        a.scenario_version,a.checkpoint_version as assessment_version,
-                       a.analysis_contract_version,a.evaluation_contract_version
+                       a.analysis_contract_version,a.evaluation_contract_version,
+                       t.input_support_level,a.input_goal_outcome,a.support_decision,t.support_level
                 from roleplay_turn t
                 left join roleplay_goal_assessment a on a.session_id=t.session_id and a.turn_id=t.turn_id
                 where t.session_id=? order by t.turn_number
@@ -61,7 +63,11 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                                         rs.getObject("scenario_version", Integer.class),
                                         rs.getObject("assessment_version", Long.class),
                                         rs.getString("analysis_contract_version"),
-                                        rs.getString("evaluation_contract_version")),
+                                        rs.getString("evaluation_contract_version"),
+                                        rs.getString("input_support_level"),
+                                        rs.getString("input_goal_outcome"),
+                                        rs.getString("support_decision"),
+                                        rs.getString("support_level")),
                         key.sessionId());
         deadline.requireActive();
         if (rows.size() != stored.turnCount() - 1) return Optional.empty();
@@ -89,6 +95,7 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                     || !GoalObservationOutput.ANALYSIS_VERSION.equals(row.analysisVersion())
                     || !GoalObservationOutput.EVALUATION_VERSION.equals(row.evaluationVersion()))
                 return Optional.empty();
+            if (!validInputOutcome(row)) return Optional.empty();
             previousVersion = row.version();
         }
         var observedByTurn = new HashMap<UUID, Set<UUID>>();
@@ -117,6 +124,18 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                 positiveByTurn.computeIfAbsent(turn, ignored -> new HashSet<>()).add(goal);
             }
         }
+        readBudget(deadline);
+        var basisTurns =
+                new HashSet<>(
+                        jdbc.query(
+                                "select distinct turn_id from roleplay_input_goal_basis where session_id=?",
+                                (rs, n) -> rs.getObject(1, UUID.class),
+                                key.sessionId()));
+        for (var row : rows) {
+            if (row.outcome() != null
+                    && isAchieved(row.outcome()) != basisTurns.contains(row.turn()))
+                return Optional.empty();
+        }
         var statuses = new HashMap<UUID, String>();
         approved.forEach(goal -> statuses.put(goal, "NOT_OBSERVED"));
         var revealed = new HashSet<UUID>();
@@ -138,7 +157,11 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                 }
                 statuses.put(
                         row.input(),
-                        row.state().equals("GOAL_ACHIEVED") ? "ACHIEVED" : "IN_PROGRESS");
+                        (row.outcome() == null
+                                        ? row.state().equals("GOAL_ACHIEVED")
+                                        : isAchieved(row.outcome()))
+                                ? "ACHIEVED"
+                                : "IN_PROGRESS");
             }
             if (row.responseType().equals("ANSWER_REVEAL")) {
                 revealed.add(row.responseGoal());
@@ -152,6 +175,52 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
                         limits.maximumTurnCount(),
                         limits.maximumSupportTurnsPerMicroGoal(),
                         statuses));
+    }
+
+    private static boolean isAchieved(String outcome) {
+        return outcome.equals("ACHIEVED_WITHOUT_HINT") || outcome.equals("ACHIEVED_WITH_SUPPORT");
+    }
+
+    private static boolean validInputOutcome(Judgment row) {
+        if (row.outcome() == null) return row.supportDecision() == null;
+        if (row.supportDecision() == null
+                || java.util.Arrays.stream(RoleplayInputGoalAssessment.SupportDecision.values())
+                        .noneMatch(d -> d.name().equals(row.supportDecision()))) return false;
+        boolean sameGoal = row.input().equals(row.responseGoal());
+        if (row.inputSupport() == null || row.nextSupport() == null) return false;
+        boolean validDecision =
+                switch (row.supportDecision()) {
+                    case "CLOSING" -> row.responseType().equals("CLOSING");
+                    case "NEXT_GOAL_START" -> !sameGoal && !row.responseType().equals("CLOSING");
+                    case "MAINTAINED" ->
+                            sameGoal
+                                    && row.inputSupport().equals(row.nextSupport())
+                                    && !row.responseType().equals("CLOSING");
+                    case "INCREASED" ->
+                            sameGoal
+                                    && row.nextSupport().compareTo(row.inputSupport()) > 0
+                                    && !row.responseType().equals("CLOSING");
+                    default -> false;
+                };
+        if (!validDecision) return false;
+        return switch (row.outcome()) {
+            case "ACHIEVED_WITHOUT_HINT" ->
+                    row.state().equals("GOAL_ACHIEVED")
+                            && !row.inputReveal()
+                            && "S0".equals(row.inputSupport());
+            case "ACHIEVED_WITH_SUPPORT" ->
+                    row.state().equals("GOAL_ACHIEVED") && !row.inputReveal();
+            case "SUPPORTED_NOT_ACHIEVED" ->
+                    row.inputReveal() && !row.state().equals("NOT_ASSESSABLE");
+            case "IN_PROGRESS" ->
+                    !row.inputReveal()
+                            && !Set.of("GOAL_ACHIEVED", "NOT_ASSESSABLE").contains(row.state());
+            case "NOT_ASSESSABLE" ->
+                    row.state().equals("NOT_ASSESSABLE")
+                            && sameGoal
+                            && row.inputSupport().equals(row.nextSupport());
+            default -> false;
+        };
     }
 
     private void readBudget(RoleplayTurnDeadline deadline) {
@@ -175,5 +244,9 @@ public class JdbcRoleplayProgressPolicy implements RoleplayProgressPolicy {
             Integer scenarioVersion,
             Long assessmentVersion,
             String analysisVersion,
-            String evaluationVersion) {}
+            String evaluationVersion,
+            String inputSupport,
+            String outcome,
+            String supportDecision,
+            String nextSupport) {}
 }
