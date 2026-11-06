@@ -7,6 +7,15 @@
 - DELIVERED의 `acceptedInput`을 아이 말풍선(마이크 아이콘)으로 보여 줍니다. 재전송(`acceptedInput=null`)이면 아이 말풍선 없이 대답만 이어 갑니다.
 - 30초 제한에 걸린 녹음은 버리고 보내지 않습니다. `action=SUGGEST_TEXT_KEEP_VOICE`면 글자 입력으로 바꾸고 마이크는 남깁니다. 마이크 권한 거부·미지원 브라우저(http 주소 포함)는 깡총이 안내 뒤 글자 입력으로 바꿉니다.
 
+## 2026-11-06 — 아동용 활동 목록 응답 분리
+
+- develop e09bbbf 기반 refactor/child-activity-response 작업본입니다. PR #99 리뷰 r4480037266 및 FE 답변 r4488412186을 반영합니다. 운영 배포 완료를 뜻하지 않습니다.
+- ACT-02는 검증된 아동 세션에 activityId/activityType/status/completedAt/nextAction 5개만 반환합니다. 지원 수준·기본값 여부·목표/시나리오 ID·내부 차단 사유 등은 JSON에서 제외합니다.
+- 담당 강사 응답, 활동 생성·상세·status 응답, 내부 준비 상태 계산·권한·페이지·읽기 전용 동작은 유지합니다. 새 Endpoint나 DB 마이그레이션은 없습니다.
+- 동봉 TypeScript 타입·fixture·함수 및 실제 FE 코드는 직접 변경하지 않았습니다. 아동 FE의 현행 5개 필드 매핑은 유지할 수 있으며 주석·공유 계약 타입 동기화와 실제 브라우저 확인은 후속입니다.
+- 퀴즈 결과 API의 아동 평가 정보 응답은 이번 목록 분리와 별도 검토 항목입니다.
+
+
 ## 2026-11-06 — 시나리오 승인 대기 활동 목록
 
 - 기준은 develop `d1a7b0e`(PR #100·#101·#103 병합) 위의 `feature/scenario-review-screens` 작업 브랜치입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.

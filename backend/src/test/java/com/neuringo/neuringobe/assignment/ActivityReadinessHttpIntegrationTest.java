@@ -11,6 +11,7 @@ import com.neuringo.neuringobe.LocalProfileIntegrationTest;
 import com.neuringo.neuringobe.TestFixtures;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -142,6 +143,134 @@ class ActivityReadinessHttpIntegrationTest {
         var other = context();
         mvc.perform(get("/api/v1/children/{id}/activities", other.child()).session(session))
                 .andExpect(status().isNotFound());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"QUIZ", "WAIT_FOR_SCENARIO", "ROLEPLAY", "BLOCKED", "NONE"})
+    void childListContainsOnlyTheFiveAllowedFieldsForEveryNextAction(String action)
+            throws Exception {
+        var ctx = context();
+        if (!action.equals("QUIZ")) result(ctx);
+        if (action.equals("BLOCKED")) {
+            jdbc.update(
+                    "update activity set scenario_id=? where activity_id=?",
+                    UUID.randomUUID(),
+                    ctx.activity());
+        } else if (action.equals("NONE")) {
+            jdbc.update(
+                    "update activity set status='COMPLETED',completed_at=now() where activity_id=?",
+                    ctx.activity());
+        } else if (action.equals("ROLEPLAY")) {
+            assignedScenario(ctx);
+        }
+        jdbc.update(
+                "update activity set initial_support_level='S1',difficulty_fallback_applied=true where activity_id=?",
+                ctx.activity());
+        jdbc.update(
+                "update quiz_result set difficulty_fallback_applied=true where activity_id=?",
+                ctx.activity());
+        var before = jdbc.queryForMap("select * from activity where activity_id=?", ctx.activity());
+        var session = childSession(ctx);
+        for (int repeat = 0; repeat < 2; repeat++) {
+            var response =
+                    mvc.perform(
+                                    get("/api/v1/children/{id}/activities", ctx.child())
+                                            .param("audience", "INSTRUCTOR")
+                                            .param("view", "full")
+                                            .session(session))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.meta.traceId").isNotEmpty())
+                            .andExpect(
+                                    jsonPath("$.data[0].activityId")
+                                            .value(ctx.activity().toString()))
+                            .andExpect(jsonPath("$.data[0].nextAction").value(action))
+                            .andReturn();
+            Map<String, Object> item =
+                    JsonPath.read(response.getResponse().getContentAsString(), "$.data[0]");
+            assertThat(item.keySet())
+                    .isEqualTo(
+                            Set.of(
+                                    "activityId",
+                                    "activityType",
+                                    "status",
+                                    "completedAt",
+                                    "nextAction"));
+            if (action.equals("NONE")) assertThat(item.get("completedAt")).isNotNull();
+            else assertThat(item).containsEntry("completedAt", null);
+        }
+        var instructorResponse = readList(ctx).andExpect(status().isOk()).andReturn();
+        Map<String, Object> teacher =
+                JsonPath.read(instructorResponse.getResponse().getContentAsString(), "$.data[0]");
+        assertThat(teacher.keySet())
+                .isEqualTo(
+                        Set.of(
+                                "activityId",
+                                "childId",
+                                "goalId",
+                                "activityType",
+                                "scenarioId",
+                                "scenarioSource",
+                                "initialSupportLevel",
+                                "difficultyFallbackApplied",
+                                "status",
+                                "assignedAt",
+                                "startedAt",
+                                "completedAt",
+                                "rewardIssuedAt",
+                                "nextAction",
+                                "blockedReason"));
+        assertThat(teacher)
+                .containsEntry("initialSupportLevel", "S1")
+                .containsEntry("difficultyFallbackApplied", true);
+        if (action.equals("ROLEPLAY")) assertThat(teacher.get("scenarioId")).isNotNull();
+        assertThat(jdbc.queryForMap("select * from activity where activity_id=?", ctx.activity()))
+                .isEqualTo(before);
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void childPagingAndStatusFilterKeepTheArrayContract() throws Exception {
+        var ctx = context();
+        var session = childSession(ctx);
+        mvc.perform(
+                        get("/api/v1/children/{id}/activities", ctx.child())
+                                .param("size", "101")
+                                .session(session))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        get("/api/v1/children/{id}/activities", ctx.child())
+                                .param("status", "COMPLETED")
+                                .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+        mvc.perform(
+                        get("/api/v1/children/{id}/activities", ctx.child())
+                                .param("page", "1")
+                                .param("size", "1")
+                                .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    private void assignedScenario(Context ctx) {
+        UUID scenario = UUID.randomUUID(), goal = UUID.randomUUID();
+        jdbc.update(
+                "insert into scenario(scenario_id,class_id,status,scenario_level,goal_content_hash,title,scenario_facts,opening_prompts,origin,created_at) select ?,c.class_id,'DRAFT','L2',g.content_hash,'합성 시나리오','[\"사실\"]','{\"S1\":\"질문\"}','PREPARED',now() from activity a join child c on c.child_id=a.child_id join learning_goal g on g.goal_id=a.goal_id where a.activity_id=?",
+                scenario,
+                ctx.activity());
+        jdbc.update(
+                "insert into scenario_micro_goal(micro_goal_id,scenario_id,order_no,description,required_evidence) values(?,?,1,'작은 목표','[\"말한다\"]')",
+                goal,
+                scenario);
+        jdbc.update(
+                "insert into scenario_opening_focus(scenario_id,support_level,micro_goal_id) values(?,'S1',?)",
+                scenario,
+                goal);
+        jdbc.update("update scenario set status='APPROVED' where scenario_id=?", scenario);
+        jdbc.update(
+                "update activity set scenario_id=?,scenario_source='REUSE' where activity_id=?",
+                scenario,
+                ctx.activity());
     }
 
     @Test

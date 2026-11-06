@@ -127,6 +127,20 @@
       },
       "difficulty": {"scenario_level": "L3", "emotion_complexity": "MIXED_EMOTIONS"},
       "expect": {"mentions_any": [["이사"]], "goals_mention_any": [["두 가지", "섞인", "함께", "둘 다", "동시에"]], "last_goal_mentions_any": ["말", "위로", "해 줄", "공감"]}
+    },
+    {
+      "id": "L1_ALL_BEHAVIORS",
+      "purpose": "L1(목표 3개)에서 강사 화면의 필수 행동 보기 세 개를 모두 고른 경우. 행동이 마지막 목표 하나에 몰리지 않고 나뉘는지(PR #83 리뷰)",
+      "teacher_input": {
+        "learning_goal": "친구의 마음을 알아주기",
+        "category": "EMOTION_RECOGNITION",
+        "situation_type": "PLAYGROUND",
+        "characters": [{"id": "FRIEND", "role": "같은 반 친구"}],
+        "required_elements": ["감정을 확인하는 질문 1회", "위로 표현 1회", "함께 할 행동 제안"],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L1"},
+      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"]], "goals_mention_any": [["묻", "물어", "질문"], ["위로", "괜찮"], ["함께", "같이"]]}
     }
   ]
 }
