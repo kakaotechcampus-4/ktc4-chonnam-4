@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatDateTime } from "./dateTime"
+import { formatDate, formatDateTime } from "./dateTime"
 
 // 기준 시각: 한국 시간 2026-10-03 18:00
 const NOW = new Date("2026-10-03T18:00:00+09:00")
@@ -23,5 +23,14 @@ describe("formatDateTime", () => {
 
   it("값이 없으면 '-'", () => {
     expect(formatDateTime(null, NOW)).toBe("-")
+  })
+})
+
+describe("formatDate", () => {
+  it("시각 없이 '오늘', 월/일, 연/월/일로 보인다", () => {
+    expect(formatDate("2026-10-03T17:31:00+09:00", NOW)).toBe("오늘")
+    expect(formatDate("2026-09-05T09:05:00+09:00", NOW)).toBe("9/5")
+    expect(formatDate("2025-12-30T23:10:00+09:00", NOW)).toBe("2025/12/30")
+    expect(formatDate(null, NOW)).toBe("-")
   })
 })

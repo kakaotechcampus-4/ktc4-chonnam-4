@@ -13,6 +13,7 @@ import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
 import com.neuringo.neuringobe.learningrecord.repository.LearningRecordRepository;
 import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
+import com.neuringo.neuringobe.report.service.ReportDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
 import com.neuringo.neuringobe.roleplay.service.RoleplayGoalObservationStore;
@@ -46,6 +47,7 @@ public class DeletionService {
     private final ActivityRepository activities;
     private final LearningRecordRepository learningRecords;
     private final QuizDeletionService quizzes;
+    private final ReportDeletionService reports;
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
     private final RoleplayGoalObservationStore roleplayObservations;
@@ -63,6 +65,7 @@ public class DeletionService {
             ActivityRepository activities,
             LearningRecordRepository learningRecords,
             QuizDeletionService quizzes,
+            ReportDeletionService reports,
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns,
             RoleplayGoalObservationStore roleplayObservations,
@@ -78,6 +81,7 @@ public class DeletionService {
         this.activities = activities;
         this.learningRecords = learningRecords;
         this.quizzes = quizzes;
+        this.reports = reports;
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
         this.roleplayObservations = roleplayObservations;
@@ -165,6 +169,8 @@ public class DeletionService {
         // 마지막 턴 참조는 같은 트랜잭션에서 턴과 세션을 모두 삭제한 뒤 검사한다.
         roleplayTurns.deleteByChildIds(childIds);
         roleplaySessions.deleteByChildIds(childIds);
+        // 리포트·추천·다음 난이도는 학습 기록과 활동을 가리키므로 그 둘보다 먼저 지운다.
+        reports.deleteAllByChildIds(childIds);
         learningRecords.deleteByChildIds(childIds);
         activities.deleteByChildIds(childIds);
         goals.deleteByChildIds(childIds);

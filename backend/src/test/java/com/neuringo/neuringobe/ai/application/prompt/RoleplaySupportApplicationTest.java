@@ -447,10 +447,10 @@ class RoleplaySupportApplicationTest {
 
     @Test
     void sessionCapUsesLearningTurnsRatherThanStoredInputOrdinals() {
-        var counted = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 20, 3, 9, 1, 2);
+        var counted = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 9, 3, 9, 1, 2);
         RoleplaySupportDecisionRules.requireValidModelAnalysis(
                 counted, observations(false), analysis("S1", "HELP_NEEDED", current));
-        var unknown = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 20, 3, 9, 1, null);
+        var unknown = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 9, 3, 9, 1, null);
         RoleplaySupportDecisionRules.requireValidModelAnalysis(
                 unknown, observations(false), analysis("S1", "HELP_NEEDED", current));
     }
@@ -496,7 +496,7 @@ class RoleplaySupportApplicationTest {
 
     @Test
     void currentUnassessableInputDoesNotTriggerSessionCap() {
-        var counted = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 20, 3, 9, 1, 3);
+        var counted = new RoleplayTurnInput.State(current, "S0", 1, 1, false, 9, 3, 9, 1, 3);
         RoleplaySupportDecisionRules.requireValidModelAnalysis(
                 counted, observations(false), analysis("S0", "NOT_ASSESSABLE", current));
     }

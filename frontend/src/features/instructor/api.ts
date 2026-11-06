@@ -417,6 +417,8 @@ export type LearningGoal = {
 export type LearningGoalInput = {
   title: string
   category?: string
+  // 추천을 채택해 만드는 다음 활동은 지금 목표를 이어받는다(서버가 같은 아동의 목표인지 확인한다).
+  parentGoalId?: string
   // 역할극 추가 조건(시안 T-ACT-04). 모두 선택이다. 상황은 장면 설명 문장이다.
   situationType?: string
   characters?: GoalCharacter[]
@@ -436,8 +438,8 @@ export function getLearningGoal(goalId: string): Promise<LearningGoal> {
 export type ActivityStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'RECOVERY_NEEDED' | 'COMPLETED'
 
 /**
- * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈를 배정한다.
- * 역할극은 역할극 API 가 생기기 전이라 서버가 받지 않는다.
+ * 활동 유형. 최초 결합은 아동당 한 번이고, 그것을 마친 뒤에 독립 퀴즈와 역할극을 배정한다.
+ * 역할극 단독 활동은 마친 역할극이 있어야(다음 역할극 난이도가 있어야) 서버가 받는다.
  */
 export type ActivityType = 'FIRST_COMBINED' | 'SELF_EMOTION_QUIZ' | 'OTHER_EMOTION_QUIZ' | 'ROLEPLAY'
 
@@ -516,7 +518,11 @@ export function createActivity(
   return writeRequest<Activity>(
     'POST',
     '/activities',
-    { childId, activityType, ...(goal ? { goal } : {}) },
+    {
+      childId,
+      activityType,
+      ...(goal ? { goal } : {}),
+    },
     { headers: { 'Idempotency-Key': requestKey } },
   )
 }
@@ -668,4 +674,179 @@ export type ScenarioApprovalItem = {
 /** 내 학급에서 시나리오 승인을 기다리는 활동. 기다린 순서대로 온다. */
 export function listScenarioApprovals(): Promise<ScenarioApprovalItem[]> {
   return readRequest<ScenarioApprovalItem[]>('/scenario-approvals')
+}
+
+// ── 리포트·추천·다음 역할극 난이도 (contracts/api/v1/reports-recommendations) ──
+
+export type SupportLevel = 'S0' | 'S1' | 'S2' | 'S3'
+export type ScenarioLevel = 'L1' | 'L2' | 'L3'
+
+/** 서버가 센 값의 분자·분모. 작은 분모를 퍼센트 대신 "3개 중 2개"로 보이려고 함께 받는다. */
+export type RatioView = { numerator: number; denominator: number; value: number }
+
+export type ObservationStatus = 'EXPLICIT' | 'IMPLICIT' | 'NOT_EXPRESSED' | 'MISUNDERSTOOD' | 'CONTRADICTORY'
+
+/** 혼자·처음 지원으로·지원을 더 받고·답을 듣고·못 함·제외 */
+export type GoalStatus =
+  | 'NO_SUPPORT_NEEDED'
+  | 'REACHED_AT_START'
+  | 'EXTRA_SUPPORT'
+  | 'ANSWER_GIVEN'
+  | 'NOT_REACHED'
+  | 'EXCLUDED'
+
+export type ReportGoal = {
+  microGoalId: string
+  title: string
+  startSupport: SupportLevel
+  finalSupport: SupportLevel
+  result: string
+  status: GoalStatus
+  criteria: { description: string; status: ObservationStatus | null }[]
+  // 지원 단계와 기준으로 만든 짧은 문장. 아동 발화 원문이 아니다.
+  observations: string[]
+}
+
+export type ReportDifficultyDecision = {
+  decisionType: 'FOLLOW_UP'
+  scenarioLevel: ScenarioLevel
+  previousLevel: ScenarioLevel
+  nextSupportLevel: SupportLevel
+  direction: 'LOWER' | 'KEEP' | 'RAISE'
+  reason: string
+  scoreRate: RatioView | null
+  consecutiveUpgradeCandidates: number
+  policyVersion: string
+}
+
+export type ReportNarrativeItem = { text: string; evidenceIds: string[] }
+
+export type LearningReport = {
+  recordId: string
+  activityId: string
+  childId: string
+  completedAt: string
+  summary: string
+  // 역할극 단독 활동은 퀴즈가 없다.
+  quiz: {
+    validQuestionCount: number
+    correctQuestionCount: number
+    overallAccuracy: number | null
+    resolvedAfterHintCount: number
+  } | null
+  roleplay: {
+    scenarioLevel: ScenarioLevel
+    startSupportLevel: SupportLevel
+    goals: ReportGoal[]
+    observations: string[]
+    effectiveSupport: string[]
+    technicalExclusions: string[]
+  }
+  difficultyDecision: ReportDifficultyDecision
+  metrics: {
+    roleplayScore: RatioView | null
+    goalAchievement: RatioView | null
+    independentAchievement: RatioView | null
+    quizAccuracy: RatioView | null
+    quizHintRecovery: RatioView | null
+    validGoalCount: number
+    excludedGoalCount: number
+  }
+  narrative: {
+    observations: ReportNarrativeItem[]
+    effectiveSupports: ReportNarrativeItem[]
+    difficultPoints: ReportNarrativeItem[]
+  } | null
+}
+
+export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND'
+export type RecommendationDecision = 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT'
+export type RejectionReason = 'NOT_NOW' | 'NOT_SUITABLE' | 'ALREADY_PLANNED' | 'OTHER'
+
+export type SuggestedGoal = {
+  // 확장(EXTEND)은 강사가 넓힐 목표를 써야 해서 비어 있다.
+  title: string | null
+  category: string | null
+  parentGoalId: string | null
+}
+
+export type Recommendation = {
+  recommendationId: string
+  recordId: string
+  activityId: string
+  childId: string
+  type: RecommendationType
+  displayOrder: number
+  suggestedGoal: SuggestedGoal
+  reason: string
+  reasonCode: string
+  basisGoalTitle: string | null
+  evidence: string[]
+  evidenceSufficiency: 'SUFFICIENT' | 'LIMITED' | 'INSUFFICIENT'
+  decision: RecommendationDecision | null
+  decidedGoal: SuggestedGoal | null
+  rejectionReason: RejectionReason | null
+  createdGoalId: string | null
+  policyVersion: string
+  createdAt: string
+  decidedAt: string | null
+}
+
+export type RecommendationDecisionInput = {
+  decision: RecommendationDecision
+  goal?: { title: string; category?: string | null; parentGoalId?: string | null }
+  rejectionReason?: RejectionReason
+}
+
+export type RoleplayDifficulty = {
+  childId: string
+  scenarioLevel: ScenarioLevel
+  initialSupportLevel: SupportLevel
+  previousLevel: ScenarioLevel
+  direction: 'LOWER' | 'KEEP' | 'RAISE'
+  reason: string
+  scoreNumerator: number
+  scoreDenominator: number
+  consecutiveUpgradeCandidates: number
+  policyVersion: string
+  sourceActivityId: string
+  // AI 요약이 실패해 리포트가 404여도 이 기록으로 추천을 읽는다.
+  sourceRecordId: string | null
+  decidedAt: string
+}
+
+/**
+ * 완료한 리포트만 온다. AI 요약을 만드는 중이거나 만들지 못한 리포트는 없는 것과 같은 404 LEARNING_RECORD_NOT_FOUND 다.
+ */
+export function getLearningReport(activityId: string): Promise<LearningReport> {
+  return readRequest<LearningReport>(`/activities/${activityId}/learning-record`)
+}
+
+/** 최근 완료 순. 학급 요약·추천 화면은 아동마다 첫 몇 개만 읽는다. */
+export function listLearningReports(childId: string, size = 5): Promise<LearningReport[]> {
+  return readRequest<LearningReport[]>(`/learning-records?childId=${childId}&page=0&size=${size}`)
+}
+
+/** 추천은 AI 요약과 따로 만들어져서 리포트가 아직 없어도 있을 수 있다. */
+export function listRecommendations(recordId: string): Promise<Recommendation[]> {
+  return readRequest<Recommendation[]>(`/learning-records/${recordId}/recommendations`)
+}
+
+/**
+ * 결정만 남기고 활동은 만들지 않는다(자동 배정 금지). 채택 뒤 활동 만들기는 화면이 따로 연다.
+ * requestKey 는 결정 한 번에 하나다. 응답을 못 받아 다시 보낼 때는 같은 키를 쓴다.
+ */
+export function decideRecommendation(
+  recommendationId: string,
+  input: RecommendationDecisionInput,
+  requestKey: string,
+): Promise<Recommendation> {
+  return writeRequest<Recommendation>('PATCH', `/recommendations/${recommendationId}`, input, {
+    headers: { 'Idempotency-Key': requestKey },
+  })
+}
+
+/** 아직 마친 역할극이 없으면 404 ROLEPLAY_DIFFICULTY_NOT_FOUND 다. */
+export function getRoleplayDifficulty(childId: string): Promise<RoleplayDifficulty> {
+  return readRequest<RoleplayDifficulty>(`/children/${childId}/roleplay-difficulty`)
 }

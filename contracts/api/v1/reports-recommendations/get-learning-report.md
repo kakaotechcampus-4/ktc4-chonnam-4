@@ -1,24 +1,27 @@
 # API-REC-01 · 완료 리포트 단건 조회
 
-> 설계 — 2026-11-04 / develop `bab136d`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 구현 — 2026-11-06 / 브랜치 `feature/roleplay-report-integration`(develop `f017637` 위, PR #101 시나리오 검토 흐름 통합). 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
 | 항목 | 값 |
 |---|---|
 | Method | GET |
-| Path | /api/v1/activities/{activityId}/learning-record |
+| Path | `/api/v1/activities/{activityId}/learning-record` |
 | 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
 | 인증 | 담당 강사 Bearer |
-| 성공 | 200 — 설계 예시 |
-| 반환 | ApiResponse<DraftReportData> |
+| 성공 | 200 |
 | FE 함수 | getLearningReport |
-| 구현·협업 | 배재일 |
+| 구현 | 민서(작업 브랜치), 계약 초안 배재일 |
 
 ## 2. 용도·중요 규칙
 
-- 완료본만200.미생성/생성중/실패는구분하지않는404제안,FE는부재로처리.
-- 강사수정/생성중/실패표시없음.표준발화삭제를기다리지않고관찰근거로요약.
+역할극을 마친 활동 하나의 학습 리포트를 강사에게 보여 준다. 활동이 끝나면 서버가 커밋 뒤 목표별 결과·지표·다음 역할극 난이도·추천을 먼저 저장하고, AI 요약은 생성·평가 루프를 통과한 뒤에 채운다. 이 API는 AI 요약까지 끝난 완료본만 200으로 돌려준다.
+
+- 생성 중(PENDING)이거나 생성에 실패한(FAILED) 리포트는 없는 리포트와 같은 404 `LEARNING_RECORD_NOT_FOUND`다. 화면은 "리포트를 만드는 중이거나 만들지 못했어요"로 다루고, 추천(API-REC-03)과 다음 난이도(API-REC-06)는 따로 볼 수 있다.
+- 강사 수정 기능은 없다. 요약·항목은 서버가 근거 ID(E1…)를 붙여 만든 것이고, 숫자(quiz·roleplay·metrics·difficultyDecision)는 LLM 과 상관없이 서버가 기록에서 센 값이다.
+- 아동 발화 원문은 응답·저장·LLM 입력 어디에도 넣지 않는다. 관찰 문장은 지원 단계와 승인 기준 문장으로 만든다.
+- 퀴즈가 없는 역할극 단독 활동은 `quiz`가 null이다.
 
 ## 3. 요청
 
@@ -26,19 +29,7 @@
 
 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| activityId | UUID string | 예 | 경로 식별자 |
-
-### Query parameters
-
-없음. 지원되지 않는 page/size/sort를 보내도 적용된다고 가정하지 않습니다.
-
-### Headers·쿠키
-
-| 이름 | 값/타입 | 필수 | 주의 |
-|---|---|---|---|
-| Accept | application/json | 예 | 공통 envelope |
-| Cookie | credentials: include | 예 | 브라우저 관리; HttpOnly 쿠키 직접 읽기 금지 |
-| Authorization | Bearer <accessToken> | 예 | 아동/public에 강사 토큰을 붙이지 않음 |
+| activityId | UUID string | 예 | 완료 활동 |
 
 ### Request Body
 
@@ -46,7 +37,7 @@
 
 ## 4. 성공 응답
 
-HTTP 200 — 설계 예시.
+HTTP 200.
 
 ~~~json
 {
@@ -54,8 +45,8 @@ HTTP 200 — 설계 예시.
     "recordId": "86000000-0000-4000-8000-000000000001",
     "activityId": "40000000-0000-4000-8000-000000000001",
     "childId": "10000000-0000-4000-8000-000000000001",
-    "completedAt": "2026-10-06T12:10:00+09:00",
-    "summary": "친구의 상황과 감정을 연결해 설명했어요.",
+    "completedAt": "2026-10-31T14:20:00+09:00",
+    "summary": "감정 이름은 혼자 말했고, 이유는 두 선택지를 듣고 말했어요.",
     "quiz": {
       "validQuestionCount": 3,
       "correctQuestionCount": 2,
@@ -63,18 +54,124 @@ HTTP 200 — 설계 예시.
       "resolvedAfterHintCount": 1
     },
     "roleplay": {
+      "scenarioLevel": "L2",
+      "startSupportLevel": "S1",
+      "goals": [
+        {
+          "microGoalId": "87000000-0000-4000-8000-000000000001",
+          "title": "감정 이름 말하기",
+          "startSupport": "S1",
+          "finalSupport": "S1",
+          "result": "REACHED",
+          "status": "REACHED_AT_START",
+          "criteria": [
+            {
+              "description": "속상한 감정",
+              "status": "EXPLICIT"
+            }
+          ],
+          "observations": [
+            "상황 단서를 들은 뒤 속상한 감정을 분명히 말함"
+          ]
+        },
+        {
+          "microGoalId": "87000000-0000-4000-8000-000000000002",
+          "title": "감정의 이유 말하기",
+          "startSupport": "S1",
+          "finalSupport": "S2",
+          "result": "REACHED",
+          "status": "EXTRA_SUPPORT",
+          "criteria": [
+            {
+              "description": "넘어져서 아픈 이유",
+              "status": "EXPLICIT"
+            }
+          ],
+          "observations": [
+            "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+            "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
+          ]
+        }
+      ],
       "observations": [
-        "상황 단서를 받은 뒤 감정과 사건을 연결함"
+        "상황 단서를 들은 뒤 속상한 감정을 분명히 말함",
+        "상황 단서를 들은 뒤 넘어져서 아픈 이유를 간접적으로 말함",
+        "두 선택지를 들은 뒤 넘어져서 아픈 이유를 분명히 말함"
       ],
       "effectiveSupport": [
-        "상황 단서"
+        "두 선택지"
       ],
       "technicalExclusions": []
     },
     "difficultyDecision": {
-      "decisionType": "INITIAL",
+      "decisionType": "FOLLOW_UP",
       "scenarioLevel": "L2",
-      "policyVersion": "example-policy-v1"
+      "previousLevel": "L2",
+      "nextSupportLevel": "S1",
+      "direction": "KEEP",
+      "reason": "SCORE_IN_KEEP_RANGE",
+      "scoreRate": {
+        "numerator": 9,
+        "denominator": 12,
+        "value": 0.75
+      },
+      "consecutiveUpgradeCandidates": 0,
+      "policyVersion": "FOLLOW_UP_ROLEPLAY_V1"
+    },
+    "metrics": {
+      "roleplayScore": {
+        "numerator": 9,
+        "denominator": 12,
+        "value": 0.75
+      },
+      "goalAchievement": {
+        "numerator": 2,
+        "denominator": 2,
+        "value": 1.0
+      },
+      "independentAchievement": {
+        "numerator": 1,
+        "denominator": 2,
+        "value": 0.5
+      },
+      "quizAccuracy": {
+        "numerator": 2,
+        "denominator": 3,
+        "value": 0.6666666666666666
+      },
+      "quizHintRecovery": {
+        "numerator": 1,
+        "denominator": 1,
+        "value": 1.0
+      },
+      "validGoalCount": 2,
+      "excludedGoalCount": 0
+    },
+    "narrative": {
+      "observations": [
+        {
+          "text": "감정 이름은 처음 단서만으로 말했어요.",
+          "evidenceIds": [
+            "E3"
+          ]
+        }
+      ],
+      "effectiveSupports": [
+        {
+          "text": "두 선택지를 들은 뒤 이유를 분명히 말했어요.",
+          "evidenceIds": [
+            "E7"
+          ]
+        }
+      ],
+      "difficultPoints": [
+        {
+          "text": "이유는 처음에 일부만 말했어요.",
+          "evidenceIds": [
+            "E6"
+          ]
+        }
+      ]
     }
   },
   "meta": {
@@ -87,76 +184,35 @@ HTTP 200 — 설계 예시.
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| data.recordId | UUID | 예 | 아니오 | 기록 |
+| data.recordId | UUID | 예 | 아니오 | 학습 기록 |
 | data.activityId | UUID | 예 | 아니오 | 완료 활동 |
 | data.childId | UUID | 예 | 아니오 | 담당 아동 |
-| data.completedAt | ISODateTime | 예 | 아니오 | 완료 시각 |
-| data.summary | string | 예 | 아니오 | 관찰 근거 요약 |
-| data.quiz | Record<string, unknown> | 예 | 아니오 | 필드 세부 합의; 초기/독립 활동별 유무 미정 |
-| data.roleplay | Record<string, unknown> | 예 | 아니오 | 관찰/지원/일반 기술 제외 |
-| data.difficultyDecision | Record<string, unknown> | 예 | 아니오 | 최종 판정/정책 버전 |
+| data.completedAt | ISODateTime | 예 | 아니오 | 활동 완료 시각(+09:00) |
+| data.summary | string | 예 | 아니오 | AI 요약 한 줄(120자 이내) |
+| data.quiz | ReportQuiz | 예 | 예 | 최초 결합 활동의 퀴즈. 역할극 단독은 null |
+| data.roleplay | ReportRoleplay | 예 | 아니오 | 목표별 시작·최종 지원, 결과, 기준별 관찰 |
+| data.difficultyDecision | ReportDifficultyDecision | 예 | 아니오 | 이 역할극 뒤 정한 다음 난이도 |
+| data.metrics | ReportMetrics | 예 | 아니오 | 분자·분모를 함께 든 지표 |
+| data.narrative | ReportNarrative | 예 | 예 | AI 항목(관찰·효과적인 지원·어려운 지점)과 근거 ID |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 
 ## 5. 오류·FE 처리
 
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
-
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
-| 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
-| 401 | INVALID_TOKEN | 강사 토큰 만료/위조; 입력·토큰 폐기 |
-| 403 | ACCESS_DENIED | 역할 권한 |
-| 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
+| 400 | INVALID_REQUEST | UUID·쿼리·헤더 형식 |
+| 401 | AUTHENTICATION_REQUIRED | 토큰 없음 |
+| 401 | INVALID_TOKEN | 강사 토큰 만료·위조. 입력·토큰 폐기 |
+| 403 | ACCESS_DENIED | 강사가 아닌 역할 |
+| 404 | LEARNING_RECORD_NOT_FOUND | 없는 활동·남의 활동·리포트 미완료 |
+| 500 | INTERNAL_ERROR | 내부 오류. 원문·예외 전문 비노출 |
 
-공통 오류 envelope 예시(message/traceId는 동적):
-
-~~~json
-{
-  "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
-    "path": "/api/v1/activities/{activityId}/learning-record",
-    "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
-  }
-}
-~~~
-
-네트워크·Abort·성공 응답 파싱 오류는 서버 미실행을 뜻하지 않습니다. 변경 요청을 새 키로 자동 재전송하지 않습니다. CSRF 오류는 토큰을 다시 받고 원래 행동/키로 복구를 판단합니다. 강사 보호 요청401은 토큰·입력·캐시 정리, 아동401은 재입장 안내입니다. refresh 로그인 API는 없습니다. 세부 동작은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
+남의 아동·기록·추천은 없는 자원과 같은 404로 숨깁니다. 공통 오류 envelope은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
 
 ## 6. 복사 가능한 TypeScript
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
-
-### 요청·응답 타입
-
-~~~ts
-export type UUID = string;
-
-export type ISODateTime = string;
-
-export interface DraftReportData {
-  /** 기록 */
-  recordId: UUID;
-  /** 완료 활동 */
-  activityId: UUID;
-  /** 담당 아동 */
-  childId: UUID;
-  /** 완료 시각 */
-  completedAt: ISODateTime;
-  /** 관찰 근거 요약 */
-  summary: string;
-  /** 필드 세부 합의; 초기/독립 활동별 유무 미정 */
-  quiz: Record<string, unknown>;
-  /** 관찰/지원/일반 기술 제외 */
-  roleplay: Record<string, unknown>;
-  /** 최종 판정/정책 버전 */
-  difficultyDecision: Record<string, unknown>;
-}
-~~~
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 응답 타입은 types.ts의 리포트·추천 절에 있습니다.
 
 ### 호출 함수
 
@@ -173,43 +229,28 @@ export function getLearningReport(
   api: ApiClient,
   args: GetLearningReportArgs,
   options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftReportData>> {
-  return api.request<T.DraftReportData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/learning-record", {
+): Promise<T.ApiResponse<T.LearningReportData>> {
+  return api.request<T.LearningReportData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/learning-record", {
     method: "GET",
     auth: "instructor",
     expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
+    signal: options.signal
   });
 }
 ~~~
 
-### 사용 예시
-
-~~~ts
-import { getLearningReport } from "./draft-endpoints.ts";
-
-const response = await getLearningReport(api, {
-  "activityId": "40000000-0000-4000-8000-000000000001"
-});
-const data = response.data;
-// 개인정보·원본·토큰·응답 전문을 로그에 출력하지 않습니다.
-~~~
-
 ## 7. cURL 계약 확인
 
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
-
 ~~~bash
-curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/activities/${activityId}/learning-record" \
+curl -i -X GET "$NEURINGO_API_ORIGIN/api/v1/activities/{activityId}/learning-record" \
   --cookie ./neuringo.cookies.txt --cookie-jar ./neuringo.cookies.txt \
   -H 'Accept: application/json' \
   -H "Authorization: Bearer $NEURINGO_ACCESS_TOKEN"
 ~~~
 
-## 8. 연결 Task·미정·검증
+## 8. 연결 Task·검증
 
 - 관련 Task ID: `S7-BAE-01`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
+- 서버: `backend/src/main/java/com/neuringo/neuringobe/report/controller/LearningReportController.java`. 설계 글은 `backend/docs/roleplay-report-integration.md`입니다.
+- 검증: `LearningReportApiIntegrationTest`(완료 기록·소유권·결정·삭제), `OwnershipPatrolIntegrationTest`, `contracts/api-v1.json` 시나리오(백엔드 ApiContractTest·프론트 MSW 계약 테스트).
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
-- 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

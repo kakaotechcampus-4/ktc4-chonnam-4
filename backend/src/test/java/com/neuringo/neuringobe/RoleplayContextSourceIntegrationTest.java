@@ -2228,7 +2228,8 @@ class RoleplayContextSourceIntegrationTest {
                         observationStore,
                         transactions,
                         new com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties(
-                                2, 9));
+                                2, 9),
+                        event -> {});
         for (var learning : List.of("NOT_ASSESSABLE", "PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE")) {
             var change = assessedChange(f, learning, f.event, "S1", false);
             assertThat(
