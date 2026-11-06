@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.scenario.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -42,7 +43,7 @@ public class RoleplayActivityDifficulty {
         this.scenarioLevel = source.getNextLevel();
         this.initialSupportLevel = source.getNextSupportLevel();
         this.sourceDecisionId = source.getDecisionId();
-        this.pinnedAt = pinnedAt;
+        this.pinnedAt = StoredTime.normalize(pinnedAt);
     }
 
     public UUID getActivityId() {

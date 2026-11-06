@@ -1,6 +1,6 @@
 package com.neuringo.neuringobe.scenario.service;
 
-import com.neuringo.neuringobe.scenario.dto.ScenarioDifficultyBasis;
+import com.neuringo.neuringobe.scenario.domain.ScenarioDifficultySource;
 import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -31,7 +31,7 @@ final class ScenarioInputFingerprint {
                                 input.learningGoal().contentHash(),
                                 difficulty.scenarioLevel(),
                                 difficulty.policyVersion()));
-        if (difficulty.source() == ScenarioDifficultyBasis.Source.FOLLOW_UP_PINNED) {
+        if (difficulty.source() == ScenarioDifficultySource.FOLLOW_UP_PINNED) {
             parts.add("follow-up");
             parts.add(difficulty.sourceDecisionId().toString());
             parts.add(String.valueOf(difficulty.initialSupportLevel()));

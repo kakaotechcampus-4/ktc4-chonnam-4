@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.scenario.dto;
 
 import com.neuringo.neuringobe.quiz.dto.InitialDifficultyEvidence;
+import com.neuringo.neuringobe.scenario.domain.ScenarioDifficultySource;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,13 +19,8 @@ public record ScenarioDifficultyBasis(
         String scenarioLevel,
         String initialSupportLevel,
         String policyVersion,
-        Source source,
+        ScenarioDifficultySource source,
         UUID sourceDecisionId) {
-
-    public enum Source {
-        INITIAL_QUIZ,
-        FOLLOW_UP_PINNED
-    }
 
     public ScenarioDifficultyBasis {
         Objects.requireNonNull(activityId);
@@ -33,7 +29,7 @@ public record ScenarioDifficultyBasis(
         Objects.requireNonNull(scenarioLevel);
         Objects.requireNonNull(policyVersion);
         Objects.requireNonNull(source);
-        if ((source == Source.FOLLOW_UP_PINNED) != (sourceDecisionId != null)) {
+        if ((source == ScenarioDifficultySource.FOLLOW_UP_PINNED) != (sourceDecisionId != null)) {
             throw new IllegalArgumentException("고정 난이도만 결정 ID 를 가진다.");
         }
     }
@@ -46,7 +42,7 @@ public record ScenarioDifficultyBasis(
                 evidence.scenarioLevel(),
                 evidence.initialSupportLevel(),
                 evidence.policyVersion(),
-                Source.INITIAL_QUIZ,
+                ScenarioDifficultySource.INITIAL_QUIZ,
                 null);
     }
 
@@ -65,7 +61,7 @@ public record ScenarioDifficultyBasis(
                 scenarioLevel,
                 initialSupportLevel,
                 policyVersion,
-                Source.FOLLOW_UP_PINNED,
+                ScenarioDifficultySource.FOLLOW_UP_PINNED,
                 Objects.requireNonNull(sourceDecisionId));
     }
 }

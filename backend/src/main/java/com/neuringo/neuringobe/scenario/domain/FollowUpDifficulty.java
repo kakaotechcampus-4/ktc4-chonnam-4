@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.scenario.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -81,7 +82,7 @@ public class FollowUpDifficulty {
         this.scoreDenominator = decision.scoreRate().maxScaledPoints();
         this.consecutiveUpgradeCandidates = decision.consecutiveUpgradeCandidates();
         this.policyVersion = decision.policyVersion();
-        this.decidedAt = decidedAt;
+        this.decidedAt = StoredTime.normalize(decidedAt);
     }
 
     public UUID getDecisionId() {
