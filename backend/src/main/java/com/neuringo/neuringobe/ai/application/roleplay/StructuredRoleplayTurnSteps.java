@@ -139,6 +139,7 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
             focus.add("같은 목표의 지원을 낮춰 반복 유도하지 않는다.");
             focus.add(
                     "확인된 learning_turn_count가 상한에 도달했고 이번 입력이 판정 불가가 아니면 현재 목표·지원으로 CLOSE_ROLEPLAY를 선택한다.");
+            focus.add("저장 입력 순번 turn_count가 10 이상이면 판정 결과와 관계없이 현재 목표·지원으로 CLOSE_ROLEPLAY를 선택한다.");
             focus.add("새 목표의 시작 지원은 서버 정책이 생성 전에 한 단계 보정하므로 이미 보정했다고 가정하지 않는다.");
             avoid.add("이전 출력이 검증을 통과했다고 가정하지 않는다.");
         }

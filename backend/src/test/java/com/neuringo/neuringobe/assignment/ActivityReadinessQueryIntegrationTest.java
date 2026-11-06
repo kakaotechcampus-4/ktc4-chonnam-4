@@ -167,7 +167,9 @@ class ActivityReadinessQueryIntegrationTest {
         UUID activity = activity(f, ActivityType.FIRST_COMBINED, "RECOVERY_NEEDED");
         var scenario = scenario(f, activity);
         UUID first = session(f, activity, scenario);
-        jdbc.update("update roleplay_session set status='COMPLETED' where session_id=?", first);
+        jdbc.update(
+                "update roleplay_session set status='COMPLETED', completion_kind='NORMAL' where session_id=?",
+                first);
         assertAction(
                 f,
                 activity,

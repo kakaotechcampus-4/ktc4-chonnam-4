@@ -33,6 +33,9 @@ public class RoleplaySession {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "completion_kind")
+    private String completionKind;
+
     @Version
     @Column(name = "row_version", nullable = false)
     private long rowVersion;
@@ -121,6 +124,10 @@ public class RoleplaySession {
         return status;
     }
 
+    public String getCompletionKind() {
+        return completionKind;
+    }
+
     public UUID getCurrentMicroGoalId() {
         return currentMicroGoalId;
     }
@@ -130,8 +137,17 @@ public class RoleplaySession {
     }
 
     public void completeNormally(Instant now) {
+        complete(now, "NORMAL");
+    }
+
+    public void completeAtStoredTurnSafetyLimit(Instant now) {
+        complete(now, "TECHNICAL_STORED_TURN_LIMIT");
+    }
+
+    private void complete(Instant now, String kind) {
         if (!"COMPLETED".equals(status)) {
             status = "COMPLETED";
+            completionKind = kind;
             lastActivityAt = StoredTime.normalize(now);
         }
     }

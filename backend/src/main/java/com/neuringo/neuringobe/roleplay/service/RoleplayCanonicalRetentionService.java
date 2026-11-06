@@ -36,13 +36,25 @@ public class RoleplayCanonicalRetentionService {
     @Transactional
     public int completeNormallyAndDelete(
             UUID sessionId, UUID authenticatedChildId, UUID activityId) {
+        return completeAndDelete(sessionId, authenticatedChildId, activityId, false);
+    }
+
+    @Transactional
+    public int completeAtStoredTurnSafetyLimitAndDelete(
+            UUID sessionId, UUID authenticatedChildId, UUID activityId) {
+        return completeAndDelete(sessionId, authenticatedChildId, activityId, true);
+    }
+
+    private int completeAndDelete(
+            UUID sessionId, UUID authenticatedChildId, UUID activityId, boolean safetyLimit) {
         var session =
                 sessions.findOwnedForUpdate(sessionId, authenticatedChildId, activityId)
                         .orElseThrow(
                                 () ->
                                         new IllegalArgumentException(
                                                 "Owned roleplay session not found"));
-        session.completeNormally(clock.instant());
+        if (safetyLimit) session.completeAtStoredTurnSafetyLimit(clock.instant());
+        else session.completeNormally(clock.instant());
         int erased = turns.deleteCanonicalUtterances(sessionId);
         failures.deleteBySessionId(sessionId);
         sessions.flush();
