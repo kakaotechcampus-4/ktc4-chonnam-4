@@ -4,6 +4,26 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 public interface RoleplayInputProcessor {
     Result process(String input);
 
+    default Result process(Input input) {
+        return process(input.text());
+    }
+
+    record Input(
+            String text,
+            com.neuringo.neuringobe.ai.application.model.AiTraceContext trace,
+            RoleplayTurnDeadline deadline) {
+        public Input {
+            java.util.Objects.requireNonNull(text);
+            java.util.Objects.requireNonNull(trace);
+            java.util.Objects.requireNonNull(deadline);
+        }
+
+        @Override
+        public String toString() {
+            return "Input[redacted]";
+        }
+    }
+
     sealed interface Result {}
 
     /** 확인하지 못한 판정은 null로 전달하며 호출자가 임의로 성공 처리하지 않는다. */
