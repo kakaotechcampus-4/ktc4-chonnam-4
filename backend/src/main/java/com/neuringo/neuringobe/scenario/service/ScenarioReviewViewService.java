@@ -13,11 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class ScenarioReviewViewService {
-    private final InitialScenarioPreparationService preparations;
+    private final ScenarioReviewInputService preparations;
     private final ScenarioReviewViewRepository views;
 
     public ScenarioReviewViewService(
-            InitialScenarioPreparationService preparations, ScenarioReviewViewRepository views) {
+            ScenarioReviewInputService preparations, ScenarioReviewViewRepository views) {
         this.preparations = preparations;
         this.views = views;
     }
@@ -39,7 +39,7 @@ public class ScenarioReviewViewService {
                         goal.characters(),
                         goal.requiredElements(),
                         goal.forbiddenExpressions(),
-                        input.initialDifficulty().scenarioLevel());
+                        input.difficulty().scenarioLevel());
         return new ScenarioReviewResponse(
                 snapshot.reviewId(),
                 snapshot.activityId(),

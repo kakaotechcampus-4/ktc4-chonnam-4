@@ -22,11 +22,19 @@ export function formatDateTime(value: string | null, now: Date = new Date()): st
   if (!value) {
     return '-'
   }
+  const date = formatDate(value, now)
+  return `${date} ${seoulParts(new Date(value)).time}`
+}
+
+/** 시각 없이 날짜만. 시안 T-CLS-03 최근 학습 요약·T-REC-01 기준 리포트의 "오늘", "9/6" 표기다. 값이 없으면 "-". */
+export function formatDate(value: string | null, now: Date = new Date()): string {
+  if (!value) {
+    return '-'
+  }
   const target = seoulParts(new Date(value))
   const today = seoulParts(now)
   if (target.year === today.year && target.month === today.month && target.day === today.day) {
-    return `오늘 ${target.time}`
+    return '오늘'
   }
-  const date = target.year === today.year ? `${target.month}/${target.day}` : `${target.year}/${target.month}/${target.day}`
-  return `${date} ${target.time}`
+  return target.year === today.year ? `${target.month}/${target.day}` : `${target.year}/${target.month}/${target.day}`
 }

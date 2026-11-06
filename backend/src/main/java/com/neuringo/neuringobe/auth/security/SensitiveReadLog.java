@@ -35,6 +35,10 @@ public class SensitiveReadLog {
         ACTIVITY,
         QUIZ_RESULT,
         QUIZ_ATTEMPT,
+        LEARNING_REPORT,
+        CHILD_LEARNING_REPORTS,
+        RECOMMENDATION,
+        ROLEPLAY_DIFFICULTY,
         /** 내 학급에서 시나리오 승인을 기다리는 활동 목록. 대상 ID 는 강사 자신이다. */
         SCENARIO_APPROVALS
     }
