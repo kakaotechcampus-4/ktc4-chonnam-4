@@ -112,7 +112,11 @@ async function main() {
     await solveQuiz(child)
   }
 
-  // 최초 결합은 퀴즈가 끝난 뒤 서버가 커밋 뒤에 시나리오를 붙인다. 붙을 때까지 잠깐 기다린다.
+  // 시나리오는 서버가 자동으로 붙이지 않는다(PR #101). 최초 결합은 퀴즈를 마친 뒤, 역할극 단독은 배정 직후 강사가 검토해 확정한다.
+  // 화면의 승인 대기함·검토 화면이 하는 일을 API 로 대신한다. 맞는 공통 승인본이 없으면 검토 시작 요청에서 실제 LLM 으로 새로 만든다.
+  const current = await instructor.request("GET", `/activities/${args.activity}`)
+  if (!current.activity.scenarioId) await confirmScenario(instructor)
+
   let started = null
   for (let i = 0; i < Number(args["start-wait"]); i++) {
     try {
@@ -123,7 +127,7 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
-  if (!started) throw new Error("역할극을 시작하지 못했다(승인 시나리오가 없거나 퀴즈가 끝나지 않음)")
+  if (!started) throw new Error("역할극을 시작하지 못했다(시나리오 확정 전이거나 퀴즈가 끝나지 않음)")
   console.log(`역할극 시작 session=${started.sessionId.slice(0, 8)} level 시나리오=${started.scenarioId.slice(0, 8)}`)
   for (const message of started.delivery.messages) console.log(`  AI: ${message.text}`)
 
@@ -144,6 +148,24 @@ async function main() {
   }
   const final = await instructor.request("GET", `/activities/${args.activity}/status`)
   console.log(`활동 상태: ${final.status}`)
+}
+
+/** 공통 검토를 시작(또는 이어서)하고 처음 제시된 후보를 수정 없이 확정한다. */
+async function confirmScenario(instructor) {
+  const review = await instructor.request("POST", `/activities/${args.activity}/scenario-review`, {
+    body: { action: "START_OR_RESUME" },
+    key: crypto.randomUUID(),
+  })
+  await instructor.request("PUT", `/activities/${args.activity}/scenario`, {
+    body: {
+      reviewId: review.reviewId,
+      revision: review.revision,
+      scenarioId: review.scenario.scenarioId,
+      scenarioVersion: review.scenario.scenarioVersion,
+    },
+    key: crypto.randomUUID(),
+  })
+  console.log(`시나리오 확정 레벨=${review.conditions.scenarioLevel} 제목=${review.scenario.title}`)
 }
 
 /** 늘 첫 보기로 답한다. 틀리면 힌트 두 번 뒤 마지막 보기로 마친다(첫 응답은 바꿀 수 없다). */

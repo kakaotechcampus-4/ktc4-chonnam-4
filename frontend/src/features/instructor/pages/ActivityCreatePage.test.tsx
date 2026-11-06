@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
 import axe from "axe-core"
 import { getResponse, http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   apiError,
   emptyQuizPool,
@@ -38,15 +38,20 @@ function renderWizard(search = "") {
 
 describe("활동 만들기 화면", () => {
   beforeEach(() => signIn())
+  afterEach(() => server.events.removeAllListeners())
 
   it("추천에서 넘어오면 목표가 채워진 역할극을 다음 난이도로 배정하고, 지난 목표를 이어받은 뒤 그 활동의 시나리오 검토로 간다", async () => {
     const { activity } = seedRoleplayLearning({ childId: CHILD.childId })
     const goalTitle = "놀이터에서 위로하는 말 하기"
     let body: unknown
     let created: { activityId: string; scenarioId: string | null } | undefined
-    server.events.on("response:mocked", async ({ request, response }) => {
+    server.events.on("request:start", async ({ request }) => {
       if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
         body = await request.clone().json()
+      }
+    })
+    server.events.on("response:mocked", async ({ request, response }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/v1/activities") {
         created = (await response.clone().json()).data
       }
     })

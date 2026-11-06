@@ -14,7 +14,6 @@ import type {
   Recommendation,
   RecommendationDecision,
   RoleplayDifficulty,
-  ScenarioLevel,
   User,
 } from "@/features/instructor/api"
 import { contradictingForbidden, OTHER_CHARACTER_ID, type GoalCharacter } from "@/features/instructor/lib/goalConditions"

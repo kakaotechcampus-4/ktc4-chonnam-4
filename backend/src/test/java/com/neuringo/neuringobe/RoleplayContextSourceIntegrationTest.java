@@ -242,28 +242,24 @@ class RoleplayContextSourceIntegrationTest {
         assertThat(load(key(f)).orElseThrow().key().scenarioVersion()).isEqualTo(3);
     }
 
-    @Test
-    void rejectsApprovedContentOutsideTheActivityReuseScope() {
+    @ParameterizedTest
+    @ValueSource(strings = {"class", "goalHash"})
+    void rejectsApprovedContentOutsideTheActivityReuseScope(String changed) {
         var f =
                 fixture(
-                        value ->
+                        value -> {
+                            if (changed.equals("class")) {
+                                jdbc.update(
+                                        "update scenario set class_id=null where scenario_id=?",
+                                        value.scenario);
+                            } else {
                                 jdbc.update(
                                         "update scenario set goal_content_hash=? where scenario_id=?",
                                         "b".repeat(64),
-                                        value.scenario));
+                                        value.scenario);
+                            }
+                        });
         assertThat(load(key(f))).isEmpty();
-    }
-
-    /** 학급은 재사용 범위가 아니다(팀 결정, PR #90 리뷰). 강사가 다른 학급의 승인본을 골라도 같은 목표 내용이면 쓴다. */
-    @Test
-    void approvedContentFromAnotherClassIsStillInScope() {
-        var f =
-                fixture(
-                        value ->
-                                jdbc.update(
-                                        "update scenario set class_id=null where scenario_id=?",
-                                        value.scenario));
-        assertThat(load(key(f))).isPresent();
     }
 
     @ParameterizedTest
@@ -2232,7 +2228,8 @@ class RoleplayContextSourceIntegrationTest {
                         observationStore,
                         transactions,
                         new com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties(
-                                2, 9));
+                                2, 9),
+                        event -> {});
         for (var learning : List.of("NOT_ASSESSABLE", "PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE")) {
             var change = assessedChange(f, learning, f.event, "S1", false);
             assertThat(

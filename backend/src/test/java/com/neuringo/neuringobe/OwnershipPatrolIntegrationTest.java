@@ -114,8 +114,6 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry(
                             "GET /api/v1/children/{childId}/roleplay-difficulty",
                             "CHILD_NOT_FOUND"),
-                    Map.entry(
-                            "GET /api/v1/children/{childId}/roleplay-scenarios", "CHILD_NOT_FOUND"),
                     // 목록: B 에게 A 의 학급이 보이지 않는다(아래 listsOnlyOwnClassrooms).
                     Map.entry("GET /api/v1/classrooms", "LIST"));
 
@@ -365,10 +363,6 @@ class OwnershipPatrolIntegrationTest {
                 get(
                         "GET /api/v1/children/{childId}/roleplay-difficulty",
                         "/api/v1/children/%s/roleplay-difficulty",
-                        Owned::childId),
-                get(
-                        "GET /api/v1/children/{childId}/roleplay-scenarios",
-                        "/api/v1/children/%s/roleplay-scenarios?goalTitle=friend",
                         Owned::childId));
     }
 

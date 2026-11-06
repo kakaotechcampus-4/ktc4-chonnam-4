@@ -282,6 +282,8 @@ PostgreSQL Testcontainers·실제 인증 토큰/쿠키 CSRF·MockMvc를 사용�
 
 활동 유형 추가 허용, 다른 Task의 미구현 API나 역할극 전체 프론트 연동까지 이 Task에서 구현했다고 보지 않는다. PR #90은 통합 대상에서 제외한 상태다. #78/#93 전체를 병합하지 않았다.
 
+> 2026-11-06 PR #90 통합: 후속(역할극 단독) 입력 어댑터를 이 경로에 연결했다. 공통 입력은 `ScenarioPreparationInput`(난이도 근거 `ScenarioDifficultyBasis`, 출처 INITIAL_QUIZ·FOLLOW_UP_PINNED)이고, `ScenarioReviewInputService`가 활동 유형으로 최초(`InitialScenarioPreparationService`)·후속(`FollowUpScenarioPreparationService`) 어댑터를 고른다. 후속 입력은 활동에 고정한 `roleplay_activity_difficulty`의 레벨·시작 지원과 `source_decision_id`의 정책 버전을 쓰고, 입력 지문에 결정 ID·시작 지원을 더한다(최초 결합 지문은 그대로). #90의 자체 후보 조회·배정 때 선택(`RoleplayScenarioSelectionService`·`RoleplayScenarioCandidateStore`·V27 `scenario.approved_at`)은 지웠고, #90 마이그레이션은 V41·V42로 옮겼다. 승인 대기함·아동 준비 판정도 역할극 단독을 고정 난이도로 판정한다.
+
 ### 검증 결과와 환경
 
 기준은 develop 5d097a9의 작업본이다. 빠른 로컬 검증용 복사본에 동일한 backend 변경을 적용해 CI의 `./gradlew build --no-daemon`을 실행했다. 소유권 순찰 등록 누락 1개, 복사본의 deploy/compose.dev.yml 누락 1개로 전체 1,574개 중 2개가 실패했다. 전자는 세 API를 공통 CHECKED 및 실제 권한 밖/미존재 요청에 추가했다. 후자는 원본 배포 설정을 복사본에 포함해 검증 환경을 보완했다. 제품 코드를 바꾸거나 실패를 제외하지 않았다.

@@ -145,46 +145,6 @@ public final class RoleplayReportSeed {
         return new Seeded(goal, scenario, activity, record, session);
     }
 
-    /**
-     * 학급·목표 내용(content_hash)·레벨이 맞는 승인 시나리오를 하나 더 넣는다. 시작 질문은 S0~S2 모두 두고, 시작 초점은 첫 작은 목표다. 역할극 단독
-     * 활동이 시작할 때 이 시나리오가 붙는다.
-     */
-    public UUID approvedScenario(UUID classId, String goalContentHash, String level) {
-        return approvedScenario(classId, goalContentHash, level, null);
-    }
-
-    /** approvedAt 을 주면 승인 시각을 그 값으로 남긴다(후보 정렬 확인용). null 이면 트리거가 승인 순간으로 채운다. */
-    public UUID approvedScenario(
-            UUID classId, String goalContentHash, String level, Instant approvedAt) {
-        UUID scenario = UUID.randomUUID();
-        jdbc.update(
-                """
-                insert into scenario(scenario_id,status,scenario_level,goal_content_hash,title,scenario_facts,opening_prompts,origin,created_at,class_id,scenario_version)
-                values(?,'DRAFT',?,?,'교실에서 넘어진 친구','["친구가 넘어졌다"]'::jsonb,
-                    '{"S0":"친구는 지금 어떤 마음일까?","S1":"친구가 무릎을 잡고 있어. 어떤 마음일까?","S2":"친구는 속상할까, 신날까?"}'::jsonb,
-                    'PREPARED',now(),?,1)
-                """,
-                scenario,
-                level,
-                goalContentHash,
-                classId);
-        UUID first = UUID.randomUUID();
-        microGoal(scenario, first, 1, EMOTION, "속상한 감정");
-        microGoal(scenario, UUID.randomUUID(), 2, CAUSE, "넘어져서 아픈 이유");
-        for (String support : List.of("S0", "S1", "S2")) {
-            jdbc.update(
-                    "insert into scenario_opening_focus(scenario_id,support_level,micro_goal_id) values(?,?,?)",
-                    scenario,
-                    support,
-                    first);
-        }
-        jdbc.update(
-                "update scenario set status='APPROVED', approved_at=? where scenario_id=?",
-                approvedAt == null ? null : Timestamp.from(approvedAt),
-                scenario);
-        return scenario;
-    }
-
     private void microGoal(UUID scenario, UUID id, int order, String description, String evidence) {
         jdbc.update(
                 "insert into scenario_micro_goal(micro_goal_id,scenario_id,order_no,description,required_evidence) values(?,?,?,?,?::jsonb)",
