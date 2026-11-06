@@ -53,7 +53,7 @@ function ChildLayout({
 
   return (
     <div
-      className="child-scope flex min-h-svh flex-col"
+      className="child-scope relative flex min-h-svh flex-col"
       // .child-scope의 background가 Tailwind 클래스보다 우선하므로 인라인 스타일로 덮는다.
       style={
         backgroundImage
