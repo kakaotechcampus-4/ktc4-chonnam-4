@@ -157,7 +157,7 @@ public final class RoleplaySpeechTurnPipeline {
             Double sttConfidence,
             Double sttThreshold,
             RoleplayTurnInput.InputRecoverySnapshot recoverySnapshot) {
-        return switch (inspectInput(text, deadline)) {
+        return switch (inspectInput(text, trace, deadline)) {
             case RoleplayInputProcessor.Unsafe ignored -> new RoleplayTurnResult.InputUnsafe();
             case RoleplayInputProcessor.Invalid ignored -> rejected(InputFailure.INVALID_INPUT);
             case RoleplayInputProcessor.Unavailable ignored ->
@@ -211,9 +211,15 @@ public final class RoleplaySpeechTurnPipeline {
                 accepted.canonicalUtterance(), quality, trace, context, observations, deadline);
     }
 
-    private RoleplayInputProcessor.Result inspectInput(String text, RoleplayTurnDeadline deadline) {
+    private RoleplayInputProcessor.Result inspectInput(
+            String text, AiTraceContext trace, RoleplayTurnDeadline deadline) {
         try {
-            var result = deadline.withinBudget(() -> inputProcessor.process(text));
+            var result =
+                    deadline.withinBudget(
+                            () ->
+                                    inputProcessor.process(
+                                            new RoleplayInputProcessor.Input(
+                                                    text, trace, deadline)));
             return result == null ? new RoleplayInputProcessor.Unavailable() : result;
         } catch (RoleplayTurnDeadline.Expired expired) {
             throw expired;
