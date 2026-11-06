@@ -1,4 +1,4 @@
-// 구현 함수 42개·조건부 음성·텍스트 입력 함수 2개. 2026-11-06 develop e09bbbf + PR #90 리포트·추천 기준.
+// 구현 함수 42개·조건부 음성·텍스트 입력 함수 2개. 2026-11-06 develop f017637 + PR #90 리포트·추천 기준.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";

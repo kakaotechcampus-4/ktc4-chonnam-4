@@ -1,6 +1,6 @@
 # API-REC-06 · 다음 역할극 난이도 조회
 
-> 구현 — 2026-11-06 / 브랜치 `feature/roleplay-report-integration`(develop `e09bbbf` 위, PR #101 시나리오 검토 흐름 통합). 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-06 / 브랜치 `feature/roleplay-report-integration`(develop `f017637` 위, PR #101 시나리오 검토 흐름 통합). 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 

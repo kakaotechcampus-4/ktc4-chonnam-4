@@ -8,11 +8,15 @@ import com.neuringo.neuringobe.activity.dto.ActivityResponse;
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.assignment.dto.ActivityDetailResponse;
 import com.neuringo.neuringobe.assignment.dto.ActivityReadResponse;
+import com.neuringo.neuringobe.assignment.dto.ChildActivityResponse;
+import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
+import com.neuringo.neuringobe.child.security.ChildPrincipal;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.quiz.dto.AssignedQuizItemResponse;
 import com.neuringo.neuringobe.quiz.service.QuizAssignmentService;
+import com.neuringo.neuringobe.user.domain.UserRole;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
@@ -42,12 +46,13 @@ public class ActivityReadQueryService {
         this.quizAssignment = quizAssignment;
     }
 
-    public List<ActivityReadResponse> list(
+    public List<?> list(
             UUID childId,
             ActivityStatus status,
             int page,
             int size,
             Authentication authentication) {
+        boolean childRequest = isChildRequest(authentication);
         access.requireOwnerOrInstructor(authentication, childId);
         if (page < 0 || size < 1 || size > 100) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
@@ -61,12 +66,39 @@ public class ActivityReadQueryService {
                         .getContent();
         var ids = selected.stream().map(a -> a.getActivityId()).toList();
         var prepared = readiness.read(childId, ids, authentication);
+        if (childRequest) {
+            return selected.stream()
+                    .map(
+                            a ->
+                                    ChildActivityResponse.of(
+                                            ActivityResponse.from(a),
+                                            prepared.get(a.getActivityId())))
+                    .toList();
+        }
         return selected.stream()
                 .map(
                         a ->
                                 ActivityReadResponse.of(
                                         ActivityResponse.from(a), prepared.get(a.getActivityId())))
                 .toList();
+    }
+
+    private boolean isChildRequest(Authentication authentication) {
+        if (authentication != null && authentication.isAuthenticated()) {
+            if (authentication.getPrincipal() instanceof ChildPrincipal child
+                    && child.childId() != null
+                    && hasRole(authentication, "ROLE_CHILD")) return true;
+            if (authentication.getPrincipal() instanceof AuthenticatedUser user
+                    && user.userId() != null
+                    && user.role() == UserRole.INSTRUCTOR
+                    && hasRole(authentication, "ROLE_INSTRUCTOR")) return false;
+        }
+        throw new ApiException(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다.");
+    }
+
+    private boolean hasRole(Authentication authentication, String authority) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(role -> authority.equals(role.getAuthority()));
     }
 
     public ActivityDetailResponse detail(UUID activityId, Authentication authentication) {
