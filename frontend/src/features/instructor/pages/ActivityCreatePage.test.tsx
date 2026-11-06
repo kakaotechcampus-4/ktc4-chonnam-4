@@ -425,6 +425,28 @@ describe("역할극 추가 조건 단계", () => {
     expect(screen.getByRole("button", { name: "다음 · 확인" })).toBeEnabled()
   })
 
+  it("등장인물과 피할 표현은 서버 상한까지만 넣을 수 있다", async () => {
+    const { user } = renderWizard(`?classId=${A1}&childId=${CHILD.childId}`)
+    await goToConditions(user)
+
+    for (const role of ["가 친구", "나 친구", "다 친구", "라 친구", "마 친구"]) {
+      await user.type(screen.getByLabelText("인물 역할"), `${role}{Enter}`)
+    }
+    expect(screen.getByLabelText("인물 역할")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "+ 인물 추가" })).toBeDisabled()
+
+    const forbidden = screen.getByLabelText("피할 표현")
+    expect(forbidden).toHaveAttribute("maxLength", "30")
+    for (let i = 1; i <= 10; i++) {
+      await user.type(forbidden, `금지${i}{Enter}`)
+    }
+    expect(forbidden).toBeDisabled()
+    expect(screen.getByRole("button", { name: "+ 추가" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "금지10 빼기" }))
+    expect(forbidden).toBeEnabled()
+  })
+
   it("서버가 조건을 거절하면 확인 단계에서 추가 조건을 고치라고 알린다", async () => {
     server.use(
       http.post("*/api/v1/activities", () =>

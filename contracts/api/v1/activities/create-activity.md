@@ -24,7 +24,7 @@
 - activityType 생략/null은 FIRST_COMBINED입니다. FIRST_COMBINED는 아동당 한 번이고 goal 필수입니다. 독립 SELF_EMOTION_QUIZ/OTHER_EMOTION_QUIZ는 최초 결합 COMPLETED 이후만 배정하며 goal을 넣지 않습니다.
 - ROLEPLAY는 enum에 있지만 현재 422 ACTIVITY_TYPE_NOT_AVAILABLE로 거부합니다. 독립 퀴즈는 같은 아동·같은 유형의 NOT_STARTED 활동이 있으면 409입니다.
 - 최초 결합은 세 유형별1개 총3문항, 내 감정 독립 퀴즈는10문항, 상대 감정 독립 퀴즈는 상황7+이미지3문항입니다. 한 문항이라도 부족하면 422이고 부분 활동을 남기지 않습니다.
-- goal 내용의 정리·등장인물 `{id, role}`·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
+- goal 내용의 정리·등장인물 `{id, role}`·목록 상한·모순 거절·contentHash 규칙은 [API-GOAL-01](../learning-goals/create-learning-goal.md)과 같습니다. 조건 오류의 `fieldErrors[].field`에는 `goal.` 접두가 붙습니다(예: `goal.forbiddenExpressions[0]`). 정리한 내용이 같으면 같은 Idempotency-Key 재전송으로 봅니다.
 - 시나리오 승인·동의·역할극 시작 전체 구현 완료를 의미하지 않습니다. 현재 scenarioId는 null입니다.
 
 ## 3. 요청
@@ -137,7 +137,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 422 | ACTIVITY_TYPE_NOT_AVAILABLE | 현재 ROLEPLAY 배정 불가 |
 | 422 | QUIZ_ITEMS_UNAVAILABLE | 구성 문항 부족 |
 | 422 | INVALID_GOAL_CONDITIONS | 빈 원소, LEARNER id, 피할 표현이 필수 요소·등장인물 role과 겹침. `fieldErrors`의 `goal.` 경로로 칸 표시 |
-| 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증 |
+| 422 | VALIDATION_FAILED | 필수 필드/중첩 DTO 검증(goal 목록 상한 초과 포함, 예: `goal.forbiddenExpressions`) |
 | 404 | GOAL_NOT_FOUND | 부모 목표 없음/다른 아동 |
 | 400 | INVALID_REQUEST | UUID/필수 헤더·파트/Query 형식 |
 

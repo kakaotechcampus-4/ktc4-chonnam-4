@@ -40,7 +40,10 @@ import {
 } from '../lib/goalPresets'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 import {
+  CHARACTER_COUNT_MAX,
   CHARACTER_ROLE_MAX,
+  FORBIDDEN_COUNT_MAX,
+  FORBIDDEN_EXPRESSION_MAX,
   REQUIRED_ELEMENT_PRESETS,
   RELATION_OPTIONS,
   SITUATION_MAX,
@@ -660,7 +663,7 @@ function ConditionsStep({
             <h2 id="characters-heading" className="text-sm font-semibold">
               2. 등장인물
             </h2>
-            <p className={helperTextClass}>이름 대신 역할로 적어 주세요.</p>
+            <p className={helperTextClass}>이름 대신 역할로 {CHARACTER_COUNT_MAX}명까지 적어 주세요.</p>
             <div className="flex flex-wrap items-center gap-2">
               {value.characters.map((c) => (
                 <Chip
@@ -677,6 +680,7 @@ function ConditionsStep({
                 buttonLabel="인물 추가"
                 placeholder="예: 넘어진 친구"
                 maxLength={CHARACTER_ROLE_MAX}
+                full={value.characters.length >= CHARACTER_COUNT_MAX}
                 onAdd={addCharacter}
               />
             </div>
@@ -730,13 +734,17 @@ function ConditionsStep({
               <ChipAdder
                 label="피할 표현"
                 buttonLabel="추가"
+                maxLength={FORBIDDEN_EXPRESSION_MAX}
+                full={value.forbiddenExpressions.length >= FORBIDDEN_COUNT_MAX}
                 onAdd={(expression) =>
                   !value.forbiddenExpressions.includes(expression) &&
                   onChange({ ...value, forbiddenExpressions: [...value.forbiddenExpressions, expression] })
                 }
               />
             </div>
-            <p className={helperTextClass}>시나리오 생성 시 금지 목록으로 전달됩니다.</p>
+            <p className={helperTextClass}>
+              시나리오 생성 시 금지 목록으로 전달됩니다. {FORBIDDEN_COUNT_MAX}개까지 넣을 수 있어요.
+            </p>
             {contradictions.length > 0 && (
               <Notice tone="error" role="alert">
                 필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없어요. 겹친 표현을 빼거나 필수 요소·등장인물을 바꿔 주세요.
@@ -840,19 +848,22 @@ function ChipAdder({
   buttonLabel,
   placeholder,
   maxLength,
+  full = false,
   onAdd,
 }: {
   label: string
   buttonLabel: string
   placeholder?: string
   maxLength?: number
+  /** 목록이 상한까지 찼다. 입력칸과 버튼을 막는다. */
+  full?: boolean
   onAdd: (value: string) => void
 }) {
   const [draft, setDraft] = useState('')
 
   function add() {
     const value = draft.trim().replace(/\s+/g, ' ')
-    if (!value) return
+    if (!value || full) return
     onAdd(value)
     setDraft('')
   }
@@ -864,6 +875,7 @@ function ChipAdder({
         value={draft}
         placeholder={placeholder}
         maxLength={maxLength}
+        disabled={full}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           // 한글 조합 중 Enter 는 조합 확정이라 넣지 않는다.
@@ -874,7 +886,7 @@ function ChipAdder({
         }}
         className={cn(inputClass, 'h-[34px] w-36 text-sm')}
       />
-      <button type="button" onClick={add} disabled={!draft.trim()} className={cn(outlineButtonClass, 'h-[34px] border-dashed px-3')}>
+      <button type="button" onClick={add} disabled={full || !draft.trim()} className={cn(outlineButtonClass, 'h-[34px] border-dashed px-3')}>
         + {buttonLabel}
       </button>
     </span>
