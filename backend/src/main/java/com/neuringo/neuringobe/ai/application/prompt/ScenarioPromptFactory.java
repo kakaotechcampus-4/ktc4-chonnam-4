@@ -15,15 +15,15 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 역할극 시나리오 생성 프롬프트(SCN-01·02·10)를 만든다. 워크플로우 v3 7장 기준.
  *
- * <p>시스템 프롬프트는 classpath 의 prompts/scenario/v1/scenario-generation.md 이고, 사용자 메시지는 입력 JSON 하나다. 추적
+ * <p>시스템 프롬프트는 classpath 의 prompts/scenario/v2/scenario-generation.md 이고, 사용자 메시지는 입력 JSON 하나다. 추적
  * 식별자는 프롬프트에 넣지 않는다.
  *
  * <p>재시도 횟수와 실패 시 기본 시나리오 제시는 호출하는 쪽의 책임이다. 이 클래스는 요청과, 그 요청에 맞는 출력인지 검사하는 parser 만 만든다.
  */
 public final class ScenarioPromptFactory {
 
-    public static final String SCENARIO_GENERATION_PROMPT_VERSION = "scenario-generation/v1";
-    public static final String SCENARIO_SCHEMA_VERSION = "generated-scenario/v1";
+    public static final String SCENARIO_GENERATION_PROMPT_VERSION = "scenario-generation/v2";
+    public static final String SCENARIO_SCHEMA_VERSION = "generated-scenario/v2";
 
     private final ObjectMapper objectMapper;
     private final String policyVersion;
@@ -35,7 +35,7 @@ public final class ScenarioPromptFactory {
     public ScenarioPromptFactory(ObjectMapper objectMapper, String policyVersion) {
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.policyVersion = policyVersion;
-        this.systemPrompt = PromptTemplates.load("scenario/v1/scenario-generation.md");
+        this.systemPrompt = PromptTemplates.load("scenario/v2/scenario-generation.md");
     }
 
     public PreparedPrompt<GeneratedScenario> generation(

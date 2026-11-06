@@ -63,13 +63,18 @@ public class QuizAssignmentService {
                             Collections.nCopies(7, QuizType.OTHER_EMOTION_SITUATION),
                             Collections.nCopies(3, QuizType.OTHER_EMOTION_IMAGE)));
 
+    /** 배정과 준비 검사에서 동일한 문항 구성을 사용한다. */
+    public static List<QuizType> composition(ActivityType type) {
+        return COMPOSITION.getOrDefault(type, List.of());
+    }
+
     /**
      * 활동에 붙일 퀴즈 문항을 고른다. 시스템이 검증된 문항 풀에서 구성한다. 같은 유형의 승인 문항은 서로 바꿔 쓸 수 있다고 보고 무작위로 고르며, 한 활동에 같은
      * 문항은 두 번 붙이지 않는다. 아동마다 노출 문항이 퍼진다. 구성의 칸을 하나라도 못 채우면 빈 목록이다. 문항 수가 화면 안내와 같고 활동끼리 정답률을 비교할 수
      * 있어야 해서 모자란 채로 배정하지 않는다(팀 결정). 문항이 없는 유형(역할극)도 빈 목록이다.
      */
     public List<QuizItem> pickItems(ActivityType activityType) {
-        List<QuizType> slots = COMPOSITION.getOrDefault(activityType, List.of());
+        List<QuizType> slots = composition(activityType);
         Map<QuizType, Deque<QuizItem>> shuffled = new EnumMap<>(QuizType.class);
         List<QuizItem> picks = new ArrayList<>();
         for (QuizType type : slots) {

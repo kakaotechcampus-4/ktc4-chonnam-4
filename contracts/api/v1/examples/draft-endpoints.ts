@@ -57,27 +57,6 @@ export function getLearningGoalLineage(
   });
 }
 
-export interface PrepareScenarioArgs {
-  body: T.DraftScenarioBody;
-  idempotencyKey: T.UUID;
-}
-
-export function prepareScenario(
-  api: ApiClient,
-  args: PrepareScenarioArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftScenarioPrepareData>> {
-  return api.request<T.DraftScenarioPrepareData>("/api/v1/scenarios", {
-    method: "POST",
-    auth: "instructor",
-    expectedStatuses: [201, 202],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
-  });
-}
-
 export interface ListScenariosArgs {
   query?: {
     classId?: T.UUID;
@@ -119,26 +98,6 @@ export function getScenario(
   });
 }
 
-export interface ReviewScenarioArgs {
-  scenarioId: T.UUID;
-  body: T.DraftScenarioPatch;
-}
-
-export function reviewScenario(
-  api: ApiClient,
-  args: ReviewScenarioArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftScenarioData>> {
-  return api.request<T.DraftScenarioData>("/api/v1/scenarios/" + encodeURIComponent(args.scenarioId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
-  });
-}
-
 export interface CreateScenarioVersionArgs {
   scenarioId: T.UUID;
   body: T.DraftScenarioVersionBody;
@@ -158,24 +117,6 @@ export function createScenarioVersion(
     draft: true,
     idempotencyKey: args.idempotencyKey,
     body: args.body
-  });
-}
-
-export interface DeleteScenarioArgs {
-  scenarioId: T.UUID;
-}
-
-export function deleteScenario(
-  api: ApiClient,
-  args: DeleteScenarioArgs,
-  options: CallOptions = {}
-): Promise<void> {
-  return api.requestEmpty("/api/v1/scenarios/" + encodeURIComponent(args.scenarioId), {
-    method: "DELETE",
-    auth: "instructor",
-    expectedStatuses: [204],
-    signal: options.signal,
-    draft: true
   });
 }
 
@@ -231,28 +172,6 @@ export function updateRoleplaySession(
     method: "PATCH",
     auth: "child",
     expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
-  });
-}
-
-export interface SubmitTextInputArgs {
-  sessionId: T.UUID;
-  body: T.DraftTextBody;
-  idempotencyKey: T.UUID;
-}
-
-export function submitTextInput(
-  api: ApiClient,
-  args: SubmitTextInputArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftInputAccepted>> {
-  return api.request<T.DraftInputAccepted>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [202],
     signal: options.signal,
     draft: true,
     idempotencyKey: args.idempotencyKey,

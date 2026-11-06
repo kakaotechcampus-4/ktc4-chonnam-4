@@ -1,5 +1,45 @@
 # API v1 변경 이력
 
+## 2026-11-05 — develop `7376e91`(PR #101·#103) 반영
+
+- 공유 예제: [API-SCN-01](./scenarios/prepare-scenario.md) prepareScenario(POST `/activities/{activityId}/scenario-review`), [API-SCN-04](./scenarios/review-scenario.md) reviewScenario(PUT `/activities/{activityId}/scenario`), [API-SCN-06](./scenarios/delete-scenario.md) deleteScenario(DELETE `/activities/{activityId}/scenario-review`)를 실제 계약으로 바꿔 `examples/endpoints.ts`로 옮겼습니다. 목차는 구현 35개·조건부 2개·설계 18개·미제공 2개이며, 공유 예제 검사가 다시 통과합니다.
+- 프론트엔드 아동 화면은 [API-ACT-02](./activities/list-child-activities.md)의 `nextAction`으로 갈 곳을 정합니다. QUIZ → 퀴즈, ROLEPLAY → 역할극, WAIT_FOR_SCENARIO → 선생님 확정 대기 안내, BLOCKED → 이어 갈 수 없음 안내. 확정 전에는 역할극 시작 요청을 보내지 않습니다.
+
+## 2026-11-05 — S4-JIN-02 준비 상태·역할극 재개
+
+- feat/activity-readiness 작업본에서 ACT-02의 data[]와 ACT-03의 data.activity에 nextAction/blockedReason을 추가했습니다. 필드·값·단계별 판정은 개별 명세를 따릅니다.
+- 새 Endpoint나 준비 상태 DB 컬럼을 추가하지 않습니다. 페이지 ID 범위의 근거를 일괄 조회하고 기존 승인 호환 검증을 사용합니다.
+- ACT-01 생성 응답과 ACT-04 status 전용 응답, 아동/강사 권한 구분은 유지합니다. 사용할 수 없는 과거 퀴즈 문항은 상세에서 비우되 현재 단계의 준비 상태를 제공합니다.
+- RPL-01은 중단된 활동·세션을 저장 근거 검사 후 재개합니다. 현재 작은 목표·지원 수준·마지막 확정 턴은 보존하고 세션 버전은 갱신합니다. 상태 전환·새 키 연결·복원 문구 준비가 한 트랜잭션으로 처리됩니다. 검사 실패는 409 ROLEPLAY_RESUME_NOT_READY이며 완료 세션은 재시작하지 않습니다.
+- QUIZ-04/06은 새 답변·새 힌트 저장에서 중단된 퀴즈를 검사 후 재개합니다. 동일 답변·동일 힌트 키의 재전송과 GET은 상태를 변경하지 않습니다. 재개 불가·완료 활동의 새 쓰기는 409 QUIZ_ACTIVITY_NOT_READY입니다.
+- 2026-11-05 Java 21/PostgreSQL Testcontainers에서 `./gradlew --offline spotlessCheck build --no-daemon`을 통과했습니다. JUnit 125개 클래스, 2,068개 중 2,063개 통과·실패/오류 0·건너뜀 5입니다. 건너뛴 5개는 ROLEPLAY_MEDIA_REAL_TOOLS 환경변수로 활성화하는 기존 실제 FFmpeg 검사입니다.
+- 마이그레이션 가드(S4-JIN-01 f8e3dfa 기준, 최대 V39)와 공개 파일 검사는 통과했습니다. 이번 Task는 운영 마이그레이션·준비 상태 컬럼을 추가하지 않습니다.
+- 공유 예제 검사는 API-SCN-01 명세 상태에서 실패하며 기준 커밋 f8e3dfa에서도 같은 실패를 재현했습니다. 공유 TypeScript 타입·fixture·검사에는 준비 상태 필드와 재개 정책이 아직 반영되지 않았습니다. 이 검사를 최신 계약 검증 통과로 간주하지 않습니다.
+- 실제 프론트엔드/공유 TypeScript 예제 반영, 브라우저 연동·부하 측정·운영 배포는 미검증입니다.
+
+## 2026-11-04 — develop `bab136d` 기준 재대조
+
+- 기준은 develop [`bab136d`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/bab136d86b0642fd8446b3299fe09de3e9eb4a4e)(PR #78 병합)입니다. 구현·조건부 API 34개를 Controller/DTO/Service와 다시 대조했고, 문서 상단 기준과 코드 근거 링크를 이 커밋으로 옮겼습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
+- API 목차는 그대로 57개 ID 중 구현 32개·조건부 구현 2개·설계 21개·미제공 2개입니다. [API-RPL-01](./roleplay/start-roleplay.md)의 "작업 브랜치" 표시를 지웠습니다.
+- 호환성 영향이 있는 응답 변경
+  - [API-RPL-04](./roleplay/submit-voice-input.md)·[API-RPL-05](./roleplay/submit-text-input.md): `messages[].speakerRole`(`DIALOGUE` 캐릭터 대사·`HINT` 마스코트 힌트/고정 안내)이 생겼습니다. 마스코트 힌트가 붙은 DELIVERED는 `[HINT, DIALOGUE]` 2개, 재입력·재시도·중단 안내는 HINT 1개입니다. 공유 `RoleplayDeliveryAction`에 `SUGGEST_TEXT_KEEP_VOICE`를 더했습니다.
+  - [API-RPL-05](./roleplay/submit-text-input.md): 공유 예제를 초안(`clientInputId`·202 접수)에서 실제 계약(`{text}` 본문, 200/202, 음성과 같은 응답)으로 바꾸고 `examples/endpoints.ts`의 조건부 함수로 옮겼습니다.
+- 오류 코드 정정
+  - [API-GOAL-02](./learning-goals/list-learning-goals.md)의 404는 `CHILD_NOT_FOUND`, [API-GOAL-03](./learning-goals/get-learning-goal.md)의 404는 담당 범위 밖도 `GOAL_NOT_FOUND`입니다.
+  - [API-IAM-08](./auth/enter-child.md): `accessCode` 누락/null은 422가 아니라 401 `INVALID_ACCESS_CODE`입니다.
+  - [API-ACT-03](./activities/get-activity.md)·[API-QUIZ-03](./quizzes/list-assigned-quiz-items.md)·[API-QUIZ-04](./quizzes/put-quiz-attempt.md)·[API-QUIZ-06](./quizzes/issue-quiz-hint.md): 404 `QUIZ_ITEM_NOT_FOUND`·409 `ITEM_VERSION_CONFLICT`를 더했습니다. 겹쳐 적힌 `ACTIVITY_QUIZ_NOT_FOUND` 행을 하나로 합쳤습니다.
+  - [API-IAM-04](./auth/get-instructor-session.md) 404 `USER_NOT_FOUND`(탈퇴 경합), [API-IAM-07](./auth/issue-child-code.md) 다른 강사의 같은 키도 409, 역할극 입력의 400·415·404 경우를 적었습니다.
+- 요청 규칙 보완
+  - [API-ACT-01](./activities/create-activity.md): 같은 Idempotency-Key 재전송은 `parentGoalId`까지 같아야 200입니다.
+  - [API-QUIZ-04](./quizzes/put-quiz-attempt.md): `firstResponse`·`expressionMatchResult`·`finalResponse`·`technicalFailureReason`의 유형별 필수·허용 규칙, NOT_ANALYZABLE·기술 실패는 첫 PUT에서 바로 채점 제외 확정, 201/200 구분을 적었습니다.
+  - 이름 칸(API-IAM-02·CLS-01·CLS-06)의 보이는 글자·제어 문자 규칙, 등장인물 id 공백만 422·role 실명 미검사(API-GOAL-01), 역할극 기능 켜기에 필요한 필수 설정을 적었습니다.
+- 예시 값 정정: 퀴즈 결과 `overallAccuracy`는 소수 6자리(`0.666667`), 힌트 `type`은 `OBSERVABLE_FACE_CUE`·`OBSERVABLE_BODY_CUE`·`CHOICE_REDUCTION` 중 하나입니다.
+- 프론트엔드: 강사·아동 요청이 명세의 공통 헤더(`Accept: application/json`, `Content-Type: application/json; charset=utf-8`)와 경로 인코딩(`encodeURIComponent`)을 따르게 했습니다. MSW 가짜 서버도 위 오류 코드 정정에 맞췄습니다.
+- 프론트엔드 아동 화면의 화면 내 가짜 응답을 실제 API로 바꿨습니다.
+  - 표정 퀴즈: 문항 [API-QUIZ-03](./quizzes/list-assigned-quiz-items.md), 답 [API-QUIZ-04](./quizzes/put-quiz-attempt.md), 이어 풀기 [API-QUIZ-05](./quizzes/get-quiz-attempt.md), 힌트 [API-QUIZ-06](./quizzes/issue-quiz-hint.md). 첫 답 → (틀리면) 힌트 최대 2개 → 최종 답 1번 흐름입니다. 내 감정 문항은 카메라를 아직 켜지 않아 `expressionMatchResult=NOT_ANALYZABLE`, `cameraModelVersion=camera-not-connected`로 보내며 서버가 점수에서 뺍니다.
+  - 완료: 화면이 완료를 요청하지 않고 [API-ACT-04](./activities/get-activity-status.md)로 COMPLETED를 확인한 뒤 스탬프 화면으로 갑니다(독립 퀴즈는 마지막 답 뒤, 역할극은 대화가 이어질 때마다).
+  - 역할극: 시작·이어 하기 [API-RPL-01](./roleplay/start-roleplay.md), 글자 답 [API-RPL-05](./roleplay/submit-text-input.md). `speakerRole`로 거북이(DIALOGUE)·깡총이(HINT) 말풍선을 나눕니다. 말로 답하기(API-RPL-04)는 아직 연결하지 않았습니다.
+
 ## 2026-11-02 — 학급·아동 이름 수정과 목표 조건 정리·모순 거절
 
 - 기준은 `feature/goal-lineage-edit` 작업 브랜치입니다. 원격 병합·운영 배포·제품 인수 완료를 뜻하지 않습니다.
@@ -116,3 +156,22 @@
 - 문서 내 TypeScript 블록165개와 공통 TypeScript 파일4개를 strict/exactOptionalPropertyTypes/noEmit으로 검사했습니다.
 - 현행/조건부29개 경로를 기준 커밋의 Controller와 대조했고 미제공2개 경로는 없는 것을 확인했습니다. ACT-03은 현재 강사만 허용하는 보안필터를 반영했습니다.
 - 실제 서버·DB·AI·브라우저·배포 인수는 실행하지 않았습니다. 위 결과는 문서/연동 예제의 검증입니다.
+
+
+## 2026-11-04 · S4-JIN-01 작업본
+
+- SCN-01을 POST /activities/{activityId}/scenario-review의 준비·복원·NEXT 계약으로 변경했다. 한 후보와 조건·DB UUID 목표 연결을 반환하고 후보 소진 시 같은 요청에서 동기 생성한다.
+- SCN-04를 PUT /activities/{activityId}/scenario의 선택적 수정·명시적 확정·배정으로 통합했다. 수정본은 새 UUID/버전이며 원본은 유지한다.
+- SCN-06을 DELETE /activities/{activityId}/scenario-review의 본문 있는 취소, 200 종료 응답으로 변경했다.
+- SCN-03/05/07은 이번 경로의 응답·확정 처리로 통합된 과거 제안으로 표시했다. 전체 카탈로그 SCN-02는 미구현 별도 설계다.
+- 결과 GET 자동 연결 설명을 폐기하고 활동/역할극의 명시적 승인 선행 조건을 반영했다.
+- contracts/api-v1.json은 기존 FE/BE 공유 전송 검사 픽스처로 유지한다. 새 세 API의 HTTP 계약은 ScenarioReviewHttpIntegrationTest가 검증한다. FE 예제·MSW·화면은 수정하지 않았다. develop 병합·운영 배포는 미확인이다.
+
+
+## 2026-11-05 · 공통 풀 전환 작업본
+
+- SCN-01/04/06의 재사용 범위를 본인 승인본에서 전체 공통 승인 풀로 변경했다. HTTP 경로·본문·revision 구조는 유지한다.
+- 제시 순서는 강사별이며 거절은 이번 검토에만 적용한다. 공통 제공 중지 API는 추가하지 않았다.
+- 활동별 승인자와 원 콘텐츠 최초 승인자를 분리하고, 원 승인자 탈퇴 후에도 후보 조회·확정을 지원한다. V39의 삭제 보존 변경을 포함한다.
+- 선택 진단 로그는 ruleVersion=2/pool로 변경했다. pool은 공통 승인 기록 수, eligible은 조건 통과 수다. CONFIRM 목적은 해당 후보만 검사하며 전체 풀 집계와 섞지 않는다.
+- 공통 후보 조회·타 강사 확정·탈퇴 후 재사용·개별 순환·검토 거절·수정 새 공통 후보를 HTTP로 검사했다. 전체 회귀와 실제 FE/배포/부하 측정은 아직 진행 전이다.

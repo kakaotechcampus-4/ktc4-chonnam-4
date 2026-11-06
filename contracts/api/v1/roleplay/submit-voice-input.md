@@ -1,6 +1,6 @@
 # API-RPL-04 · 역할극 음성 입력 제출
 
-> 조건부 구현 — S6-JIN-01 입력 흐름 브랜치 기준. 기본 비활성 서버이며 allowConditional 기본 차단입니다.
+> 조건부 구현 — 2026-11-04 / develop `bab136d` (S6-JIN-01 입력 흐름 병합). 기본 비활성 서버이며 allowConditional 기본 차단입니다.
 
 ## 1. Endpoint
 
@@ -17,11 +17,12 @@
 
 ## 2. 용도·중요 규칙
 
-- roleplay.http.enabled=true인 서버에서만 등록됩니다. 기본 비활성입니다. 승인 컨텍스트 공급·입력 정제/안전 처리·임시 음성 발행의 운영 구현/설정 확인이 필요합니다. 단순 코드 존재는 운영 준비 완료가 아닙니다.
+- roleplay.http.enabled=true인 서버에서만 등록됩니다. 기본 비활성입니다. 켜면 roleplay.progress.maximum-turn-count·maximum-support-turns-per-micro-goal과 roleplay.http의 spool-directory·maximum-upload-bytes·maximum-request-bytes·allowed-formats·worker-count·queue-capacity가 모두 있어야 서버가 시작됩니다(backend/docs/roleplay-runtime-config.md). 승인 컨텍스트 공급·입력 정제/안전 처리·임시 음성 발행의 운영 구현/설정 확인이 필요합니다. 단순 코드 존재는 운영 준비 완료가 아닙니다.
 - audio 파일 파트와 Idempotency-Key(UUID)만 받습니다. 활동/아동은 인증된 서버 세션으로 조회합니다. clientInputId/recordedDurationMs는 현재 계약 필드가 아닙니다.
 - 200은 처리/고정 안내 결과입니다. status가 DELIVERED인지 확인해야 하며 HTTP200만으로 학습 턴 저장 성공을 표시하지 않습니다. 202 PROCESSING/action=WAIT는 같은 세션·키 요청이 이미 실행 중인 경우입니다.
 - status/action/messages/acceptedInput/checkpointVersion/replayed를 반환합니다. inputId/turnId를 돌려주는 비동기 접수 API가 아니며 RPL-06의 GET /turns/{turnId}는 현재 미구현입니다. 202 조회/재시도 주기는 미정입니다.
-- 신규 성공의 acceptedInput은 표준 발화입니다. 재전송은 기존 응답 문구만 복원하며 acceptedInput=null·음성 미제공입니다. 실패 후보/평가/원본/STT는 공개하지 않습니다. 표시 주체/용도 필드는 아직 없습니다.
+- 신규 성공의 acceptedInput은 표준 발화입니다. 재전송은 기존 응답 문구만 복원하며 acceptedInput=null·음성 미제공입니다. 실패 후보/평가/원본/STT는 공개하지 않습니다.
+- messages[].speakerRole로 표시 자리를 나눕니다. DIALOGUE는 캐릭터 대사, HINT는 마스코트 힌트·고정 안내입니다. DELIVERED는 보통 DIALOGUE 1개이고, 아이가 막혀 마스코트 힌트가 붙으면 `[HINT(음성 없음), DIALOGUE]` 2개입니다. 같은 키 재전송도 힌트를 함께 복원합니다. REINPUT_REQUIRED·RETRY_REQUIRED·STOPPED의 고정 안내는 HINT 1개입니다.
 - MIME/최대 업로드 바이트·multipart 전체 크기는 서버 설정으로 명시합니다. 파일 상한은 기존 2MiB 이하 용량을 따릅니다. WAV 비압축 프레임과 WebM/OGG(Opus·Vorbis), MP3, MP4/M4A(AAC-LC)의 실제 형식·단일 음성 트랙·디코딩 프레임으로 30초 상한을 검사합니다. AAC 마지막 패딩은 패킷 재생 구간과 대조합니다. 검증 실패·미지원 인코딩은 아래의 고정 재입력 응답으로 처리합니다.
 - 최대 60초 예산은 백엔드의 음성 요청 수신부터 multipart 파싱·인증 조회·spool·대기·STT/LLM 재시도·TTS·체크포인트에 공유합니다. 브라우저에서 전송을 시작한 시각부터 적용하려면 프록시와 클라이언트 연동이 추가로 필요합니다. 차단된 수신의 물리 취소 및 정확히 60초 내 응답은 보장하지 않습니다. 초과가 확인되면 고정 문구 “다시 한 번만 말해줄래?”를 사용하고 늦은 결과를 차단합니다.
 - 설정된 신뢰도 기준 이하·무음·STT 최종 실패·신뢰도 미제공·의미 불확실/정제 거절·빈 파일·손상·미지원 형식·검사 도구 장애·제출된 30초 초과·크기 상한 초과를 합산해 3회부터 action=SUGGEST_TEXT_KEEP_VOICE로 텍스트를 권유합니다. 전체 입력 지문이 있는 요청은 같은 키/지문으로 재전송을 구별하며, 전체 요청 상한 초과는 지문 없이 한 번 기록하고 같은 키 재사용을 409로 처리합니다. 집계는 공유 요청 기한 내에 확정합니다. 신뢰도 기준은 roleplay.input.stt-confidence-threshold, 기본 0.40이며 ROLEPLAY_STT_CONFIDENCE_THRESHOLD로 변경 후 서버 재시작 시 적용합니다. 0~1 사이의 유한한 값만 허용하며 기준과 같은 값도 재입력입니다. 음성 입력은 계속 가능합니다. 정상 입력 성공만으로 실패 횟수를 초기화하지 않으며 완료/24시간 정리 정책에 따라 원장을 삭제합니다.
@@ -89,6 +90,7 @@ HTTP 200 / 202.
     "action": "NONE",
     "messages": [
       {
+        "speakerRole": "DIALOGUE",
         "text": "친구는 왜 그런 기분이 들었을까?",
         "speech": {
           "available": false,
@@ -112,7 +114,10 @@ HTTP 200 / 202.
 |---|---|---|---|---|
 | data.status | RoleplayDeliveryStatus | 예 | 아니오 | 실제 HTTP 200/202 상태. CONFLICT/BUSY는 공통 오류 envelope |
 | data.action | RoleplayDeliveryAction | 예 | 아니오 | FE의 다음 행동. PROCESSING은 WAIT, SUGGEST_TEXT_KEEP_VOICE는 음성을 유지하며 텍스트 권유 |
-| data.messages | RoleplayMessageData[] | 예 | 아니오 | 검증 출력/고정 안내. NOTICE_UNAVAILABLE 등에서는 [] |
+| data.messages | RoleplayMessageData[] | 예 | 아니오 | 검증 출력/고정 안내. 마스코트 힌트가 있으면 HINT·DIALOGUE 2개. NOTICE_UNAVAILABLE 등에서는 [] |
+| data.messages[].speakerRole | 'DIALOGUE' \| 'HINT' | 예 | 아니오 | DIALOGUE 캐릭터 대사, HINT 마스코트 힌트·고정 안내(음성 없음) |
+| data.messages[].text | string | 예 | 아니오 | 검증된 응답 또는 승인 고정 안내 |
+| data.messages[].speech | RoleplaySpeechData | 예 | 아니오 | 음성 제공 정보. HINT는 available=false |
 | data.acceptedInput | string \| null | 예 | 예 | 신규 성공의 표준 발화만; 재전송/실패는 null. 완료 시 클라이언트 사본 삭제 |
 | data.checkpointVersion | number \| null | 예 | 예 | 저장 확정 버전. 복구/처리 중에는 null |
 | data.replayed | boolean | 예 | 아니오 | 같은 세션/키/입력의 저장 결과 재전송 여부 |
@@ -125,7 +130,9 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
+| 400 | INVALID_REQUEST | UUID 형식, audio 파트 누락, Idempotency-Key 누락/UUID 아님 |
+| 404 | RESOURCE_NOT_FOUND | 서버에서 기능이 꺼져 경로가 등록되지 않음 |
+| 415 | UNSUPPORTED_MEDIA_TYPE | multipart/form-data가 아닌 요청 |
 | 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
 | 403 | ACCESS_DENIED | 역할 권한 |
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
@@ -155,7 +162,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 
 ## 6. 복사 가능한 TypeScript
 
-이번 백엔드 작업은 아래 계약 설명만 갱신했습니다. 공유 `examples/types.ts`와 실제 FE 행동 타입·UI의 새 행동 값 대응은 후속 연동 항목이며 아직 수정·검증하지 않았습니다.
+아래 타입은 공유 `examples/types.ts`와 같습니다. 실제 FE 화면의 행동 값·speakerRole 대응은 후속 연동 항목입니다.
 
 공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 조건부 서버 활성화를 확인하고 allowConditional을 설정해야 합니다.
 
@@ -169,7 +176,8 @@ export interface VoiceInputBody {
 
 export type RoleplayDeliveryStatus = 'DELIVERED' | 'REINPUT_REQUIRED' | 'RETRY_REQUIRED' | 'STOPPED' | 'NOTICE_UNAVAILABLE' | 'PROCESSING';
 
-export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'SUGGEST_TEXT_KEEP_VOICE' | 'RETRY_TURN' | 'RESUBMIT_SAME_REQUEST' | 'STOP_DIALOGUE' | 'WAIT';
+/** RESUBMIT_SAME_REQUEST는 503 ROLEPLAY_BUSY 오류로만 나가 성공 본문에는 오지 않습니다. */
+export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'SUGGEST_TEXT_KEEP_VOICE' | 'RETRY_TURN' | 'STOP_DIALOGUE' | 'WAIT';
 
 export interface RoleplaySpeechData {
   /** TTS 발행 URL이 있을 때만 true */
@@ -178,7 +186,11 @@ export interface RoleplaySpeechData {
   url: string | null;
 }
 
+export type RoleplaySpeakerRole = 'DIALOGUE' | 'HINT';
+
 export interface RoleplayMessageData {
+  /** DIALOGUE 캐릭터 대사, HINT 마스코트 힌트·고정 안내(음성 없음) */
+  speakerRole: RoleplaySpeakerRole;
   /** 검증된 응답 또는 승인 고정 안내. 실패 후보 제외 */
   text: string;
   /** 음성 제공 정보 */
@@ -267,6 +279,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/roleplay-sessions/${sessionId}/voic
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S6-JIN-01` · `S6-LEE-01` · `S6-YOON-01`
-- 코드 근거: [음성 입력 Controller](../../../../backend/src/main/java/com/neuringo/neuringobe/roleplay/controller/RoleplayVoiceController.java)
+- 코드 근거: [음성 입력 Controller](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/roleplay/controller/RoleplayVoiceController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

@@ -1,19 +1,24 @@
 # 느링고 API v1 명세
 
-> 계약 갱신: 2026-10-22 · develop [`63e4314`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/63e43144c92449ec5670390a6b99d20d2b2580a5) (2026-10-16 병합 커밋)
+> 계약 갱신: 2026-11-05 · develop `7376e91`(PR #101·#103 병합). 2026-11-04 develop [`bab136d`](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/tree/bab136d86b0642fd8446b3299fe09de3e9eb4a4e) 기준으로 구현·조건부 API를 다시 대조한 뒤, #101 시나리오 검토 API와 #103 준비 상태(nextAction)를 공유 예제에 반영했습니다. 변경 내역은 [changelog](./changelog.md)의 2026-11-05·2026-11-04 항목을 봅니다.
+
+> S4-JIN-02 작업본(2026-11-05): [ACT-02 목록](./activities/list-child-activities.md)과 [ACT-03 상세](./activities/get-activity.md)에 서버 계산 nextAction/blockedReason을 추가했습니다. 생성·status 응답은 유지합니다. [RPL-01](./roleplay/start-roleplay.md)은 저장 근거 검사 후 중단된 역할극을 재개합니다. 퀴즈도 새 답변·새 힌트 저장에서 검사 후 재개합니다. 백엔드 전체 빌드·회귀는 통과했습니다. 실제 프론트엔드·공유 TypeScript 예제 반영과 브라우저 연동·배포 검증은 남아 있습니다.
+
+> S4-JIN-01 통합 기준은 develop `bab136d`, 작업 브랜치는 `feat/scenario-reuse-review`다. 아래 시나리오 세 API는 이 브랜치의 계약이며 develop 배포 완료를 의미하지 않는다.
+
+> 2026-11-04 S4-JIN-01 갱신: 시나리오의 현행 작업본 계약은 아래 세 활동별 API다. 그 밖의 날짜·구현 개수는 기존 검토 시점 기록이다. 동봉 TypeScript 예제와 실제 프론트엔드는 이번 세 API에 맞춰 수정하지 않았으며, 이전 draft 시나리오 함수를 새 경로에 사용할 수 없다. develop 병합·운영 배포는 미확인이다.
+
 > 이 폴더의 Markdown을 GitHub에서 API 계약 원본으로 관리합니다. `v1/` 폴더만 복사/업로드해도 목차·예제·검증 링크가 연결됩니다.
-> 통합 갱신: 2026-10-28 · PR #80 `c306bd1` + develop `565beb6`의 충돌 해결 작업본. 위 기존 계약 기준에 API-RPL-01 시작·복원과 API-ACT-04 활동 상태 조회의 실제 구현을 반영했습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
-> 이름 수정·목표 조건 갱신: 2026-11-02 · `feature/goal-lineage-edit`. 학급·아동 이름 수정(API-CLS-04·09)을 구현으로 바꾸고 `examples/endpoints.ts`로 옮겼습니다. 목표 조건의 정리·등장인물 `{id, role}`·모순 거절을 API-GOAL-01·ACT-01에 반영했습니다.
-> API-ACT-04 상태 조회와 API-RPL-01 시작·복원은 `examples/endpoints.ts`에 반영돼 있습니다. 시작·복원 응답 타입·모의 데이터도 현재 계약으로 동기화했습니다. 실제 프론트엔드 연동·운영 배포는 별도입니다.
+> 이전 갱신(2026-10-28 PR #80 통합, 2026-11-02 `feature/goal-lineage-edit`)은 모두 develop에 병합됐습니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.
 
 ## 현재 제공 범위
 
-이 통합 작업 브랜치 기준 57개 API ID 중 **구현32개 · 조건부 구현2개 · 설계21개 · 미제공2개**입니다. 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성이며, 공유 TypeScript 예제와 FE 연동은 아직 현재 서버 계약으로 동기화되지 않았습니다.
+develop `7376e91` 기준 57개 API ID 중 **구현35개 · 조건부 구현2개 · 설계18개 · 미제공2개**입니다(시나리오 준비·확정·취소 API-SCN-01·04·06이 PR #101로 구현). 코드 구현과 운영 배포·제품 인수 완료는 구분합니다. 음성·텍스트 입력 모두 기본 비활성입니다. 공유 TypeScript 예제는 현재 서버 계약으로 동기화했습니다. 실제 FE 아동 화면은 퀴즈(QUIZ-03·04·05·06)·완료 확인(ACT-04)·역할극 시작(RPL-01)·글자 입력(RPL-05)을 실제 API로 부르고, 말로 답하기(RPL-04)는 아직 연결하지 않았습니다.
 
 | 상태 | 의미 | 예제 호출 |
 |---|---|---|
 | 구현 | 기준 커밋에 Controller/DTO가 존재 | endpoints.ts. 환경별 주소·쿠키/권한 확인 필요 |
-| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | 음성·텍스트 입력. 음성 예제는 allowConditional 기본 차단, 텍스트 예제는 구 계약으로 미동기화 |
+| 조건부 구현 | 코드가 있지만 서버 기능 설정·필수 운영 연결 필요 | 음성·텍스트 입력. endpoints.ts에 있고 allowConditional 기본 차단 |
 | 설계 | 공개 Controller 없음. 경로/필드/상태는 제안 | draft-endpoints.ts, allowDrafts 기본 차단 |
 | 미제공 | 과거 공개 문항 풀 API가 제거됨. ID만 추적용 유지 | 함수 없음. 호출하지 않음 |
 
@@ -98,22 +103,22 @@
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-SCN-01 · 시나리오 재사용 우선 준비·생성](./scenarios/prepare-scenario.md) | POST | `/api/v1/scenarios` | 설계 | prepareScenario |
-| [API-SCN-02 · 강사용 시나리오 목록 조회](./scenarios/list-scenarios.md) | GET | `/api/v1/scenarios` | 설계 | listScenarios |
-| [API-SCN-03 · 시나리오 검토 상세 조회](./scenarios/get-scenario.md) | GET | `/api/v1/scenarios/{scenarioId}` | 설계 | getScenario |
-| [API-SCN-04 · 시나리오 초안 수정·승인 검토](./scenarios/review-scenario.md) | PATCH | `/api/v1/scenarios/{scenarioId}` | 설계 | reviewScenario |
-| [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 설계 | createScenarioVersion |
-| [API-SCN-06 · 미사용 시나리오 초안 폐기](./scenarios/delete-scenario.md) | DELETE | `/api/v1/scenarios/{scenarioId}` | 설계 | deleteScenario |
-| [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 설계 | listScenarioMicroGoals |
+| [API-SCN-01 · 준비·복원·다음 후보](./scenarios/prepare-scenario.md) | POST | `/api/v1/activities/{activityId}/scenario-review` | 구현 | prepareScenario |
+| [API-SCN-02 · 강사용 시나리오 목록 조회](./scenarios/list-scenarios.md) | GET | `/api/v1/scenarios` | 별도 설계| listScenarios |
+| [API-SCN-03 · 시나리오 검토 상세 조회](./scenarios/get-scenario.md) | GET | `/api/v1/scenarios/{scenarioId}` | 준비/확정 응답으로 통합·별도 경로 미구현 | getScenario |
+| [API-SCN-04 · 수정·확정·배정](./scenarios/review-scenario.md) | PUT | `/api/v1/activities/{activityId}/scenario` | 구현 | reviewScenario |
+| [API-SCN-05 · 승인본 수정용 새 버전 생성](./scenarios/create-scenario-version.md) | POST | `/api/v1/scenarios/{scenarioId}/versions` | 준비/확정 응답으로 통합·별도 경로 미구현 | createScenarioVersion |
+| [API-SCN-06 · 검토 취소](./scenarios/delete-scenario.md) | DELETE | `/api/v1/activities/{activityId}/scenario-review` | 구현 | deleteScenario |
+| [API-SCN-07 · 시나리오 세부 목표 조회](./scenarios/list-scenario-micro-goals.md) | GET | `/api/v1/scenarios/{scenarioId}/sub-goals` | 준비/확정 응답으로 통합·별도 경로 미구현 | listScenarioMicroGoals |
 ### 역할극
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
 |---|---|---|---|---|
-| [API-RPL-01 · 역할극 시작·동일 시작 요청 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 구현(작업 브랜치) | startRoleplay |
+| [API-RPL-01 · 역할극 시작·기존 세션 복원](./roleplay/start-roleplay.md) | POST | `/api/v1/activities/{activityId}/roleplay-sessions` | 구현 | startRoleplay |
 | [API-RPL-02 · 역할극 세션·체크포인트 조회](./roleplay/get-roleplay-session.md) | GET | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | getRoleplaySession |
 | [API-RPL-03 · 역할극 일시정지·재개](./roleplay/update-roleplay-session.md) | PATCH | `/api/v1/roleplay-sessions/{sessionId}` | 설계 | updateRoleplaySession |
 | [API-RPL-04 · 역할극 음성 입력 제출](./roleplay/submit-voice-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/voice-inputs` | 조건부 구현 | submitVoiceInput |
-| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 조건부 구현 | submitTextInput 예제는 미동기화 |
+| [API-RPL-05 · 역할극 텍스트 입력 제출](./roleplay/submit-text-input.md) | POST | `/api/v1/roleplay-sessions/{sessionId}/text-inputs` | 조건부 구현 | submitTextInput |
 | [API-RPL-06 · 역할극 처리 결과·검증 응답 조회](./roleplay/get-roleplay-turn.md) | GET | `/api/v1/turns/{turnId}` | 설계 | getRoleplayTurn |
 | [API-RPL-07 · 역할극 실제 전달 대화 이력 조회](./roleplay/list-roleplay-turns.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/turns` | 설계 | listRoleplayTurns |
 | [API-RPL-08 · 강사용 목표별 관찰 결과 조회](./roleplay/list-roleplay-goal-statuses.md) | GET | `/api/v1/roleplay-sessions/{sessionId}/goal-statuses` | 설계 | listRoleplayGoalStatuses |

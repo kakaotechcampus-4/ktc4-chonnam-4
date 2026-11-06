@@ -1,5 +1,7 @@
 # API-SCN-07 · 시나리오 세부 목표 조회
 
+> 2026-11-04 S4-JIN-01: 이번 검토의 작은 목표와 질문별 목표 UUID는 API-SCN-01 준비 응답의 microGoals/startingQuestionGoalIds로 반환한다. 아래 별도 GET은 미구현 과거 제안이며 이번 흐름에서 호출하지 않는다.
+
 > 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
 
 ## 1. Endpoint
