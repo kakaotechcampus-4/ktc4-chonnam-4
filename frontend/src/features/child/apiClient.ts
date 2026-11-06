@@ -76,6 +76,7 @@ async function fetchCsrfToken(): Promise<CsrfToken> {
 /**
  * CSRF 토큰을 붙인 변경 요청. 실패해도 자동으로 다시 보내지 않는다(CSRF 403 포함).
  * 다시 보낼지는 화면이 아이에게 "다시 하기"를 보여 주고 정한다. 다시 보낼 때는 같은 본문·같은 Idempotency-Key 를 쓴다.
+ * body 가 FormData 면(음성 파일 API-RPL-04) multipart 로 그대로 보낸다. boundary 는 브라우저가 정하므로 Content-Type 을 넣지 않는다.
  */
 export async function childWriteRequest<T>(
   method: "POST" | "PUT" | "DELETE",
@@ -84,15 +85,16 @@ export async function childWriteRequest<T>(
   { idempotencyKey }: { idempotencyKey?: string } = {}
 ): Promise<T> {
   const csrf = await fetchCsrfToken()
+  const isForm = body instanceof FormData
   const res = await send(`${API_BASE_URL}${path}`, {
     method,
     headers: {
       Accept: "application/json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json; charset=utf-8" }),
+      ...(body === undefined || isForm ? {} : { "Content-Type": "application/json; charset=utf-8" }),
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       [csrf.headerName]: csrf.token,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   })
   return parseResponse<T>(res)
 }
