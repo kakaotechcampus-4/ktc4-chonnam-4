@@ -194,6 +194,8 @@ export type QuizAttempt = {
   itemCorrect: boolean
   /** 카메라·이미지 문제로 점수에서 뺀 문항 */
   excludedFromScoring: boolean
+  /** 첫 답과 함께 보낸 카메라 판정. 힌트 뒤 최종 답에도 똑같이 다시 보내야 한다(바꾸면 409). */
+  camera: QuizCameraFields | null
 }
 
 export type QuizItemWithAttempt = QuizQuestion & { attempt: QuizAttempt | null }
@@ -222,6 +224,8 @@ type AssignedQuizData = {
 
 type QuizAttemptData = {
   firstResponse: string | null
+  expressionMatchResult: ExpressionMatchResult | null
+  cameraModelVersion: string | null
   usedHintTypes: string[]
   itemCorrect: boolean
   excludedFromScoring: boolean
@@ -235,6 +239,10 @@ function toAttempt(data: QuizAttemptData): QuizAttempt {
     hintCount: data.usedHintTypes.length,
     itemCorrect: data.itemCorrect,
     excludedFromScoring: data.excludedFromScoring,
+    // 카메라 권한 거부(technicalFailureReason)는 첫 답에서 바로 확정되므로 이어서 풀 때 다시 보낼 일이 없다.
+    camera: data.expressionMatchResult
+      ? { expressionMatchResult: data.expressionMatchResult, cameraModelVersion: data.cameraModelVersion ?? "" }
+      : null,
   }
 }
 
@@ -275,18 +283,17 @@ export async function getQuizQuestions(activityId: string, signal?: AbortSignal)
   return questions.map((question, index) => ({ ...question, attempt: attempts[index] }))
 }
 
+export type ExpressionMatchResult = "MATCH" | "MISMATCH" | "NOT_ANALYZABLE"
+
 /**
  * 내 감정 문항은 서버가 카메라 표정 판정을 반드시 함께 받는다(API-QUIZ-04).
- * 화면은 아직 카메라를 켜지 않으므로 "표정을 분석하지 못함"으로 보낸다. 서버는 이 문항을 점수에서 빼고 바로 확정한다.
- * 표정 인식을 붙이면 실제 판정(MATCH·MISMATCH)과 모델 버전으로 바꾼다.
+ * 판정은 브라우저 안 표정 모델이 하고(camera/), 영상은 보내지 않는다.
+ * - 표정 판정: MATCH(고른 표정과 같음)·MISMATCH(다름)·NOT_ANALYZABLE(카메라·모델을 못 씀, 점수에서 빠짐) + 모델 버전
+ * - 카메라 권한 거부: CAMERA_PERMISSION_DENIED (점수에서 빠짐)
  */
-export const CAMERA_NOT_CONNECTED = "camera-not-connected"
-
-function cameraFields(type: QuizType) {
-  return type === "SELF_EMOTION_SITUATION"
-    ? { expressionMatchResult: "NOT_ANALYZABLE", cameraModelVersion: CAMERA_NOT_CONNECTED }
-    : {}
-}
+export type QuizCameraFields =
+  | { expressionMatchResult: ExpressionMatchResult; cameraModelVersion: string }
+  | { technicalFailureReason: "CAMERA_PERMISSION_DENIED" }
 
 export type QuizAnswerInput = {
   activityQuizId: string
@@ -295,6 +302,8 @@ export type QuizAnswerInput = {
   firstResponse: string
   /** 힌트 뒤 최종 답. 첫 답일 때는 없다. */
   finalResponse?: string
+  /** 내 감정 문항만. 힌트 뒤 최종 답에도 첫 답 때 값을 그대로 보낸다. */
+  camera?: QuizCameraFields | null
 }
 
 /**
@@ -307,7 +316,7 @@ export async function submitQuizAnswer(input: QuizAnswerInput): Promise<QuizAtte
     `/activity-quiz-items/${encodeURIComponent(input.activityQuizId)}/attempt`,
     {
       firstResponse: input.firstResponse,
-      ...cameraFields(input.type),
+      ...(input.type === "SELF_EMOTION_SITUATION" && input.camera ? input.camera : {}),
       ...(input.finalResponse === undefined ? {} : { finalResponse: input.finalResponse }),
     }
   )
