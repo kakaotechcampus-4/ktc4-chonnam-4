@@ -663,3 +663,18 @@ export function deleteScenario(
     body: args.body
   });
 }
+
+export type ListScenarioApprovalsArgs = Record<string, never>;
+
+export function listScenarioApprovals(
+  api: ApiClient,
+  _args: ListScenarioApprovalsArgs = {},
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ScenarioApprovalItem[]>> {
+  return api.request<T.ScenarioApprovalItem[]>("/api/v1/scenario-approvals", {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}

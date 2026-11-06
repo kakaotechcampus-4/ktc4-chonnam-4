@@ -218,13 +218,13 @@ await check("Removed question-bank APIs are not exported", async () => {
     assert.equal(live[fn], undefined); assert.equal(draft[fn], undefined);
   }
 });
-await check("All 57 stable IDs have exactly one status and exported active functions", async () => {
-  assert.equal(fixtures.length, 57);
-  assert.equal(new Set(fixtures.map(f=>f.id)).size, 57);
+await check("All 58 stable IDs have exactly one status and exported active functions", async () => {
+  assert.equal(fixtures.length, 58);
+  assert.equal(new Set(fixtures.map(f=>f.id)).size, 58);
   assert.equal(fixtures.filter(f=>f.unavailable).length, 2);
   assert.equal(fixtures.filter(f=>f.conditional).length, 2);
   assert.equal(fixtures.filter(f=>f.draft).length, 18);
-  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 35);
+  assert.equal(fixtures.filter(f=>!f.draft && !f.conditional && !f.unavailable).length, 36);
   const expectedLive = fixtures.filter(f=>!f.draft && !f.unavailable).map(f=>f.fn).sort();
   const expectedDraft = fixtures.filter(f=>f.draft).map(f=>f.fn).sort();
   assert.deepEqual(Object.keys(live).sort(), expectedLive);
@@ -362,8 +362,8 @@ for(const entry of await readdir(root,{withFileTypes:true})) {
     }
   }
 }
-await check("57 API documents keep stable IDs and endpoint metadata",async()=>{
-  assert.equal(apiDocs.length,57);
+await check("58 API documents keep stable IDs and endpoint metadata",async()=>{
+  assert.equal(apiDocs.length,58);
   const byId=new Map();
   for(const url of apiDocs) {
     const md=await readFile(url,'utf8');
