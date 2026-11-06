@@ -450,6 +450,10 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "test.roleplay.speech-delivery.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
     RoleplaySpeechDelivery httpSpeech(State state) {
         return (id, speech) -> {
             state.calls.add("PUBLISH");

@@ -264,6 +264,7 @@ new_case
 export FAKE_GOOD_TAGS="aaaaaaa"
 cat >> "$tmp/fake/params" <<'PARAMS'
 /neuringo/dev/roleplay/http/enabled	true
+/neuringo/dev/roleplay/speech/delivery	none
 /neuringo/dev/roleplay/http/spool-directory	/tmp/roleplay-test
 /neuringo/dev/roleplay/http/maximum-upload-bytes	16
 /neuringo/dev/roleplay/http/maximum-request-bytes	65536
@@ -276,7 +277,7 @@ cat >> "$tmp/fake/params" <<'PARAMS'
 PARAMS
 deploy aaaaaaa
 check "역할극 설정을 포함한 배포가 성공한다" same "$code" 0
-for entry in "ROLEPLAY_HTTP_ENABLED=true" "ROLEPLAY_SPOOL_DIRECTORY=/tmp/roleplay-test" \
+for entry in "ROLEPLAY_HTTP_ENABLED=true" "ROLEPLAY_SPEECH_DELIVERY=none" "ROLEPLAY_SPOOL_DIRECTORY=/tmp/roleplay-test" \
   "ROLEPLAY_UPLOAD_MAX_BYTES=16" "ROLEPLAY_REQUEST_MAX_BYTES=65536" "ROLEPLAY_ALLOWED_FORMATS=WEBM,WAV" \
   "ROLEPLAY_WORKER_COUNT=2" "ROLEPLAY_QUEUE_CAPACITY=3" "ROLEPLAY_TURN_BUDGET=45s" \
   "ROLEPLAY_MAXIMUM_TURN_COUNT=77" "ROLEPLAY_MAXIMUM_SUPPORT_TURNS_PER_MICRO_GOAL=9"; do
