@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="친구 얼굴 그림">
+  <!-- 퀴즈 그림 문항(OTHER_EMOTION_IMAGE)용 일러스트. 사람 사진은 쓰지 않는다. 정답이 새지 않게 이름과 설명에 감정을 쓰지 않는다. -->
+  <circle cx="100" cy="100" r="88" fill="#ffd8a8" stroke="#c98a4b" stroke-width="4"/>
+  <path d="M56 70 Q72 62 88 68" fill="none" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <path d="M112 68 Q128 62 144 70" fill="none" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <path d="M60 100 Q74 84 88 100" fill="none" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <path d="M112 100 Q126 84 140 100" fill="none" stroke="#4a3b2c" stroke-width="7" stroke-linecap="round"/>
+  <path d="M64 128 Q100 176 136 128 Z" fill="#4a3b2c" stroke="#4a3b2c" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M84 150 Q100 162 116 150 Q100 144 84 150 Z" fill="#f28b82"/>
+  <ellipse cx="50" cy="124" rx="12" ry="7" fill="#f28b82" opacity="0.6"/>
+  <ellipse cx="150" cy="124" rx="12" ry="7" fill="#f28b82" opacity="0.6"/>
+</svg>
