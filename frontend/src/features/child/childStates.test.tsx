@@ -249,6 +249,56 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
   })
 })
 
+describe("답·힌트·대화를 보내다 세션이 끝나면(401) 다시 하기 대신 다시 입장하게 한다", () => {
+  // 명세 공통 규칙 "아동401은 재입장 안내". 다시 하기로 같은 요청을 보내도 계속 401이라 아이가 빠져나갈 수 없었다(S8 회귀 점검 D1·D2).
+  const sessionLost = ({ request }: { request: Request }) =>
+    apiError(401, "AUTHENTICATION_REQUIRED", "인증이 필요합니다.", new URL(request.url).pathname)
+  const HINT_URL = "*/api/v1/activity-quiz-items/:activityQuizId/hints"
+
+  async function expectReentry(user: UserEvent, path: RegExp) {
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("다시 들어와 줘")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "다시 하기" })).not.toBeInTheDocument()
+    const before = sentTo(path).length
+    await user.click(within(dialog).getByRole("button", { name: "코드 입력하기" }))
+
+    expect(await screen.findByText("입장 코드를 입력해줘!")).toBeInTheDocument()
+    // 같은 요청을 다시 보내지 않는다.
+    expect(sentTo(path)).toHaveLength(before)
+  }
+
+  it("퀴즈 답을 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.put(ATTEMPT_URL, sessionLost))
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`)
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/attempt$/)
+  })
+
+  it("틀린 뒤 힌트를 받다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(HINT_URL, sessionLost))
+    // 두 번째 문항(친구 감정 상황, 정답 슬픔)에서 일부러 틀려 힌트를 받게 한다.
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`, { quizFinished: 1 })
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/hints$/)
+  })
+
+  it("역할극 대화를 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(TEXT_INPUT_URL, sessionLost))
+    const { user } = openRoleplay()
+
+    const input = await openTextComposer(user)
+    await user.type(input, "아플 것 같아{Enter}")
+
+    await expectReentry(user, /\/text-inputs$/)
+  })
+})
+
 describe("코드 입력 화면은 만료·연결 끊김·서버 오류를 틀린 코드와 따로 알린다", () => {
   it("코드를 숫자로 바꾸지 않고 앞자리 0까지 그대로 보낸다", async () => {
     const sent: unknown[] = []

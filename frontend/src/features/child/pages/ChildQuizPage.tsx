@@ -11,6 +11,8 @@ import { EmotionChoices } from "../components/quiz/EmotionChoices"
 import { PhotoGate } from "../components/quiz/PhotoGate"
 import { QuizGuideBubble } from "../components/quiz/QuizGuideBubble"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
+import { SessionLostDialog } from "../components/state/LoadErrorDialog"
+import { isSessionLost } from "../components/state/sessionLost"
 import {
   ChildApiError,
   getActivityStatus,
@@ -268,14 +270,18 @@ function QuizQuestionView({
         <div className="mx-auto w-full max-w-[43rem]">{answerPanel}</div>
       )}
 
-      <StateDialog open={showSubmitError}>
+      <StateDialog open={showSubmitError && !isSessionLost(submitMutation.error)}>
         <ErrorState
           onRetry={() => {
             if (submitMutation.variables) submitMutation.mutate(submitMutation.variables)
           }}
         />
       </StateDialog>
-      <StateDialog open={hintFailed}>
+      {/* 답·힌트를 보내다 세션이 끝나면(401) 다시 하기로는 빠져나갈 수 없어 다시 입장하게 한다. */}
+      <SessionLostDialog
+        open={(showSubmitError && isSessionLost(submitMutation.error)) || (hintFailed && isSessionLost(hintMutation.error))}
+      />
+      <StateDialog open={hintFailed && !isSessionLost(hintMutation.error)}>
         {/* 같은 키로 다시 요청해 힌트가 두 번 발급되지 않게 한다. */}
         <ErrorState
           message="힌트를 가져오지 못했어요"
@@ -459,7 +465,7 @@ function ChildQuizPage() {
         message="퀴즈를 불러오지 못했어요"
         onRetry={retryLoad}
       />
-      <StateDialog open={showCompleteError}>
+      <StateDialog open={showCompleteError && !isSessionLost(completionMutation.error ?? nextMutation.error)}>
         <ErrorState
           onRetry={() => {
             if (!activityId) return
@@ -468,6 +474,7 @@ function ChildQuizPage() {
           }}
         />
       </StateDialog>
+      <SessionLostDialog open={showCompleteError && isSessionLost(completionMutation.error ?? nextMutation.error)} />
     </ChildLayout>
   )
 }

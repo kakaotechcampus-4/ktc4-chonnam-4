@@ -10,6 +10,8 @@ import { SpeechBubble } from "../components/SpeechBubble"
 import { RoleplayComposer, type RoleplayInputMode } from "../components/roleplay/RoleplayComposer"
 import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
+import { SessionLostDialog } from "../components/state/LoadErrorDialog"
+import { isSessionLost } from "../components/state/sessionLost"
 import {
   ChildApiError,
   getActivityStatus,
@@ -290,7 +292,7 @@ function ChildRoleplayPage() {
         message="역할극을 불러오지 못했어요"
         onRetry={retryLoad}
       />
-      <StateDialog open={showSendError}>
+      <StateDialog open={showSendError && !isSessionLost(turnMutation.error)}>
         {/* 같은 키로 다시 보내 턴이 중복 생성되지 않게 한다 (VS-011 재전송). 처리 중(202)이었어도 같은 키로 결과를 받는다. */}
         <ErrorState
           onRetry={() => {
@@ -298,6 +300,8 @@ function ChildRoleplayPage() {
           }}
         />
       </StateDialog>
+      {/* 대화를 보내다 세션이 끝나면(401) 다시 하기로는 빠져나갈 수 없어 다시 입장하게 한다. */}
+      <SessionLostDialog open={showSendError && isSessionLost(turnMutation.error)} />
     </ChildLayout>
   )
 }
