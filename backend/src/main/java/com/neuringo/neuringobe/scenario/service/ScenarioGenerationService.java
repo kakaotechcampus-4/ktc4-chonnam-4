@@ -3,10 +3,11 @@ package com.neuringo.neuringobe.scenario.service;
 import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.model.LlmCompletion;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioGenerationInput;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioPromptFactory;
-import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
+import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.output.GeneratedScenario;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.goal.dto.LearningGoalResponse;
@@ -30,6 +31,10 @@ import tools.jackson.databind.json.JsonMapper;
 @Transactional(propagation = Propagation.NEVER)
 public class ScenarioGenerationService {
     private static final Logger log = LoggerFactory.getLogger(ScenarioGenerationService.class);
+
+    /** 한 요청에서 출력 계약 위반으로 다시 만드는 최대 횟수(첫 시도 포함). */
+    static final int MAX_ATTEMPTS = 3;
+
     private static final Pattern WHITESPACE =
             Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private final ObjectProvider<LlmProvider> providers;
@@ -51,23 +56,17 @@ public class ScenarioGenerationService {
                     "시나리오 생성 연결이 준비되지 않았습니다.");
         var goal = context.input().learningGoal();
         var previous = context.previous();
-        var input =
-                new ScenarioGenerationInput(
-                        new ScenarioGenerationInput.TeacherInput(
-                                goal.title(),
-                                goal.category(),
-                                goal.situationType(),
-                                goal.characters(),
-                                goal.requiredElements(),
-                                goal.forbiddenExpressions()),
-                        ScenarioGenerationInput.Difficulty.of(
-                                context.input().initialDifficulty().scenarioLevel()),
-                        previous == null
-                                ? null
-                                : new ScenarioGenerationInput.Revision(
-                                        previous,
-                                        List.of("목표·조건·난이도를 유지하고 직전 제안과 다른 내용으로 구성해 주세요."),
-                                        List.of()));
+        var teacherInput =
+                new ScenarioGenerationInput.TeacherInput(
+                        goal.title(),
+                        goal.category(),
+                        goal.situationType(),
+                        goal.characters(),
+                        goal.requiredElements(),
+                        goal.forbiddenExpressions());
+        var difficulty =
+                ScenarioGenerationInput.Difficulty.of(
+                        context.input().initialDifficulty().scenarioLevel());
         var trace =
                 new AiTraceContext(
                         requestId,
@@ -80,51 +79,122 @@ public class ScenarioGenerationService {
                         null,
                         null,
                         UUID.randomUUID());
-        var prompt = prompts.generation(trace, new AiAttemptContext(0, 1, 0), 1, input);
-        AiCallResult<GeneratedScenario> result;
-        try {
-            result = new StructuredLlmExecutor(provider).execute(prompt.request(), prompt.parser());
-        } catch (RuntimeException providerFailure) {
+        // 출력 계약 위반(INVALID_OUTPUT_FORMAT)은 재시도 가능한 실패다(backend/docs/ai-provider-contract.md).
+        // 실패 코드를 revision.failure_codes 로 붙여 같은 요청 안에서 다시 만든다. 제공자 실패는 다시 부르지 않는다.
+        var failureCodes = new ArrayList<String>();
+        long elapsedMs = 0;
+        int inputTokens = 0;
+        int outputTokens = 0;
+        for (int attempt = 1; ; attempt++) {
+            var input =
+                    new ScenarioGenerationInput(
+                            teacherInput, difficulty, revision(previous, failureCodes));
+            var prompt =
+                    prompts.generation(trace, new AiAttemptContext(0, attempt, 0), attempt, input);
+            AiCallResult<LlmCompletion> result;
+            try {
+                result = provider.complete(prompt.request());
+            } catch (RuntimeException providerFailure) {
+                log.info(
+                        "event=scenario_generation_failed activityId={} reviewId={} failure=UNEXPECTED_PROVIDER_ERROR attempts={}",
+                        context.snapshot().activityId(),
+                        context.snapshot().reviewId(),
+                        attempt);
+                throw generationFailed(HttpStatus.BAD_GATEWAY);
+            }
+            if (result instanceof AiCallResult.Failure<LlmCompletion> failure) {
+                log.info(
+                        "event=scenario_generation_failed activityId={} reviewId={} failure={} elapsedMs={} attempts={}",
+                        context.snapshot().activityId(),
+                        context.snapshot().reviewId(),
+                        failure.failure().type(),
+                        elapsedMs + failure.metadata().elapsedMs(),
+                        attempt);
+                HttpStatus status =
+                        switch (failure.failure().type()) {
+                            case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+                            case AUTHENTICATION_ERROR, PROVIDER_UNAVAILABLE, RATE_LIMITED ->
+                                    HttpStatus.SERVICE_UNAVAILABLE;
+                            default -> HttpStatus.BAD_GATEWAY;
+                        };
+                throw generationFailed(status);
+            }
+            var success = (AiCallResult.Success<LlmCompletion>) result;
+            elapsedMs += success.metadata().elapsedMs();
+            inputTokens += tokens(success.metadata().inputTokens());
+            outputTokens += tokens(success.metadata().outputTokens());
+            GeneratedScenario scenario;
+            try {
+                scenario = prompt.parser().parse(success.data().content());
+            } catch (InvalidLlmOutputException invalid) {
+                String code = failureCode(invalid);
+                log.info(
+                        "event=scenario_generation_invalid_output activityId={} reviewId={} attempt={} reason={}",
+                        context.snapshot().activityId(),
+                        context.snapshot().reviewId(),
+                        attempt,
+                        code);
+                if (attempt >= MAX_ATTEMPTS) {
+                    log.info(
+                            "event=scenario_generation_failed activityId={} reviewId={} failure=INVALID_OUTPUT_FORMAT elapsedMs={} attempts={} inputTokens={} outputTokens={}",
+                            context.snapshot().activityId(),
+                            context.snapshot().reviewId(),
+                            elapsedMs,
+                            attempt,
+                            inputTokens,
+                            outputTokens);
+                    throw generationFailed(HttpStatus.BAD_GATEWAY);
+                }
+                if (!failureCodes.contains(code)) failureCodes.add(code);
+                continue;
+            } catch (RuntimeException unexpected) {
+                log.info(
+                        "event=scenario_generation_failed activityId={} reviewId={} failure=UNEXPECTED_PROVIDER_ERROR attempts={}",
+                        context.snapshot().activityId(),
+                        context.snapshot().reviewId(),
+                        attempt);
+                throw generationFailed(HttpStatus.BAD_GATEWAY);
+            }
+            validateConditions(goal, scenario);
             log.info(
-                    "event=scenario_generation_failed activityId={} reviewId={} failure=UNEXPECTED_PROVIDER_ERROR",
-                    context.snapshot().activityId(),
-                    context.snapshot().reviewId());
-            throw new ApiException(
-                    HttpStatus.BAD_GATEWAY,
-                    "SCENARIO_GENERATION_FAILED",
-                    "시나리오를 생성하지 못했습니다. 다시 시도해 주세요.");
-        }
-        if (result instanceof AiCallResult.Failure<GeneratedScenario> failure) {
-            log.info(
-                    "event=scenario_generation_failed activityId={} reviewId={} failure={} elapsedMs={}",
+                    "event=scenario_generation_completed activityId={} reviewId={} reason={} elapsedMs={} attempts={} inputTokens={} outputTokens={}",
                     context.snapshot().activityId(),
                     context.snapshot().reviewId(),
-                    failure.failure().type(),
-                    failure.metadata().elapsedMs());
-            HttpStatus status =
-                    switch (failure.failure().type()) {
-                        case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
-                        case AUTHENTICATION_ERROR, PROVIDER_UNAVAILABLE, RATE_LIMITED ->
-                                HttpStatus.SERVICE_UNAVAILABLE;
-                        default -> HttpStatus.BAD_GATEWAY;
-                    };
-            throw new ApiException(
-                    status, "SCENARIO_GENERATION_FAILED", "시나리오를 생성하지 못했습니다. 다시 시도해 주세요.");
+                    context.snapshot().candidateCount() == 0
+                            ? "NO_MATCHING_CANDIDATE"
+                            : "CANDIDATES_EXHAUSTED",
+                    elapsedMs,
+                    attempt,
+                    inputTokens,
+                    outputTokens);
+            return scenario;
         }
-        var success = (AiCallResult.Success<GeneratedScenario>) result;
-        var scenario = success.data();
-        validateConditions(goal, scenario);
-        log.info(
-                "event=scenario_generation_completed activityId={} reviewId={} reason={} elapsedMs={} inputTokens={} outputTokens={}",
-                context.snapshot().activityId(),
-                context.snapshot().reviewId(),
-                context.snapshot().candidateCount() == 0
-                        ? "NO_MATCHING_CANDIDATE"
-                        : "CANDIDATES_EXHAUSTED",
-                success.metadata().elapsedMs(),
-                success.metadata().inputTokens(),
-                success.metadata().outputTokens());
-        return scenario;
+    }
+
+    /** 강사가 넘긴 직전 제안과 이번 요청에서 쌓인 출력 실패 코드를 함께 싣는다. 둘 다 없으면 첫 생성이다. */
+    private static ScenarioGenerationInput.Revision revision(
+            GeneratedScenario previous, List<String> failureCodes) {
+        if (previous == null && failureCodes.isEmpty()) return null;
+        return new ScenarioGenerationInput.Revision(
+                previous,
+                previous == null ? List.of() : List.of("목표·조건·난이도를 유지하고 직전 제안과 다른 내용으로 구성해 주세요."),
+                List.copyOf(failureCodes));
+    }
+
+    /** 파서 메시지 "CODE: field" 에서 코드만 꺼낸다(평가 도구 ScenarioEvalRunner 와 같은 규칙). */
+    static String failureCode(InvalidLlmOutputException invalid) {
+        String message = invalid.getMessage() == null ? "" : invalid.getMessage().strip();
+        String code = message.split("[: ]", 2)[0];
+        return code.isBlank() ? "INVALID_OUTPUT_FORMAT" : code;
+    }
+
+    private static int tokens(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private static ApiException generationFailed(HttpStatus status) {
+        return new ApiException(
+                status, "SCENARIO_GENERATION_FAILED", "시나리오를 생성하지 못했습니다. 다시 시도해 주세요.");
     }
 
     @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)

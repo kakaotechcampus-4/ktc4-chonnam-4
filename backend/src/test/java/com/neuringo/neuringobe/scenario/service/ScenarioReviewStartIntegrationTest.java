@@ -1302,12 +1302,69 @@ class ScenarioReviewStartIntegrationTest {
                 "SCENARIO_GENERATION_FAILED",
                 () -> preparation.prepare(ctx.activity(), key, auth(ctx)));
         assertThat(draftCount()).isEqualTo(drafts);
-        verify(llm, times(1)).complete(any());
+        // 출력 계약 위반은 한 요청 안에서 최대 횟수까지 다시 만든 뒤에 실패한다.
+        verify(llm, times(ScenarioGenerationService.MAX_ATTEMPTS)).complete(any());
         doAnswer(inv -> completion(inv.getArgument(0), generatedJson())).when(llm).complete(any());
         var retried = preparation.prepare(ctx.activity(), key, auth(ctx));
         assertThat(retried.revision()).isEqualTo(1);
         assertThat(retried.candidateCount()).isEqualTo(1);
+        verify(llm, times(ScenarioGenerationService.MAX_ATTEMPTS + 1)).complete(any());
+    }
+
+    @Test
+    void malformedGenerationIsRegeneratedWithFailureCodesInSameRequest() {
+        var ctx = context(null);
+        long drafts = draftCount();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(llm.complete(any()))
+                .thenAnswer(
+                        inv -> {
+                            LlmRequest request = inv.getArgument(0);
+                            if (calls.incrementAndGet() == 1) {
+                                assertThat(request.currentAttempt()).isEqualTo(1);
+                                assertThat(request.userPrompt()).doesNotContain("failure_codes");
+                                return completion(request, "{}");
+                            }
+                            assertThat(request.currentAttempt()).isEqualTo(2);
+                            assertThat(request.attemptContext().generationAttempt()).isEqualTo(2);
+                            assertThat(request.userPrompt()).contains("failure_codes");
+                            return completion(request, generatedJson());
+                        });
+        var review = preparation.prepare(ctx.activity(), UUID.randomUUID(), auth(ctx));
+        assertThat(review.candidate()).isNotNull();
+        assertThat(review.revision()).isEqualTo(1);
+        assertThat(review.candidateCount()).isEqualTo(1);
+        assertThat(draftCount()).isEqualTo(drafts + 1);
         verify(llm, times(2)).complete(any());
+    }
+
+    @Test
+    void regenerationAfterRejectionKeepsPreviousScenarioWhenOutputIsMalformed() {
+        var ctx = context(null);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(llm.complete(any()))
+                .thenAnswer(
+                        inv -> {
+                            LlmRequest request = inv.getArgument(0);
+                            int call = calls.incrementAndGet();
+                            if (call == 2) return completion(request, "{}");
+                            if (call == 3)
+                                assertThat(request.userPrompt())
+                                        .contains("previous_scenario", "직전 제안", "failure_codes");
+                            return completion(
+                                    request, generatedJson().replace("넘어져서 우는 친구", "제안 " + call));
+                        });
+        var first = preparation.prepare(ctx.activity(), UUID.randomUUID(), auth(ctx));
+        var second =
+                preparation.next(
+                        ctx.activity(),
+                        UUID.randomUUID(),
+                        first.reviewId(),
+                        first.revision(),
+                        auth(ctx));
+        assertThat(second.candidate().scenarioId()).isNotEqualTo(first.candidate().scenarioId());
+        assertThat(second.revision()).isEqualTo(2);
+        verify(llm, times(3)).complete(any());
     }
 
     @Test
