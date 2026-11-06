@@ -114,7 +114,7 @@ AI 호출 대기 중 처리권 때문에 DB 연결을 점유하지 않는다. �
 1. RoleplayContextSource: DB 조회 구현 `JdbcRoleplayContextSource`를 추가했다. 시나리오 PR의 V15 자료와 V16 관찰 이력, 명시적인 `RoleplayProgressSource`가 필요하다. 목표별 확정 응답 이력에서 질문 횟수·정답 제공 여부를 복원한다. 현재 목표·지원·제한 등 나머지 진행 공급자가 없으면 기본값을 만들지 않고 컨텍스트 불가로 처리한다.
 2. RoleplayInputProcessor: [운영 입력 검사기](roleplay-runtime-input-processor.md)로 최소 정제·개인정보 가림·위험 판정을 연결한다. 실제 제공자 품질과 탐지 범위는 운영 인수 대상이다.
 3. SpeechToTextProvider/TextToSpeechProvider: 담당 PR의 실제 어댑터/설정과 연결. 포트만 테스트용 구현으로 검증했다.
-4. RoleplaySpeechDelivery: 인증된 수신자가 접근할 수 있는 임시 음성 주소. 보관 기간/전달 정책과 실제 구현은 미정이다.
+4. RoleplaySpeechDelivery: `ROLEPLAY_SPEECH_DELIVERY=none`으로 음성 주소 없이 대사만 전달하는 구현을 명시적으로 선택할 수 있다. `messages[].speech`는 `available=false`, `url=null`이며 정상 전달·체크포인트 계약은 유지한다. 실제 음성 주소의 인증·보관 기간·전달 구현은 후속 대상이다. 선택/기본 빈 등록 및 STT/TTS 의존성은 [음성 미제공 전달](roleplay-speech-delivery.md)을 따른다.
 5. RoleplayActivityGoalEvaluator: `ServerRoleplayActivityGoalEvaluator`가 검수된 분석과 다시 조회한 서버 자료로 `RoleplayGoalObservationPlan`을 준비한다. 분석 당시 자료의 지문과 재조회 자료가 같아야 한다. 자료 변경·관찰 근거 불일치·판정 불가는 기존 503이며 저장하지 않는다. 추가 AI 호출이나 임의 달성 기본값은 없다.
 
 음성 HTTP의 저장 경로는 `RoleplayCompletionCheckpointStore`를 사용한다.

@@ -47,6 +47,9 @@ server:
         same-site: lax
 
 roleplay:
+  speech:
+    # 음성 미제공도 명시적으로 선택한다. 미설정 시 전달 구현을 대신 만들지 않는다.
+    delivery: ${ROLEPLAY_SPEECH_DELIVERY:}
   input:
     stt-confidence-threshold: ${ROLEPLAY_STT_CONFIDENCE_THRESHOLD:0.40}
   text:

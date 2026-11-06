@@ -46,6 +46,7 @@ TTS_TIMEOUT?=tts/timeout
 
 # 역할극. 설정이 없으면 HTTP API 는 꺼진다. 켜려면 합의된 턴·업로드·작업자 정책과 구현 빈이 필요하다.
 ROLEPLAY_HTTP_ENABLED?=roleplay/http/enabled
+ROLEPLAY_SPEECH_DELIVERY?=roleplay/speech/delivery
 ROLEPLAY_SPOOL_DIRECTORY?=roleplay/http/spool-directory
 ROLEPLAY_UPLOAD_MAX_BYTES?=roleplay/http/maximum-upload-bytes
 ROLEPLAY_REQUEST_MAX_BYTES?=roleplay/http/maximum-request-bytes
