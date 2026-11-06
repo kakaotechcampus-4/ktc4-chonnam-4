@@ -14,6 +14,7 @@ import {
 import { server } from "@/test/msw/server"
 import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 import * as api from "./api"
+import { CAMERA_MODEL_VERSION } from "./camera/faceExpressionModel"
 
 // S2-YOON-01 아동 화면 오류·로딩·재입력 점검, S3-YOON-01 상태 규칙 통일 확인 (VS-003·006·010).
 // 아동 화면은 모두 실제 API(contracts/api/v1)를 부르고, 테스트는 MSW 가짜 서버(test/msw/handlers.ts)로 대신한다.
@@ -355,7 +356,7 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
               firstResponse: "기쁨",
               firstResponseCorrect: false,
               expressionMatchResult: "NOT_ANALYZABLE",
-              cameraModelVersion: api.CAMERA_NOT_CONNECTED,
+              cameraModelVersion: CAMERA_MODEL_VERSION,
               usedHintTypes: [],
               finalResponse: "기쁨",
               resolvedAfterHint: false,
