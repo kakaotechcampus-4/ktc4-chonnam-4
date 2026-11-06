@@ -8,10 +8,17 @@ import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from
 
 // 역할극 말로 답하기(API-RPL-04) 검사. 브라우저 마이크(getUserMedia·MediaRecorder)는 jsdom 에 없어 가짜로 바꾼다.
 // 가짜 서버의 STT 는 음성 파일 바이트를 글자로 읽으므로, 아이가 "말한" 내용은 nextSpeech 로 정한다.
-// jsdom 의 Blob·FormData 는 Node fetch(undici)가 읽지 못해 음성 바이트가 "undefined" 로 간다(브라우저에서는 문제없다).
-// 그래서 이 파일에서는 둘 다 Node 의 것으로 바꿔 실제 브라우저처럼 음성 바이트가 그대로 가게 한다.
-// jsdom 은 fetch·Response 를 바꾸지 않으므로 Node 의 Blob·FormData 는 Response 에서 꺼낸다.
-const NodeBlob = (await new Response("").blob()).constructor
+// jsdom 의 Blob·File·FormData 는 Node fetch(undici)가 읽지 못해 음성 바이트가 "undefined" 로 간다(브라우저에서는 문제없다).
+// 그래서 이 파일에서는 셋 다 Node 의 것으로 바꿔 실제 브라우저처럼 음성 바이트가 그대로 가게 한다.
+// Blob·File 은 node:buffer 에서 가져온다. Node 24(CI, .nvmrc)의 undici 는 Response.blob() 에서 꺼낸 생성자를 Blob 으로
+// 인정하지 않고(FormData.set 이 TypeError), 가짜 서버의 request.formData() 가 전역(jsdom) File 로 파트를 만들다 실패한다.
+// FormData 는 전역이 jsdom 것으로 바뀌어 있으므로, jsdom 이 바꾸지 않는 Node 의 Response 에서 꺼낸다.
+// 앱 tsconfig 에는 Node 타입이 없어서 모듈 이름을 변수로 넘기고 필요한 모양만 적는다.
+const NODE_BUFFER = "node:buffer"
+const { Blob: NodeBlob, File: NodeFile } = (await import(/* @vite-ignore */ NODE_BUFFER)) as {
+  Blob: typeof Blob
+  File: typeof File
+}
 const NodeFormData = (await new Response(new URLSearchParams()).formData()).constructor
 
 const ACTIVITY = CHILD_ACTIVITY_ID
@@ -84,6 +91,7 @@ beforeEach(() => {
   trackStop.mockReset()
   getUserMedia.mockReset().mockImplementation(async () => fakeStream())
   vi.stubGlobal("Blob", NodeBlob)
+  vi.stubGlobal("File", NodeFile)
   vi.stubGlobal("FormData", NodeFormData)
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder)
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } })
