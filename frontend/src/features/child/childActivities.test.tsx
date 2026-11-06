@@ -6,6 +6,7 @@ import { apiError, fixtures, seedActivity } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { enterAsChild, renderRoutes } from "@/test/render"
 import { ChildApiError, getMyActivities } from "./api"
+import { childGetRequest } from "./apiClient"
 import { useChildSessionStore } from "./store/childSessionStore"
 
 // S4-YOON-01 아동 활동 목록 실제 연결 (API-ACT-02, VS-003·009).
@@ -226,6 +227,19 @@ describe("다른 아동의 활동은 화면과 직접 요청에서 막힌다 (S4
 
     await expect(getMyActivities(OTHER_CHILD)).rejects.toMatchObject({ status: 404, code: "CHILD_NOT_FOUND" })
     await expect(getMyActivities(OTHER_CHILD)).rejects.toBeInstanceOf(ChildApiError)
+  })
+})
+
+describe("아동 세션의 활동 목록에는 평가 정보가 오지 않는다 (#116)", () => {
+  it("서버처럼 아동에게는 5개 칸만 주고, 아이 화면은 그것만으로 활동을 보여 준다", async () => {
+    seedActivity({ childId: ME, activityType: "FIRST_COMBINED", status: "IN_PROGRESS" })
+    enterAsChild()
+
+    const items = await childGetRequest<Record<string, unknown>[]>(`/children/${ME}/activities`)
+    expect(Object.keys(items[0]).sort()).toEqual(["activityId", "activityType", "completedAt", "nextAction", "status"])
+
+    renderRoutes(router.routes, "/child/activities")
+    expect(await screen.findByText("친구 마음 알아보기")).toBeInTheDocument()
   })
 })
 

@@ -597,6 +597,15 @@ function toListedActivity(stored: StoredActivity) {
   return { ...toActivity(stored), nextAction: nextActionOf(stored), blockedReason: null }
 }
 
+/**
+ * 아동 세션의 활동 목록 항목(API-ACT-02 아동 응답, #116 ChildActivityResponse). 서버처럼 이 5개 칸만 준다.
+ * 평가 정보(지원 수준·기본값 적용 여부)와 목표·시나리오 ID 는 키 자체가 없다.
+ */
+function toChildListedActivity(stored: StoredActivity) {
+  const { activityId, activityType, status, completedAt } = toActivity(stored)
+  return { activityId, activityType, status, completedAt, nextAction: nextActionOf(stored) }
+}
+
 /** 화면 테스트에서 그 배정 문항에 저장된 답안을 본다. */
 export function storedQuizAttempt(activityQuizId: string) {
   return quizAttempts.get(activityQuizId)
@@ -1390,7 +1399,9 @@ export const handlers = [
       return invalidRequest(path)
     }
     const list = activities.filter((a) => a.childId === childId).reverse()
-    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toListedActivity)))
+    // 응답 종류는 서버처럼 인증 주체로 정한다. 아동 세션이면 아동용 5개 칸, 강사면 전체 칸이다.
+    const toItem = asChild ? toChildListedActivity : toListedActivity
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size).map(toItem)))
   }),
 
   // 활동 배정. 서버처럼 목표를 함께 저장하고 유형별 구성대로 문항을 붙인다. 같은 요청 키는

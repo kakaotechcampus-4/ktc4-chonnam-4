@@ -118,7 +118,7 @@ const ACTIVITY_CONTENT: Record<
   },
 }
 
-/** API-ACT-02 응답 중 아이 화면에 쓰는 필드. 지원 수준 같은 평가 정보는 받지만 화면으로 넘기지 않는다. */
+/** API-ACT-02 아동 세션 응답. 서버가 아동에게는 이 5개 칸만 준다(지원 수준 같은 평가 정보와 목표·시나리오 ID 는 오지 않는다). */
 type ActivityData = {
   activityId: string
   activityType: ChildActivityType
