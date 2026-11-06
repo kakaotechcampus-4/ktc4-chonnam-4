@@ -1,5 +1,12 @@
 # API v1 변경 이력
 
+## 2026-11-06 — 아동 역할극 말로 답하기 화면 연동
+
+- 계약(경로·필드·상태)은 바꾸지 않습니다. 운영 서버에서 `roleplay.http.enabled`와 STT 공급자 설정이 켜져 있어야 동작합니다.
+- 프론트엔드 아동 역할극 화면이 [API-RPL-04](./roleplay/submit-voice-input.md)를 부릅니다. 마이크 버튼 → 브라우저 녹음(webm/opus, Safari는 mp4) → "다 말했어요"에 multipart `audio` 파트 하나와 새 Idempotency-Key로 보냅니다. 연결이 끊겨 "다시 하기"를 누르면 같은 키·같은 음성을 다시 보냅니다.
+- DELIVERED의 `acceptedInput`을 아이 말풍선(마이크 아이콘)으로 보여 줍니다. 재전송(`acceptedInput=null`)이면 아이 말풍선 없이 대답만 이어 갑니다.
+- 30초 제한에 걸린 녹음은 버리고 보내지 않습니다. `action=SUGGEST_TEXT_KEEP_VOICE`면 글자 입력으로 바꾸고 마이크는 남깁니다. 마이크 권한 거부·미지원 브라우저(http 주소 포함)는 깡총이 안내 뒤 글자 입력으로 바꿉니다.
+
 ## 2026-11-06 — 리포트·추천·다음 역할극 난이도(PR #90), 역할극 단독도 PR #101 검토 흐름으로
 
 - 기준은 develop `f017637` 위 `feature/roleplay-report-integration` 작업 브랜치(PR #90)입니다. 운영 배포·제품 인수 완료를 뜻하지 않습니다.

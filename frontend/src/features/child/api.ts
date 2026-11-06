@@ -5,7 +5,7 @@ export { ChildApiError, NETWORK_ERROR, TOO_MANY_REQUESTS } from "./apiClient"
 /**
  * 아동 흐름 API (contracts/api/v1).
  * 입장·사용 종료(API-IAM-08·09), 활동 목록·완료 상태(API-ACT-02·04), 표정 퀴즈(API-QUIZ-03·04·05·06),
- * 역할극 시작·글자 입력(API-RPL-01·05)을 실제 서버로 부른다. 말로 답하기(API-RPL-04)는 아직 연결하지 않았다.
+ * 역할극 시작·말로 답하기·글자 입력(API-RPL-01·04·05)을 실제 서버로 부른다.
  */
 
 export type ChildAccess = {
@@ -390,12 +390,18 @@ export async function startRoleplay(activityId: string, requestKey: string): Pro
   }
 }
 
-export type RoleplayTurnInput = {
+type RoleplayTurnBase = {
   sessionId: string
-  text: string
   /** 네트워크 재전송 시 같은 턴이 두 번 만들어지지 않도록 같은 값을 다시 보낸다 (VS-011). 새 답은 새 키. */
   requestKey: string
 }
+
+export type RoleplayTextTurnInput = RoleplayTurnBase & { kind: "text"; text: string }
+
+/** 녹음한 음성. 다시 보낼 때는 같은 키와 같은 바이트(같은 Blob)를 보내야 서버가 같은 요청으로 본다. */
+export type RoleplayVoiceTurnInput = RoleplayTurnBase & { kind: "voice"; audio: Blob }
+
+export type RoleplayTurnInput = RoleplayTextTurnInput | RoleplayVoiceTurnInput
 
 export type RoleplayTurnStatus =
   | "DELIVERED"
@@ -418,24 +424,82 @@ export type RoleplayTurnResult = {
   action: RoleplayTurnAction
   /** 마스코트 힌트가 붙으면 [깡총이, 거북이] 순서로 온다. 고정 안내는 깡총이 하나다. */
   messages: RoleplayMessage[]
+  /**
+   * 서버가 받아들인 아이 답(표준 발화). 말로 답했을 때 STT 결과를 정제한 문장이라 아이 말풍선에 쓴다.
+   * 새로 성공한 턴에만 오고, 재전송(replayed)·실패에는 null 이다.
+   */
+  acceptedInput: string | null
 }
 
 /** 같은 키의 요청을 서버가 아직 처리하고 있다(202). 같은 키로 다시 보내면 결과를 받는다. */
 export const ROLEPLAY_PROCESSING = "ROLEPLAY_PROCESSING"
 
+type RoleplayTurnData = {
+  status: RoleplayTurnStatus
+  action: RoleplayTurnAction
+  messages: ServerMessage[]
+  acceptedInput: string | null
+}
+
+function toTurnResult(data: RoleplayTurnData): RoleplayTurnResult {
+  if (data.status === "PROCESSING") {
+    throw new ChildApiError(202, ROLEPLAY_PROCESSING, "아직 답을 만들고 있어요.")
+  }
+  return {
+    status: data.status,
+    action: data.action,
+    messages: data.messages.map(toMessage),
+    acceptedInput: data.acceptedInput ?? null,
+  }
+}
+
 /**
  * 글자로 답하기 (API-RPL-05). 서버 기능(roleplay.text.enabled)이 꺼져 있으면 404 다.
  * HTTP 200 이어도 status 가 DELIVERED 일 때만 대화가 이어진 것이다.
  */
-export async function sendRoleplayText(input: RoleplayTurnInput): Promise<RoleplayTurnResult> {
-  const data = await childWriteRequest<{ status: RoleplayTurnStatus; action: RoleplayTurnAction; messages: ServerMessage[] }>(
+export async function sendRoleplayText(input: Omit<RoleplayTextTurnInput, "kind">): Promise<RoleplayTurnResult> {
+  const data = await childWriteRequest<RoleplayTurnData>(
     "POST",
     `/roleplay-sessions/${encodeURIComponent(input.sessionId)}/text-inputs`,
     { text: input.text },
     { idempotencyKey: input.requestKey }
   )
-  if (data.status === "PROCESSING") {
-    throw new ChildApiError(202, ROLEPLAY_PROCESSING, "아직 답을 만들고 있어요.")
-  }
-  return { status: data.status, action: data.action, messages: data.messages.map(toMessage) }
+  return toTurnResult(data)
+}
+
+// 서버(AudioFormat)가 아는 음성 형식별 파일 확장자. 서버는 파일 이름이 아니라 파트의 MIME 과 실제 바이트로 형식을 본다.
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  "audio/webm": "webm",
+  "video/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/wav": "wav",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+}
+
+function audioFileName(audio: Blob) {
+  const base = audio.type.split(";", 1)[0].trim().toLowerCase()
+  return `voice.${AUDIO_EXTENSIONS[base] ?? "webm"}`
+}
+
+/**
+ * 말로 답하기 (API-RPL-04). 녹음 파일을 multipart audio 파트 하나로 보낸다. 서버가 STT 로 글자로 바꾸고 대화를 잇는다.
+ * 잘 안 들림·무음·형식 오류는 HTTP 200 REINPUT_REQUIRED 로 오고, 실패가 3번 쌓이면 action 이 SUGGEST_TEXT_KEEP_VOICE 다.
+ * 서버 기능(roleplay.http.enabled)이 꺼져 있으면 404 다.
+ */
+export async function sendRoleplayVoice(input: Omit<RoleplayVoiceTurnInput, "kind">): Promise<RoleplayTurnResult> {
+  const form = new FormData()
+  form.set("audio", input.audio, audioFileName(input.audio))
+  const data = await childWriteRequest<RoleplayTurnData>(
+    "POST",
+    `/roleplay-sessions/${encodeURIComponent(input.sessionId)}/voice-inputs`,
+    form,
+    { idempotencyKey: input.requestKey }
+  )
+  return toTurnResult(data)
+}
+
+/** 말·글자 답을 입력 방식에 맞는 API 로 보낸다. */
+export function sendRoleplayTurn(input: RoleplayTurnInput): Promise<RoleplayTurnResult> {
+  return input.kind === "voice" ? sendRoleplayVoice(input) : sendRoleplayText(input)
 }
