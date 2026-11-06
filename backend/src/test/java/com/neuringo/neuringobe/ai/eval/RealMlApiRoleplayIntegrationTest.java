@@ -57,9 +57,9 @@ import tools.jackson.databind.json.JsonMapper;
  * 처럼 한다. 모델 주소·키는 backend/.env.local 의 {@code AI_API_KEY}, {@code MODEL_<이름>_URL·_ID·_PRICE}, STT 는
  * {@code MODEL_WHISPER_URL·_ID} 를 읽는다. 결과는 build/mlapi-it/&lt;run&gt;/ 에 남는다.
  *
- * <p>흐름은 실제 API 순서를 따른다: 강사 활동 배정(FIRST_COMBINED) → 승인 시나리오 시드(시나리오 저장 API 가 아직 없어 JDBC) → 아동 입장·퀴즈
- * → 역할극 시작 → 텍스트(또는 음성) 턴. 운영 구현이 없는 입력 처리기·음성 전달과 키가 없는 TTS 만 {@link RealMlApiTestConfiguration} 이
- * 대신한다.
+ * <p>흐름은 실제 API 순서를 따른다: 강사 활동 배정(FIRST_COMBINED) → 공통 승인 시나리오 시드(JDBC, 승인 기록 포함) → 아동 입장·퀴즈 → 강사
+ * 시나리오 검토·확정(#101 API) → 역할극 시작 → 텍스트(또는 음성) 턴. 운영 구현이 없는 입력 처리기·음성 전달과 키가 없는 TTS 만 {@link
+ * RealMlApiTestConfiguration} 이 대신한다.
  *
  * <p>AI 응답 내용은 단정하지 않는다(docs/testing.md). 계약 불변식(5xx 없음·상태 값·턴 예산·메시지 모양·최대 턴 종료)이 어긋나면 보고서에 남기고
  * 테스트는 통과시킨다. 틀린 동작을 테스트로 굳히지 않으려는 것이다.
@@ -87,6 +87,10 @@ import tools.jackson.databind.json.JsonMapper;
 class RealMlApiRoleplayIntegrationTest {
 
     static final String TEACHER = "mlapi-real-teacher";
+
+    /** 배정 목표 제목. 재사용 후보는 승인 기록의 목표 제목이 이것과 같아야 나온다. */
+    static final String GOAL_TITLE = "다친 친구의 마음 알아보기";
+
     static final Path SPOOL = spool();
 
     /** 합성 아동 발화(실제 아동 발화가 아님). steady·strong·unsure 는 #90 로컬 실측의 대본과 같다. */
@@ -158,6 +162,7 @@ class RealMlApiRoleplayIntegrationTest {
             run.activityId = activityId;
             seedApprovedScenarios(activityId, persona + "-" + repeat);
             solveQuiz(activityId, child);
+            confirmScenario(activityId);
             Map<String, Object> started = startRoleplay(activityId, child);
             UUID sessionId = UUID.fromString((String) started.get("sessionId"));
             run.sessionId = sessionId;
@@ -306,16 +311,16 @@ class RealMlApiRoleplayIntegrationTest {
                                                                         "goal",
                                                                         Map.of(
                                                                                 "title",
-                                                                                "다친 친구의 마음 알아보기")))))
+                                                                                GOAL_TITLE)))))
                                 .andReturn(),
                         201);
         return UUID.fromString(JsonPath.read(body(created), "$.data.activityId"));
     }
 
     /**
-     * 승인 시나리오 L1·L2·L3 를 넣는다. 시나리오 저장 API 가 아직 없어서(SCN 계약은 설계) #90 로컬 실측의
-     * scripts/local/seed-approved-scenarios.sql 과 같은 내용을 JDBC 로 넣는다. 최초 결합은 퀴즈가 끝나면 서버가 이 아동이 아직 쓰지
-     * 않은 승인본을 고른다.
+     * 공통 승인 시나리오 L1·L2·L3 를 넣는다. 내용은 #90 로컬 실측의 scripts/local/seed-approved-scenarios.sql 과 같다. 강사
+     * 검토 API(#101)는 승인 기록(scenario_approval)이 있는 승인본만 재사용 후보로 내므로 그 행도 넣는다. 없으면 후보가 0개라 LLM 이 새
+     * 시나리오를 만들어 회차·모델마다 시나리오가 달라진다.
      */
     private void seedApprovedScenarios(UUID activityId, String tag) {
         Map<String, Object> owner =
@@ -375,7 +380,55 @@ class RealMlApiRoleplayIntegrationTest {
             }
             jdbc.update(
                     "update scenario set status = 'APPROVED' where scenario_id = ?", scenarioId);
+            // 트리거(guard_scenario_approval)가 APPROVED·같은 레벨을 확인하므로 승인 뒤에 넣는다.
+            jdbc.update(
+                    "insert into scenario_approval (scenario_id, instructor_id, goal_title, scenario_level, verification_rule_version, approved_at) values (?, ?, ?, ?, 1, now())",
+                    scenarioId,
+                    TestInstructors.id(TEACHER),
+                    GOAL_TITLE,
+                    level);
         }
+    }
+
+    /**
+     * 강사가 시나리오를 확정한다(#101). 퀴즈로 정해진 레벨의 재사용 후보를 받고(START_OR_RESUME) 그 후보로 확정한다. 위에서 넣은 승인본이 후보로
+     * 나오므로 LLM 생성 호출은 없다. 확정해야 activity.scenario_id 가 채워져 역할극을 시작할 수 있다.
+     */
+    private void confirmScenario(UUID activityId) throws Exception {
+        MvcResult review =
+                expect(
+                        mvc.perform(
+                                        post("/api/v1/activities/{id}/scenario-review", activityId)
+                                                .with(TestInstructors.instructor(TEACHER))
+                                                .with(csrf())
+                                                .header("Idempotency-Key", UUID.randomUUID())
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        json.writeValueAsString(
+                                                                Map.of(
+                                                                        "action",
+                                                                        "START_OR_RESUME"))))
+                                .andReturn(),
+                        200);
+        String offered = body(review);
+        Map<String, Object> confirmation = new LinkedHashMap<>();
+        confirmation.put("reviewId", JsonPath.read(offered, "$.data.reviewId"));
+        confirmation.put(
+                "revision", ((Number) JsonPath.read(offered, "$.data.revision")).longValue());
+        confirmation.put("scenarioId", JsonPath.read(offered, "$.data.scenario.scenarioId"));
+        confirmation.put(
+                "scenarioVersion",
+                ((Number) JsonPath.read(offered, "$.data.scenario.scenarioVersion")).intValue());
+        expect(
+                mvc.perform(
+                                put("/api/v1/activities/{id}/scenario", activityId)
+                                        .with(TestInstructors.instructor(TEACHER))
+                                        .with(csrf())
+                                        .header("Idempotency-Key", UUID.randomUUID())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(json.writeValueAsString(confirmation)))
+                        .andReturn(),
+                200);
     }
 
     /** 늘 첫 보기로 답한다. 틀리면 힌트 두 번 뒤 마지막 보기로 마친다(#90 로컬 드라이버와 같다). */
@@ -434,7 +487,7 @@ class RealMlApiRoleplayIntegrationTest {
                 201);
     }
 
-    /** 최초 결합은 퀴즈가 끝난 뒤 서버가 커밋 뒤에 시나리오를 붙인다. 붙을 때까지 최대 30초 기다린다. */
+    /** 강사 확정 직후라 바로 열려야 한다. 준비 근거 반영이 늦는 경우만 대비해 NOT_READY 면 최대 30초 다시 시도한다. */
     private Map<String, Object> startRoleplay(UUID activityId, MockHttpSession child)
             throws Exception {
         String last = null;

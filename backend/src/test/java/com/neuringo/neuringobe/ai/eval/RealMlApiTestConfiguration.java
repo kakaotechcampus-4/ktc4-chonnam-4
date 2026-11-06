@@ -275,8 +275,11 @@ class RealMlApiTestConfiguration {
     /**
      * 운영 입력 처리기(정제·개인정보 가림·안전 판정)가 아직 없어서 넣는 대역. 빈 입력은 거절하고, 나머지는 그대로 넘기며 판정 네 칸을 모두 "확인됨"으로
      * 채운다(계약상 판정이 비면 분석을 시작하지 않는다). 그래서 이 실측은 개인정보 가림·위험 입력 차단을 검증하지 않는다.
+     *
+     * <p>{@code @Primary}: 운영 구현(#107 2번)이 빈으로 들어와도 같은 타입 빈 두 개로 컨텍스트가 멈추지 않고 이 대역을 쓴다.
      */
     @Bean
+    @Primary
     RoleplayInputProcessor mlApiPassThroughInput() {
         return text -> {
             if (text == null || text.isBlank()) return new RoleplayInputProcessor.Invalid();
@@ -285,8 +288,9 @@ class RealMlApiTestConfiguration {
         };
     }
 
-    /** 운영 음성 전달 구현이 없어서 넣는 대역. 음성은 내보내지 않고 글자만 전달한다. */
+    /** 운영 음성 전달 구현이 없어서 넣는 대역. 음성은 내보내지 않고 글자만 전달한다. 운영 구현(#107 3번)이 와도 이것을 쓴다. */
     @Bean
+    @Primary
     RoleplaySpeechDelivery mlApiTextOnlyDelivery() {
         return (approvedCandidateId, speech) -> Optional.empty();
     }
