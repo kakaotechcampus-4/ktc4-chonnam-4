@@ -4,14 +4,14 @@ import com.neuringo.neuringobe.ai.application.structured.output.GeneratedScenari
 import com.neuringo.neuringobe.scenario.domain.ScenarioApprovalConditions;
 
 public record ScenarioConfirmationPreparation(
-        InitialScenarioPreparation input,
+        ScenarioPreparationInput input,
         String source,
         String contentBody,
         ScenarioApprovalConditions conditions,
         ScenarioEdits edits,
         GeneratedScenario editedContent) {
     public ScenarioConfirmationPreparation(
-            InitialScenarioPreparation input,
+            ScenarioPreparationInput input,
             String source,
             String contentBody,
             ScenarioApprovalConditions conditions) {

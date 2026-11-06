@@ -8,8 +8,12 @@ import type {
   Child,
   Classroom,
   LearningGoal,
+  LearningReport,
   QuizResult,
   QuizType,
+  Recommendation,
+  RecommendationDecision,
+  RoleplayDifficulty,
   User,
 } from "@/features/instructor/api"
 import { contradictingForbidden, OTHER_CHARACTER_ID, type GoalCharacter } from "@/features/instructor/lib/goalConditions"
@@ -239,6 +243,13 @@ let issuedCodes = new Map<string, { childId: string; code: AccessCode }>()
 let quizPool = FULL_POOL
 // 브라우저의 아동 세션 쿠키(JSESSIONID). 입장하면 그 아동 ID, 사용 종료하면 null 이다.
 let childSession: string | null = null
+// 역할극을 마친 활동의 학습 기록·리포트·추천·다음 난이도. 리포트는 AI 요약까지 끝난 것만 둔다(서버는 그 밖에는 404).
+let learningRecords = new Map<string, { activityId: string; childId: string }>()
+let reports = new Map<string, LearningReport>()
+let recommendations: Recommendation[] = []
+let difficulties: RoleplayDifficulty[] = []
+// 결정 요청 키 → 그 결정. 같은 키·같은 입력이면 앞 결과, 다른 입력이면 409 다.
+let decisionKeys = new Map<string, { recommendationId: string; input: string }>()
 // 배정 문항(activityQuizId)별 답안과 발급한 힌트(API-QUIZ-04·06).
 let quizAttempts = new Map<string, StoredAttempt>()
 // 활동별 역할극 세션(API-RPL-01·05).
@@ -291,6 +302,11 @@ export const ROLEPLAY_REINPUT_NOTICE = "다시 한 번만 말해줄래?"
 
 export function resetMswData() {
   childSession = null
+  learningRecords = new Map()
+  reports = new Map()
+  recommendations = []
+  difficulties = []
+  decisionKeys = new Map()
   accounts = [instructors.a, instructors.b]
   sessions = new Map([
     [instructors.a.accessToken, instructors.a.userId],
@@ -372,6 +388,125 @@ export function seedActivity({
   if (scenarioConfirmed ?? quizFinished === true) confirmScenario(activity.activityId)
   if (result) quizResults.set(activity.activityId, { activityId: activity.activityId, ...result })
   return activity
+}
+
+/**
+ * 역할극을 마친 활동 하나를 넣는다. 서버처럼 학습 기록·다음 난이도(L2 그대로, 시작 지원 S1)·추천 3개(보완·반복·적용)를 만들고,
+ * withReport 가 true 면 AI 요약까지 끝난 리포트도 둔다. false 면 요약을 만들지 못한 경우다(리포트 404, 추천과 난이도는 있다).
+ */
+export function seedRoleplayLearning({
+  childId,
+  withReport = true,
+  goalTitle = "넘어진 친구의 속상한 마음 알아보기",
+}: {
+  childId: string
+  withReport?: boolean
+  goalTitle?: string
+}) {
+  const activity = seedActivity({ childId, goalTitle, status: "COMPLETED" })
+  const recordId = crypto.randomUUID()
+  learningRecords.set(recordId, { activityId: activity.activityId, childId })
+  const now = new Date().toISOString()
+  const goals3 = [
+    { title: "감정 이름 말하기", start: "S1", final: "S1", status: "REACHED_AT_START" },
+    { title: "감정의 이유 말하기", start: "S1", final: "S2", status: "EXTRA_SUPPORT" },
+    { title: "위로하는 말 하기", start: "S1", final: "S3", status: "ANSWER_GIVEN" },
+  ] as const
+  const report: LearningReport = {
+    recordId,
+    activityId: activity.activityId,
+    childId,
+    completedAt: now,
+    summary: "감정 이름은 처음 단서로 말했고, 이유는 두 선택지를 듣고 말했어요.",
+    quiz: { validQuestionCount: 3, correctQuestionCount: 2, overallAccuracy: 2 / 3, resolvedAfterHintCount: 1 },
+    roleplay: {
+      scenarioLevel: "L2",
+      startSupportLevel: "S1",
+      goals: goals3.map((g, index) => ({
+        microGoalId: `87000000-0000-4000-8000-00000000000${index + 1}`,
+        title: g.title,
+        startSupport: g.start,
+        finalSupport: g.final,
+        result: "REACHED",
+        status: g.status,
+        criteria: [{ description: `${g.title} 기준`, status: "EXPLICIT" }],
+        observations: [`${g.title} 관찰`],
+      })),
+      observations: goals3.map((g) => `${g.title} 관찰`),
+      effectiveSupport: ["두 선택지"],
+      technicalExclusions: [],
+    },
+    difficultyDecision: {
+      decisionType: "FOLLOW_UP",
+      scenarioLevel: "L2",
+      previousLevel: "L2",
+      nextSupportLevel: "S1",
+      direction: "KEEP",
+      reason: "SCORE_IN_KEEP_RANGE",
+      scoreRate: { numerator: 9, denominator: 18, value: 0.5 },
+      consecutiveUpgradeCandidates: 0,
+      policyVersion: "FOLLOW_UP_ROLEPLAY_V1",
+    },
+    metrics: {
+      roleplayScore: { numerator: 9, denominator: 18, value: 0.5 },
+      goalAchievement: { numerator: 2, denominator: 3, value: 2 / 3 },
+      independentAchievement: { numerator: 1, denominator: 3, value: 1 / 3 },
+      quizAccuracy: { numerator: 2, denominator: 3, value: 2 / 3 },
+      quizHintRecovery: { numerator: 1, denominator: 1, value: 1 },
+      validGoalCount: 3,
+      excludedGoalCount: 0,
+    },
+    narrative: {
+      observations: [{ text: "감정 이름은 처음 단서만으로 말했어요.", evidenceIds: ["E3"] }],
+      effectiveSupports: [{ text: "두 선택지를 들은 뒤 이유를 분명히 말했어요.", evidenceIds: ["E7"] }],
+      difficultPoints: [{ text: "위로하는 말은 답을 듣고 따라 말했어요.", evidenceIds: ["E11"] }],
+    },
+  }
+  if (withReport) reports.set(activity.activityId, report)
+  const suggested = { title: goalTitle, category: null, parentGoalId: activity.goalId }
+  const seeded = (["REINFORCE", "REPEAT", "APPLY"] as const).map(
+    (type, index): Recommendation => ({
+      recommendationId: crypto.randomUUID(),
+      recordId,
+      activityId: activity.activityId,
+      childId,
+      type,
+      displayOrder: index + 1,
+      suggestedGoal: suggested,
+      reason: `'${goals3[2 - index].title}' 목표 제안 이유예요.`,
+      reasonCode: type,
+      basisGoalTitle: goals3[2 - index].title,
+      evidence: [],
+      evidenceSufficiency: "SUFFICIENT",
+      decision: null,
+      decidedGoal: null,
+      rejectionReason: null,
+      createdGoalId: null,
+      policyVersion: "RECOMMENDATION_V1",
+      createdAt: now,
+      decidedAt: null,
+    }),
+  )
+  recommendations = [...recommendations, ...seeded]
+  difficulties = [
+    ...difficulties.filter((d) => d.childId !== childId),
+    {
+      childId,
+      scenarioLevel: "L2",
+      initialSupportLevel: "S1",
+      previousLevel: "L2",
+      direction: "KEEP",
+      reason: "SCORE_IN_KEEP_RANGE",
+      scoreNumerator: 9,
+      scoreDenominator: 18,
+      consecutiveUpgradeCandidates: 0,
+      policyVersion: "FOLLOW_UP_ROLEPLAY_V1",
+      sourceActivityId: activity.activityId,
+      sourceRecordId: recordId,
+      decidedAt: now,
+    },
+  ]
+  return { activity, recordId, report, recommendations: seeded }
 }
 
 /** 화면 테스트용: 활동의 배정 문항을 앞에서부터 count 개(없으면 모두) 맞혀 확정한 상태로 둔다. */
@@ -786,7 +921,16 @@ function removeChildren(childIds: string[]) {
   goals = goals.filter((g) => !childIds.includes(g.childId))
   activities = activities.filter((a) => !removedActivities.has(a.activityId))
   activityQuizzes = activityQuizzes.filter((q) => !removedActivities.has(q.activityId))
-  for (const activityId of removedActivities) quizResults.delete(activityId)
+  for (const activityId of removedActivities) {
+    quizResults.delete(activityId)
+    reports.delete(activityId)
+  }
+  // 서버처럼 리포트·추천·다음 난이도도 함께 지운다.
+  for (const [recordId, record] of learningRecords) {
+    if (childIds.includes(record.childId)) learningRecords.delete(recordId)
+  }
+  recommendations = recommendations.filter((r) => !childIds.includes(r.childId))
+  difficulties = difficulties.filter((d) => !childIds.includes(d.childId))
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown> | null> {
@@ -1337,9 +1481,6 @@ export const handlers = [
     if (child.status !== "ACTIVE") {
       return apiError(409, "CHILD_NOT_ACTIVE", "참여 중인 아동에게만 활동을 배정할 수 있습니다.", path)
     }
-    if (activityType === "ROLEPLAY") {
-      return apiError(422, "ACTIVITY_TYPE_NOT_AVAILABLE", "역할극 활동은 아직 배정할 수 없습니다.", path)
-    }
     const childActivities = activities.filter((a) => a.childId === childId)
     if (activityType === "FIRST_COMBINED") {
       // 최초 결합은 아동마다 한 번이다.
@@ -1354,6 +1495,21 @@ export const handlers = [
       if (childActivities.some((a) => a.activityType === activityType && a.status === "NOT_STARTED")) {
         return apiError(409, "DUPLICATE_ASSIGNMENT", "같은 활동이 시작 전 상태로 이미 있습니다.", path)
       }
+    }
+    if (activityType === "ROLEPLAY") {
+      // 역할극 단독 활동은 문항 없이, 이 아동의 다음 역할극 난이도를 고정해 만든다. 시나리오는 강사 검토·확정(API-SCN-01·04)에서 붙는다.
+      const difficulty = difficulties.find((d) => d.childId === childId)
+      if (!difficulty) {
+        return apiError(409, "ROLEPLAY_DIFFICULTY_NOT_READY", "마친 역할극이 없어 다음 역할극 난이도를 정하지 못했습니다.", path)
+      }
+      if (goal) goals = [...goals, goal]
+      const roleplay = newActivity(childId, activityType, goal?.goalId ?? null, key)
+      roleplay.initialSupportLevel = difficulty.initialSupportLevel
+      activities = [...activities, roleplay]
+      return HttpResponse.json(envelope(toActivity(roleplay)), {
+        status: 201,
+        headers: { Location: `/api/v1/activities/${roleplay.activityId}` },
+      })
     }
     if (pickItems(activityType).length === 0) {
       return apiError(422, "QUIZ_ITEMS_UNAVAILABLE", "배정할 수 있는 승인된 퀴즈 문항이 모자랍니다.", path)
@@ -1399,6 +1555,125 @@ export const handlers = [
     const result = quizResults.get(activityId)
     if (!result) return apiError(409, "QUIZ_NOT_COMPLETED", "퀴즈가 완료되지 않았습니다.", path)
     return HttpResponse.json(envelope(result))
+  }),
+
+  // ── 리포트·추천·다음 역할극 난이도 (contracts/api/v1/reports-recommendations) ──
+  // 남의 활동·기록·추천은 없는 것과 같은 자기 404 코드다(서버 LearningReportQueryService).
+
+  http.get("*/api/v1/activities/:activityId/learning-record", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const activityId = String(params.activityId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(activityId)) return invalidRequest(path)
+    const activity = activities.find((a) => a.activityId === activityId)
+    const report = reports.get(activityId)
+    if (!activity || !ownedChild(activity.childId, session) || !report) return learningRecordNotFound(path)
+    return HttpResponse.json(envelope(report))
+  }),
+
+  http.get("*/api/v1/learning-records", ({ request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const url = new URL(request.url)
+    const path = url.pathname
+    const childId = url.searchParams.get("childId")
+    if (!childId || !UUID_FORMAT.test(childId)) return invalidRequest(path)
+    if (!ownedChild(childId, session)) return childNotFound(path)
+    const page = Number(url.searchParams.get("page") ?? 0)
+    const size = Number(url.searchParams.get("size") ?? 20)
+    if (!Number.isInteger(page) || !Number.isInteger(size) || page < 0 || size < 1 || size > 100) {
+      return invalidRequest(path)
+    }
+    const list = [...reports.values()].filter((r) => r.childId === childId).reverse()
+    return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size)))
+  }),
+
+  http.get("*/api/v1/learning-records/:recordId/recommendations", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const recordId = String(params.recordId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(recordId)) return invalidRequest(path)
+    const record = learningRecords.get(recordId)
+    if (!record || !ownedChild(record.childId, session)) return learningRecordNotFound(path)
+    return HttpResponse.json(envelope(recommendations.filter((r) => r.recordId === recordId)))
+  }),
+
+  http.get("*/api/v1/recommendations/:recommendationId", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const id = String(params.recommendationId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(id)) return invalidRequest(path)
+    const recommendation = recommendations.find((r) => r.recommendationId === id)
+    if (!recommendation || !ownedChild(recommendation.childId, session)) return recommendationNotFound(path)
+    return HttpResponse.json(envelope(recommendation))
+  }),
+
+  // 결정만 남긴다. 채택해도 목표·활동을 만들지 않는다(자동 배정 금지).
+  http.patch("*/api/v1/recommendations/:recommendationId", async ({ params, request }) => {
+    if (!hasValidCsrf(request)) return new HttpResponse(null, { status: 403 })
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const id = String(params.recommendationId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(id)) return invalidRequest(path)
+    const key = request.headers.get("Idempotency-Key")
+    if (!key || !UUID_FORMAT.test(key)) return invalidRequest(path)
+    const body = await readJson(request)
+    const decisions: RecommendationDecision[] = ["ACCEPT", "MODIFIED_ACCEPT", "DEFER", "REJECT"]
+    if (!body || !decisions.includes(body.decision as RecommendationDecision)) return invalidRequest(path)
+    const index = recommendations.findIndex((r) => r.recommendationId === id)
+    const recommendation = recommendations[index]
+    if (!recommendation || !ownedChild(recommendation.childId, session)) return recommendationNotFound(path)
+    const decision = body.decision as RecommendationDecision
+    const goal = typeof body.goal === "object" && body.goal !== null ? (body.goal as Record<string, unknown>) : null
+    const input = JSON.stringify({ decision, goal: decision === "MODIFIED_ACCEPT" ? goal : null, reason: body.rejectionReason ?? null })
+    const prior = decisionKeys.get(key)
+    if (prior) {
+      if (prior.recommendationId !== id || prior.input !== input) {
+        return apiError(409, "IDEMPOTENCY_KEY_REUSED", "다른 결정 요청에 사용한 키입니다.", path)
+      }
+      return HttpResponse.json(envelope(recommendation))
+    }
+    if (recommendation.decision && recommendation.decision !== "DEFER") {
+      return apiError(409, "RECOMMENDATION_ALREADY_DECIDED", "이미 결정한 추천입니다.", path)
+    }
+    if (decision === "MODIFIED_ACCEPT" && (typeof goal?.title !== "string" || !goal.title.trim())) {
+      return apiError(422, "GOAL_REQUIRED", "고쳐서 채택하려면 목표 제목이 필요합니다.", path)
+    }
+    decisionKeys.set(key, { recommendationId: id, input })
+    const updated: Recommendation = {
+      ...recommendation,
+      decision,
+      decidedGoal:
+        decision === "MODIFIED_ACCEPT"
+          ? {
+              title: String(goal!.title).trim(),
+              category: typeof goal!.category === "string" ? goal!.category : null,
+              parentGoalId: typeof goal!.parentGoalId === "string" ? goal!.parentGoalId : null,
+            }
+          : null,
+      rejectionReason: decision === "REJECT" ? ((body.rejectionReason as Recommendation["rejectionReason"]) ?? null) : null,
+      decidedAt: new Date().toISOString(),
+    }
+    recommendations = recommendations.map((r, i) => (i === index ? updated : r))
+    return HttpResponse.json(envelope(updated))
+  }),
+
+  http.get("*/api/v1/children/:childId/roleplay-difficulty", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const childId = String(params.childId)
+    const path = new URL(request.url).pathname
+    if (!UUID_FORMAT.test(childId)) return invalidRequest(path)
+    if (!ownedChild(childId, session)) return childNotFound(path)
+    const difficulty = difficulties.find((d) => d.childId === childId)
+    if (!difficulty) {
+      return apiError(404, "ROLEPLAY_DIFFICULTY_NOT_FOUND", "아직 마친 역할극이 없어 다음 난이도가 없습니다.", path)
+    }
+    return HttpResponse.json(envelope(difficulty))
   }),
 
   // 활동에 고정된 문항(API-QUIZ-03). 정답·힌트 원문은 싣지 않는다.
@@ -1668,3 +1943,11 @@ export const handlers = [
     return HttpResponse.json(envelope(response))
   }),
 ]
+
+function learningRecordNotFound(path: string) {
+  return apiError(404, "LEARNING_RECORD_NOT_FOUND", "학습 리포트를 찾을 수 없습니다.", path)
+}
+
+function recommendationNotFound(path: string) {
+  return apiError(404, "RECOMMENDATION_NOT_FOUND", "추천을 찾을 수 없습니다.", path)
+}

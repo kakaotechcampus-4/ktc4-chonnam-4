@@ -30,6 +30,7 @@ const values: Record<string, string> = {
   classId: fixtures.classroomA1.classId,
   otherClassId: fixtures.classroomC1.classId,
   unknownClassId: "00000000-0000-4000-8000-00000000ffff",
+  unknownId: "00000000-0000-4000-8000-00000000fffe",
   malformedId: "not-a-uuid",
   instructorId: instructors.a.userId,
   instructorEmail: instructors.a.email,

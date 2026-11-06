@@ -93,6 +93,8 @@ public final class RoleplayTurnOutcomeResolver {
                             SCENARIO_GENERATION,
                             CAUSE_ANALYSIS,
                             NEXT_DIFFICULTY_DECISION,
+                            REPORT_GENERATION,
+                            REPORT_REVIEW,
                             SPEECH_TRANSCRIPTION,
                             SPEECH_SYNTHESIS ->
                     throw new IllegalArgumentException("Unexpected fallback operation");

@@ -4,6 +4,7 @@
     "classId": "로그인한 강사의 학급 ID. 백엔드는 시나리오마다 학급과 아동 한 명을 만들고, 프론트 MSW 는 픽스처 A1 을 쓴다",
     "otherClassId": "다른 강사의 학급 ID. 백엔드는 다른 강사를 가입시켜 만들고, 프론트 MSW 는 픽스처 C1 을 쓴다",
     "unknownClassId": "어디에도 없는 UUID",
+    "unknownId": "어디에도 없는 UUID. 활동·학습 기록·추천처럼 학급이 아닌 자원 ID 자리에 쓴다",
     "malformedId": "UUID 형식이 아닌 값",
     "instructorId": "로그인한 강사의 userId",
     "instructorEmail": "로그인한 강사의 이메일",
@@ -863,7 +864,7 @@
       }
     },
     {
-      "name": "역할극 활동 배정은 아직 422 ACTIVITY_TYPE_NOT_AVAILABLE",
+      "name": "최초 활동을 마치기 전 역할극 단독 배정은 409 FIRST_ACTIVITY_NOT_COMPLETED",
       "request": {
         "method": "POST",
         "path": "/api/v1/activities",
@@ -871,12 +872,12 @@
         "body": { "childId": "{childId}", "activityType": "ROLEPLAY", "goal": { "title": "친구 감정 알아보기" } }
       },
       "response": {
-        "status": 422,
+        "status": 409,
         "body": {
           "error": {
-            "status": 422,
-            "code": "ACTIVITY_TYPE_NOT_AVAILABLE",
-            "message": "역할극 활동은 아직 배정할 수 없습니다.",
+            "status": 409,
+            "code": "FIRST_ACTIVITY_NOT_COMPLETED",
+            "message": "최초 활동을 마친 뒤에 배정할 수 있습니다.",
             "path": "/api/v1/activities",
             "traceId": "<uuid>",
             "fieldErrors": []
@@ -922,6 +923,211 @@
             "code": "CHILD_NOT_FOUND",
             "message": "아동을 찾을 수 없습니다.",
             "path": "/api/v1/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "역할극을 마치기 전 아동의 완료 리포트 목록은 빈 배열",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/learning-records?childId={childId}"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "data": [],
+          "meta": {
+            "traceId": "<uuid>"
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사 아동의 리포트 목록은 404 CHILD_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/learning-records?childId={otherChildId}"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/learning-records",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "childId 없는 리포트 목록은 400 INVALID_REQUEST",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/learning-records"
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/learning-records",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 활동의 리포트는 404 LEARNING_RECORD_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/activities/{unknownId}/learning-record"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "LEARNING_RECORD_NOT_FOUND",
+            "message": "학습 리포트를 찾을 수 없습니다.",
+            "path": "/api/v1/activities/{unknownId}/learning-record",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 학습 기록의 추천 목록은 404 LEARNING_RECORD_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/learning-records/{unknownId}/recommendations"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "LEARNING_RECORD_NOT_FOUND",
+            "message": "학습 리포트를 찾을 수 없습니다.",
+            "path": "/api/v1/learning-records/{unknownId}/recommendations",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 추천은 404 RECOMMENDATION_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/recommendations/{unknownId}"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "RECOMMENDATION_NOT_FOUND",
+            "message": "추천을 찾을 수 없습니다.",
+            "path": "/api/v1/recommendations/{unknownId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 추천의 결정은 404 RECOMMENDATION_NOT_FOUND",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/recommendations/{unknownId}",
+        "headers": {
+          "Idempotency-Key": "{requestKey}"
+        },
+        "body": {
+          "decision": "DEFER"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "RECOMMENDATION_NOT_FOUND",
+            "message": "추천을 찾을 수 없습니다.",
+            "path": "/api/v1/recommendations/{unknownId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "Idempotency-Key 없는 추천 결정은 400 INVALID_REQUEST",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/recommendations/{unknownId}",
+        "body": {
+          "decision": "DEFER"
+        }
+      },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/recommendations/{unknownId}",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "마친 역할극이 없으면 다음 역할극 난이도는 404 ROLEPLAY_DIFFICULTY_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/children/{childId}/roleplay-difficulty"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "ROLEPLAY_DIFFICULTY_NOT_FOUND",
+            "message": "아직 마친 역할극이 없어 다음 난이도가 없습니다.",
+            "path": "/api/v1/children/{childId}/roleplay-difficulty",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사 아동의 다음 역할극 난이도는 404 CHILD_NOT_FOUND",
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/children/{otherChildId}/roleplay-difficulty"
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CHILD_NOT_FOUND",
+            "message": "아동을 찾을 수 없습니다.",
+            "path": "/api/v1/children/{otherChildId}/roleplay-difficulty",
             "traceId": "<uuid>",
             "fieldErrors": []
           }
