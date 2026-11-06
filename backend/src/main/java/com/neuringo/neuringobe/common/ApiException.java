@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.common;
 
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -39,5 +40,10 @@ public class ApiException extends RuntimeException {
 
     public List<ApiErrorResponse.FieldError> getFieldErrors() {
         return fieldErrors;
+    }
+
+    /** 오류 응답에 함께 보낼 헤더. 기본은 없다. 429 의 Retry-After 처럼 필요한 하위 클래스가 덮어쓴다. */
+    public HttpHeaders getHeaders() {
+        return new HttpHeaders();
     }
 }

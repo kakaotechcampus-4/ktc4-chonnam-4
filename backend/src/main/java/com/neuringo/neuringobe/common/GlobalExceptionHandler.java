@@ -39,6 +39,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         return ResponseEntity.status(ex.getStatus())
+                .headers(ex.getHeaders())
                 .body(
                         ApiErrorResponse.of(
                                 ex.getStatus().value(),

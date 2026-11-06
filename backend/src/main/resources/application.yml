@@ -89,6 +89,15 @@ neuringo:
     privacy-version: v1
   child-access:
     hmac-secret: ${CHILD_ACCESS_HMAC_SECRET:}
+    # 입장 코드(4자리) 무차별 대입 늦추기. 접속 IP 별로 틀린 코드(INVALID_ACCESS_CODE·ACCESS_CODE_EXPIRED)만 센다 — 맞은 입장은
+    # 세지 않아 학교 NAT 로 한 반이 함께 들어와도 걸리지 않는다. 첫 실패부터 window 안에 max-failures 번째로 틀리면 그 IP 의
+    # 입장을 block-for 동안 429 ACCESS_CODE_ATTEMPTS_EXCEEDED(Retry-After 초)로 막는다. 서버 메모리에만 둔다(배포 때 지워진다).
+    # 앞단 nginx 의 IP 별 요청 수 제한(frontend/nginx.conf, 분당 60번)과 따로 돈다. 검사: ChildEntryAttemptLimiterTest, docker-smoke
+    attempt-limit:
+      max-failures: 30
+      window: 10m
+      block-for: 10m
+      max-tracked-clients: 10000
   ai:
     provider-name: ${AI_PROVIDER_NAME:openai-compatible}
     model: ${AI_MODEL:}

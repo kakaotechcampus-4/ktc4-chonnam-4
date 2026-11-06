@@ -424,7 +424,10 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
   - 서버는 **Dev server → 끄기**로 끈다. CloudFront 를 먼저 닫고, 다 퍼져서 꺼진 것을 다시 읽어 확인한 뒤에만 서버를 끈다. 켤 때는 서버를 켠 뒤 새 주소를 넣고 연다. 여닫기는 Terraform 밖(`edge-toggle.sh`)이라 승인 없이 몇 초다. 바꿀 때 읽은 설정의 버전(ETag)을 붙여, 그사이 다른 실행이 바꿨으면 덮어쓰지 않는다.
   - 콘솔에서 서버를 끄지 않는다. 그랬다면 Dev server 의 켜기나 끄기를 바로 돌린다. 서버가 꺼지면 상태 검사 경보가 메일로 온다(지표가 끊기면 경보로 본다).
   - 고정 IP 는 요청하지 않았다(2026-10-07 팀 결정). 사용자 테스트 기간에 서버를 계속 켜 두면 주소가 바뀌지 않는다.
-- 사용자 테스트 주소는 공개 로그·Summary 에 찍지 않는다(외부인 가입·남용). CloudFront 는 한국에서만 연다. 가입·아동 입장 코드의 요청 횟수 제한은 앱에서 한다(배재일·진미나, §11).
+- 사용자 테스트 주소는 공개 로그·Summary 에 찍지 않는다(외부인 가입·남용). CloudFront 는 한국에서만 연다. 아동 입장 코드(4자리)는 두 겹으로 늦춘다(둘 다 429 + `Retry-After`).
+  - 화면 nginx 가 `POST /api/v1/child-access-sessions` 만 접속 IP(`$viewer_ip`) 별로 분당 60번·한꺼번에 60번까지 받는다(`TOO_MANY_REQUESTS`, `Retry-After: 60`). 맞은 입장도 함께 세므로 학교 NAT 를 생각해 넉넉하게 둔다.
+  - 앱이 같은 접속 IP 의 틀린 코드만 센다. 10분 안에 30번째로 틀리면 그 IP 를 10분 막는다(`ACCESS_CODE_ATTEMPTS_EXCEEDED`, `neuringo.child-access.attempt-limit`). 앱은 nginx 가 넘긴 X-Forwarded-For 를 Tomcat 이 바꾼 `getRemoteAddr` 로 IP 를 읽는다. 서버 메모리에만 세므로 배포 때 지워진다.
+  - 두 겹 모두 `scripts/docker-smoke.sh` 가 nginx 를 거쳐 확인한다(다른 IP 는 막히지 않는지까지). 가입 요청 횟수 제한은 아직 없다(§11).
 - 비밀값은 Parameter Store SecureString 에 둔다. 서버 `.env` 는 권한 600 이고 배포마다 다시 만든다(실패하면 옛 것으로 되돌린다). 로그·Summary 에 찍지 않는다.
   - 기본 키(`aws/ssm`)라 계정 안에서 `ssm:GetParameter` 권한만 있으면 읽는다. 역할을 나눌 때 배포 역할에서 `/neuringo/*/db/*`·`child-access/*` 읽기를 뺀다. 백업 버킷도 Gate 전에 서버 역할 밖의 읽기를 막는다.
 - 복구 확인은 같은 서버의 임시 postgres(네트워크 없음)에 하고, 끝나면 컨테이너와 데이터 볼륨까지 지운다(복구한 DB 사본이 남지 않게). 서버의 실패 로그(앱 로그)는 30일만 둔다.
@@ -480,7 +483,7 @@ CI 검사는 이미 push 된 뒤에 돈다. 공개 레포라 push 한 순간 공
 | develop 보호 규칙 | 팀·운영진 | 머지 전 | PR 필수·리뷰 1명·force push 금지. 지금은 쓰기 권한이 곧 배포 권한이다(§8) |
 | GitHub secret scanning·push protection | 레포 관리자 | — | ✅ 켜져 있다(2026-10-05 확인). Dependency graph 는 꺼져 있다(dependency-review 가 경고만 하는 이유, 운영진) |
 | 서버 운영 시간 | 팀 | 1단계 apply 전 | ✅ 테스트할 때만 켠다(2026-10-07). Dev server 의 켜기·끄기를 쓴다. 사용자 테스트 기간엔 켜 두는 안(월 약 46 USD, 단체 부담)을 다시 본다 |
-| 가입·아동 입장 코드 요청 횟수 제한 | 배재일·진미나 | 사용자 테스트 전 | 주소가 알려지면 대입·남용이 된다 |
+| 가입 요청 횟수 제한 | 배재일·진미나 | 사용자 테스트 전 | 주소가 알려지면 남용이 된다. 아동 입장 코드는 ✅ nginx 요청 수 + 앱 틀린 코드 횟수(2026-11-06, §8) |
 | 프론트 API 주소 빌드 변수 | 배재일 | 1단계 전 | `VITE_API_BASE_URL`, 기본 `/api/v1` |
 | `/actuator/health` 공개 | 배재일·정민서 | 2단계 | 관리 포트를 127.0.0.1 에만 열고 health 만 연다 |
 | 모델 길(§6) | 이건우(+진미나) | 스프린트 3 | ✅ 외부 API(OpenAI 호환 LLM·OpenAI STT·타입캐스트 TTS) |
