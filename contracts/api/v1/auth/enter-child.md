@@ -1,6 +1,6 @@
 # API-IAM-08 · 아동 코드 입장
 
-> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 429 시도 제한은 2026-11-06 추가. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -20,6 +20,10 @@
 - childName이 아니라 displayName이며 숫자 앞자리0을 유지한다.
 - 서버가 HttpOnly JSESSIONID를 설정한다. 코드24시간과 아동 인증 세션 자동만료 없음은 별개다.
 - 다른 코드 입장은 이전 브라우저 세션을 교체한다. 응답 후 아동 화면 캐시도 대상ID 기준으로 정리한다.
+- 접속 IP 별 시도 제한이 두 겹이다. 둘 다 429 이며 `Retry-After`(초)를 붙인다. FE 는 code 대신 429 상태로 분기하고, `Retry-After` 동안 입력을 막는다(헤더가 없으면 60초).
+  - nginx 요청 수 제한: 입장 요청(맞은 코드 포함)을 분당 60번, 한꺼번에 60번까지 받는다. 넘치면 `TOO_MANY_REQUESTS`, `Retry-After: 60`.
+  - 앱 틀린 코드 횟수 제한: `INVALID_ACCESS_CODE`·`ACCESS_CODE_EXPIRED` 만 센다(맞은 입장·422 는 세지 않는다). 첫 실패부터 10분 안에 30번째로 틀리면 그 IP 의 입장을 10분 동안 막는다(맞는 코드도). `ACCESS_CODE_ATTEMPTS_EXCEEDED`, `Retry-After` 는 남은 초. 값은 `neuringo.child-access.attempt-limit`.
+  - 학교처럼 여러 아동이 IP 하나(NAT)를 함께 쓰면 함께 막힌다. 서버 메모리에만 세므로 배포·재시작 때 지워진다.
 
 ## 3. 요청
 
@@ -87,6 +91,8 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 401 | INVALID_ACCESS_CODE | 코드 불일치/삭제 대상, accessCode 누락/null |
 | 401 | ACCESS_CODE_EXPIRED | 24시간 코드 만료;410 아님 |
 | 422 | VALIDATION_FAILED | 값이 있는데 숫자4자리 형식이 아님(빈 문자열 포함) |
+| 429 | ACCESS_CODE_ATTEMPTS_EXCEEDED | 같은 IP 가 10분 안에 코드를 30번 틀림. `Retry-After`(남은 초, 최대 600) 동안 입력을 막고 자동 재전송 없음 |
+| 429 | TOO_MANY_REQUESTS | 앞단 nginx 의 IP 별 요청 수 제한(분당 60번 넘음). `Retry-After: 60`. 몸통은 같은 오류 envelope |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 | 400 | INVALID_REQUEST | UUID/필수 헤더·파트/Query 형식 |
 

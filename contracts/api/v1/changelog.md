@@ -1,5 +1,12 @@
 # API v1 변경 이력
 
+## 2026-11-06 — 아동 입장 시도 제한(429)
+
+- [API-IAM-08](./auth/enter-child.md)에 429 두 가지를 더했습니다. 둘 다 `Retry-After`(초)를 붙이고 몸통은 같은 오류 envelope 입니다. FE 는 429 상태로 분기하고 `Retry-After` 동안 입력을 막습니다(헤더가 없으면 60초).
+  - `ACCESS_CODE_ATTEMPTS_EXCEEDED`(앱): 같은 접속 IP 가 10분 안에 코드를 30번 틀리면 10분 동안 막습니다. 맞은 입장·422 는 세지 않습니다.
+  - `TOO_MANY_REQUESTS`(nginx): 같은 접속 IP 의 입장 요청이 분당 60번(한꺼번에 60번)을 넘으면 `Retry-After: 60`.
+- 다른 Endpoint·성공 응답·기존 오류 코드는 바뀌지 않습니다.
+
 ## 2026-11-06 — 아동 역할극 말로 답하기 화면 연동
 
 - 계약(경로·필드·상태)은 바꾸지 않습니다. 운영 서버에서 `roleplay.http.enabled`와 STT 공급자 설정이 켜져 있어야 동작합니다.
