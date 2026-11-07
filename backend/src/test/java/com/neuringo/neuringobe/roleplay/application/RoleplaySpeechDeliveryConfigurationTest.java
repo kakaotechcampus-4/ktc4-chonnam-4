@@ -133,7 +133,7 @@ class RoleplaySpeechDeliveryConfigurationTest {
     static class RequiresDelivery {
         @Bean
         RoleplayTurnResponseMapper responses(RoleplaySpeechDelivery delivery) {
-            return new RoleplayTurnResponseMapper(delivery);
+            return new RoleplayTurnResponseMapper(delivery, false);
         }
     }
 }
