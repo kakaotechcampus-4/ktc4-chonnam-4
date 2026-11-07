@@ -58,7 +58,7 @@ class RoleplayGoalObservationPromptTest {
         var ready = new RoleplayTurnResult.Ready(analysis, candidate(analysis), evaluation);
 
         assertThat(analysisPrompt.request().promptVersion())
-                .isEqualTo("roleplay-cause-analysis/v2");
+                .isEqualTo("roleplay-cause-analysis/v3");
         assertThat(analysisPrompt.request().responseSchemaVersion())
                 .isEqualTo(GoalObservationOutput.ANALYSIS_VERSION);
         assertThat(evaluationPrompt.request().responseSchemaVersion())

@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { fixtures } from "@/test/msw/handlers"
-import { enterAsChild, renderRoutes, signIn } from "@/test/render"
+import { fixtures, ROLEPLAY_OPENING } from "@/test/msw/handlers"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity, signIn } from "@/test/render"
 import { router } from "./router"
 
 // 라우팅 표 검사. 실제 router.tsx 의 경로 목록을 그대로 써서, 주소마다 약속한 화면이 뜨는지 본다.
@@ -11,9 +11,15 @@ import { router } from "./router"
 // 의도적으로 경로를 바꾸면 이 테스트도 같이 고치세요.
 
 const A1 = fixtures.classroomA1.classId
-// 아동 활동은 아직 화면 쪽 mock(features/child/api.ts)이다. 1 = 진행 중, 3 = 완료.
-const ACTIVITY = "mock-activity-1"
-const COMPLETED_ACTIVITY = "mock-activity-3"
+// 아동 활동 목록은 실제 API(API-ACT-02)라 가짜 서버에 진행 중·완료 활동을 하나씩 넣고 입장한다.
+const ACTIVITY = CHILD_ACTIVITY_ID
+const COMPLETED_ACTIVITY = "40000000-0000-4000-8000-000000000003"
+
+function enterWithActivities() {
+  seedChildActivity()
+  seedChildActivity({ activityId: COMPLETED_ACTIVITY, activityType: "OTHER_EMOTION_QUIZ", status: "COMPLETED" })
+  enterAsChild()
+}
 
 describe("라우팅 표", () => {
   it.each([
@@ -32,6 +38,7 @@ describe("라우팅 표", () => {
     ["/classrooms", "햇살반"],
     ["/classrooms/new", "기본 정보"],
     [`/classrooms/${A1}`, "학급 상세 · 햇살반"],
+    ["/recommendations", "학급"],
   ])("로그인하면 %s 는 약속한 화면을 연다", async (path, text) => {
     signIn()
     const { router: memoryRouter } = renderRoutes(router.routes, path)
@@ -44,10 +51,10 @@ describe("라우팅 표", () => {
     ["/child/hello", "오늘도 만나서 반가워"],
     ["/child/activities", "친구 마음 알아보기"],
     [`/child/activities/${ACTIVITY}`, "이어서 하기"],
-    [`/child/quiz/${ACTIVITY}`, "지금 네 기분은 어때?"],
-    [`/child/roleplay/${ACTIVITY}`, "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?"],
+    [`/child/quiz/${ACTIVITY}`, "생일에 친구가 선물을 줬어. 너는 어떤 기분이 들까?"],
+    // 역할극은 서버처럼 퀴즈를 마쳐야 시작되므로 아래 "역할극 화면은 서버가 준 첫 질문을 보여 준다"가 본다.
   ])("입장하면 %s 는 약속한 화면을 연다", async (path, text) => {
-    enterAsChild()
+    enterWithActivities()
     const { router: memoryRouter } = renderRoutes(router.routes, path)
 
     expect(await screen.findByText(text)).toBeInTheDocument()
@@ -55,7 +62,7 @@ describe("라우팅 표", () => {
   })
 
   // 활동 ID 는 주소에 그대로 보이므로, 배정 목록에 없는 ID·이미 끝낸 활동·완료 기록 없는 완료 화면은 내 활동으로 돌려보낸다.
-  // 다른 아동의 활동을 최종으로 막는 것은 서버(403)지만, 화면도 그 활동을 그리지 않는다(VS-003).
+  // 다른 아동의 활동은 서버가 이 아동 목록에 넣지 않으므로(API-ACT-02), 화면도 그 활동을 그리지 않는다(VS-003).
   it.each([
     "/child/activities/other-child-activity",
     "/child/quiz/other-child-activity",
@@ -64,7 +71,7 @@ describe("라우팅 표", () => {
     `/child/roleplay/${COMPLETED_ACTIVITY}`,
     `/child/done/${ACTIVITY}`,
   ])("입장해도 %s 는 내 활동으로 replace 이동한다", async (path) => {
-    enterAsChild()
+    enterWithActivities()
     const { router: memoryRouter } = renderRoutes(router.routes, path)
 
     expect(await screen.findByText("친구 마음 알아보기")).toBeInTheDocument()
@@ -85,11 +92,15 @@ describe("라우팅 표", () => {
   })
 
   it("퀴즈·역할극 화면은 단계 표시를 보여 준다", async () => {
-    enterAsChild()
+    enterWithActivities()
     renderRoutes(router.routes, `/child/quiz/${ACTIVITY}`)
     expect(await screen.findByText("1/3 문항")).toBeInTheDocument()
+  })
 
+  it("역할극 화면은 서버가 준 첫 질문을 보여 준다", async () => {
+    seedChildActivity({ quizFinished: true })
+    enterAsChild()
     renderRoutes(router.routes, `/child/roleplay/${ACTIVITY}`)
-    expect(await screen.findByText("놀이터에서")).toBeInTheDocument()
+    expect(await screen.findByText(ROLEPLAY_OPENING)).toBeInTheDocument()
   })
 })

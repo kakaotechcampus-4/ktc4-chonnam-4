@@ -5,6 +5,7 @@
 | 환경변수 | Parameter Store 경로(`/neuringo/<환경>/` 뒤) | 의미 |
 |---|---|---|
 | `ROLEPLAY_HTTP_ENABLED` | `roleplay/http/enabled` | 기본 `false`, 명시적으로 켤 때만 HTTP 빈 등록 |
+| `ROLEPLAY_SPEECH_DELIVERY` | `roleplay/speech/delivery` | `none`을 명시하면 음성 주소 없이 대사 전달. 기본 빈 값이며 미설정 시 대체 구현을 만들지 않음 |
 | `ROLEPLAY_SPOOL_DIRECTORY` | `roleplay/http/spool-directory` | 컨테이너 안에서 쓸 수 있는 임시 음성 경로 |
 | `ROLEPLAY_UPLOAD_MAX_BYTES` | `roleplay/http/maximum-upload-bytes` | 음성 파일 상한(바이트) |
 | `ROLEPLAY_REQUEST_MAX_BYTES` | `roleplay/http/maximum-request-bytes` | multipart 요청 전체 상한(바이트), 파일 상한 이상 |
@@ -21,6 +22,7 @@
 
 - S4의 강사 승인 시나리오 공급과 첫 질문 목표 연결이 준비되어야 한다.
 - `RoleplayInputProcessor`와 `RoleplaySpeechDelivery`의 운영 구현 빈이 필요하다. 현재 테스트 구현만으로 운영 API를 활성화하지 않는다.
+- 음성 미제공은 `ROLEPLAY_SPEECH_DELIVERY=none`으로 선택한다. [음성 미제공 전달](roleplay-speech-delivery.md)의 활성화 조건·제공자 의존성·프론트엔드 계약을 확인한다. 설정 누락/지원하지 않는 값에 기본 전달 구현을 대신 등록하지 않는다. 별도로 등록된 전달 구현이 있으면 그것을 유지한다.
 - AI·STT·TTS 제공자와 자격 증명을 각각 설정한다. 제공자 설정과 HTTP 활성화는 별개다. 역할극 사용 시 기존 AI 재시도 제한도 적용된다.
 - TIMEOUT 외 안내 문구는 승인 메타데이터를 포함해 `roleplay.http.notices`로 별도 공급한다. 이 목록의 공급 경로는 이번 환경변수 매핑에 포함하지 않는다.
 - 임시 경로의 쓰기 권한과 서버 자원에 맞는 용량·동시 작업 정책을 확인한다.

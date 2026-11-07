@@ -4,8 +4,10 @@ import com.neuringo.neuringobe.auth.security.BearerTokenFilter;
 import com.neuringo.neuringobe.auth.security.PublicEndpoints;
 import com.neuringo.neuringobe.auth.service.AuthService;
 import com.neuringo.neuringobe.child.security.ChildSessionSecurityContextRepository;
+import com.neuringo.neuringobe.roleplay.controller.RoleplayUploadRetentionFactory;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -14,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -33,13 +36,14 @@ public class SecurityConfig {
             HttpSecurity http,
             AuthService authService,
             ApiSecurityFailureHandler failures,
+            ObjectProvider<RoleplayUploadRetentionFactory> uploadRetention,
             HttpSessionSecurityContextRepository contextRepository)
             throws Exception {
         // CSRF 토큰은 쿠키에 보관한다(HttpOnly 유지). 프론트는 쿠키를 직접 읽지 않고
         // GET /api/v1/csrf 응답으로 토큰 값을 받아 헤더에 싣는다 — CsrfController 참고.
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()))
                 .cors(cors -> cors.configurationSource(localCorsConfigurationSource()));
-        applyAuthentication(http, authService, failures, contextRepository);
+        applyAuthentication(http, authService, failures, contextRepository, uploadRetention);
         return http.build();
     }
 
@@ -50,10 +54,11 @@ public class SecurityConfig {
             HttpSecurity http,
             AuthService authService,
             ApiSecurityFailureHandler failures,
+            ObjectProvider<RoleplayUploadRetentionFactory> uploadRetention,
             HttpSessionSecurityContextRepository contextRepository)
             throws Exception {
         http.csrf(csrf -> csrf.csrfTokenRepository(new CookieCsrfTokenRepository()));
-        applyAuthentication(http, authService, failures, contextRepository);
+        applyAuthentication(http, authService, failures, contextRepository, uploadRetention);
         return http.build();
     }
 
@@ -73,7 +78,8 @@ public class SecurityConfig {
             HttpSecurity http,
             AuthService authService,
             ApiSecurityFailureHandler failures,
-            HttpSessionSecurityContextRepository childContextRepository)
+            HttpSessionSecurityContextRepository childContextRepository,
+            ObjectProvider<RoleplayUploadRetentionFactory> uploadRetention)
             throws Exception {
         RequestAttributeSecurityContextRepository requestContextRepository =
                 new RequestAttributeSecurityContextRepository();
@@ -130,13 +136,16 @@ public class SecurityConfig {
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.POST,
                                                 "/api/v1/activities/*/roleplay-sessions",
-                                                "/api/v1/roleplay-sessions/*/voice-inputs")
+                                                "/api/v1/roleplay-sessions/*/voice-inputs",
+                                                "/api/v1/roleplay-sessions/*/text-inputs")
                                         .hasRole("CHILD")
                                         .requestMatchers(
                                                 "/api/v1/auth/**", "/api/v1/users/me/withdrawal")
                                         .hasRole("INSTRUCTOR")
                                         .anyRequest()
                                         .hasRole("INSTRUCTOR"));
+        uploadRetention.ifAvailable(
+                factory -> http.addFilterAfter(factory.create(), AuthorizationFilter.class));
     }
 
     private CorsConfigurationSource localCorsConfigurationSource() {

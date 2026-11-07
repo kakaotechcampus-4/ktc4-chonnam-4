@@ -14,15 +14,18 @@ import java.util.Objects;
 public final class RoleplayTurnResponseMapper {
     private static final Speech NO_SPEECH = new Speech(false, null);
     private final RoleplaySpeechDelivery speech;
+    private final boolean textEnabled;
 
-    public RoleplayTurnResponseMapper(RoleplaySpeechDelivery speech) {
+    public RoleplayTurnResponseMapper(RoleplaySpeechDelivery speech, boolean textEnabled) {
         this.speech = Objects.requireNonNull(speech);
+        this.textEnabled = textEnabled;
     }
 
     public RoleplayTurnResponse map(RoleplayCheckpointedTurnExecutor.Result result) {
         Objects.requireNonNull(result);
         return switch (result) {
             case RoleplayCheckpointedTurnExecutor.Success success -> mapSuccess(success);
+            case RoleplayCheckpointedTurnExecutor.InputRecovery input -> mapInputRecovery(input);
             case RoleplayCheckpointedTurnExecutor.Recovery recovery ->
                     mapRecovery(recovery.outcome());
             case RoleplayCheckpointedTurnExecutor.Conflict ignored ->
@@ -34,6 +37,20 @@ public final class RoleplayTurnResponseMapper {
                             RoleplayDeliveryStatus.BUSY,
                             RoleplayDeliveryAction.RESUBMIT_SAME_REQUEST);
         };
+    }
+
+    private RoleplayTurnResponse mapInputRecovery(
+            RoleplayCheckpointedTurnExecutor.InputRecovery input) {
+        var recovery = mapRecovery(input.outcome());
+        return new RoleplayTurnResponse(
+                recovery.status(),
+                input.textRecommended() && textEnabled
+                        ? RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE
+                        : recovery.action(),
+                recovery.messages(),
+                null,
+                null,
+                input.replayed());
     }
 
     private RoleplayTurnResponse mapSuccess(RoleplayCheckpointedTurnExecutor.Success success) {
@@ -73,7 +90,15 @@ public final class RoleplayTurnResponseMapper {
         return new RoleplayTurnResponse(
                 RoleplayDeliveryStatus.DELIVERED,
                 RoleplayDeliveryAction.NONE,
-                List.of(new Message(approved.text(), deliveredSpeech)),
+                approved.mascotHint() == null
+                        ? List.of(new Message(approved.text(), deliveredSpeech))
+                        : List.of(
+                                // 마스코트 힌트는 음성 합성 대상이 아니라 글자로만 보여 준다.
+                                new Message(
+                                        RoleplayTurnResponse.HINT,
+                                        approved.mascotHint(),
+                                        NO_SPEECH),
+                                new Message(approved.text(), deliveredSpeech)),
                 acceptedInput,
                 success.checkpointVersion(),
                 success.replayed());
@@ -84,6 +109,8 @@ public final class RoleplayTurnResponseMapper {
             throw new IllegalArgumentException("Recovery must not contain an approved candidate");
         return switch (recovery) {
             case RoleplayTurnOutcome.InputRetry input ->
+                    recoveryResponse(input.notice().text(), input.action());
+            case RoleplayTurnOutcome.InputCheckRetry input ->
                     recoveryResponse(input.notice().text(), input.action());
             case RoleplayTurnOutcome.Guidance guidance ->
                     recoveryResponse(guidance.notice().text(), guidance.action());
@@ -120,7 +147,13 @@ public final class RoleplayTurnResponseMapper {
             String text, RoleplayDeliveryStatus status, RoleplayDeliveryAction action) {
         if (text == null) return empty(RoleplayDeliveryStatus.NOTICE_UNAVAILABLE, action);
         return new RoleplayTurnResponse(
-                status, action, List.of(new Message(text, NO_SPEECH)), null, null, false);
+                status,
+                action,
+                // 고정 안내는 캐릭터가 아니라 마스코트 자리에 보여 준다.
+                List.of(new Message(RoleplayTurnResponse.HINT, text, NO_SPEECH)),
+                null,
+                null,
+                false);
     }
 
     private RoleplayTurnResponse empty(

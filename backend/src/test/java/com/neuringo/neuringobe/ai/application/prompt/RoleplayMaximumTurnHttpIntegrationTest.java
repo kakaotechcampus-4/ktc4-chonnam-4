@@ -59,7 +59,10 @@ class RoleplayMaximumTurnHttpIntegrationTest {
 
     @AfterAll
     static void cleanup() throws Exception {
-        Files.delete(UPLOADS);
+        try (var paths = Files.walk(UPLOADS)) {
+            for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
+        }
     }
 
     @Test

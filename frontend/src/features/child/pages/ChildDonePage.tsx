@@ -17,7 +17,7 @@ function ChildDonePage() {
   const { activityId } = useParams()
   const completion = (location.state as { completion?: ActivityCompletion } | null)?.completion
 
-  // 완료 요청 결과 없이 주소로 바로 들어오면 보여줄 내용이 없으므로 내 활동으로 보낸다.
+  // 서버가 완료를 확인해 준 화면(퀴즈·역할극)에서 넘어오지 않고 주소로 바로 들어오면 내 활동으로 보낸다.
   if (!completion || completion.activityId !== activityId) {
     return <Navigate to="/child/activities" replace />
   }

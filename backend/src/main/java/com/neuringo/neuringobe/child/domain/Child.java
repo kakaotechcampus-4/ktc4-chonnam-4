@@ -35,6 +35,10 @@ public class Child {
         this.status = status;
     }
 
+    public void rename(String displayName) {
+        this.displayName = displayName;
+    }
+
     public UUID getChildId() {
         return childId;
     }

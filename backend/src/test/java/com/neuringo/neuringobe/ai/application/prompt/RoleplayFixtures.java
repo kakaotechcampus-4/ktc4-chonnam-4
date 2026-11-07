@@ -63,6 +63,24 @@ final class RoleplayFixtures {
                                 RoleplayTurnInput.Speaker.AI, "친구가 넘어져서 울고 있어. 친구는 어떤 기분일까?")));
     }
 
+    /** AI 가 넘어진 친구를 1인칭으로 연기하는 같은 턴. */
+    static RoleplayTurnInput characterInput(String utterance) {
+        RoleplayTurnInput base = input(utterance);
+        RoleplayTurnInput.Scenario scenario = base.scenario();
+        return new RoleplayTurnInput(
+                new RoleplayTurnInput.Scenario(
+                        scenario.learningGoal(),
+                        scenario.scenarioLevel(),
+                        scenario.scenarioFacts(),
+                        scenario.prohibitedInferences(),
+                        scenario.microGoals(),
+                        new RoleplayTurnInput.AiCharacter(
+                                "FRIEND", "넘어져서 우는 친구", "소심하고 잘 우는 편", "반말, 짧은 문장")),
+                base.state(),
+                base.learnerTurn(),
+                base.recentDialogue());
+    }
+
     static AiTraceContext trace(UUID analysisId, UUID candidateId) {
         return new AiTraceContext(
                 REQUEST_ID,

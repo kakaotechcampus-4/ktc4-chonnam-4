@@ -1,4 +1,4 @@
-// 설계·미구현 함수 24개. 2026-10-28 통합 기준. 시작·복원은 endpoints.ts에 구현.
+// 설계·미구현 함수 22개. 2026-10-28 통합 기준. 시작·복원은 endpoints.ts에 구현.
 import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
@@ -16,46 +16,6 @@ export function getChildSession(
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
-  });
-}
-
-export interface UpdateClassroomArgs {
-  classId: T.UUID;
-  body: T.ClassBody;
-}
-
-export function updateClassroom(
-  api: ApiClient,
-  args: UpdateClassroomArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.ClassData>> {
-  return api.request<T.ClassData>("/api/v1/classrooms/" + encodeURIComponent(args.classId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
-  });
-}
-
-export interface UpdateChildArgs {
-  childId: T.UUID;
-  body: T.ChildBody;
-}
-
-export function updateChild(
-  api: ApiClient,
-  args: UpdateChildArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.ChildData>> {
-  return api.request<T.ChildData>("/api/v1/children/" + encodeURIComponent(args.childId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
   });
 }
 
@@ -94,27 +54,6 @@ export function getLearningGoalLineage(
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
-  });
-}
-
-export interface PrepareScenarioArgs {
-  body: T.DraftScenarioBody;
-  idempotencyKey: T.UUID;
-}
-
-export function prepareScenario(
-  api: ApiClient,
-  args: PrepareScenarioArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftScenarioPrepareData>> {
-  return api.request<T.DraftScenarioPrepareData>("/api/v1/scenarios", {
-    method: "POST",
-    auth: "instructor",
-    expectedStatuses: [201, 202],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
   });
 }
 
@@ -159,26 +98,6 @@ export function getScenario(
   });
 }
 
-export interface ReviewScenarioArgs {
-  scenarioId: T.UUID;
-  body: T.DraftScenarioPatch;
-}
-
-export function reviewScenario(
-  api: ApiClient,
-  args: ReviewScenarioArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftScenarioData>> {
-  return api.request<T.DraftScenarioData>("/api/v1/scenarios/" + encodeURIComponent(args.scenarioId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    body: args.body
-  });
-}
-
 export interface CreateScenarioVersionArgs {
   scenarioId: T.UUID;
   body: T.DraftScenarioVersionBody;
@@ -198,24 +117,6 @@ export function createScenarioVersion(
     draft: true,
     idempotencyKey: args.idempotencyKey,
     body: args.body
-  });
-}
-
-export interface DeleteScenarioArgs {
-  scenarioId: T.UUID;
-}
-
-export function deleteScenario(
-  api: ApiClient,
-  args: DeleteScenarioArgs,
-  options: CallOptions = {}
-): Promise<void> {
-  return api.requestEmpty("/api/v1/scenarios/" + encodeURIComponent(args.scenarioId), {
-    method: "DELETE",
-    auth: "instructor",
-    expectedStatuses: [204],
-    signal: options.signal,
-    draft: true
   });
 }
 
@@ -271,28 +172,6 @@ export function updateRoleplaySession(
     method: "PATCH",
     auth: "child",
     expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
-  });
-}
-
-export interface SubmitTextInputArgs {
-  sessionId: T.UUID;
-  body: T.DraftTextBody;
-  idempotencyKey: T.UUID;
-}
-
-export function submitTextInput(
-  api: ApiClient,
-  args: SubmitTextInputArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftInputAccepted>> {
-  return api.request<T.DraftInputAccepted>("/api/v1/roleplay-sessions/" + encodeURIComponent(args.sessionId) + "/text-inputs", {
-    method: "POST",
-    auth: "child",
-    expectedStatuses: [202],
     signal: options.signal,
     draft: true,
     idempotencyKey: args.idempotencyKey,
@@ -371,103 +250,5 @@ export function listSupportChanges(
     expectedStatuses: [200],
     signal: options.signal,
     draft: true
-  });
-}
-
-export interface GetLearningReportArgs {
-  activityId: T.UUID;
-}
-
-export function getLearningReport(
-  api: ApiClient,
-  args: GetLearningReportArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftReportData>> {
-  return api.request<T.DraftReportData>("/api/v1/activities/" + encodeURIComponent(args.activityId) + "/learning-record", {
-    method: "GET",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
-export interface ListLearningReportsArgs {
-  query: {
-    childId: T.UUID;
-    page?: number;
-    size?: number;
-  };
-}
-
-export function listLearningReports(
-  api: ApiClient,
-  args: ListLearningReportsArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftReportData[]>> {
-  return api.request<T.DraftReportData[]>("/api/v1/learning-records" + queryString(args.query), {
-    method: "GET",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
-export interface ListRecommendationsArgs {
-  recordId: T.UUID;
-}
-
-export function listRecommendations(
-  api: ApiClient,
-  args: ListRecommendationsArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRecommendationData[]>> {
-  return api.request<T.DraftRecommendationData[]>("/api/v1/learning-records/" + encodeURIComponent(args.recordId) + "/recommendations", {
-    method: "GET",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
-export interface GetRecommendationArgs {
-  recommendationId: T.UUID;
-}
-
-export function getRecommendation(
-  api: ApiClient,
-  args: GetRecommendationArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRecommendationData>> {
-  return api.request<T.DraftRecommendationData>("/api/v1/recommendations/" + encodeURIComponent(args.recommendationId), {
-    method: "GET",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true
-  });
-}
-
-export interface DecideRecommendationArgs {
-  recommendationId: T.UUID;
-  body: T.DraftRecommendationDecision;
-  idempotencyKey: T.UUID;
-}
-
-export function decideRecommendation(
-  api: ApiClient,
-  args: DecideRecommendationArgs,
-  options: CallOptions = {}
-): Promise<T.ApiResponse<T.DraftRecommendationData>> {
-  return api.request<T.DraftRecommendationData>("/api/v1/recommendations/" + encodeURIComponent(args.recommendationId), {
-    method: "PATCH",
-    auth: "instructor",
-    expectedStatuses: [200],
-    signal: options.signal,
-    draft: true,
-    idempotencyKey: args.idempotencyKey,
-    body: args.body
   });
 }

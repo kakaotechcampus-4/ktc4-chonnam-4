@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.auth.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -35,8 +36,8 @@ public class AuthSession {
         this.sessionId = sessionId;
         this.userId = userId;
         this.tokenHash = tokenHash;
-        this.expiresAt = expiresAt;
-        this.createdAt = createdAt;
+        this.expiresAt = StoredTime.normalize(expiresAt);
+        this.createdAt = StoredTime.normalize(createdAt);
     }
 
     /** 만료 시각과 같거나 지난 순간부터 무효다. */

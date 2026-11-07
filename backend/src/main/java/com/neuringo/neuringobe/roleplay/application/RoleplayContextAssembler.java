@@ -8,7 +8,7 @@ import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService.Scop
 import java.util.Objects;
 import java.util.UUID;
 
-/** 확정 결과 재조회 뒤, 새 음성 처리를 시작하기 전에 작업자 안에서 컨텍스트를 준비한다. */
+/** 확정 결과 재조회 뒤, 새 입력을 처리하기 전에 작업자 안에서 컨텍스트를 준비한다. */
 public final class RoleplayContextAssembler {
     private final RoleplayContextSource source;
 
@@ -17,6 +17,11 @@ public final class RoleplayContextAssembler {
     }
 
     public Prepared prepareVoice(
+            Scope scope, UUID requestId, UUID turnId, RoleplayTurnDeadline deadline) {
+        return prepare(scope, requestId, turnId, deadline);
+    }
+
+    public Prepared prepare(
             Scope scope, UUID requestId, UUID turnId, RoleplayTurnDeadline deadline) {
         Objects.requireNonNull(scope);
         Objects.requireNonNull(requestId);
@@ -66,7 +71,7 @@ public final class RoleplayContextAssembler {
         }
     }
 
-    /** 발화는 음성 처리에서 검증한 표준 발화로 교체하기 전까지 비워 둔다. */
+    /** 입력 정제에서 검증한 표준 발화로 교체하기 전까지 발화를 비워 둔다. */
     public record Prepared(
             AiTraceContext trace,
             RoleplayTurnInput input,

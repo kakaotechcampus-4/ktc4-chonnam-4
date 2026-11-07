@@ -47,6 +47,28 @@ public final class RoleplayGoalObservationMapper {
             Context context,
             RoleplayCheckpointCommand command,
             RoleplayTurnResult.Ready approvedTurn) {
+        return toPlan(context, command, approvedTurn, null);
+    }
+
+    public static RoleplayGoalObservationPlan toPlan(
+            RoleplayContextSource.Snapshot snapshot,
+            RoleplayCheckpointCommand command,
+            RoleplayTurnResult.Ready approvedTurn) {
+        return toPlan(
+                contextFor(snapshot, command),
+                command,
+                approvedTurn,
+                RoleplayInputGoalAssessment.assess(
+                        Objects.requireNonNull(command.inputContext()),
+                        snapshot.observations(),
+                        approvedTurn));
+    }
+
+    private static RoleplayGoalObservationPlan toPlan(
+            Context context,
+            RoleplayCheckpointCommand command,
+            RoleplayTurnResult.Ready approvedTurn,
+            RoleplayInputGoalAssessment inputAssessment) {
         Objects.requireNonNull(context);
         Objects.requireNonNull(command);
         Objects.requireNonNull(approvedTurn);
@@ -62,6 +84,16 @@ public final class RoleplayGoalObservationMapper {
                 || !command.responseText().equals(candidate.text())) {
             throw new IllegalArgumentException("저장할 턴과 검수된 응답이 일치하지 않습니다.");
         }
+        if (inputAssessment != null
+                && inputAssessment.supportApplication() != null
+                && (!command.microGoalId()
+                                .equals(inputAssessment.supportApplication().targetMicroGoalId())
+                        || !command.supportLevel()
+                                .equals(
+                                        inputAssessment
+                                                .supportApplication()
+                                                .appliedSupportLevel())))
+            throw new IllegalArgumentException("저장할 목표·지원과 서버 정책 적용이 일치하지 않습니다.");
         var analysis = approvedTurn.analysis().goalObservation();
         var review = approvedTurn.evaluation().goalObservationReview();
         if (analysis == null
@@ -110,7 +142,8 @@ public final class RoleplayGoalObservationMapper {
                                 ? null
                                 : new RoleplayGoalObservationPlan.GoalProgress(
                                         command.inputContext().microGoalId(),
-                                        approvedTurn.analysis().learningState())));
+                                        approvedTurn.analysis().learningState(),
+                                        inputAssessment)));
     }
 
     private static EvidenceReference reference(GoalObservationOutput.Reference reference) {

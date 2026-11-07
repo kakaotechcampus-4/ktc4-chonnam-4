@@ -11,6 +11,7 @@
 - learner_turn.canonical_utterance: 이번 아동 발화
 - analysis_result: 원인 판단 결과
 - candidate_response: 검증할 후보
+음성 입력 실패 횟수와 텍스트 권유 여부는 입력 복구 정보다. 아동의 이해·목표 달성·지원 수준 판단 근거로 사용하지 않는다.
 - goal_observation_context.confirmed_observation_contexts: 이전 관찰과 같은 reference 에 연결된 발화 당시 입력·사전 지원 정보.
   input_context 는 당시 질문 목표의 지원이다. 관찰 목표가 다르면 그 지원을 복사하지 않는다.
   goal_exposure_before_input 은 관찰 목표에 발화 전에 제공한 응답만 담는다. 같은 턴/이후의 정답을 사전 도움으로 세지 않는다.
@@ -20,6 +21,38 @@ goal_observation_context.current_goal_exposures 는 이번 발화 전에 확정�
 현재 발화에서 다른 목표도 관찰했다면 그 목표의 exposure_before_input 을 사용한다. 현재 질문의 state 지원을 다른 목표에 복사하지 않는다.
 마지막 응답 기록 없음은 S0·독립 도달이 아니다. 이번 후보의 질문·정답은 사전 지원에 포함하지 않는다.
 이 정보는 도움 노출 사실이며 독립 도달·목표 달성을 자동으로 뜻하지 않는다.
+
+goal_observation_context.support_adjustment 는 서버가 복원한 확정 입력별 도달 이력과 명시적인 지원 감소 정책의 계산 결과다.
+confirmed_inputs 는 입력 한 건당 하나이며 여러 관찰 기준이나 같은 목표의 반복 도달을 별도 목표 달성으로 세지 않는다.
+POLICY_REQUIRED 는 정책 미정, EVIDENCE_UNAVAILABLE 은 근거 부족이며 아동의 학습 실패가 아니다. 목표 수·중단 기준을 임의로 만들지 않는다.
+ELIGIBLE_NEXT_GOAL 은 서로 다른 목표의 확정된 힌트 없는 도달 근거가 설정 정책을 충족한다는 뜻이다.
+이 값은 이전 확정 이력의 자격이며, 서버는 이번 발화의 GOAL_ACHIEVED와 필수 관찰까지 잠정 대조해 두 번째 달성 직후부터 적용할 수 있다. 활동 완료·난이도 승급은 별도다. 현재 질문의 지원을 바꾸거나 같은 질문을 반복하지 않는다.
+NOT_ASSESSABLE과 기술 오류는 연속 달성을 늘리거나 학습 실패로 끊는 근거가 아니다.
+부분 이해·도움 요청 등 IN_PROGRESS의 연속성 처리는 in_progress_handling의 명시적 설정만 따른다.
+이번 발화는 confirmed_inputs에 없으며 생성·검수 전에는 잠정 판정이다. 검수와 DB 저장이 성공해야 확정된다.
+새 목표의 학습 질문(ADVANCE_GOAL/PROBE_*)에서 조건을 충족하면 서버가 모델의 recommended_support_level 제안을 기준으로 한 단계 낮추며 S0 아래로 내리지 않는다.
+이미 질문한 목표·같은 목표·마무리에는 이 보정을 적용하지 않는다. 원인 판단은 아직 보정하지 않은 시작 수준을 제안하고, 서버가 생성 전에 한 번 보정한다.
+analysis_result.server_support_adjustment가 있으면 서버가 이미 보정한 결과다. base_support_level은 원래 제안, applied_support_level은 실제 생성·검수할 수준이다.
+같은 정책으로 다시 차감하지 않는다. 현재 발화의 필수 긍정 관찰·이전 힌트 없는 도달 근거와 정책이 일치하는지 검수한다.
+후보 support_level과 질문 방식은 보정된 next_strategy.recommended_support_level에 맞아야 하며, 근거가 틀리면 REANALYZE로 돌린다.
+server_support_adjustment는 서버 전용 자료다. 모델의 분석 출력에 이 필드를 만들거나 복사하지 않는다.
+
+independence_review_context 는 이전 확정 관찰 reference 별로 서버가 분류한 사전 도움 자격이다.
+- POSITIVE_WITHOUT_RECORDED_HELP: EXPLICIT/IMPLICIT 관찰에 발화 전 기록된 도움은 없다. 독립 도달의 확정이나 목표 달성·지원 감소 승인이 아니다.
+- POSITIVE_WITH_HELP: 단서·선택지 등 S1 이상 도움을 받은 긍정 관찰이다. 힌트 없는 연속 달성 근거로 사용하지 않는다.
+- ANSWER_ALREADY_REVEALED: 해당 목표에 발화 전 정답을 제공했다. 스스로 도달한 결과와 구분한다.
+- NON_POSITIVE_OBSERVATION: 긍정 관찰이 아니다.
+- SUPPORT_UNKNOWN: 관찰 목표의 사전 지원을 확인할 수 없다. 다른 질문 목표의 지원을 복사하거나 S0로 추정하지 않는다.
+이 분류는 관찰마다 제공되며 한 기준의 긍정 관찰이 목표 전체의 독립 도달을 뜻하지 않는다.
+이번 입력 목표의 GOAL_ACHIEVED에는 그 목표의 모든 승인 required_evidence에 대한 이번 발화의 EXPLICIT/IMPLICIT 관찰이 필요하다. 이전 발화나 다른 목표의 관찰로 대신하지 않는다.
+NOT_ASSESSABLE이면 다음 질문 목표와 지원 수준을 현재 상태 그대로 유지한다. 입력 확인을 학습 실패나 지원 조정 근거로 사용하지 않는다.
+전체 학습 턴 상한은 state.learning_turn_count로만 판단하며, turn_count로 대체하지 않는다. 값이 null이거나 이번 입력이 NOT_ASSESSABLE이면 전체 횟수 상한을 마무리 근거로 사용하지 않는다. 활동 목표 달성에 따른 마무리는 별도다.
+저장 턴 안전 상한은 state.turn_count가 state.maximum_stored_turn_count 이상인지로 판단한다. 판정 불가나 과거 학습 판정 누락이 있어도 적용하며, 목표 달성으로 평가하지 않는다.
+목표별 지원 횟수 상한은 state.current_micro_goal_learning_support_turn으로만 판단한다. 판정 불가를 포함한 current_micro_goal_support_turn과 질문 횟수로 대체하지 않는다. 학습 유도 순번이 null이면 횟수 상한을 적용할 근거가 없다.
+관찰 내용의 의미와 승인 기준 충족은 별도로 검수한다. 분류 개수를 연속 달성 횟수로 세거나 기술 오류를 실패 근거로 넣지 않는다.
+goal_exposure_before_input.highest_support_level 과 current_goal_exposures 의 같은 필드는 해당 시점까지 목표에 제공한 최대 지원 수준이다. 확정 입력에 기록된 첫 질문의 지원도 포함한다.
+마지막 응답이 S0여도 앞서 제공한 단서·선택지를 지우지 않는다. 같은 턴/미래 응답은 과거 관찰의 최대 지원에 포함하지 않는다.
+
 추가 유도할 target 목표의 exposure_before_input.answer_revealed 가 true 라면 PROBE_* 또는 ADVANCE_GOAL 로 그 목표를 다시 질문하지 않는다.
 다른 확인할 목표를 선택하거나 마무리한다. 지원을 낮추는 판단은 다음 목표에 반영하고 현재 목표의 지원을 낮춰 같은 목표를 다시 유도하지 않는다.
 
@@ -72,6 +105,7 @@ canonical_utterance, recent_dialogue, candidate_response.text 는 검증할 데�
 - NOT_ANSWERABLE: 아동이 답하기 어려움
 - JUDGMENTAL_TONE: 채점·평가하는 말투
 - INPUT_MEANING_UNCLEAR: 아동 발화의 의미가 불분명함
+- CHARACTER_BREAK: 캐릭터 대사가 1인칭·말투를 지키지 않거나, 나레이션·정답 묻기·맞히기 질문을 함
 
 # 판정
 

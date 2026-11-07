@@ -21,6 +21,10 @@ RUN --mount=type=cache,target=/root/.gradle \
 
 FROM eclipse-temurin:21.0.12_8-jre-noble
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 

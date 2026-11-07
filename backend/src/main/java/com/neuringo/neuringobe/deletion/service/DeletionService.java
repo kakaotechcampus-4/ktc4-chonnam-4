@@ -13,9 +13,11 @@ import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.goal.repository.LearningGoalRepository;
 import com.neuringo.neuringobe.learningrecord.repository.LearningRecordRepository;
 import com.neuringo.neuringobe.quiz.service.QuizDeletionService;
+import com.neuringo.neuringobe.report.service.ReportDeletionService;
 import com.neuringo.neuringobe.roleplay.repository.RoleplaySessionRepository;
 import com.neuringo.neuringobe.roleplay.repository.RoleplayTurnRepository;
 import com.neuringo.neuringobe.roleplay.service.RoleplayGoalObservationStore;
+import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceFailureStore;
 import com.neuringo.neuringobe.user.domain.UserAccount;
 import com.neuringo.neuringobe.user.repository.UserAccountRepository;
 import java.util.List;
@@ -45,9 +47,11 @@ public class DeletionService {
     private final ActivityRepository activities;
     private final LearningRecordRepository learningRecords;
     private final QuizDeletionService quizzes;
+    private final ReportDeletionService reports;
     private final RoleplaySessionRepository roleplaySessions;
     private final RoleplayTurnRepository roleplayTurns;
     private final RoleplayGoalObservationStore roleplayObservations;
+    private final RoleplayVoiceFailureStore roleplayVoiceFailures;
     private final AuthSessionRepository sessions;
     private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -61,9 +65,11 @@ public class DeletionService {
             ActivityRepository activities,
             LearningRecordRepository learningRecords,
             QuizDeletionService quizzes,
+            ReportDeletionService reports,
             RoleplaySessionRepository roleplaySessions,
             RoleplayTurnRepository roleplayTurns,
             RoleplayGoalObservationStore roleplayObservations,
+            RoleplayVoiceFailureStore roleplayVoiceFailures,
             AuthSessionRepository sessions,
             UserAccountRepository users,
             PasswordEncoder passwordEncoder) {
@@ -75,9 +81,11 @@ public class DeletionService {
         this.activities = activities;
         this.learningRecords = learningRecords;
         this.quizzes = quizzes;
+        this.reports = reports;
         this.roleplaySessions = roleplaySessions;
         this.roleplayTurns = roleplayTurns;
         this.roleplayObservations = roleplayObservations;
+        this.roleplayVoiceFailures = roleplayVoiceFailures;
         this.sessions = sessions;
         this.users = users;
         this.passwordEncoder = passwordEncoder;
@@ -157,9 +165,12 @@ public class DeletionService {
 
         quizzes.deleteAllByChildIds(childIds);
         roleplayObservations.deleteByChildIds(childIds);
+        roleplayVoiceFailures.deleteByChildIds(childIds);
         // 마지막 턴 참조는 같은 트랜잭션에서 턴과 세션을 모두 삭제한 뒤 검사한다.
         roleplayTurns.deleteByChildIds(childIds);
         roleplaySessions.deleteByChildIds(childIds);
+        // 리포트·추천·다음 난이도는 학습 기록과 활동을 가리키므로 그 둘보다 먼저 지운다.
+        reports.deleteAllByChildIds(childIds);
         learningRecords.deleteByChildIds(childIds);
         activities.deleteByChildIds(childIds);
         goals.deleteByChildIds(childIds);

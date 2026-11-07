@@ -5,6 +5,7 @@ import { createChild, deleteClassroom, getClassroom, listChildren, type ChildSta
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ClassroomStatusBadge } from '../components/ClassroomStatusBadge'
+import { RecentLearningList } from '../components/report/ChildLatestLearning'
 import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog'
 import {
   cardClass,
@@ -127,18 +128,19 @@ function ClassroomDetailPage() {
       actions={
         <div className="flex gap-2">
           {classroom && (
-            <button
-              type="button"
-              onClick={() => setIsDeleteOpen(true)}
-              className={cn(dangerOutlineButtonClass, compactButtonClass)}
-            >
-              학급 삭제
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setIsDeleteOpen(true)}
+                className={cn(dangerOutlineButtonClass, compactButtonClass)}
+              >
+                학급 삭제
+              </button>
+              <Link to={`/classrooms/${classId}/edit`} className={cn(outlineButtonClass, compactButtonClass)}>
+                학급 수정
+              </Link>
+            </>
           )}
-          {/* 학급 수정은 S4-BAE-01 범위라 자리만 둔다. */}
-          <button type="button" disabled title="준비 중인 기능입니다" className={cn(outlineButtonClass, compactButtonClass)}>
-            학급 수정
-          </button>
         </div>
       }
       subheader={
@@ -219,9 +221,7 @@ function ClassroomDetailPage() {
               <h2 id="recent-heading" className="text-sm font-semibold">
                 최근 학습 요약
               </h2>
-              <p className="text-sm text-[var(--instructor-text-subtle)]">
-                아동이 활동을 하면 최근 학습이 여기에 모여요. 지금은 아동 상세에서 활동별로 볼 수 있어요.
-              </p>
+              <RecentLearningList classChildren={children ?? []} />
             </section>
 
             <div className="flex flex-col gap-4">
