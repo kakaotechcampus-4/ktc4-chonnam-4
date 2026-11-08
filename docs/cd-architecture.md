@@ -329,7 +329,7 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 |---|---|---|---|---|
 | LLM(분석·후보·평가) | OpenAI 호환 API | Spring AI `spring-ai-starter-model-openai` → `SpringAiLlmProvider` | `AI_*` | 10초 |
 | STT(음성 → 글) | OpenAI `gpt-4o-mini-transcribe` | `OpenAiSpeechToTextProvider`(RestClient) | `STT_*` | 15초 |
-| TTS(글 → 음성) | 타입캐스트 `ssfm-v30` | `TypecastTextToSpeechProvider`(RestClient) | `TTS_*` | 15초 |
+| TTS(글 → 음성) | 타입캐스트 `ssfm-v30` 또는 OpenAI `gpt-4o-mini-tts`(`TTS_PROVIDER=openai`) | `TypecastTextToSpeechProvider`·`OpenAiTextToSpeechProvider`(RestClient) | `TTS_*`, 화면 전달 `ROLEPLAY_SPEECH_DELIVERY=inline` | 15초 |
 
 - 셋 다 기본은 꺼짐이다. 키가 없어도 앱은 뜨고(E2E 가 그렇게 돈다) AI 기능만 꺼진다.
 - PoC 실측: 5턴에 AI·안전 확인 호출 18번, 한 턴 약 14.8초(느릴 때 18.3초), 약 0.0095 USD(`docs/poc/2026-09-09-poc-review.md`).

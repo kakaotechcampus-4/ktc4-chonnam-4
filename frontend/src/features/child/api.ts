@@ -351,6 +351,8 @@ export type RoleplaySpeaker = "turtle" | "rabbit"
 export type RoleplayMessage = {
   speaker: RoleplaySpeaker
   text: string
+  /** 캐릭터 대사의 음성(TTS). 서버가 음성을 함께 보냈을 때만 있다(roleplay.speech.delivery=inline 이면 data URL). */
+  audioUrl?: string
 }
 
 export type RoleplaySessionStatus = "IN_PROGRESS" | "PAUSED" | "COMPLETED"
@@ -367,10 +369,19 @@ export function roleplaySessionQueryKey(childId: string | null, activityId: stri
   return ["child", childId, "roleplay", activityId] as const
 }
 
-type ServerMessage = { messageId?: string; speakerRole: "DIALOGUE" | "HINT"; text: string }
+type ServerSpeech = { available: boolean; url: string | null }
+
+type ServerMessage = {
+  messageId?: string
+  speakerRole: "DIALOGUE" | "HINT"
+  text: string
+  speech?: ServerSpeech | null
+}
 
 function toMessage(message: ServerMessage): RoleplayMessage {
-  return { speaker: message.speakerRole === "HINT" ? "rabbit" : "turtle", text: message.text }
+  const speaker: RoleplaySpeaker = message.speakerRole === "HINT" ? "rabbit" : "turtle"
+  const audioUrl = message.speech?.available && message.speech.url ? message.speech.url : undefined
+  return audioUrl ? { speaker, text: message.text, audioUrl } : { speaker, text: message.text }
 }
 
 type RoleplayStartData = {

@@ -32,7 +32,7 @@ public class RoleplayHttpTestConfiguration {
     public static class State {
         public String inputJudgment =
                 "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
-        public String transcriptionText = "synthetic raw private input";
+        public String transcriptionText = "합성 원문 비공개 입력";
         public final List<String> calls = new CopyOnWriteArrayList<>();
         public final List<LlmRequest> llmRequests = new CopyOnWriteArrayList<>();
         private final Map<AiOperation, Queue<AiFailureType>> llmFailures =
@@ -80,7 +80,7 @@ public class RoleplayHttpTestConfiguration {
         public void reset() {
             inputJudgment =
                     "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
-            transcriptionText = "synthetic raw private input";
+            transcriptionText = "합성 원문 비공개 입력";
             calls.clear();
             llmRequests.clear();
             llmFailures.clear();

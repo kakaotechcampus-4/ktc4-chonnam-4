@@ -49,6 +49,8 @@ server:
 roleplay:
   speech:
     # 음성 미제공도 명시적으로 선택한다. 미설정 시 전달 구현을 대신 만들지 않는다.
+    #   none:   글만 보낸다(TTS 를 켜 두어도 소리가 나지 않는다).
+    #   inline: 합성한 음성을 응답 안의 data URL 로 함께 보내 화면이 바로 재생한다. 서버에 음성을 저장하지 않는다.
     delivery: ${ROLEPLAY_SPEECH_DELIVERY:}
   input:
     stt-confidence-threshold: ${ROLEPLAY_STT_CONFIDENCE_THRESHOLD:0.40}
@@ -133,13 +135,16 @@ neuringo:
       request-timeout: ${STT_TIMEOUT:15s}
       include-logprobs: ${STT_INCLUDE_LOGPROBS:true}
     tts:
+      # typecast 또는 openai. 이름·주소·모델·언어·목소리를 비우면 공급자별 기본값을 쓴다(TextToSpeechProperties).
+      #   typecast: api.typecast.ai · ssfm-v30 · kor · 목소리 ID 필수
+      #   openai:   api.openai.com · gpt-4o-mini-tts · 목소리 nova (STT 와 같은 OpenAI 키를 쓸 수 있다)
       provider: ${TTS_PROVIDER:none}
-      provider-name: ${TTS_PROVIDER_NAME:typecast}
-      base-url: ${TTS_BASE_URL:https://api.typecast.ai}
+      provider-name: ${TTS_PROVIDER_NAME:}
+      base-url: ${TTS_BASE_URL:}
       api-key: ${TTS_API_KEY:}
-      model: ${TTS_MODEL:ssfm-v30}
+      model: ${TTS_MODEL:}
       voice-id: ${TTS_VOICE_ID:}
-      language: ${TTS_LANGUAGE:kor}
+      language: ${TTS_LANGUAGE:}
       audio-format: ${TTS_AUDIO_FORMAT:mp3}
       request-timeout: ${TTS_TIMEOUT:15s}
   # 역할극 리포트·다음 난이도·추천(backend/docs/roleplay-report-integration.md).

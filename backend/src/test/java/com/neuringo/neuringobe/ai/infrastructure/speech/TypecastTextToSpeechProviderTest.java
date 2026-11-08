@@ -101,6 +101,37 @@ class TypecastTextToSpeechProviderTest {
     }
 
     @Test
+    void sendsTheRequestedEmotionAndFallsBackToNormalWhenTheModelLacksIt() {
+        server.respond(200, "audio/mpeg", MP3);
+
+        provider("ssfm-v30")
+                .synthesize(
+                        new SpeechSynthesisRequest(turnTrace(), 1, "안녕", null, SpeechEmotion.SAD));
+        provider("ssfm-v30")
+                .synthesize(
+                        new SpeechSynthesisRequest(
+                                turnTrace(), 1, "안녕", null, SpeechEmotion.WHISPER));
+        provider("ssfm-v21")
+                .synthesize(
+                        new SpeechSynthesisRequest(
+                                turnTrace(), 1, "안녕", null, SpeechEmotion.WHISPER));
+
+        assertThat(
+                        server.requests().stream()
+                                .map(
+                                        r ->
+                                                JSON.readTree(
+                                                                new String(
+                                                                        r.body(),
+                                                                        StandardCharsets.UTF_8))
+                                                        .path("prompt")
+                                                        .path("emotion_preset")
+                                                        .asString())
+                                .toList())
+                .containsExactly("sad", "whisper", "normal");
+    }
+
+    @Test
     void fallsBackToConfiguredFormatWhenContentTypeIsUnknown() {
         server.respond(200, "application/octet-stream", MP3);
 

@@ -46,7 +46,7 @@ class RoleplaySpeechTurnPipelineTest {
             new SpeechTranscriptionRequest(
                     RoleplayFixtures.trace(null, null), 1, new byte[] {1, 2, 3}, AudioFormat.WEBM);
     private final RoleplayTurnDeadline deadline = RoleplayTurnDeadline.start();
-    private String raw = "synthetic-unfiltered-name";
+    private String raw = "합성-미정제-이름";
     private Double confidence = 0.9;
     private double sttConfidenceThreshold = 0.40;
     private int sttFailures;
@@ -57,6 +57,8 @@ class RoleplaySpeechTurnPipelineTest {
     private String inputFailure = "NONE";
     private boolean rejectCandidate;
     private String expireAt;
+    private String candidateText = "친구는 어떤 기분일까?";
+    private String candidateType = "GUIDING_QUESTION";
 
     @Test
     void voicePipelineReturnsCanonicalInputAndAudioForTheSameApprovedCandidate() {
@@ -170,6 +172,24 @@ class RoleplaySpeechTurnPipelineTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"嗯?", "Hm.", "うん。", "Yeah?", "123"})
+    void transcriptWithoutHangulIsTreatedAsLowConfidence(String transcript) {
+        raw = transcript;
+        confidence = 0.95;
+        var result = (RoleplayTurnOutcome.Recovery) execute();
+        assertThat(calls).containsExactly("STT");
+        assertThat(result.action()).isEqualTo(RoleplayTurnOutcome.Action.REQUEST_NEW_INPUT);
+        assertThat(llmRequests).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"응.", "OK 좋아", "사과 2개요", "ㅋㅋ"})
+    void koreanTranscriptMixedWithOtherCharactersPasses(String transcript) {
+        raw = transcript;
+        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.SpokenResponse.class);
+    }
+
     @Test
     void silenceSkipsDownstreamRegardlessOfHighConfidence() {
         raw = " ";
@@ -233,6 +253,31 @@ class RoleplaySpeechTurnPipelineTest {
         assertThat(ttsRequests.stream().map(r -> r.traceContext().candidateId()).distinct())
                 .hasSize(1);
         assertThat(llmRequests).hasSize(3);
+    }
+
+    @Test
+    void stageDirectionsInParenthesesAreShownButNotSpoken() {
+        candidateText = "(훌쩍이며) 친구는 어떤 기분일까?";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(훌쩍이며) 친구는 어떤 기분일까?");
+        assertThat(ttsRequests)
+                .singleElement()
+                .extracting(SpeechSynthesisRequest::text)
+                .isEqualTo("친구는 어떤 기분일까?");
+        assertThat(ttsRequests.getFirst().emotion())
+                .isEqualTo(com.neuringo.neuringobe.ai.application.model.SpeechEmotion.SAD);
+        assertThat(result.speech()).isNotNull();
+    }
+
+    @Test
+    void aLineWithOnlyStageDirectionsHasNoSpeech() {
+        candidateText = "(고개를 끄덕이며)";
+        candidateType = "ANSWER_REVEAL";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(고개를 끄덕이며)");
+        assertThat(ttsRequests).isEmpty();
+        assertThat(calls).doesNotContain("TTS");
+        assertThat(result.speech()).isNull();
     }
 
     @Test
@@ -345,8 +390,8 @@ class RoleplaySpeechTurnPipelineTest {
                                                                 "S1");
                                                 case RESPONSE_GENERATION ->
                                                         RoleplayFixtures.candidateJson(
-                                                                        "친구는 어떤 기분일까?",
-                                                                        "GUIDING_QUESTION")
+                                                                        candidateText,
+                                                                        candidateType)
                                                                 .replace(
                                                                         RoleplayFixtures
                                                                                 .CANDIDATE_ID
