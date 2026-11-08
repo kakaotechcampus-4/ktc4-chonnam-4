@@ -66,11 +66,23 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                             saved.getCandidateId(),
                             saved.getCheckpointVersion(),
                             true,
-                            saved.getResponseText()));
+                            saved.getResponseText(),
+                            saved.getMascotHint()));
         }
+        if (hasRecordedVoiceFailure(trace.sessionId(), identity.idempotencyKey()))
+            return new Conflict();
         return session.get().canAdvance(identity.expectedVersion(), identity.turnNumber())
                 ? new Absent()
                 : new Conflict();
+    }
+
+    private boolean hasRecordedVoiceFailure(java.util.UUID sessionId, java.util.UUID key) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "select exists(select 1 from roleplay_voice_input_failure where session_id=? and idempotency_key=?)",
+                        Boolean.class,
+                        sessionId,
+                        key));
     }
 
     @Override
@@ -144,8 +156,11 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                     saved.getCandidateId(),
                                     saved.getCheckpointVersion(),
                                     true,
-                                    saved.getResponseText());
+                                    saved.getResponseText(),
+                                    saved.getMascotHint());
                         }
+                        if (hasRecordedVoiceFailure(command.sessionId(), command.idempotencyKey()))
+                            return new Conflict();
                         if (child.isEmpty()
                                 || child.get().getStatus() != ChildStatus.ACTIVE
                                 || activity.isEmpty()
@@ -174,7 +189,8 @@ public class JpaRoleplayCheckpointStore implements RoleplayCheckpointStore {
                                 command.candidateId(),
                                 version,
                                 false,
-                                command.responseText());
+                                command.responseText(),
+                                command.mascotHint());
                     });
         } catch (RoleplayTurnDeadline.Expired expired) {
             return new Expired();

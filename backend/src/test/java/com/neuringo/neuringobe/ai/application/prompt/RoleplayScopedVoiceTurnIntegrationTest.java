@@ -50,6 +50,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
     @Autowired RoleplayRequestGuard guard;
     @Autowired RoleplayCanonicalRetentionService retention;
     private final List<String> calls = new CopyOnWriteArrayList<>();
+    private final List<LlmRequest> modelRequests = new CopyOnWriteArrayList<>();
+    private boolean reanalyzeOnce;
 
     @Test
     void newVoiceRequestAssemblesProcessesAndCommitsBeforeReturningSuccess() {
@@ -109,7 +111,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             assertThat(count(f)).isEqualTo(1);
             assertThat(upload.closed).isTrue();
             var publicResponse =
-                    new RoleplayTurnResponseMapper((id, audio) -> Optional.empty()).map(result);
+                    new RoleplayTurnResponseMapper((id, audio) -> Optional.empty(), false)
+                            .map(result);
             assertThat(publicResponse.acceptedInput()).isEqualTo(response.canonicalUtterance());
             assertThat(publicResponse.messages().getFirst().text())
                     .isEqualTo(response.response().text());
@@ -143,7 +146,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     new RoleplayTurnResponseMapper(
                                     (id, audio) -> {
                                         throw new AssertionError("Replay must not publish audio");
-                                    })
+                                    },
+                                    false)
                             .map(replay);
             assertThat(publicReplay.replayed()).isTrue();
             assertThat(publicReplay.acceptedInput()).isNull();
@@ -192,7 +196,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     new RoleplayTurnResponseMapper(
                                     (id, audio) -> {
                                         throw new AssertionError("Replay must not publish audio");
-                                    })
+                                    },
+                                    false)
                             .map(replay);
             assertThat(response.acceptedInput()).isNull();
             assertThat(response.messages().getFirst().text()).isEqualTo(original.text());
@@ -467,7 +472,9 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         var turn = UUID.randomUUID();
         var factory =
                 new RoleplayUploadSpoolFactory(
-                        uploadDirectory, new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)));
+                        uploadDirectory,
+                        new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)),
+                        (file, format, limit) -> limit.requireActive());
         var deadline = RoleplayTurnDeadline.start();
         var audio =
                 factory.create(
@@ -496,7 +503,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     service(
                                     workers,
                                     new RoleplayTurnResponseMapper(
-                                            (id, speech) -> Optional.empty()))
+                                            (id, speech) -> Optional.empty(), false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -522,7 +529,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             var missing = new Input(new byte[] {1});
             assertThatThrownBy(
                             () ->
@@ -565,18 +573,19 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
-            assertThatThrownBy(
-                            () ->
-                                    service.submitVoice(
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
+            assertThat(
+                            service.submitVoice(
                                             auth(f),
                                             f.activity,
                                             f.session,
                                             UUID.randomUUID(),
                                             source,
                                             "audio/webm",
-                                            RoleplayTurnDeadline.start()))
-                    .isInstanceOf(RoleplayUploadSpoolFactory.Rejected.class);
+                                            RoleplayTurnDeadline.start())
+                                    .status())
+                    .isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
             assertThat(source.closes).isEqualTo(1);
             assertThat(calls).isEmpty();
             assertThat(count(f)).isZero();
@@ -592,7 +601,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             var first =
                     service.submitVoice(
                             auth(f),
@@ -642,7 +652,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                     service(
                                     workers,
                                     new RoleplayTurnResponseMapper(
-                                            (id, speech) -> Optional.empty()))
+                                            (id, speech) -> Optional.empty(), false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -661,6 +671,81 @@ class RoleplayScopedVoiceTurnIntegrationTest {
     }
 
     @Test
+    void reanalysisCommitsOnlyTheFinalCandidateAndReplaysItAfterPublicationFailure()
+            throws Exception {
+        var f = fixture();
+        var key = UUID.randomUUID();
+        reanalyzeOnce = true;
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            var failing =
+                    service(
+                            workers,
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> {
+                                        throw new IllegalStateException(
+                                                "synthetic publication failure");
+                                    },
+                                    false));
+            assertThatThrownBy(
+                            () ->
+                                    failing.submitVoice(
+                                            auth(f),
+                                            f.activity,
+                                            f.session,
+                                            key,
+                                            new Input(new byte[] {1, 2, 3}),
+                                            "audio/webm",
+                                            RoleplayTurnDeadline.start()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("synthetic publication failure");
+            assertThat(modelRequests)
+                    .extracting(LlmRequest::operation)
+                    .containsExactly(
+                            AiOperation.CAUSE_ANALYSIS, AiOperation.RESPONSE_GENERATION,
+                            AiOperation.RESPONSE_EVALUATION, AiOperation.CAUSE_ANALYSIS,
+                            AiOperation.RESPONSE_GENERATION, AiOperation.RESPONSE_EVALUATION);
+            var mapper = JsonMapper.builder().build();
+            assertThat(
+                            mapper.readTree(modelRequests.get(3).userPrompt())
+                                    .path("retry")
+                                    .path("failed_analysis"))
+                    .isEqualTo(
+                            mapper.readTree(modelRequests.get(1).userPrompt())
+                                    .path("analysis_result"));
+            var rejected = modelRequests.get(1).traceContext().candidateId();
+            var approved = modelRequests.get(4).traceContext().candidateId();
+            assertThat(approved).isNotEqualTo(rejected);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select candidate_id from roleplay_turn where session_id=?",
+                                    UUID.class,
+                                    f.session))
+                    .isEqualTo(approved);
+            assertThat(count(f)).isEqualTo(1);
+            assertSpoolEmpty();
+
+            calls.clear();
+            var restarted =
+                    executor(
+                            workers,
+                            (unused, budget) -> {
+                                throw new AssertionError("Replay must not rebuild context");
+                            },
+                            new InMemoryRoleplayRequestGuard());
+            var replay =
+                    (RoleplayCheckpointedTurnExecutor.Success)
+                            run(restarted, scope(f), key, "a".repeat(64));
+            assertThat(replay.replayed()).isTrue();
+            assertThat(replay.checkpointVersion()).isEqualTo(1);
+            assertThat(((RoleplayTurnOutcome.ApprovedResponse) replay.outcome()).candidateId())
+                    .isEqualTo(approved);
+            assertThat(calls).containsExactly("READ", "GUARD", "LOOKUP", "RELEASE", "CLOSE");
+            assertThat(modelRequests).hasSize(6);
+            assertThat(count(f)).isEqualTo(1);
+        }
+    }
+
+    @Test
     void responsePublicationErrorLeavesCommittedReplayAvailableAndNoTemporaryFile()
             throws Exception {
         var f = fixture();
@@ -674,7 +759,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                     (id, speech) -> {
                                         throw new IllegalStateException(
                                                 "synthetic publication failure");
-                                    }));
+                                    },
+                                    false));
             assertThatThrownBy(
                             () ->
                                     failing.submitVoice(
@@ -698,7 +784,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                             (id, speech) -> {
                                                 throw new AssertionError(
                                                         "No publication on replay");
-                                            }))
+                                            },
+                                            false))
                             .submitVoice(
                                     auth(f),
                                     f.activity,
@@ -730,7 +817,8 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             var service =
                     service(
                             workers,
-                            new RoleplayTurnResponseMapper((id, speech) -> Optional.empty()));
+                            new RoleplayTurnResponseMapper(
+                                    (id, speech) -> Optional.empty(), false));
             assertThatThrownBy(
                             () ->
                                     service.submitVoice(
@@ -755,7 +843,9 @@ class RoleplayScopedVoiceTurnIntegrationTest {
         return new RoleplayVoiceInputService(
                 scopes,
                 new RoleplayUploadSpoolFactory(
-                        uploadDirectory, new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM))),
+                        uploadDirectory,
+                        new RoleplayUploadPolicy(16, Set.of(AudioFormat.WEBM)),
+                        (file, format, limit) -> limit.requireActive()),
                 executor(workers, this::approved),
                 mapper,
                 new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of())));
@@ -910,12 +1000,15 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                         },
                         text -> {
                             calls.add("INPUT");
-                            return new RoleplayInputProcessor.Accepted("친구가 울고 있어");
+                            return new RoleplayInputProcessor.Accepted(
+                                    "친구가 울고 있어",
+                                    new RoleplayInputProcessor.Assessment(0.93, true, true, false));
                         },
                         new RoleplayPromptFactory(mapper, null),
                         new StructuredLlmExecutor(
                                 request -> {
                                     calls.add(request.operation().name());
+                                    modelRequests.add(request);
                                     String json =
                                             switch (request.operation()) {
                                                 case CAUSE_ANALYSIS ->
@@ -926,10 +1019,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                                 case RESPONSE_GENERATION ->
                                                         RoleplayFixtures.candidateJson(
                                                                 "친구는 어떤 기분일까?", "GUIDING_QUESTION");
-                                                case RESPONSE_EVALUATION ->
-                                                        RoleplayFixtures.evaluationJson(
-                                                                "PASS", null, true, 0, "[]",
-                                                                "null");
+                                                case RESPONSE_EVALUATION -> evaluationJson();
                                                 default ->
                                                         throw new AssertionError(
                                                                 "Unexpected operation");
@@ -960,6 +1050,20 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                 }));
         return new RoleplayScopedVoiceTurnExecutor(
                 checkpoints, new RoleplayContextAssembler(source), speech);
+    }
+
+    private String evaluationJson() {
+        if (reanalyzeOnce) {
+            reanalyzeOnce = false;
+            return RoleplayFixtures.evaluationJson(
+                    "REANALYZE",
+                    "CAUSE_ANALYSIS",
+                    false,
+                    0,
+                    "[\"UNSUPPORTED_CAUSE_ANALYSIS\"]",
+                    "{\"keep\":[],\"change\":[\"학습 증거를 다시 확인한다\"],\"avoid\":[],\"required\":[]}");
+        }
+        return RoleplayFixtures.evaluationJson("PASS", null, true, 0, "[]", "null");
     }
 
     private <T> AiCallResult<T> success(T data, AiTraceContext trace, AiOperation op) {

@@ -1,6 +1,6 @@
 # API-CLS-04 · 학급 이름 수정
 
-> 설계 — 2026-10-22 / develop `63e4314`. 설계·미구현. 경로/필드/상태는 제안이며 allowDrafts 기본 차단입니다.
+> 구현 — 2026-11-04 / develop `bab136d` (PR #78 `feature/goal-lineage-edit` 병합). 학급·아동 이름 수정과 목표 조건 정리·모순 거절의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -10,14 +10,16 @@
 | Path | /api/v1/classrooms/{classId} |
 | 서버 주소 | 환경별 origin. /api/v1 중복 금지 |
 | 인증 | 담당 강사 Bearer + CSRF |
-| 성공 | 200 — 설계 예시 |
+| 성공 | 200 |
 | 반환 | ApiResponse<ClassData> |
 | FE 함수 | updateClassroom |
 | 구현·협업 | 배재일 |
 
 ## 2. 용도·중요 규칙
 
-- name 부분 수정 제안; 삭제를 ARCHIVED 보관으로 대체하지 않는다.
+- 학급명만 고칩니다. 화면 시안의 다른 칸(연령·기관·메모 등)은 저장할 곳이 없어 받지 않습니다. 삭제를 ARCHIVED 보관으로 대체하지 않습니다.
+- 학급명 저장 규칙은 학급 생성과 같습니다(빈 값 불가, 최대100자, 보이는 글자 1자 이상, 제어 문자 불가).
+- 학급 삭제와 같은 행 잠금을 잡습니다. 삭제가 먼저 끝났으면 404입니다. 다른 강사의 학급도 없는 학급과 같은 404입니다.
 
 ## 3. 요청
 
@@ -55,7 +57,7 @@
 
 ## 4. 성공 응답
 
-HTTP 200 — 설계 예시.
+HTTP 200.
 
 ~~~json
 {
@@ -84,17 +86,17 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 
 ## 5. 오류·FE 처리
 
-아래 업무 오류도 설계 예시이며 구현 전 합의가 필요합니다.
+현재 업무/공통 오류입니다. message 대신 HTTP status와 code로 분기합니다.
 
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID/Query 형식 |
+| 400 | INVALID_REQUEST | UUID·JSON 형식 |
 | 401 | AUTHENTICATION_REQUIRED | 인증/입장 필요 |
 | 401 | INVALID_TOKEN | 강사 토큰 만료/위조; 입력·토큰 폐기 |
-| 403 | ACCESS_DENIED | 역할 권한 |
+| 403 | ACCESS_DENIED | 강사가 아닌 역할(아동 세션 등) |
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
-| 404 | CLASSROOM_NOT_FOUND | 리소스/소유권 코드 제안 |
-| 422 | VALIDATION_FAILED | 검증 코드 제안 |
+| 404 | CLASSROOM_NOT_FOUND | 없는 학급, 다른 강사의 학급, 이미 삭제됨 |
+| 422 | VALIDATION_FAILED | 빈 값, 100자 초과, 보이는 글자 없음·제어 문자. `fieldErrors`로 칸 표시 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 
 공통 오류 envelope 예시(message/traceId는 동적):
@@ -116,7 +118,7 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 
 ## 6. 복사 가능한 TypeScript
 
-공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [draft-endpoints.ts](../examples/draft-endpoints.ts)를 같은 폴더 구조로 복사합니다. allowDrafts는 Mock에서만 켭니다.
+공통 [api-client.ts](../examples/api-client.ts), [types.ts](../examples/types.ts), [endpoints.ts](../examples/endpoints.ts)를 같은 폴더 구조로 복사합니다. 실서버의 origin·쿠키·권한 설정은 별도로 확인합니다.
 
 ### 요청·응답 타입
 
@@ -164,7 +166,6 @@ export function updateClassroom(
     auth: "instructor",
     expectedStatuses: [200],
     signal: options.signal,
-    draft: true,
     body: args.body
   });
 }
@@ -173,7 +174,7 @@ export function updateClassroom(
 ### 사용 예시
 
 ~~~ts
-import { updateClassroom } from "./draft-endpoints.ts";
+import { updateClassroom } from "./endpoints.ts";
 
 const response = await updateClassroom(api, {
   "classId": "11000000-0000-4000-8000-000000000001",
@@ -187,7 +188,7 @@ const data = response.data;
 
 ## 7. cURL 계약 확인
 
-[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 설계 경로는 실제 서버로 호출하지 않고 Mock에서 확인합니다.
+[공통 규칙](../integration-guide.md)에 따라 CSRF·쿠키·origin을 준비합니다. 경로 변수는 해당 UUID로 설정합니다. 실제 변경이 발생하는 요청이므로 테스트 데이터로 확인합니다.
 
 ~~~bash
 curl -i -X PATCH "$NEURINGO_API_ORIGIN/api/v1/classrooms/${classId}" \
@@ -202,6 +203,6 @@ curl -i -X PATCH "$NEURINGO_API_ORIGIN/api/v1/classrooms/${classId}" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-01`
-- 현재 서버 Controller가 없는 설계 계약입니다. 구현 PR에서 경로·권한·DTO를 확정한 뒤 연결합니다.
+- 코드 근거: [Controller](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/develop/backend/src/main/java/com/neuringo/neuringobe/classroom/controller/ClassroomController.java) · [요청 DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/develop/backend/src/main/java/com/neuringo/neuringobe/classroom/dto/UpdateClassroomRequest.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

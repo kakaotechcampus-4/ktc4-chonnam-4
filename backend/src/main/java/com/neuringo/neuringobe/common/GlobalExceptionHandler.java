@@ -39,13 +39,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         return ResponseEntity.status(ex.getStatus())
+                .headers(ex.getHeaders())
                 .body(
                         ApiErrorResponse.of(
                                 ex.getStatus().value(),
                                 ex.getCode(),
                                 ex.getMessage(),
                                 request.getRequestURI(),
-                                TraceIds.newTraceId()));
+                                TraceIds.newTraceId(),
+                                ex.getFieldErrors()));
     }
 
     // 본문만 만들고 응답은 handleExceptionInternal 에 맡긴다(응답 전송 여부 확인을 한곳에서 하기 위함).

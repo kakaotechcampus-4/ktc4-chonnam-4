@@ -1,0 +1,451 @@
+openapi: 3.1.0
+info:
+  title: 느링고 학습 리포트·추천·후속 난이도 — 데이터 계약
+  version: 0.1.0
+  description: |
+    역할극이 끝난 뒤 학습 기록에서 리포트·추천·다음 난이도가 만들어지기까지 오가는 데이터의 스키마다.
+    설명 글은 backend/docs/learning-report-loop.md 에 있다.
+
+    **아직 외부 HTTP 엔드포인트가 아니다.** `/internal/**` 은 서버 안에서 부르는 메서드를, `/llm/**` 와 `/embeddings` 는
+    엘리스 ML API(OpenAI 호환)로 나가는 호출을 같은 모양으로 적은 것이다. 실제 클래스·메서드는 각 동작의 `x-implemented-by` 에 있다.
+    강사 화면용 공개 API 는 contracts/api/v1/reports-recommendations/ 의 설계 초안을 따른다.
+
+    개인정보: 아동 이름·표준 발화 원문·요청 ID 는 `/llm/**` 메시지에 들어가지 않는다. 임베딩하는 문장은 학습 목표 제목뿐이다.
+tags:
+  - name: difficulty
+    description: 후속 역할극 난이도(03 VS-016)
+  - name: report
+    description: 학습 리포트(03 VS-014)
+  - name: recommendation
+    description: 다음 목표 추천(03 VS-015)
+  - name: llm
+    description: 엘리스 ML API 로 나가는 LLM 호출(Chat Completions 의 user 메시지와 응답 본문)
+paths:
+  /internal/difficulty/follow-up:
+    post:
+      tags: [difficulty]
+      summary: 직전 완료 역할극 한 건으로 다음 난이도를 정한다
+      operationId: decideFollowUpDifficulty
+      x-implemented-by: scenario.domain.FollowUpDifficultyPolicy#decide
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FollowUpDifficultyRequest' }
+      responses:
+        '200':
+          description: 결정 결과. 계산할 수 없어도 오류 대신 KEEP + CALCULATION_FAILED 를 돌려준다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowUpDifficultyDecision' }
+  /internal/reports/compose:
+    post:
+      tags: [report]
+      summary: 지표 계산 → 프롬프트 입력 조립 → 생성·평가 루프
+      operationId: composeLearningReport
+      x-implemented-by: report.application.LearningReportComposer#compose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+      responses:
+        '200':
+          description: 지표는 언제나 있다. result 가 Completed 일 때만 강사 화면에 보인다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComposedReport' }
+  /internal/recommendations/compose:
+    post:
+      tags: [recommendation]
+      summary: 추천 후보를 고르고 확장 추천에 다음 목표 후보를 붙인다
+      operationId: composeRecommendations
+      x-implemented-by: report.application.RecommendationComposer#compose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecommendationRequest' }
+      responses:
+        '200':
+          description: 유형마다 최대 한 개, RecommendationRules.order 순서
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Recommendation' }
+  /llm/report-generation:
+    post:
+      tags: [llm]
+      summary: 리포트 초안 작성(AiOperation REPORT_GENERATION)
+      operationId: reportGeneration
+      description: |
+        실제로는 `POST {ML API 모델 주소}/v1/chat/completions` 다. 엘리스 게이트웨이는 스트리밍이 아닌 응답의 출력을 2,000토큰까지만 허용하므로
+        max_completion_tokens 는 2,000 이하로 보낸다(추론 토큰 포함). system 메시지는 prompts/report/v2/report-generation.md,
+        user 메시지는 아래 JSON 한 개다. 응답 choices[0].message.content 가 ReportDraft JSON 이어야 한다(```json 코드 블록은 벗긴다).
+      x-implemented-by: ai.application.prompt.LearningReportPromptFactory#generation
+      x-prompt-version: report-generation/v2
+      x-response-schema-version: report-draft/v1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportGenerationMessage' }
+      responses:
+        '200':
+          description: 형식이 틀리면 INVALID_OUTPUT_FORMAT 으로 보고 한 번 더 부른다
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportDraft' }
+  /llm/report-review:
+    post:
+      tags: [llm]
+      summary: 리포트 초안 평가(AiOperation REPORT_REVIEW)
+      operationId: reportReview
+      description: system 메시지는 prompts/report/v3/report-review.md. 평가 모델은 초안을 고쳐 쓰지 않고, 항목마다 확인(item_checks)한 뒤 점수를 매긴다.
+      x-implemented-by: ai.application.prompt.LearningReportPromptFactory#review
+      x-prompt-version: report-review/v3
+      x-response-schema-version: report-review/v2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportReviewMessage' }
+      responses:
+        '200':
+          description: PASS 인데 실패 코드가 있거나, REVISE 인데 실패 코드·고칠 점이 없으면 형식 실패다
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportReview' }
+  /embeddings:
+    post:
+      tags: [recommendation]
+      summary: 목표 제목 임베딩(OpenAI 호환, text-embedding-3-small)
+      operationId: embedGoalTitle
+      description: 지금은 측정 도구(HttpTextEmbedder)만 부른다. 운영은 GoalSimilaritySearch 구현(pgvector)이 같은 호출을 쓴다.
+      x-implemented-by: report.application.similarity.TextEmbedder#embed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model: { type: string, example: text-embedding-3-small }
+                input: { type: string, example: 친구의 감정 이유 추측하기 }
+      responses:
+        '200':
+          description: 1,536 차원 벡터
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        embedding: { type: array, items: { type: number } }
+                  usage:
+                    type: object
+                    properties:
+                      prompt_tokens: { type: integer }
+components:
+  schemas:
+    SupportLevel:
+      type: string
+      enum: [S0, S1, S2, S3]
+      description: S0 열린 질문, S1 단서, S2 두 선택지, S3 답 알려 주기
+    ScenarioLevel:
+      type: string
+      enum: [L1, L2, L3]
+    GoalOutcome:
+      type: object
+      description: 완료한 역할극 한 건의 목표 하나 결과. 제외 결과는 점수·추천 근거에서 빠진다.
+      required: [goalId, startSupport, finalSupport, result]
+      properties:
+        goalId: { type: string, format: uuid }
+        startSupport: { $ref: '#/components/schemas/SupportLevel' }
+        finalSupport: { $ref: '#/components/schemas/SupportLevel' }
+        result:
+          type: string
+          enum: [REACHED, NOT_REACHED, EXCLUDED_TECHNICAL_ERROR, EXCLUDED_INTERRUPTED, EXCLUDED_REFUSED]
+    GoalScoreRate:
+      type: object
+      description: |
+        VS-016 점수율. 목표 하나는 0~6점(시작 단계에서 S3 까지 남은 단계 수로 정규화한 값 × 6)이고 ratio = scaledPoints / (6 × goalCount).
+        50%·80% 경계는 정수로 비교한다.
+      properties:
+        scaledPoints: { type: integer, minimum: 0, example: 8 }
+        goalCount: { type: integer, minimum: 0, example: 2 }
+    FollowUpDifficultyRequest:
+      type: object
+      required: [currentLevel, previousRoleplayGoals, previousConsecutiveCandidates]
+      properties:
+        currentLevel: { $ref: '#/components/schemas/ScenarioLevel' }
+        previousRoleplayGoals:
+          type: array
+          items: { $ref: '#/components/schemas/GoalOutcome' }
+        previousConsecutiveCandidates: { type: integer, minimum: 0, example: 1 }
+    FollowUpDifficultyDecision:
+      type: object
+      properties:
+        previousLevel: { $ref: '#/components/schemas/ScenarioLevel' }
+        nextLevel: { $ref: '#/components/schemas/ScenarioLevel' }
+        direction: { type: string, enum: [LOWER, KEEP, RAISE] }
+        reason:
+          type: string
+          enum:
+            - SCORE_BELOW_THRESHOLD
+            - ANSWER_OR_MISSED_MAJORITY
+            - SCORE_IN_KEEP_RANGE
+            - HIGH_SCORE_WITH_ANSWER_OR_MISSED
+            - UPGRADE_CANDIDATE_PENDING
+            - UPGRADE_CANDIDATE_CONFIRMED
+            - FAST_UPGRADE
+            - ALREADY_LOWEST
+            - ALREADY_HIGHEST
+            - INSUFFICIENT_VALID_GOALS
+            - CALCULATION_FAILED
+        scoreRate: { $ref: '#/components/schemas/GoalScoreRate' }
+        consecutiveUpgradeCandidates: { type: integer, description: 다음 결정의 입력 }
+        policyVersion: { type: string, example: FOLLOW_UP_ROLEPLAY_V1 }
+    QuizEvidence:
+      type: object
+      properties:
+        validQuestionCount: { type: integer, example: 3 }
+        correctQuestionCount: { type: integer, example: 2 }
+        resolvedAfterHintCount: { type: integer, example: 1 }
+    GoalEvidence:
+      type: object
+      description: 목표 결과와 원인 판단에서 뽑은 짧은 관찰 문장. 표준 발화 원문은 담지 않는다.
+      properties:
+        outcome: { $ref: '#/components/schemas/GoalOutcome' }
+        goalTitle: { type: string, example: 감정의 이유 말하기 }
+        observations: { type: array, items: { type: string }, example: [상황 단서를 들은 뒤 이유를 말함] }
+        effectiveSupports: { type: array, items: { type: string }, example: [상황 단서] }
+    DifficultyBasis:
+      type: object
+      properties:
+        decisionType: { type: string, enum: [INITIAL, FOLLOW_UP] }
+        scenarioLevel: { $ref: '#/components/schemas/ScenarioLevel' }
+        reasonCode: { type: string, example: SCORE_IN_KEEP_RANGE }
+        policyVersion: { type: string, example: FOLLOW_UP_ROLEPLAY_V1 }
+    ReportEvidence:
+      type: object
+      description: quiz 와 goals 중 하나는 있어야 한다
+      properties:
+        quiz: { $ref: '#/components/schemas/QuizEvidence' }
+        goals: { type: array, items: { $ref: '#/components/schemas/GoalEvidence' } }
+        technicalExclusions: { type: array, items: { type: string }, example: [STT_LOW_CONFIDENCE] }
+        difficulty: { $ref: '#/components/schemas/DifficultyBasis' }
+    ReportRequest:
+      type: object
+      required: [requestId, activityId, childId, evidence]
+      properties:
+        requestId: { type: string, format: uuid, description: 추적 문맥에만 쓴다 }
+        activityId: { type: string, format: uuid }
+        classId: { type: string, format: uuid }
+        childId: { type: string, format: uuid, description: 추적 문맥에만 쓴다. 프롬프트에 넣지 않는다 }
+        evidence: { $ref: '#/components/schemas/ReportEvidence' }
+    Ratio:
+      type: object
+      description: 0~1 지표. 분모가 0 이면 지표 자체가 null 이다.
+      properties:
+        numerator: { type: integer, example: 2 }
+        denominator: { type: integer, example: 3 }
+    LearningMetrics:
+      type: object
+      properties:
+        quizAccuracy: { $ref: '#/components/schemas/Ratio' }
+        quizHintRecovery: { $ref: '#/components/schemas/Ratio' }
+        roleplayScore: { $ref: '#/components/schemas/Ratio' }
+        goalAchievement: { $ref: '#/components/schemas/Ratio' }
+        independentAchievement: { $ref: '#/components/schemas/Ratio' }
+        validGoalCount: { type: integer }
+        excludedGoalCount: { type: integer }
+        technicalExclusionCount: { type: integer }
+    Evidence:
+      type: object
+      required: [id, kind, text]
+      properties:
+        id: { type: string, pattern: '^E[0-9]+$', example: E3 }
+        kind: { type: string, enum: [QUIZ_RESULT, GOAL_RESULT, OBSERVATION, EFFECTIVE_SUPPORT, TECHNICAL] }
+        goal: { type: string, description: 목표 제목. 목표와 상관없는 근거는 없다 }
+        text: { type: string, example: 상황 단서를 들은 뒤 이유를 말함 }
+        goal_status:
+          type: string
+          description: 근거가 속한 목표의 결과. 목표와 상관없는 근거(퀴즈·기술 오류 코드)에는 없다. 규칙 검사가 근거를 맞는 칸에 썼는지 볼 때 쓴다.
+          enum: [NO_SUPPORT_NEEDED, REACHED_AT_START, EXTRA_SUPPORT, ANSWER_GIVEN, NOT_REACHED, EXCLUDED]
+    ReportGenerationMessage:
+      type: object
+      required: [evidence, metrics, limits]
+      properties:
+        evidence: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+        metrics:
+          type: object
+          additionalProperties: { type: number, minimum: 0, maximum: 1 }
+          example: { quiz_accuracy: 0.667, roleplay_score: 0.667, goal_achievement: 1.0 }
+        difficulty:
+          type: object
+          properties:
+            decision_type: { type: string }
+            scenario_level: { type: string }
+            reason_code: { type: string }
+        limits:
+          type: object
+          properties:
+            summary_max_chars: { type: integer, example: 120 }
+            item_max_chars: { type: integer, example: 80 }
+            items_per_section_max: { type: integer, example: 3 }
+        retry:
+          type: object
+          description: 다시 쓸 때만 있다
+          properties:
+            previous_draft: { $ref: '#/components/schemas/ReportDraft' }
+            failure_codes: { type: array, items: { $ref: '#/components/schemas/ReportCode' } }
+            revision_instruction: { $ref: '#/components/schemas/RevisionInstruction' }
+    ReportReviewMessage:
+      allOf:
+        - $ref: '#/components/schemas/ReportGenerationMessage'
+        - type: object
+          required: [draft]
+          properties:
+            draft: { $ref: '#/components/schemas/ReportDraft' }
+    ReportItem:
+      type: object
+      required: [text, evidence_ids]
+      properties:
+        text: { type: string, maxLength: 80, example: 상황 단서를 듣고 이유를 말했어요 }
+        evidence_ids: { type: array, minItems: 1, items: { type: string }, example: [E3, E4] }
+    ReportDraft:
+      type: object
+      required: [summary, observations, effective_supports, difficult_points]
+      properties:
+        summary: { type: string, maxLength: 120 }
+        observations: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/ReportItem' } }
+        effective_supports: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/ReportItem' } }
+        difficult_points:
+          type: array
+          maxItems: 3
+          description: TECHNICAL 근거를 달 수 없다
+          items: { $ref: '#/components/schemas/ReportItem' }
+    ReportCode:
+      type: string
+      enum:
+        - UNKNOWN_EVIDENCE
+        - MISSING_EVIDENCE
+        - UNGROUNDED_CLAIM
+        - DIAGNOSTIC_LANGUAGE
+        - TECHNICAL_ERROR_AS_DIFFICULTY
+        - MISPLACED_ITEM
+        - NOT_ACTIONABLE
+        - HARD_TO_READ
+        - TOO_LONG
+    RevisionInstruction:
+      type: object
+      properties:
+        keep: { type: array, items: { type: string } }
+        change: { type: array, items: { type: string } }
+        avoid: { type: array, items: { type: string } }
+        required: { type: array, items: { type: string } }
+    ReportReview:
+      type: object
+      required: [decision, scores, failure_codes]
+      properties:
+        item_checks:
+          type: array
+          description: 점수 전에 항목마다 확인한 결과(report-review/v2). 하나라도 false 면 PASS 여도 통과하지 않는다.
+          items:
+            type: object
+            required: [section, index, grounded, right_section]
+            properties:
+              section: { type: string, enum: [observations, effective_supports, difficult_points] }
+              index: { type: integer, minimum: 0 }
+              grounded: { type: boolean, description: 단 근거가 그 문장을 뒷받침하는가 }
+              right_section: { type: boolean, description: 그 칸에 맞는 내용인가 }
+        decision: { type: string, enum: [PASS, REVISE] }
+        scores:
+          type: object
+          description: 기준마다 0~4 정수. 루프는 PASS 이고 item_checks 가 모두 true 이고 모든 점수가 3 이상일 때만 통과시킨다.
+          properties:
+            grounded: { type: integer, minimum: 0, maximum: 4 }
+            non_diagnostic: { type: integer, minimum: 0, maximum: 4 }
+            technical_separation: { type: integer, minimum: 0, maximum: 4 }
+            actionable: { type: integer, minimum: 0, maximum: 4 }
+            readable: { type: integer, minimum: 0, maximum: 4 }
+        failure_codes: { type: array, items: { $ref: '#/components/schemas/ReportCode' } }
+        revision_instruction:
+          description: 네 칸 모두 문자열 배열. 문장 하나나 문자열 칸으로 와도 출력 검사가 목록으로 맞춘다(v2.1).
+          oneOf:
+            - $ref: '#/components/schemas/RevisionInstruction'
+            - type: 'null'
+    ReportRound:
+      type: object
+      description: 루프 한 바퀴의 기록. 초안 문장은 담지 않는다.
+      properties:
+        round: { type: integer, minimum: 1, maximum: 3 }
+        outcome: { type: string, enum: [CALL_FAILED, RULES_REJECTED, REVIEW_REJECTED, PASSED] }
+        failureCodes: { type: array, items: { type: string } }
+        scores: { description: 평가까지 갔을 때만, $ref: '#/components/schemas/ReportReview/properties/scores' }
+    LearningReportResult:
+      oneOf:
+        - type: object
+          title: Completed
+          properties:
+            draft: { $ref: '#/components/schemas/ReportDraft' }
+            review: { $ref: '#/components/schemas/ReportReview' }
+            rounds: { type: array, items: { $ref: '#/components/schemas/ReportRound' } }
+        - type: object
+          title: Failed
+          properties:
+            reason: { type: string, enum: [QUALITY_LIMIT_REACHED, CALL_LIMIT_REACHED, NON_RETRYABLE_FAILURE] }
+            operation: { type: string, enum: [REPORT_GENERATION, REPORT_REVIEW] }
+            rounds: { type: array, items: { $ref: '#/components/schemas/ReportRound' } }
+    ComposedReport:
+      type: object
+      properties:
+        metrics: { $ref: '#/components/schemas/LearningMetrics' }
+        result: { $ref: '#/components/schemas/LearningReportResult' }
+    RecommendationRequest:
+      type: object
+      required: [classId, currentGoalId, currentGoalText, goals]
+      properties:
+        classId: { type: string, format: uuid }
+        currentGoalId: { type: string, format: uuid }
+        currentGoalText: { type: string, example: 감정의 이유 말하기 }
+        completedGoalIds: { type: array, items: { type: string, format: uuid } }
+        goals: { type: array, items: { $ref: '#/components/schemas/GoalEvidence' } }
+    RecommendationCandidate:
+      type: object
+      properties:
+        type: { type: string, enum: [REINFORCE, REPEAT, APPLY, EXTEND], description: 보완·반복·적용·확장 }
+        reason:
+          type: string
+          enum:
+            - GOAL_NOT_REACHED
+            - GOAL_NEEDED_ANSWER
+            - REACHED_WITH_EXTRA_SUPPORT
+            - REACHED_WITHOUT_EXTRA_SUPPORT
+            - ALL_GOALS_WITHOUT_EXTRA_SUPPORT
+            - NOT_ENOUGH_EVIDENCE
+        basis: { description: 바탕 목표. 확장·근거 부족이면 null, $ref: '#/components/schemas/GoalEvidence' }
+        evidence: { type: array, items: { type: string } }
+        sufficiency: { type: string, enum: [SUFFICIENT, LIMITED, INSUFFICIENT] }
+    SimilarGoal:
+      type: object
+      properties:
+        goalId: { type: string, format: uuid }
+        title: { type: string }
+        similarity: { type: number, minimum: -1, maximum: 1, description: 코사인 유사도 }
+    Recommendation:
+      type: object
+      properties:
+        candidate: { $ref: '#/components/schemas/RecommendationCandidate' }
+        suggestedGoal:
+          description: 확장 추천에서 유사도 0.5 이상 0.95 미만인 가장 가까운 목표. 없으면 null
+          oneOf:
+            - $ref: '#/components/schemas/SimilarGoal'
+            - type: 'null'

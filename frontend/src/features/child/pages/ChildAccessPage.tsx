@@ -6,8 +6,15 @@ import { cn } from "@/lib/utils"
 import { ChildButton } from "../components/ChildButton"
 import { Character } from "../components/Character"
 import { SpeechBubble } from "../components/SpeechBubble"
-import { ErrorState, ExpiredState, NetworkState, StateDialog } from "../components/state"
-import { ACCESS_CODE_EXPIRED, ChildApiError, INVALID_ACCESS_CODE, NETWORK_ERROR, verifyAccessCode } from "../api"
+import { ErrorState, ExpiredState, NetworkState, StateDialog, TooManyTriesState } from "../components/state"
+import {
+  ACCESS_CODE_EXPIRED,
+  ChildApiError,
+  INVALID_ACCESS_CODE,
+  NETWORK_ERROR,
+  TOO_MANY_REQUESTS,
+  verifyAccessCode,
+} from "../api"
 import { useChildSessionStore } from "../store/childSessionStore"
 
 const CODE_LENGTH = 4
@@ -51,8 +58,10 @@ function ChildAccessPage() {
   const isInvalid = isApiError(error, INVALID_ACCESS_CODE)
   const isExpired = isApiError(error, ACCESS_CODE_EXPIRED)
   const isNetworkError = isApiError(error, NETWORK_ERROR)
+  // 입장 시도가 너무 많아 막힌 경우(429). nginx 가 막으면 본문이 HTML 이라 code 가 없으므로 status 로 본다.
+  const isRateLimited = error instanceof ChildApiError && error.status === TOO_MANY_REQUESTS
   // CSRF 거부·서버 오류 등은 아이 잘못이 아니므로 "틀린 코드"로 보여 주지 않는다 (API-IAM-08).
-  const isOtherError = error !== null && !isInvalid && !isExpired && !isNetworkError
+  const isOtherError = error !== null && !isInvalid && !isExpired && !isNetworkError && !isRateLimited
   const canSubmit = code.length === CODE_LENGTH && !isPending
 
   const pressDigit = (digit: string) => {
@@ -80,7 +89,7 @@ function ChildAccessPage() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // 오류 모달이 떠 있는 동안에는 뒤 화면 입력을 받지 않는다.
-      if (isExpired || isNetworkError || isOtherError) return
+      if (isExpired || isNetworkError || isRateLimited || isOtherError) return
       if (/^[0-9]$/.test(event.key)) pressDigit(event.key)
       else if (event.key === "Backspace") pressBackspace()
       // 포커스된 키패드 버튼에서 Enter를 누르면 버튼 클릭이 따로 처리되므로 입장 요청은 보내지 않는다.
@@ -162,6 +171,13 @@ function ChildAccessPage() {
       </StateDialog>
       <StateDialog open={isNetworkError}>
         <NetworkState onRetry={() => enter(code)} />
+      </StateDialog>
+      {/* 막힌 동안에는 다시 보내지 않는다. 기다린 뒤에도 입력한 코드는 그대로 두고 같은 코드로 한 번 보낸다. */}
+      <StateDialog open={isRateLimited}>
+        <TooManyTriesState
+          waitSeconds={error instanceof ChildApiError ? error.retryAfterSeconds : undefined}
+          onRetry={() => enter(code)}
+        />
       </StateDialog>
       <StateDialog open={isOtherError}>
         <ErrorState onRetry={() => enter(code)} />

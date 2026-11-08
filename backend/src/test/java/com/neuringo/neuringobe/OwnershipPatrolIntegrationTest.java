@@ -41,6 +41,9 @@ class OwnershipPatrolIntegrationTest {
     private static final Map<String, String> NOT_INSTRUCTOR_OWNED =
             Map.ofEntries(
                     Map.entry("GET /api/v1/csrf", "공개: CSRF 토큰"),
+                    Map.entry(
+                            "GET /api/v1/scenario-approvals",
+                            "내 학급의 활동만 모은다. 다른 강사 활동이 안 보이는지는 퀴즈 흐름 테스트에서 본다"),
                     Map.entry("POST /api/v1/users", "공개: 가입"),
                     Map.entry("POST /api/v1/auth/sessions", "공개: 로그인"),
                     Map.entry("GET /api/v1/auth/session", "자기 세션만 본다"),
@@ -63,10 +66,12 @@ class OwnershipPatrolIntegrationTest {
     private static final Map<String, String> CHECKED =
             Map.ofEntries(
                     Map.entry("GET /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
+                    Map.entry("PATCH /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("DELETE /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
                     Map.entry("POST /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
+                    Map.entry("PATCH /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
                     Map.entry("DELETE /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
                     Map.entry("POST /api/v1/children/{childId}/access-codes", "CHILD_NOT_FOUND"),
                     Map.entry("GET /api/v1/children/{childId}/activities", "CHILD_NOT_FOUND"),
@@ -76,6 +81,13 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("POST /api/v1/activities", "CHILD_NOT_FOUND"),
                     Map.entry("GET /api/v1/activities/{activityId}", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
+                            "POST /api/v1/activities/{activityId}/scenario-review",
+                            "ACTIVITY_NOT_FOUND"),
+                    Map.entry("PUT /api/v1/activities/{activityId}/scenario", "ACTIVITY_NOT_FOUND"),
+                    Map.entry(
+                            "DELETE /api/v1/activities/{activityId}/scenario-review",
+                            "ACTIVITY_NOT_FOUND"),
+                    Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-items", "ACTIVITY_NOT_FOUND"),
                     Map.entry(
                             "GET /api/v1/activities/{activityId}/quiz-result",
@@ -84,6 +96,24 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry(
                             "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                             "ACTIVITY_QUIZ_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/activities/{activityId}/learning-record",
+                            "LEARNING_RECORD_NOT_FOUND"),
+                    Map.entry("GET /api/v1/learning-records", "CHILD_NOT_FOUND"),
+                    // 학습 기록·추천 ID 는 역할극을 마쳐야 생겨서 이 고정 자원에는 없다. 남의 기록·추천을 숨기는 것은
+                    // LearningReportApiIntegrationTest 가 실제 완료 기록으로 확인한다.
+                    Map.entry(
+                            "GET /api/v1/learning-records/{recordId}/recommendations",
+                            "LEARNING_RECORD_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/recommendations/{recommendationId}",
+                            "RECOMMENDATION_NOT_FOUND"),
+                    Map.entry(
+                            "PATCH /api/v1/recommendations/{recommendationId}",
+                            "RECOMMENDATION_NOT_FOUND"),
+                    Map.entry(
+                            "GET /api/v1/children/{childId}/roleplay-difficulty",
+                            "CHILD_NOT_FOUND"),
                     // 목록: B 에게 A 의 학급이 보이지 않는다(아래 listsOnlyOwnClassrooms).
                     Map.entry("GET /api/v1/classrooms", "LIST"));
 
@@ -194,6 +224,11 @@ class OwnershipPatrolIntegrationTest {
     static Stream<Arguments> requests() {
         return Stream.of(
                 get("GET /api/v1/classrooms/{classId}", "/api/v1/classrooms/%s", Owned::classId),
+                patch(
+                        "PATCH /api/v1/classrooms/{classId}",
+                        "/api/v1/classrooms/%s",
+                        Owned::classId,
+                        "{\"name\":\"바꾼 학급\"}"),
                 delete(
                         "DELETE /api/v1/classrooms/{classId}",
                         "/api/v1/classrooms/%s",
@@ -208,6 +243,11 @@ class OwnershipPatrolIntegrationTest {
                         Owned::classId,
                         "{\"displayName\":\"끼어든 아동\"}"),
                 get("GET /api/v1/children/{childId}", "/api/v1/children/%s", Owned::childId),
+                patch(
+                        "PATCH /api/v1/children/{childId}",
+                        "/api/v1/children/%s",
+                        Owned::childId,
+                        "{\"displayName\":\"바꾼 아동\"}"),
                 delete("DELETE /api/v1/children/{childId}", "/api/v1/children/%s", Owned::childId),
                 post(
                         "POST /api/v1/children/{childId}/access-codes",
@@ -244,6 +284,39 @@ class OwnershipPatrolIntegrationTest {
                         "GET /api/v1/activities/{activityId}",
                         "/api/v1/activities/%s",
                         Owned::activityId),
+                post(
+                        "POST /api/v1/activities/{activityId}/scenario-review",
+                        "/api/v1/activities/%s/scenario-review",
+                        Owned::activityId,
+                        "{\"action\":\"START_OR_RESUME\"}"),
+                Arguments.of(
+                        "PUT /api/v1/activities/{activityId}/scenario",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.put()
+                                                        .uri(
+                                                                "/api/v1/activities/%s/scenario"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"reviewId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"revision\":1,\"scenarioId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"scenarioVersion\":1}")),
+                Arguments.of(
+                        "DELETE /api/v1/activities/{activityId}/scenario-review",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.delete()
+                                                        .uri(
+                                                                "/api/v1/activities/%s/scenario-review"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"reviewId\":\""
+                                                        + UUID.randomUUID()
+                                                        + "\",\"revision\":1}")),
                 get(
                         "GET /api/v1/activities/{activityId}/quiz-items",
                         "/api/v1/activities/%s/quiz-items",
@@ -259,7 +332,38 @@ class OwnershipPatrolIntegrationTest {
                 get(
                         "GET /api/v1/activity-quiz-items/{activityQuizId}/attempt",
                         "/api/v1/activity-quiz-items/%s/attempt",
-                        Owned::activityQuizId));
+                        Owned::activityQuizId),
+                get(
+                        "GET /api/v1/activities/{activityId}/learning-record",
+                        "/api/v1/activities/%s/learning-record",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/learning-records",
+                        "/api/v1/learning-records?childId=%s",
+                        Owned::childId),
+                get(
+                        "GET /api/v1/learning-records/{recordId}/recommendations",
+                        "/api/v1/learning-records/%s/recommendations",
+                        Owned::activityId),
+                get(
+                        "GET /api/v1/recommendations/{recommendationId}",
+                        "/api/v1/recommendations/%s",
+                        Owned::activityId),
+                Arguments.of(
+                        "PATCH /api/v1/recommendations/{recommendationId}",
+                        (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                                (t, ids) ->
+                                        t.send(
+                                                t.mvc.patch()
+                                                        .uri(
+                                                                "/api/v1/recommendations/%s"
+                                                                        .formatted(
+                                                                                ids.activityId())),
+                                                "{\"decision\":\"DEFER\"}")),
+                get(
+                        "GET /api/v1/children/{childId}/roleplay-difficulty",
+                        "/api/v1/children/%s/roleplay-difficulty",
+                        Owned::childId));
     }
 
     private static Arguments get(
@@ -284,6 +388,14 @@ class OwnershipPatrolIntegrationTest {
                 endpoint,
                 (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
                         (t, ids) -> t.send(t.mvc.post().uri(uri.formatted(id.apply(ids))), json));
+    }
+
+    private static Arguments patch(
+            String endpoint, String uri, java.util.function.Function<Owned, UUID> id, String json) {
+        return Arguments.of(
+                endpoint,
+                (BiFunction<OwnershipPatrolIntegrationTest, Owned, MvcTestResult>)
+                        (t, ids) -> t.send(t.mvc.patch().uri(uri.formatted(id.apply(ids))), json));
     }
 
     /** 강사 B 로 변경 요청을 보낸다. 프론트처럼 CSRF 쿠키·헤더와 재전송 방지 키를 싣는다. */

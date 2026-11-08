@@ -61,7 +61,7 @@ tasks.named('jacocoTestReport') {
 // backend/.env.local 이 있으면 KEY=VALUE 를 환경변수로 넣는다(.gitignore 의 .env.* 라 커밋되지 않는다).
 // 셸에 값이 있는 환경변수가 우선한다(빈 값은 없는 것으로 본다). Spring 앱 실행(bootRun)에는 쓰이지 않는다.
 // 값은 출력하지 않고 읽은 이름만 출력한다. Windows 콘솔에서 깨지지 않게 로그는 영어로 쓴다.
-def loadEnvLocal = { JavaExec task ->
+def loadEnvLocal = { task ->
     def envFile = file('.env.local')
     task.doFirst {
         if (!envFile.isFile()) {
@@ -118,6 +118,61 @@ tasks.register('scenarioEval', JavaExec) {
     description = '시나리오 생성 프롬프트를 고정 강사 입력으로 반복 실행해 계약 검사 통과율·지연·비용을 잰다'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.neuringo.neuringobe.ai.eval.ScenarioEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 실제 ML API(엘리스)로 역할극 턴을 HTTP → DB → 모델까지 돌리는 통합 실측. 비용이 들어 CI 빌드에는 들어가지 않는다(ML_API_REAL 일 때만 돈다).
+// 예: ./gradlew mlApiTest -Pmlapi.model=MINI41 -Pmlapi.personas=steady,strong,unsure -Pmlapi.repeats=1
+//     결과는 build/mlapi-it/<run>/summary.md. -Pmlapi.* 는 시스템 속성으로 넘긴다(RealMlApiSettings).
+tasks.register('mlApiTest', Test) {
+    group = 'verification'
+    description = '실제 ML API 로 역할극 턴을 끝까지 돌려 연동 오류(형식 실패·잘림·시간 초과·응답 계약)를 모은다'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching '*RealMlApiRoleplayIntegrationTest' }
+    environment 'ML_API_REAL', 'true'
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    project.properties.findAll { it.key.startsWith('mlapi.') }.each { systemProperty it.key, it.value }
+    outputs.upToDateWhen { false }
+    testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
+    loadEnvLocal(it)
+}
+
+// 학습 리포트 생성·평가 루프 실측(backend/docs/learning-report-loop.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
+// 모델별 주소·ID·단가(MODEL_{이름}_URL·_ID·_PRICE)는 .env.local 에서 읽는다.
+// 예: ./gradlew reportEval --args="--provider openai --gen haiku55 --review argon4 --repeats 2"
+tasks.register('reportEval', JavaExec) {
+    group = 'verification'
+    description = '학습 리포트 회귀 세트로 통과율·바퀴 수·평가 점수·비용과 목표 유사도를 잰다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ReportEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 역할극 다회차 시뮬레이션. 합성 아동에게 역할극을 여러 번 시켜 목표별 결과·다음 난이도·추천의 흐름을 본다(LLM 없음, --report 때만 상세 시드 리포트).
+// 예: ./gradlew roleplaySim --args="--seeds 30 --sessions 8"
+tasks.register('roleplaySim', JavaExec) {
+    group = 'verification'
+    description = '합성 아동 역할극 다회차로 다음 난이도·추천 흐름을 본다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.sim.RoleplaySimMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 학습 리포트 PoC 화면. 127.0.0.1:8787 에서 회귀 사례 하나를 실제 모델로 돌려 루프 과정을 보여 준다(저장·DB 없음, 개발자용).
+// 예: ./gradlew reportPoc  ->  http://127.0.0.1:8787/
+tasks.register('reportPoc', JavaExec) {
+    group = 'application'
+    description = '학습 리포트·추천·후속 난이도 PoC 화면을 로컬에서 띄운다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ReportPocServer'
     workingDir = projectDir
     jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
     loadEnvLocal(it)

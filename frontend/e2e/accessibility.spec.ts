@@ -22,7 +22,6 @@ const KNOWN_VIOLATIONS: Record<string, Record<string, number>> = {
   "/child/activities": { "color-contrast": 1 },
   "/child/activities/:activityId": { "color-contrast": 2 },
   "/child/quiz/:activityId": { "color-contrast": 1 },
-  "/child/roleplay/:activityId": { "color-contrast": 1 },
   "/child/_dev/states": { "color-contrast": 6 },
 }
 
@@ -75,8 +74,9 @@ const CHILD_ACTIVITY_PAGES = [
   { path: () => "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
   { path: (id: string) => `/child/activities/${id}`, name: "/child/activities/:activityId", ready: "시작하기" },
   { path: (id: string) => `/child/quiz/${id}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
-  { path: (id: string) => `/child/roleplay/${id}`, name: "/child/roleplay/:activityId", ready: "놀이터에서" },
 ]
+// 역할극(/child/roleplay/:activityId)은 실제 API(API-RPL-01)라 퀴즈를 모두 마치고 승인된 시나리오가 연결돼야 열린다.
+// 이 테스트가 만드는 데이터로는 열리지 않아(퀴즈 화면으로 돌려보낸다) jsdom 검사(src/accessibility.test.tsx)만 본다.
 
 for (const { path, name, ready } of CHILD_ACTIVITY_PAGES) {
   test(`${name} 에 새 WCAG A·AA 위반이 없다`, async ({ page }) => {

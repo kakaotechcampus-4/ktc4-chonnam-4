@@ -29,6 +29,8 @@
 - `RESPONSE_GENERATION`
 - `RESPONSE_EVALUATION`
 - `NEXT_DIFFICULTY_DECISION`
+- `REPORT_GENERATION` (학습 리포트 초안, `learning-report-loop.md`)
+- `REPORT_REVIEW` (학습 리포트 초안 평가)
 - `SPEECH_TRANSCRIPTION` (STT, `LlmRequest` 로는 보낼 수 없음)
 - `SPEECH_SYNTHESIS` (TTS, `LlmRequest` 로는 보낼 수 없음)
 
@@ -92,8 +94,26 @@ AI는 기본적으로 비활성화된다.
 | `AI_MODEL` | 모델 ID | `not-configured` |
 | `AI_TIMEOUT` | 한 번의 요청 제한 시간 | `10s` |
 | `AI_MAX_RETRIES` | SDK 내부 자동 재시도 | `0` |
+| `AI_MAX_OUTPUT_TOKENS` | 기본 경로의 출력 상한 | 비움(제공자 기본) |
+| `AI_REASONING_EFFORT` | 기본 경로의 추론 강도(`none`·`low` 등) | 비움(보내지 않음) |
 
 실제 제공자를 사용할 때만 `AI_CHAT_PROVIDER=openai`로 설정한다.
+
+### 호출 목적별 경로
+
+리포트 초안과 평가는 역할극 턴과 다른 모델을 쓴다. `neuringo.ai.routes.<목적>`에 경로가 있으면 `OperationRoutingLlmProvider`가 그 목적의 호출만 따로 만든 Spring AI 클라이언트로 보낸다. 키는 `AI_API_KEY` 하나를 같이 쓰고, SDK 재시도는 0으로 둔다. 경로가 없는 목적은 기본 경로로 간다. 지금 경로를 둔 목적은 `REPORT_GENERATION`과 `REPORT_REVIEW` 두 가지다.
+
+| 환경변수 | 용도 | 기본값 |
+| --- | --- | --- |
+| `AI_REPORT_GENERATION_BASE_URL`·`_MODEL` | 리포트 초안 모델 주소와 ID. 둘 다 있어야 경로가 생긴다 | 비움 |
+| `AI_REPORT_GENERATION_TIMEOUT` | 초안 요청 제한 시간 | `60s` |
+| `AI_REPORT_GENERATION_MAX_OUTPUT_TOKENS` | 초안 출력 상한 | `2000` |
+| `AI_REPORT_GENERATION_REASONING_EFFORT` | 초안 추론 강도 | 비움 |
+| `AI_REPORT_REVIEW_*` | 리포트 평가의 같은 다섯 값. 제한 시간 기본값만 `90s`다 | 위와 같음 |
+
+엘리스 게이트웨이는 비스트리밍 출력을 2,000토큰까지만 받고, 추론 토큰도 이 안에 센다. 추론이 켜진 모델은 JSON을 다 쓰기 전에 잘려 `finish=LENGTH`로 끝날 수 있다. 2026-11-01 로컬 실행에서는 역할극 기본 경로(Haiku 5.5)에 `AI_REASONING_EFFORT=none`을 주고 나서야 세 호출이 모두 `STOP`으로 끝났다. 운영 모델을 고를 때도 이 값을 함께 정한다.
+
+호출이 왜 실패했는지 볼 때는 `NEURINGO_AI_CALL_LOG=true`로 호출 로그를 켠다. 호출마다 목적, 결과, 종료 이유, 토큰 수, 걸린 시간만 한 줄로 남기고 프롬프트와 응답 글은 남기지 않는다. 기본값은 꺼짐이다.
 
 ## 역할극 한 턴 프롬프트 — 관찰 필수 단일 계약
 

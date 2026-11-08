@@ -1,6 +1,6 @@
 # API-GOAL-01 · 아동 학습 목표 생성
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d` (PR #78 `feature/goal-lineage-edit` 병합). 학급·아동 이름 수정과 목표 조건 정리·모순 거절의 실제 구현 기준입니다. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -17,8 +17,13 @@
 
 ## 2. 용도·중요 규칙
 
-- 서버가 instructorId/contentHash를 결정합니다. category는 최대30자 선택 문자열이며 enum이 아닙니다. 누락/null은 null이며 앞뒤 공백을 제거합니다. 공백 문자열은 빈 문자열로 남습니다.
-- parentGoalId는 동일 아동의 접근 가능한 이전 목표입니다. 조건 배열의 null/공백 원소는 거부됩니다.
+- 서버가 instructorId/contentHash를 결정합니다. category는 최대30자 선택 문자열이며 enum이 아닙니다. situationType은 상황 설명 문장(최대200자)입니다.
+- parentGoalId는 동일 아동의 접근 가능한 이전 목표입니다.
+- 저장 전 정리: 모든 문자열의 앞뒤 공백을 지우고 안쪽 연속 공백(전각 공백 포함)을 한 칸으로 줄입니다. situationType·category가 공백뿐이면 null입니다. 목록은 같은 값을 한 번만 남기고 입력 순서를 지킵니다. 응답은 정리한 값입니다.
+- 등장인물은 `{id, role}`입니다. role은 인물 설명이고 실제 이름을 넣지 않습니다(서버는 실명 여부를 검사하지 않으므로 FE·강사 안내로 지킵니다). id를 생략·null·빈 문자열로 두면 `OTHER`(공백만 있는 id는 형식 오류 422), 같은 id가 여럿이면 role 글자 순서로 첫 인물만 그대로 두고 나머지는 `FRIEND_2`처럼 번호를 붙입니다. `LEARNER`(역할극의 아이 자리)는 거부합니다.
+- 조건 오류는 422 `INVALID_GOAL_CONDITIONS`이며 `fieldErrors[].field`가 문제 칸을 요청 기준 위치로 가리킵니다(예: `forbiddenExpressions[1]`, `characters[0].id`). 목록의 null/공백 원소, 그리고 피할 표현이 필수 요소나 등장인물 role 안에 들어 있는 경우(띄어쓰기·대소문자 무시)입니다. 이런 조건은 시나리오 생성 결과 검사를 늘 실패시키기 때문입니다.
+- 목록 상한: 등장인물 5명, 필수 요소 5개(각 50자), 피할 표현 10개(각 30자)까지입니다. 개수는 정리(중복 제거) 전 요청 기준입니다. 넘으면 422 `VALIDATION_FAILED`이고 `fieldErrors[].field`가 넘친 목록(`characters`) 또는 항목(`requiredElements[5]`)을 가리킵니다. 저장한 조건이 시나리오 생성 입력에 그대로 들어가므로 크기를 묶어 둡니다.
+- contentHash는 정리한 값으로 계산하되 목록을 정렬해 넣습니다. 칩 순서만 다른 목표는 같은 해시입니다. 이미 저장된 목표의 해시는 다시 계산하지 않습니다.
 - 활동 배정에서는 이 API를 먼저 호출하고 goalId를 넘기는 방식 대신 ACT-01에 goal 내용을 넣어 원자 저장합니다. 이 단독 생성 API는 별도로 유지됩니다.
 
 ## 3. 요청
@@ -48,11 +53,13 @@
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
 | title | string | 예 | 아니오 | 최대200자 |
-| situationType | string \| null | 아니오 | 예 | 최대200자, 선택 |
-| category | string \| null | 아니오 | 예 | 목표 분류, 최대30자. 별도 enum 아님 |
-| characters | Record<string, unknown>[] \| null | 아니오 | 예 | 추가 등장인물; 누락/null은 현재 [] 정리 |
-| requiredElements | string[] \| null | 아니오 | 예 | 빈/공백/null 원소는 조건 오류 |
-| forbiddenExpressions | string[] \| null | 아니오 | 예 | 빈/공백/null 원소는 조건 오류 |
+| situationType | string \| null | 아니오 | 예 | 상황 설명 문장, 최대200자, 선택. 공백만이면 null |
+| category | string \| null | 아니오 | 예 | 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null |
+| characters | GoalCharacter[] \| null | 아니오 | 예 | 추가 등장인물 `{id, role}`, 최대5명; 누락/null은 [] |
+| characters[].id | string \| null | 아니오 | 예 | 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 생략/null/""은 OTHER, 공백만은 422, LEARNER 불가 |
+| characters[].role | string | 예 | 아니오 | 인물 설명, 최대50자, 보이는 글자 1자 이상·제어 문자 불가. 실제 이름 금지(서버 미검사) |
+| requiredElements | string[] \| null | 아니오 | 예 | 아이가 대화에서 해 볼 행동, 최대5개·각 50자. 빈/공백/null 원소는 조건 오류 |
+| forbiddenExpressions | string[] \| null | 아니오 | 예 | 역할극에 나오면 안 되는 말, 최대10개·각 30자. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 |
 | parentGoalId | UUID \| null | 아니오 | 예 | 접근 가능한 동일 아동의 이전 목표 |
 
 ~~~json
@@ -119,12 +126,12 @@ HTTP 201.
 | data.instructorId | UUID | 예 | 아니오 | 담당 강사 |
 | data.parentGoalId | UUID \| null | 예 | 예 | 이전 목표, 없으면 null |
 | data.title | string | 예 | 아니오 | 목표명 |
-| data.situationType | string \| null | 예 | 예 | 상황 유형 |
+| data.situationType | string \| null | 예 | 예 | 상황 설명 문장 |
 | data.category | string \| null | 예 | 예 | 목표 분류, 최대30자. 별도 enum 아님 |
-| data.characters | Record<string, unknown>[] | 예 | 아니오 | 등장인물 |
-| data.requiredElements | string[] | 예 | 아니오 | 필수 조건 |
-| data.forbiddenExpressions | string[] | 예 | 아니오 | 금지 조건 |
-| data.contentHash | string | 예 | 아니오 | 서버 계산; FE 수정 금지 |
+| data.characters | GoalCharacterData[] | 예 | 아니오 | 등장인물 `{id, role}`; 정리한 값, id는 늘 있음 |
+| data.requiredElements | string[] | 예 | 아니오 | 필수 요소; 정리한 값 |
+| data.forbiddenExpressions | string[] | 예 | 아니오 | 피할 표현; 정리한 값 |
+| data.contentHash | string | 예 | 아니오 | 서버 계산; 목록 순서와 무관. FE 수정 금지 |
 | data.createdAt | ISODateTime | 예 | 아니오 | 생성 시각 |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
@@ -142,8 +149,8 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
 | 404 | CHILD_NOT_FOUND | 아동 권한 |
 | 404 | GOAL_NOT_FOUND | 부모 목표 없음/다른 아동 |
-| 422 | INVALID_GOAL_CONDITIONS | 잘못된 조건 배열 |
-| 422 | VALIDATION_FAILED | DTO 길이/필수 검증 |
+| 422 | INVALID_GOAL_CONDITIONS | 빈 원소, LEARNER id, 피할 표현이 필수 요소·등장인물 role과 겹침. `fieldErrors`로 칸 표시 |
+| 422 | VALIDATION_FAILED | DTO 길이/필수 검증, 등장인물 id 형식·role 빈 값 |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 
 공통 오류 envelope 예시(message/traceId는 동적):
@@ -151,12 +158,17 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 ~~~json
 {
   "error": {
-    "status": 400,
-    "code": "INVALID_REQUEST",
-    "message": "요청을 확인해 주세요.",
+    "status": 422,
+    "code": "INVALID_GOAL_CONDITIONS",
+    "message": "목표 조건이 올바르지 않습니다.",
     "path": "/api/v1/children/{childId}/learning-goals",
     "traceId": "90000000-0000-4000-8000-000000000001",
-    "fieldErrors": []
+    "fieldErrors": [
+      {
+        "field": "forbiddenExpressions[0]",
+        "message": "필수 요소나 등장인물에 들어 있는 표현은 피할 표현으로 둘 수 없습니다."
+      }
+    ]
   }
 }
 ~~~
@@ -172,24 +184,38 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 ~~~ts
 export type UUID = string;
 
+export interface GoalCharacter {
+  /** 아이와의 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 비우면 OTHER, LEARNER 불가 */
+  id?: string | null;
+  /** 인물 설명(예: 넘어진 친구), 최대50자. 실제 이름 금지 */
+  role: string;
+}
+
 export interface GoalBody {
   /** 최대200자 */
   title: string;
-  /** 최대30자, 선택 */
+  /** 상황 설명 문장, 최대200자, 선택. 공백만이면 null */
   situationType?: string | null;
-  /** 목표 분류, 최대30자. 별도 enum 아님 */
+  /** 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null */
   category?: string | null;
-  /** 추가 등장인물; 누락/null은 현재 [] 정리 */
-  characters?: Record<string, unknown>[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 추가 등장인물; 누락/null은 [] */
+  characters?: GoalCharacter[] | null;
+  /** 아이가 대화에서 해 볼 행동. 빈/공백/null 원소는 조건 오류 */
   requiredElements?: string[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 역할극에 나오면 안 되는 말. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 */
   forbiddenExpressions?: string[] | null;
   /** 접근 가능한 동일 아동의 이전 목표 */
   parentGoalId?: UUID | null;
 }
 
 export type ISODateTime = string;
+
+export interface GoalCharacterData {
+  /** 저장된 관계 id. 비었으면 OTHER, 같은 id가 겹치면 FRIEND_2처럼 번호가 붙음 */
+  id: string;
+  /** 인물 설명 */
+  role: string;
+}
 
 export interface GoalData {
   /** 목표 ID */
@@ -202,17 +228,17 @@ export interface GoalData {
   parentGoalId: UUID | null;
   /** 목표명 */
   title: string;
-  /** 상황 유형 */
+  /** 상황 설명 문장 */
   situationType: string | null;
   /** 목표 분류, 최대30자. 별도 enum 아님 */
   category: string | null;
-  /** 등장인물 */
-  characters: Record<string, unknown>[];
-  /** 필수 조건 */
+  /** 등장인물; 정리한 값 */
+  characters: GoalCharacterData[];
+  /** 필수 요소; 정리한 값 */
   requiredElements: string[];
-  /** 금지 조건 */
+  /** 피할 표현; 정리한 값 */
   forbiddenExpressions: string[];
-  /** 서버 계산; FE 수정 금지 */
+  /** 서버 계산; 목록 순서와 무관. FE 수정 금지 */
   contentHash: string;
   /** 생성 시각 */
   createdAt: ISODateTime;
@@ -292,6 +318,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/children/${childId}/learning-goals"
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/goal/dto/CreateLearningGoalRequest.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/develop/backend/src/main/java/com/neuringo/neuringobe/goal/dto/CreateLearningGoalRequest.java) · [조건 정리·검사](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/develop/backend/src/main/java/com/neuringo/neuringobe/goal/service/GoalConditions.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

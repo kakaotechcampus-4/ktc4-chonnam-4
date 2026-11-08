@@ -1,6 +1,6 @@
 # API-IAM-08 · 아동 코드 입장
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 구현 — 2026-11-04 / develop `bab136d`. 429 시도 제한은 2026-11-06 추가. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -20,6 +20,10 @@
 - childName이 아니라 displayName이며 숫자 앞자리0을 유지한다.
 - 서버가 HttpOnly JSESSIONID를 설정한다. 코드24시간과 아동 인증 세션 자동만료 없음은 별개다.
 - 다른 코드 입장은 이전 브라우저 세션을 교체한다. 응답 후 아동 화면 캐시도 대상ID 기준으로 정리한다.
+- 접속 IP 별 시도 제한이 두 겹이다. 둘 다 429 이며 `Retry-After`(초)를 붙인다. FE 는 code 대신 429 상태로 분기하고, `Retry-After` 동안 입력을 막는다(헤더가 없으면 60초).
+  - nginx 요청 수 제한: 입장 요청(맞은 코드 포함)을 분당 60번, 한꺼번에 60번까지 받는다. 넘치면 `TOO_MANY_REQUESTS`, `Retry-After: 60`.
+  - 앱 틀린 코드 횟수 제한: `INVALID_ACCESS_CODE`·`ACCESS_CODE_EXPIRED` 만 센다(맞은 입장·422 는 세지 않는다). 첫 실패부터 10분 안에 30번째로 틀리면 그 IP 의 입장을 10분 동안 막는다(맞는 코드도). `ACCESS_CODE_ATTEMPTS_EXCEEDED`, `Retry-After` 는 남은 초. 값은 `neuringo.child-access.attempt-limit`.
+  - 학교처럼 여러 아동이 IP 하나(NAT)를 함께 쓰면 함께 막힌다. 서버 메모리에만 세므로 배포·재시작 때 지워진다.
 
 ## 3. 요청
 
@@ -44,7 +48,7 @@
 
 | 필드 | 타입 | 필수 | null 허용 | 설명 |
 |---|---|---|---|---|
-| accessCode | string | 예 | 아니오 | 숫자4자리, 정수로 변환하지 않음 |
+| accessCode | string | 예 | 아니오 | 숫자4자리, 정수로 변환하지 않음. 누락/null은 422가 아니라 401 INVALID_ACCESS_CODE |
 
 ~~~json
 {
@@ -84,9 +88,11 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
 | 403 | CSRF_TOKEN_INVALID | 재취득; 변경 요청 자동 재전송 없음 |
-| 401 | INVALID_ACCESS_CODE | 코드 불일치/삭제 대상 |
+| 401 | INVALID_ACCESS_CODE | 코드 불일치/삭제 대상, accessCode 누락/null |
 | 401 | ACCESS_CODE_EXPIRED | 24시간 코드 만료;410 아님 |
-| 422 | VALIDATION_FAILED | 숫자4자리 형식 |
+| 422 | VALIDATION_FAILED | 값이 있는데 숫자4자리 형식이 아님(빈 문자열 포함) |
+| 429 | ACCESS_CODE_ATTEMPTS_EXCEEDED | 같은 IP 가 10분 안에 코드를 30번 틀림. `Retry-After`(남은 초, 최대 600) 동안 입력을 막고 자동 재전송 없음 |
+| 429 | TOO_MANY_REQUESTS | 앞단 nginx 의 IP 별 요청 수 제한(분당 60번 넘음). `Retry-After: 60`. 몸통은 같은 오류 envelope |
 | 500 | INTERNAL_ERROR | 내부 오류; 원문/예외 전문 비노출 |
 | 400 | INVALID_REQUEST | UUID/필수 헤더·파트/Query 형식 |
 
@@ -185,6 +191,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/child-access-sessions" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S4-YOON-01` · `S8-YOON-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessSessionController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/child/controller/ChildAccessSessionController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

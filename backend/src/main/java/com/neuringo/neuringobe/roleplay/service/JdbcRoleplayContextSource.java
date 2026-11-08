@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.roleplay.service;
 
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplayLearningSupportTurns;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayInputContext;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
@@ -35,12 +36,17 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
     private final JdbcTemplate jdbc;
     private final JsonMapper json;
     private final Optional<RoleplayProgressSource> progress;
+    private final JdbcRoleplaySupportHistorySource supportHistory;
 
     public JdbcRoleplayContextSource(
-            JdbcTemplate jdbc, JsonMapper json, Optional<RoleplayProgressSource> progress) {
+            JdbcTemplate jdbc,
+            JsonMapper json,
+            Optional<RoleplayProgressSource> progress,
+            JdbcRoleplaySupportHistorySource supportHistory) {
         this.jdbc = jdbc;
         this.json = json;
         this.progress = progress;
+        this.supportHistory = supportHistory;
     }
 
     /** 한 읽기 시점의 자료를 모은 뒤 트랜잭션을 닫는다. AI 호출 동안 DB 잠금이나 연결을 잡지 않는다. */
@@ -106,15 +112,18 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         """
                         select s.scenario_id, s.scenario_version, s.class_id, s.goal_content_hash,
                                s.scenario_level, s.title, s.summary, s.ai_role, s.characters,
-                               s.scenario_facts, s.prohibited_inferences, s.opening_prompts
+                               s.scenario_facts, s.prohibited_inferences, s.opening_prompts,
+                               EXISTS (SELECT 1 FROM activity_scenario_approval p WHERE p.activity_id=av.activity_id) AS shared_assignment
                         from scenario s
                         join child c on c.child_id=?
                         join learning_goal g on g.goal_id=? and g.child_id=c.child_id
-                        where s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
-                          and s.class_id=c.class_id and s.goal_content_hash=g.content_hash
+                        join activity_approved_scenario av on av.child_id=c.child_id and av.goal_id=g.goal_id
+                            and av.scenario_id=s.scenario_id and av.scenario_version=s.scenario_version
+                        where av.activity_id=? and s.scenario_id=? and s.scenario_version=? and s.status='APPROVED'
                         """,
                         key.childId(),
                         key.goalId(),
+                        key.activityId(),
                         key.scenarioId(),
                         key.scenarioVersion());
         if (rows.size() != 1) return Optional.empty();
@@ -163,16 +172,6 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                                     () ->
                                             new IllegalArgumentException(
                                                     "입력 당시 목표가 누락되어 유도 턴을 복원할 수 없습니다."));
-            var state =
-                    new RoleplayTurnInput.State(
-                            policy.currentMicroGoalId(),
-                            policy.currentSupportLevel(),
-                            supportTurn,
-                            currentResponses.questionCount(),
-                            currentResponses.answerRevealed(),
-                            policy.turnCount(),
-                            policy.maximumTurnCount(),
-                            policy.maximumSupportTurnsPerMicroGoal());
             var scenario =
                     new RoleplayTurnInput.Scenario(
                             owner.learningGoal(),
@@ -187,10 +186,12 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                                                             g.description(),
                                                             g.evidence(),
                                                             statuses.get(g.id())))
-                                    .toList());
-            if (goals.stream().noneMatch(g -> g.id().equals(state.currentMicroGoalId())))
+                                    .toList(),
+                            aiCharacter(content.get("ai_role"), content.get("characters")));
+            if (goals.stream().noneMatch(g -> g.id().equals(policy.currentMicroGoalId())))
                 return Optional.empty();
 
+            boolean sharedAssignment = Boolean.TRUE.equals(content.get("shared_assignment"));
             var pinned = new LinkedHashMap<String, Object>();
             for (var field :
                     List.of(
@@ -206,13 +207,16 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                             "scenario_facts",
                             "prohibited_inferences",
                             "opening_prompts")) {
+                // 공통 배정의 학급 연결 해제는 승인 콘텐츠 변경으로 취급하지 않는다.
+                if (sharedAssignment && field.equals("class_id")) continue;
                 pinned.put(
                         field, content.get(field) == null ? null : content.get(field).toString());
             }
             pinned.put("learning_goal", owner.learningGoal());
             pinned.put("micro_goals", goals);
             var approvalReference =
-                    "scenario-context/v1:" + digest(json.writeValueAsString(pinned));
+                    (sharedAssignment ? "scenario-context/v2:" : "scenario-context/v1:")
+                            + digest(json.writeValueAsString(pinned));
             readBudget(deadline);
             var assessments =
                     jdbc.queryForList(
@@ -272,6 +276,35 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                             history,
                             RoleplayGoalObservationHistory.link(history, responseHistory),
                             RoleplayGoalObservationHistory.beforeNextInput(responseHistory));
+            observations =
+                    new GoalObservationInput(
+                            criteria,
+                            history,
+                            observations.confirmedObservationContexts(),
+                            observations.currentGoalExposures(),
+                            supportHistory.load(key, responseHistory, observations, deadline));
+            var learningSupportTurn =
+                    RoleplayLearningSupportTurns.nextTurn(
+                            policy.currentMicroGoalId(),
+                            supportTurn,
+                            observations.supportAdjustment().confirmedInputs());
+            var learningTurn =
+                    RoleplayLearningSupportTurns.nextSessionTurn(
+                            policy.turnCount(), observations.supportAdjustment().confirmedInputs());
+            var state =
+                    new RoleplayTurnInput.State(
+                            policy.currentMicroGoalId(),
+                            policy.currentSupportLevel(),
+                            supportTurn,
+                            currentResponses.questionCount(),
+                            currentResponses.answerRevealed(),
+                            policy.turnCount(),
+                            policy.maximumTurnCount(),
+                            policy.maximumSupportTurnsPerMicroGoal(),
+                            learningSupportTurn.isPresent() ? learningSupportTurn.getAsInt() : null,
+                            learningTurn.isPresent() ? learningTurn.getAsInt() : null,
+                            mascotHints(key.sessionId(), policy.currentMicroGoalId()),
+                            previousTurnHadMascotHint(key.sessionId()));
             var snapshot =
                     new Snapshot(
                             key,
@@ -326,6 +359,7 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         """
                 select turn_id, candidate_id, turn_number, checkpoint_version, micro_goal_id,
                     support_level, response_type, strategy_used,
+                    mascot_hint is not null as mascot_hint_delivered,
                     input_micro_goal_id, input_support_level, input_support_turn, input_prompt_count, input_answer_revealed
                 from roleplay_turn where session_id=? order by turn_number
                 """,
@@ -339,7 +373,8 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                                         rs.getString("support_level"),
                                         rs.getString("response_type"),
                                         rs.getString("strategy_used"),
-                                        inputContext(rs)),
+                                        inputContext(rs),
+                                        rs.getBoolean("mascot_hint_delivered")),
                         key.sessionId());
         deadline.requireActive();
         return RoleplayGoalResponseHistory.restore(
@@ -351,6 +386,48 @@ public class JdbcRoleplayContextSource implements RoleplayContextSource {
                         owner.currentGoal(),
                         owner.support()),
                 responses);
+    }
+
+    /** 지금 목표를 다루며 보여 준 마스코트 힌트 수. 마스코트 규칙의 목표당 상한에 쓴다. */
+    private int mascotHints(UUID sessionId, UUID microGoalId) {
+        Integer count =
+                jdbc.queryForObject(
+                        "select count(*) from roleplay_turn where session_id=? and micro_goal_id=? and mascot_hint is not null",
+                        Integer.class,
+                        sessionId,
+                        microGoalId);
+        return count == null ? 0 : count;
+    }
+
+    /** 직전 턴에 마스코트 힌트를 보여 줬는지. 마스코트 규칙의 연속 금지에 쓴다. */
+    private boolean previousTurnHadMascotHint(UUID sessionId) {
+        return Boolean.TRUE.equals(
+                jdbc.query(
+                        "select mascot_hint is not null as hinted from roleplay_turn where session_id=? order by turn_number desc limit 1",
+                        rs -> rs.next() ? rs.getBoolean("hinted") : false,
+                        sessionId));
+    }
+
+    /** ai_role 이 등장인물 id 면 그 인물을 AI 가 연기한다. NARRATOR·빈 값이면 안내자 시나리오다. */
+    private RoleplayTurnInput.AiCharacter aiCharacter(Object aiRole, Object characters) {
+        if (aiRole == null || characters == null) return null;
+        String id = aiRole.toString();
+        for (var character : json.readTree(characters.toString())) {
+            if (!id.equals(text(character, "id"))) continue;
+            return new RoleplayTurnInput.AiCharacter(
+                    id,
+                    text(character, "role"),
+                    text(character, "personality"),
+                    text(character, "speech_style"));
+        }
+        return null;
+    }
+
+    private static String text(tools.jackson.databind.JsonNode node, String field) {
+        var value = node.get(field);
+        return value == null || !value.isString() || value.asString().isBlank()
+                ? null
+                : value.asString();
     }
 
     private List<String> strings(String value) {

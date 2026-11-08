@@ -147,6 +147,7 @@ final class ScriptedLlmProvider implements LlmProvider {
                 + " \"micro_goals\": ["
                 + goalJson
                 + "],"
+                + " \"starting_question_goal_ids\": {\"S0\":\"MG-01\",\"S1\":\"MG-01\",\"S2\":\"MG-01\"},"
                 + " \"starting_questions\": {\"S0\": \"무슨 일이 있었을까?\","
                 + " \"S1\": \"친구가 울고 있어. 무슨 일이 있었을까?\","
                 + " \"S2\": \"친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?\"}}";

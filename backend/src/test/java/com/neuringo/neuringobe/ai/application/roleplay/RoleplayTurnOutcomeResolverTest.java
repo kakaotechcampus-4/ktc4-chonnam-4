@@ -37,6 +37,24 @@ class RoleplayTurnOutcomeResolverTest {
     private static final UUID GOAL = UUID.randomUUID();
     private final RoleplayTurnOutcomeResolver resolver = new RoleplayTurnOutcomeResolver(catalog());
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void inputCheckFailureUsesApprovedErrorNoticeOrTheCommonNoticeWithoutAssessment(
+            boolean configured) {
+        var selected =
+                configured
+                        ? resolver
+                        : new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()));
+        var outcome =
+                (RoleplayTurnOutcome.InputCheckRetry)
+                        selected.resolve(new RoleplayTurnResult.InputCheckUnavailable());
+        assertThat(outcome.notice().kind())
+                .isEqualTo(configured ? Kind.SAFETY_CHECK_ERROR : Kind.INPUT_RECOVERY);
+        assertThat(outcome.action()).isEqualTo(Action.RETRY_TURN);
+        assertThat(outcome.assessmentEligibility()).isEqualTo(AssessmentEligibility.NOT_ASSESSABLE);
+        assertThat(outcome.retention()).isEqualTo(Retention.DO_NOT_STORE);
+    }
+
     @Test
     void approvedOutputCarriesSameCandidateTextButNoAnalysisOrEvaluatorDetails() {
         var outcome = (RoleplayTurnOutcome.ApprovedResponse) resolver.resolve(ready());
@@ -116,7 +134,11 @@ class RoleplayTurnOutcomeResolverTest {
     void missingEitherSafetyNoticeStillStopsAndForbidsStorage(Kind missing) {
         var configured =
                 Arrays.stream(Kind.values())
-                        .filter(kind -> kind != missing && kind != Kind.TIMEOUT)
+                        .filter(
+                                kind ->
+                                        kind != missing
+                                                && kind != Kind.TIMEOUT
+                                                && kind != Kind.INPUT_RECOVERY)
                         .map(this::notice)
                         .toList();
         var partial = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(configured));
@@ -137,10 +159,20 @@ class RoleplayTurnOutcomeResolverTest {
         "SAFE_FALLBACK,RESPONSE_GENERATION",
         "SAFE_FALLBACK,RESPONSE_EVALUATION"
     })
-    void missingApprovedNoticeNeverInventsFallbackText(RetryTarget target, AiOperation operation) {
+    void missingSpecificNoticeReusesReinputOnlyForNewInputActions(
+            RetryTarget target, AiOperation operation) {
         var empty = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()));
         var outcome = empty.resolve(recovery(target, operation));
-        assertThat(outcome).isInstanceOf(RoleplayTurnOutcome.NoticeUnavailable.class);
+        if (operation == AiOperation.RESPONSE_EVALUATION) {
+            assertThat(outcome).isInstanceOf(RoleplayTurnOutcome.NoticeUnavailable.class);
+        } else {
+            assertThat(outcome)
+                    .isInstanceOfSatisfying(
+                            RoleplayTurnOutcome.InputRetry.class,
+                            retry ->
+                                    assertThat(retry.notice().text())
+                                            .isEqualTo(RoleplayNoticeCatalog.REINPUT_TEXT));
+        }
         assertThat(outcome.assessmentEligibility()).isEqualTo(AssessmentEligibility.NOT_ASSESSABLE);
     }
 
@@ -256,10 +288,75 @@ class RoleplayTurnOutcomeResolverTest {
         }
     }
 
+    @Test
+    void fileRecoveryAlwaysUsesTheReservedReinputNoticeWithoutAssessmentOrRetention() {
+        var recovery =
+                new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()))
+                        .inputRecovery();
+        assertThat(recovery)
+                .isInstanceOfSatisfying(
+                        RoleplayTurnOutcome.InputRetry.class,
+                        guidance -> {
+                            assertThat(guidance.notice().text()).isEqualTo("다시 한 번만 말해줄래?");
+                            assertThat(guidance.action()).isEqualTo(Action.REQUEST_NEW_INPUT);
+                        });
+        assertThat(recovery.assessmentEligibility())
+                .isEqualTo(AssessmentEligibility.NOT_ASSESSABLE);
+        assertThat(recovery.retention()).isEqualTo(Retention.DO_NOT_STORE);
+        assertThatThrownBy(() -> new RoleplayNoticeCatalog(List.of(notice(Kind.INPUT_RECOVERY))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @EnumSource(RoleplayTurnResult.InputFailure.class)
+    void everyRejectedInputHasAReinputNoticeEvenWithoutSpecificConfiguration(
+            RoleplayTurnResult.InputFailure reason) {
+        var empty = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()));
+        var outcome = empty.resolve(new RoleplayTurnResult.InputRejected(reason));
+        assertThat(outcome)
+                .isInstanceOfSatisfying(
+                        RoleplayTurnOutcome.InputRetry.class,
+                        retry -> {
+                            assertThat(retry.notice().kind()).isEqualTo(Kind.INPUT_RECOVERY);
+                            assertThat(retry.notice().text())
+                                    .isEqualTo(RoleplayNoticeCatalog.REINPUT_TEXT);
+                            assertThat(retry.action()).isEqualTo(Action.REQUEST_NEW_INPUT);
+                            assertThat(retry.retention()).isEqualTo(Retention.DO_NOT_STORE);
+                        });
+        assertThat(outcome.assessmentEligibility()).isEqualTo(AssessmentEligibility.NOT_ASSESSABLE);
+    }
+
+    @ParameterizedTest
+    @EnumSource(RoleplayTurnResult.InputFailure.class)
+    void configuredInputNoticeStillTakesPriority(RoleplayTurnResult.InputFailure reason) {
+        var retry =
+                (RoleplayTurnOutcome.InputRetry)
+                        resolver.resolve(new RoleplayTurnResult.InputRejected(reason));
+        if (switch (reason) {
+            case EMPTY_UPLOAD,
+                            UNSUPPORTED_AUDIO,
+                            INVALID_AUDIO,
+                            AUDIO_INSPECTION_UNAVAILABLE,
+                            UPLOAD_TOO_LARGE,
+                            AUDIO_TOO_LONG ->
+                    true;
+            default -> false;
+        }) {
+            assertThat(retry.notice().kind()).isEqualTo(Kind.INPUT_RECOVERY);
+            return;
+        }
+        assertThat(retry.notice().kind())
+                .isEqualTo(
+                        reason == RoleplayTurnResult.InputFailure.TRANSCRIPTION_FAILED
+                                ? Kind.SAFE_FALLBACK
+                                : Kind.INPUT_QUALITY);
+        assertThat(retry.notice().version()).isEqualTo("synthetic-v1");
+    }
+
     private RoleplayNoticeCatalog catalog() {
         return new RoleplayNoticeCatalog(
                 Arrays.stream(Kind.values())
-                        .filter(kind -> kind != Kind.TIMEOUT)
+                        .filter(kind -> kind != Kind.TIMEOUT && kind != Kind.INPUT_RECOVERY)
                         .map(this::notice)
                         .toList());
     }

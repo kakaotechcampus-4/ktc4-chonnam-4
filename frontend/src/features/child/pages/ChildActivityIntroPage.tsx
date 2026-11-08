@@ -4,8 +4,9 @@ import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { LoadErrorDialog, LoadingState } from "../components/state"
-import { isActivityInProgress } from "../api"
+import { isActivityInProgress, nextActivityPath } from "../api"
 import { useMyActivities } from "../hooks/useMyActivities"
+import { WaitingForTeacher } from "../components/WaitingForTeacher"
 
 /**
  * C-ACT-01 활동 소개.
@@ -27,6 +28,8 @@ function ChildActivityIntroPage() {
   }
 
   const quizCount = activity?.quizCount ?? 0
+  // 갈 곳은 서버가 계산한 다음 동작(nextAction)으로 정한다. 선생님 확정 대기·차단이면 갈 곳이 없다.
+  const nextPath = activity ? nextActivityPath(activity) : null
   const steps = [
     quizCount > 0 ? { icon: <Smile />, label: "표정 퀴즈", detail: `${quizCount}문제` } : null,
     activity?.roleplayCount ? { icon: <MessagesSquare />, label: "역할극", detail: "대화하기" } : null,
@@ -63,12 +66,13 @@ function ChildActivityIntroPage() {
             ))}
           </ol>
 
-          <ChildButton
-            className="h-16 w-full max-w-sm text-xl"
-            onClick={() => navigate(`/child/${quizCount > 0 ? "quiz" : "roleplay"}/${activity.activityId}`)}
-          >
-            {isActivityInProgress(activity.status) ? "이어서 하기" : "시작하기"}
-          </ChildButton>
+          {nextPath ? (
+            <ChildButton className="h-16 w-full max-w-sm text-xl" onClick={() => navigate(nextPath)}>
+              {isActivityInProgress(activity.status) ? "이어서 하기" : "시작하기"}
+            </ChildButton>
+          ) : (
+            <WaitingForTeacher blocked={activity.nextAction === "BLOCKED"} />
+          )}
         </div>
       )}
 

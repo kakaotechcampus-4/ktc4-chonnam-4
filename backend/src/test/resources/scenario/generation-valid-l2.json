@@ -1,0 +1,61 @@
+{
+  "title": "넘어져서 우는 친구",
+  "summary": "놀이터에서 친구가 미끄럼틀 앞에서 넘어져 울었다.",
+  "scenario_level": "L2",
+  "ai_role": "NARRATOR",
+  "characters": [
+    {
+      "id": "LEARNER",
+      "role": "학습자"
+    },
+    {
+      "id": "FRIEND",
+      "role": "넘어진 친구"
+    }
+  ],
+  "scenario_facts": [
+    "친구가 미끄럼틀로 뛰어갔다.",
+    "친구가 넘어졌다.",
+    "친구가 울었다.",
+    "친구가 무릎을 보았다."
+  ],
+  "prohibited_inferences": [
+    "친구가 일부러 넘어졌다고 단정하지 않는다."
+  ],
+  "micro_goals": [
+    {
+      "id": "MG-01",
+      "description": "친구가 넘어졌다는 사실을 말하기",
+      "required_evidence": [
+        "관련된 내용을 말한다."
+      ],
+      "achievement_example": "친구가 넘어졌어."
+    },
+    {
+      "id": "MG-02",
+      "description": "친구의 표정을 알아보기",
+      "required_evidence": [
+        "관련된 내용을 말한다."
+      ],
+      "achievement_example": "친구가 넘어졌어."
+    },
+    {
+      "id": "MG-03",
+      "description": "친구의 마음을 생각하기",
+      "required_evidence": [
+        "관련된 내용을 말한다."
+      ],
+      "achievement_example": "친구가 넘어졌어."
+    }
+  ],
+  "starting_questions": {
+    "S0": "친구에게 무슨 일이 있었어?",
+    "S1": "친구가 미끄럼틀 앞에서 울고 있어. 무슨 일이 있었을까?",
+    "S2": "친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?"
+  },
+  "starting_question_goal_ids": {
+    "S0": "MG-01",
+    "S1": "MG-01",
+    "S2": "MG-01"
+  }
+}

@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.ai.application.model.AiCallMetadata;
 import com.neuringo.neuringobe.ai.application.model.AiFailure;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.SynthesizedSpeech;
+import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
@@ -17,12 +18,42 @@ public sealed interface RoleplayTurnResult {
         LOW_CONFIDENCE,
         UNKNOWN_CONFIDENCE,
         TRANSCRIPTION_FAILED,
-        INVALID_INPUT
+        INVALID_INPUT,
+        EMPTY_UPLOAD,
+        UNSUPPORTED_AUDIO,
+        INVALID_AUDIO,
+        AUDIO_INSPECTION_UNAVAILABLE,
+        UPLOAD_TOO_LARGE,
+        AUDIO_TOO_LONG
     }
 
-    record InputRejected(InputFailure reason) implements RoleplayTurnResult {
+    record InputUnsafe() implements RoleplayTurnResult {}
+
+    record InputCheckUnavailable() implements RoleplayTurnResult {}
+
+    record SttConfidenceEvidence(double confidence, double threshold) {
+        public SttConfidenceEvidence {
+            if (!Double.isFinite(confidence)
+                    || !Double.isFinite(threshold)
+                    || confidence < 0
+                    || confidence > 1
+                    || threshold < 0
+                    || threshold > 1
+                    || confidence > threshold)
+                throw new IllegalArgumentException("저신뢰 판정 근거가 올바르지 않습니다.");
+        }
+    }
+
+    record InputRejected(InputFailure reason, SttConfidenceEvidence confidenceEvidence)
+            implements RoleplayTurnResult {
+        public InputRejected(InputFailure reason) {
+            this(reason, null);
+        }
+
         public InputRejected {
             Objects.requireNonNull(reason);
+            if (confidenceEvidence != null && reason != InputFailure.LOW_CONFIDENCE)
+                throw new IllegalArgumentException("저신뢰 판정에서만 신뢰도 근거를 보관합니다.");
         }
     }
 
@@ -32,10 +63,11 @@ public sealed interface RoleplayTurnResult {
             String canonicalUtterance,
             SynthesizedSpeech speech,
             String approvedContextFingerprint,
-            RoleplayInputContext inputContext)
+            RoleplayInputContext inputContext,
+            RoleplayTurnInput.InputQuality inputQuality)
             implements RoleplayTurnResult {
         public SpokenReady(Ready ready, String canonicalUtterance, SynthesizedSpeech speech) {
-            this(ready, canonicalUtterance, speech, null, null);
+            this(ready, canonicalUtterance, speech, null, null, null);
         }
 
         public SpokenReady(
@@ -43,7 +75,16 @@ public sealed interface RoleplayTurnResult {
                 String canonicalUtterance,
                 SynthesizedSpeech speech,
                 String approvedContextFingerprint) {
-            this(ready, canonicalUtterance, speech, approvedContextFingerprint, null);
+            this(ready, canonicalUtterance, speech, approvedContextFingerprint, null, null);
+        }
+
+        public SpokenReady(
+                Ready ready,
+                String canonicalUtterance,
+                SynthesizedSpeech speech,
+                String approvedContextFingerprint,
+                RoleplayInputContext inputContext) {
+            this(ready, canonicalUtterance, speech, approvedContextFingerprint, inputContext, null);
         }
 
         public SpokenReady {
@@ -69,7 +110,7 @@ public sealed interface RoleplayTurnResult {
     /** Server-approved deadline notice. No candidate, assessment or audio is included. */
     record TimedOut() implements RoleplayTurnResult {
         public String message() {
-            return "다시 한 번만 말해줄래?";
+            return RoleplayNoticeCatalog.REINPUT_TEXT;
         }
     }
 

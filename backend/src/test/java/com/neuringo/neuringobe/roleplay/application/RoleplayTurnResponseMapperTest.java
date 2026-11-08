@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -34,7 +35,94 @@ class RoleplayTurnResponseMapperTest {
                         publications.incrementAndGet();
                         assertThat(id).isEqualTo(candidate);
                         return Optional.of("/synthetic-protected-speech/" + id);
-                    });
+                    },
+                    true);
+
+    @Test
+    void countedFailureCanRecommendTextWithoutExposingAssessmentOrSpeech() {
+        var outcomes = new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()));
+        var retry =
+                outcomes.resolve(
+                        new RoleplayTurnResult.InputRejected(
+                                RoleplayTurnResult.InputFailure.LOW_CONFIDENCE));
+        var result =
+                mapper.map(new RoleplayCheckpointedTurnExecutor.InputRecovery(retry, true, true));
+        assertThat(result.status()).isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
+        assertThat(result.action()).isEqualTo(RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE);
+        assertThat(result.replayed()).isTrue();
+        assertThat(result.acceptedInput()).isNull();
+        assertThat(result.checkpointVersion()).isNull();
+        assertThat(result.messages())
+                .singleElement()
+                .satisfies(
+                        message ->
+                                assertThat(message.text())
+                                        .isEqualTo(RoleplayNoticeCatalog.REINPUT_TEXT));
+        assertThat(publications).hasValue(0);
+    }
+
+    @Test
+    void countedFailureKeepsApprovedNoticeWhenRecommendingText() {
+        var result =
+                mapper.map(
+                        new RoleplayCheckpointedTurnExecutor.InputRecovery(
+                                new RoleplayTurnOutcome.InputRetry(
+                                        notice(
+                                                RoleplayNoticeCatalog.Kind.INPUT_QUALITY,
+                                                "다시 말해볼까요?")),
+                                true,
+                                false));
+        assertThat(result.status()).isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
+        assertThat(result.action()).isEqualTo(RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE);
+        assertThat(result.messages()).hasSize(1);
+        assertThat(result.messages().getFirst().text()).isEqualTo("다시 말해볼까요?");
+        assertNoLearningResult(result);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "false,false,false",
+        "false,true,false",
+        "true,false,false",
+        "true,true,false",
+        "false,true,true",
+        "true,true,true"
+    })
+    void textRecommendationRequiresAnAvailableTextEndpoint(
+            boolean textEnabled, boolean textRecommended, boolean replayed) {
+        var responses =
+                new RoleplayTurnResponseMapper((id, speech) -> Optional.empty(), textEnabled);
+        var retry =
+                new RoleplayTurnOutcome.InputRetry(
+                        notice(RoleplayNoticeCatalog.Kind.INPUT_QUALITY, "다시 말해볼까요?"));
+
+        var result =
+                responses.map(
+                        new RoleplayCheckpointedTurnExecutor.InputRecovery(
+                                retry, textRecommended, replayed));
+
+        assertThat(result.status()).isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
+        assertThat(result.action())
+                .isEqualTo(
+                        textEnabled && textRecommended
+                                ? RoleplayDeliveryAction.SUGGEST_TEXT_KEEP_VOICE
+                                : RoleplayDeliveryAction.REQUEST_NEW_INPUT);
+        assertThat(result.messages())
+                .singleElement()
+                .satisfies(message -> assertThat(message.text()).isEqualTo("다시 말해볼까요?"));
+        assertThat(result.replayed()).isEqualTo(replayed);
+        assertThat(result.acceptedInput()).isNull();
+        assertThat(result.checkpointVersion()).isNull();
+    }
+
+    @Test
+    void inputRecoveryCannotWrapApprovedLearningResponse() {
+        assertThatThrownBy(
+                        () ->
+                                new RoleplayCheckpointedTurnExecutor.InputRecovery(
+                                        approved, true, false))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 
     @Test
     void approvedSpokenSuccessExposesCanonicalInputTextAndPlayableResourceOnly() {
@@ -82,7 +170,7 @@ class RoleplayTurnResponseMapperTest {
 
     @Test
     void unavailableSpeechDeliveryKeepsTextWithoutInventingAUrl() {
-        var unavailable = new RoleplayTurnResponseMapper((id, speech) -> Optional.empty());
+        var unavailable = new RoleplayTurnResponseMapper((id, speech) -> Optional.empty(), false);
         var dto = unavailable.map(success(spoken(audio()), false));
         assertThat(dto.messages().getFirst().text()).isEqualTo(approved.text());
         assertThat(dto.messages().getFirst().speech())
@@ -100,6 +188,21 @@ class RoleplayTurnResponseMapperTest {
     }
 
     @Test
+    void mascotHintComesFirstAsHintAndTheCharacterLineAsDialogue() {
+        var hinted =
+                new RoleplayTurnOutcome.ApprovedResponse(
+                        candidate, "synthetic character line", "synthetic mascot hint");
+        var dto = mapper.map(success(hinted, true));
+        assertThat(dto.messages())
+                .extracting(m -> m.speakerRole() + ":" + m.text())
+                .containsExactly("HINT:synthetic mascot hint", "DIALOGUE:synthetic character line");
+        assertThat(dto.messages().getFirst().speech().available()).isFalse();
+
+        var plain = mapper.map(success(approved, true));
+        assertThat(plain.messages()).extracting(m -> m.speakerRole()).containsExactly("DIALOGUE");
+    }
+
+    @Test
     void timeoutUsesConfirmedLiteralAndRequestsNewInputWithoutCheckpoint() {
         var outcome =
                 new RoleplayTurnOutcomeResolver(new RoleplayNoticeCatalog(List.of()))
@@ -108,6 +211,7 @@ class RoleplayTurnResponseMapperTest {
         assertThat(dto.status()).isEqualTo(RoleplayDeliveryStatus.REINPUT_REQUIRED);
         assertThat(dto.action()).isEqualTo(RoleplayDeliveryAction.REQUEST_NEW_INPUT);
         assertThat(dto.messages().getFirst().text()).isEqualTo("다시 한 번만 말해줄래?");
+        assertThat(dto.messages().getFirst().speakerRole()).isEqualTo("HINT");
         assertNoLearningResult(dto);
     }
 
