@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { http, HttpResponse } from "msw"
 import { router } from "@/router"
-import { ROLEPLAY_REINPUT_NOTICE, ROLEPLAY_SCRIPT } from "@/test/msw/handlers"
+import { envelope, ROLEPLAY_REINPUT_NOTICE, ROLEPLAY_SCRIPT } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 
@@ -227,5 +227,77 @@ describe("역할극 화면 안의 아이 말풍선", () => {
     const textBubble = screen.getByText("“속상해”").parentElement as HTMLElement
     expect(within(voiceBubble).getByRole("img", { name: "말로 답함" })).toBeInTheDocument()
     expect(within(textBubble).getByRole("img", { name: "글자로 답함" })).toBeInTheDocument()
+  })
+})
+
+describe("거북이 대사 음성(TTS)", () => {
+  const SPOKEN_REPLY = "와, 회전목마를 타고 싶구나!"
+  const AUDIO_URL = "data:audio/mpeg;base64,AAAA"
+  const played: string[] = []
+  const paused: string[] = []
+
+  class FakeAudio {
+    readonly src: string
+    constructor(src: string) {
+      this.src = src
+    }
+    play() {
+      played.push(this.src)
+      return Promise.resolve()
+    }
+    pause() {
+      paused.push(this.src)
+    }
+  }
+
+  beforeEach(() => {
+    played.length = 0
+    paused.length = 0
+    vi.stubGlobal("Audio", FakeAudio)
+    server.use(
+      http.post(
+        "*/api/v1/roleplay-sessions/:sessionId/voice-inputs",
+        () =>
+          HttpResponse.json(
+            envelope({
+              status: "DELIVERED",
+              action: "NONE",
+              messages: [{ speakerRole: "DIALOGUE", text: SPOKEN_REPLY, speech: { available: true, url: AUDIO_URL } }],
+              acceptedInput: "회전목마 탈래",
+              checkpointVersion: 1,
+              replayed: false,
+            })
+          ),
+        { once: true }
+      )
+    )
+  })
+
+  it("서버가 음성을 보내면 대답이 오자마자 재생하고, 다시 듣기로 또 들을 수 있다", async () => {
+    const { user } = await openRoleplay()
+
+    await speak(user, "회전목마 탈래")
+
+    expect(await screen.findByText(SPOKEN_REPLY)).toBeInTheDocument()
+    await waitFor(() => expect(played).toEqual([AUDIO_URL]))
+
+    await user.click(screen.getByRole("button", { name: "다시 듣기" }))
+    expect(played).toEqual([AUDIO_URL, AUDIO_URL])
+  })
+
+  it("말하기를 시작하면 울리던 대사를 멈춰 녹음에 섞이지 않게 한다", async () => {
+    const { user } = await openRoleplay()
+    await speak(user, "회전목마 탈래")
+    await waitFor(() => expect(played).toHaveLength(1))
+
+    await user.click(screen.getByRole("button", { name: "말로 답하기" }))
+
+    expect(paused).toEqual([AUDIO_URL])
+  })
+
+  it("음성이 없는 대사에는 다시 듣기 버튼이 없다", async () => {
+    await openRoleplay()
+
+    expect(screen.queryByRole("button", { name: "다시 듣기" })).not.toBeInTheDocument()
   })
 })

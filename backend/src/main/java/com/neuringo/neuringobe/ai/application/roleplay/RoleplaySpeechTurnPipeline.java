@@ -15,9 +15,12 @@ import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnResult.InputFailure;
 import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 같은 요청 기한 안에서 입력 처리·분석·생성·검수·음성 생성을 수행한다. 저장은 호출자가 맡는다. */
 public final class RoleplaySpeechTurnPipeline {
+    private static final Logger log = LoggerFactory.getLogger(RoleplaySpeechTurnPipeline.class);
     public static final double DEFAULT_STT_CONFIDENCE_THRESHOLD = 0.40;
     private static final int MAX_ATTEMPTS = 3;
     private final SpeechToTextProvider stt;
@@ -88,8 +91,14 @@ public final class RoleplaySpeechTurnPipeline {
                             observations,
                             deadline,
                             recoverySnapshot);
-            case AiCallResult.Failure<SpeechTranscription> ignored ->
-                    rejected(InputFailure.TRANSCRIPTION_FAILED);
+            case AiCallResult.Failure<SpeechTranscription> failed -> {
+                // 전사 원문·제공자 오류 본문은 남기지 않는다. 운영에서 "말해도 인식을 못 한다"를 가려내는 근거다.
+                log.warn(
+                        "음성 인식 실패: failure={}, provider={}",
+                        failed.failure().type(),
+                        failed.metadata() == null ? null : failed.metadata().provider());
+                yield rejected(InputFailure.TRANSCRIPTION_FAILED);
+            }
         };
     }
 
@@ -100,15 +109,35 @@ public final class RoleplaySpeechTurnPipeline {
             GoalObservationInput observations,
             RoleplayTurnDeadline deadline,
             RoleplayTurnInput.InputRecoverySnapshot recoverySnapshot) {
-        if (!transcription.hasSpeech()) return rejected(InputFailure.NO_SPEECH);
+        if (!transcription.hasSpeech()) {
+            log.info("음성 입력 재입력 안내: reason={}", InputFailure.NO_SPEECH);
+            return rejected(InputFailure.NO_SPEECH);
+        }
         Double confidence = transcription.confidence();
-        if (confidence == null || !Double.isFinite(confidence))
+        if (confidence == null || !Double.isFinite(confidence)) {
+            // logprob 을 돌려주지 않는 모델·중계 서버면 모든 음성 입력이 여기서 막힌다(STT_INCLUDE_LOGPROBS·STT_MODEL 확인).
+            log.warn("음성 입력 재입력 안내: reason={}", InputFailure.UNKNOWN_CONFIDENCE);
             return rejected(InputFailure.UNKNOWN_CONFIDENCE);
-        if (confidence <= sttConfidenceThreshold)
+        }
+        if (confidence <= sttConfidenceThreshold) {
+            log.info(
+                    "음성 입력 재입력 안내: reason={}, confidence={}",
+                    InputFailure.LOW_CONFIDENCE,
+                    String.format("%.3f", confidence));
             return new RoleplayTurnResult.InputRejected(
                     InputFailure.LOW_CONFIDENCE,
                     new RoleplayTurnResult.SttConfidenceEvidence(
                             confidence, sttConfidenceThreshold));
+        }
+        if (!containsHangul(transcription.text())) {
+            // language=ko 를 보내도 "응"·"음" 같은 짧은 답이 "嗯?"·"Hm."·"うん。"으로 전사되고 신뢰도가 기준을 넘기도 한다
+            // (docs/ai-quality-results-2026-10-11.md). 한글이 하나도 없으면 알아듣지 못한 것으로 보고 다시 말해 달라고 한다.
+            log.info(
+                    "음성 입력 재입력 안내: reason={}, cause=no_hangul, confidence={}",
+                    InputFailure.LOW_CONFIDENCE,
+                    String.format("%.3f", confidence));
+            return rejected(InputFailure.LOW_CONFIDENCE);
+        }
         return processInput(
                 transcription.text(),
                 audio.traceContext(),
@@ -159,10 +188,21 @@ public final class RoleplaySpeechTurnPipeline {
             Double sttThreshold,
             RoleplayTurnInput.InputRecoverySnapshot recoverySnapshot) {
         return switch (inspectInput(text, trace, deadline)) {
-            case RoleplayInputProcessor.Unsafe ignored -> new RoleplayTurnResult.InputUnsafe();
-            case RoleplayInputProcessor.Invalid ignored -> rejected(InputFailure.INVALID_INPUT);
-            case RoleplayInputProcessor.Unavailable ignored ->
-                    new RoleplayTurnResult.InputCheckUnavailable();
+            case RoleplayInputProcessor.Unsafe ignored -> {
+                log.warn("입력 판정: inputType={}, decision=UNSAFE", inputType);
+                yield new RoleplayTurnResult.InputUnsafe();
+            }
+            case RoleplayInputProcessor.Invalid ignored -> {
+                log.info(
+                        "입력 판정 재입력 안내: inputType={}, reason={}",
+                        inputType,
+                        InputFailure.INVALID_INPUT);
+                yield rejected(InputFailure.INVALID_INPUT);
+            }
+            case RoleplayInputProcessor.Unavailable ignored -> {
+                log.warn("입력 판정 불가: inputType={}", inputType);
+                yield new RoleplayTurnResult.InputCheckUnavailable();
+            }
             case RoleplayInputProcessor.Accepted accepted ->
                     processAccepted(
                             accepted,
@@ -312,10 +352,27 @@ public final class RoleplaySpeechTurnPipeline {
                     return success.data();
                 }
                 case AiCallResult.Failure<SynthesizedSpeech> failed -> {
-                    if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) return null;
+                    if (!failed.failure().retryable() || attempt == MAX_ATTEMPTS) {
+                        // 음성 없이 글만 간다. 키 차단(403)·크레딧 부족(402) 등은 failure 로 구분한다.
+                        log.warn(
+                                "음성 합성 실패, 글만 보냄: failure={}, attempts={}",
+                                failed.failure().type(),
+                                attempt);
+                        return null;
+                    }
                 }
             }
         }
+    }
+
+    /** 한글 음절·자모가 하나라도 있는지. 숫자·영어가 섞인 한국어 답("2개요", "OK 좋아")은 통과한다. */
+    static boolean containsHangul(String text) {
+        return text != null
+                && text.codePoints()
+                        .anyMatch(
+                                c ->
+                                        Character.UnicodeScript.of(c)
+                                                == Character.UnicodeScript.HANGUL);
     }
 
     private static RoleplayTurnResult rejected(InputFailure failure) {

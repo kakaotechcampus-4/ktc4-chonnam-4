@@ -117,8 +117,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
             assertThat(publicResponse.messages().getFirst().text())
                     .isEqualTo(response.response().text());
             assertThat(JsonMapper.builder().build().writeValueAsString(publicResponse))
-                    .doesNotContain(
-                            "synthetic raw", "assessmentEligibility", "safeToSend", "candidateId");
+                    .doesNotContain("합성 원문", "assessmentEligibility", "safeToSend", "candidateId");
         }
     }
 
@@ -982,7 +981,7 @@ class RoleplayScopedVoiceTurnIntegrationTest {
                                     .containsExactly((byte) 1, (byte) 2, (byte) 3);
                             return success(
                                     new SpeechTranscription(
-                                            "synthetic raw", 0.9, "fake", "fake", null, null),
+                                            "합성 원문", 0.9, "fake", "fake", null, null),
                                     request.traceContext(),
                                     AiOperation.SPEECH_TRANSCRIPTION);
                         },

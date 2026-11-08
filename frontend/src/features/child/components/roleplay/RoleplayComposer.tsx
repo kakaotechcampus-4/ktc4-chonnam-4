@@ -37,12 +37,15 @@ function RoleplayComposer({
   onModeChange,
   onSend,
   onVoiceResult,
+  onRecordingStart,
   disabled = false,
 }: {
   mode: RoleplayInputMode
   onModeChange: (mode: RoleplayInputMode) => void
   onSend: (text: string) => void
   onVoiceResult: (result: VoiceResult) => void
+  /** 마이크를 열기 직전에 부른다. 캐릭터 목소리가 녹음에 섞이지 않게 재생을 멈추는 데 쓴다. */
+  onRecordingStart?: () => void
   disabled?: boolean
 }) {
   const [recording, setRecording] = useState<VoiceRecording | null>(null)
@@ -71,6 +74,7 @@ function RoleplayComposer({
 
   const startRecording = async () => {
     if (isPreparingMic || recordingRef.current) return
+    onRecordingStart?.()
     setIsPreparingMic(true)
     try {
       const started = await startVoiceRecording()

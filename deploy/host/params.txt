@@ -26,6 +26,8 @@ AI_MAX_RETRIES?=ai/max-retries
 
 # 음성 인식(STT)·음성 합성(TTS). LLM 과 따로 켠다. 없으면 기본값(끔)으로 뜬다.
 # 켰는데(STT_PROVIDER·TTS_PROVIDER) 키나 목소리 ID 가 없으면 앱이 시작되지 않는다 → 배포는 직전 설정으로 되돌린다.
+# TTS_PROVIDER 는 typecast 또는 openai. openai 는 STT 와 같은 OpenAI 키를 쓸 수 있고 주소·모델·목소리를 비우면 기본값이다.
+# 실제로 소리가 나려면 ROLEPLAY_SPEECH_DELIVERY=inline 도 함께 둔다(none 이면 합성해도 화면에 보내지 않는다).
 STT_PROVIDER?=stt/provider
 STT_PROVIDER_NAME?=stt/provider-name
 STT_BASE_URL?=stt/base-url

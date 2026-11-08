@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neuringo.neuringobe.ai.application.model.AudioFormat;
 import com.neuringo.neuringobe.ai.application.model.SynthesizedSpeech;
 import com.neuringo.neuringobe.roleplay.config.RoleplaySpeechDeliveryConfiguration;
+import com.neuringo.neuringobe.roleplay.infrastructure.speech.InlineRoleplaySpeechDelivery;
 import com.neuringo.neuringobe.roleplay.infrastructure.speech.NoAudioRoleplaySpeechDelivery;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +58,55 @@ class RoleplaySpeechDeliveryConfigurationTest {
                                                             "test")))
                                     .isEmpty();
                         });
+    }
+
+    @Test
+    void explicitInlineDeliversAudioAsDataUrl() {
+        enabled()
+                .withPropertyValues("roleplay.speech.delivery=inline")
+                .withUserConfiguration(RequiresDelivery.class)
+                .run(
+                        context -> {
+                            assertThat(context)
+                                    .hasNotFailed()
+                                    .hasSingleBean(RoleplaySpeechDelivery.class);
+                            var delivery = context.getBean(RoleplaySpeechDelivery.class);
+                            assertThat(delivery).isInstanceOf(InlineRoleplaySpeechDelivery.class);
+                            assertThat(
+                                            delivery.publish(
+                                                    UUID.randomUUID(),
+                                                    new SynthesizedSpeech(
+                                                            new byte[] {1, 2, 3},
+                                                            AudioFormat.MP3,
+                                                            "test",
+                                                            "test",
+                                                            "test")))
+                                    .contains("data:audio/mpeg;base64,AQID");
+                        });
+    }
+
+    @Test
+    void inlineDeliveryOmitsAudioAboveLimit() {
+        var delivery = new InlineRoleplaySpeechDelivery(2);
+        var speech = new SynthesizedSpeech(new byte[] {1, 2, 3}, AudioFormat.WAV, "t", "t", "t");
+        assertThat(delivery.publish(UUID.randomUUID(), speech)).isEmpty();
+        assertThat(new InlineRoleplaySpeechDelivery(3).publish(UUID.randomUUID(), speech))
+                .contains("data:audio/wav;base64,AQID");
+    }
+
+    @Test
+    void inlineDeliveryUrlPassesResponseSpeechValidation() {
+        var url =
+                new InlineRoleplaySpeechDelivery()
+                        .publish(
+                                UUID.randomUUID(),
+                                new SynthesizedSpeech(
+                                        new byte[] {9}, AudioFormat.MP3, "t", "t", "t"))
+                        .orElseThrow();
+        var speech =
+                new com.neuringo.neuringobe.roleplay.dto.RoleplayTurnResponse.Speech(true, url);
+        assertThat(speech.available()).isTrue();
+        assertThat(speech.toString()).doesNotContain("base64");
     }
 
     @ParameterizedTest
