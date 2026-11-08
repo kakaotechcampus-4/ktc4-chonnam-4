@@ -130,7 +130,7 @@ class RoleplayHttpIntegrationTest {
                         .andReturn();
         assertThat(result.getResponse().getContentAsString())
                 .doesNotContain(
-                        "synthetic raw",
+                        "합성 원문",
                         "test-vendor",
                         "test-model",
                         "test-voice",
@@ -193,7 +193,7 @@ class RoleplayHttpIntegrationTest {
             assertThat(payload.path("goal_observation_context")).isEqualTo(expected);
             assertThat(payload.path("learner_turn").path("canonical_utterance").asString())
                     .isEqualTo("친구가 울고 있어");
-            assertThat(call.userPrompt()).doesNotContain("synthetic raw private input");
+            assertThat(call.userPrompt()).doesNotContain("합성 원문 비공개 입력");
         }
         var reviewPayload = json.readTree(state.llmRequests.get(2).userPrompt());
         assertThat(
@@ -1013,7 +1013,7 @@ class RoleplayHttpIntegrationTest {
                                 jsonPath("$.data.messages[0].text").value("test child stop notice"))
                         .andReturn();
         assertThat(result.getResponse().getContentAsString())
-                .doesNotContain("private teacher", "synthetic raw", "approval-reference");
+                .doesNotContain("private teacher", "합성 원문", "approval-reference");
         assertThat(state.calls).containsExactly("CONTEXT", "STT", "INPUT");
         assertThat(count(f)).isZero();
         assertThat(state.goalDecisions).hasValue(0);
@@ -1585,8 +1585,7 @@ class RoleplayHttpIntegrationTest {
                 assertThat(turn.path("input_quality").path("stt_confidence_threshold").asDouble())
                         .isEqualTo(0.40);
             }
-            assertThat(call.userPrompt())
-                    .doesNotContain("private synthetic text", "synthetic raw private input");
+            assertThat(call.userPrompt()).doesNotContain("private synthetic text", "합성 원문 비공개 입력");
         }
         var stored =
                 jdbc.queryForMap(

@@ -4,6 +4,7 @@ import com.neuringo.neuringobe.ai.application.model.AudioFormat;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.OpenAiSpeechToTextProvider;
+import com.neuringo.neuringobe.ai.infrastructure.speech.OpenAiTextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.ScriptedSpeechToTextProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.SilentTextToSpeechProvider;
 import com.neuringo.neuringobe.ai.infrastructure.speech.TypecastTextToSpeechProvider;
@@ -76,6 +77,26 @@ public final class SpeechProviderConfiguration {
                     properties.model(),
                     requireConfigured(properties.voiceId(), "neuringo.ai.tts.voice-id"),
                     properties.language(),
+                    AudioFormat.valueOf(properties.audioFormat().toUpperCase(Locale.ROOT)));
+        }
+    }
+
+    /** OpenAI TTS. STT 와 같은 OpenAI 키를 쓸 수 있다. 목소리를 비우면 nova 다. */
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(TextToSpeechProperties.class)
+    @ConditionalOnProperty(name = "neuringo.ai.tts.provider", havingValue = "openai")
+    static class OpenAiTextToSpeech {
+
+        @Bean
+        TextToSpeechProvider textToSpeechProvider(TextToSpeechProperties properties) {
+            return new OpenAiTextToSpeechProvider(
+                    properties.baseUrl(),
+                    requireConfigured(properties.apiKey(), "neuringo.ai.tts.api-key"),
+                    properties.requestTimeout(),
+                    new OpenAiFailureClassifier(),
+                    properties.providerName(),
+                    properties.model(),
+                    properties.voiceId(),
                     AudioFormat.valueOf(properties.audioFormat().toUpperCase(Locale.ROOT)));
         }
     }

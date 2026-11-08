@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Keyboard, Mic } from "lucide-react"
+import { Keyboard, Mic, Volume2 } from "lucide-react"
 import themeparkBackgroundUrl from "@/assets/child/themepark-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { ChildButton } from "../components/ChildButton"
@@ -13,6 +13,7 @@ import {
   type VoiceResult,
 } from "../components/roleplay/RoleplayComposer"
 import type { VoiceRecorderError } from "../lib/voiceRecorder"
+import { playSpeech, stopSpeech } from "../lib/speechPlayer"
 import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
 import { SessionLostDialog } from "../components/state/LoadErrorDialog"
@@ -37,6 +38,8 @@ type ThreadMessage = {
   text: string
   /** 아이 답의 입력 방식. 말풍선 옆 아이콘(마이크·키보드)으로 보여준다. */
   inputMode?: RoleplayInputMode
+  /** 거북이 대사의 음성(TTS). 있으면 도착할 때 한 번 재생하고 "다시 듣기"로 또 들을 수 있다. */
+  audioUrl?: string
 }
 
 // 깡총이가 화면 끝까지 닿도록 레이아웃을 wide로 쓰고, 나머지 대화·입력은 기존 본문 폭(688px)에 맞춘다.
@@ -63,10 +66,26 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
       </div>
     )
   }
+  if (!message.audioUrl) {
+    return (
+      <SpeechBubble character="turtle" className={COLUMN}>
+        {message.text}
+      </SpeechBubble>
+    )
+  }
+  const audioUrl = message.audioUrl
   return (
-    <SpeechBubble character="turtle" className={COLUMN}>
-      {message.text}
-    </SpeechBubble>
+    <div className={`${COLUMN} flex items-end gap-2`}>
+      <SpeechBubble character="turtle">{message.text}</SpeechBubble>
+      <button
+        type="button"
+        onClick={() => void playSpeech(audioUrl)}
+        aria-label="다시 듣기"
+        className="mb-1 flex size-11 shrink-0 items-center justify-center rounded-full bg-[var(--child-surface)] text-[var(--child-primary)] shadow-sm outline-none focus-visible:ring-3 focus-visible:ring-[var(--child-primary)]/50 [&_svg]:size-5"
+      >
+        <Volume2 />
+      </button>
+    </div>
   )
 }
 
@@ -182,10 +201,16 @@ function ChildRoleplayPage() {
         const spoken = result.acceptedInput
         setReplies((prev) => [...prev, { id: nextId("child"), speaker: "child", text: spoken, inputMode: "voice" }])
       }
+      let latestAudio: string | undefined
       for (const message of result.messages) {
         if (message.speaker === "rabbit") showRabbitHint(message.text)
-        else setReplies((prev) => [...prev, { id: nextId("reply"), ...message }])
+        else {
+          setReplies((prev) => [...prev, { id: nextId("reply"), ...message }])
+          if (message.audioUrl) latestAudio = message.audioUrl
+        }
       }
+      // 거북이 대사는 소리로도 들려준다. 아이가 방금 버튼을 눌렀으므로 브라우저가 재생을 허락한다(막히면 "다시 듣기").
+      if (latestAudio) void playSpeech(latestAudio)
       if (result.status === "NOTICE_UNAVAILABLE" && result.messages.length === 0 && result.action !== "STOP_DIALOGUE") {
         showRabbitHint(FALLBACK_NOTICE)
       }
@@ -199,6 +224,9 @@ function ChildRoleplayPage() {
       }
     },
   })
+
+  // 화면을 떠나면 울리던 대사를 멈춘다.
+  useEffect(() => stopSpeech, [])
 
   // 새 말풍선이 생기면 맨 아래(입력창 아래)로 내려, 최신 말풍선과 입력창이 함께 보이게 한다.
   // 대화 끝으로만 내리면 입력창이 화면 밖으로 밀려 아이가 직접 스크롤해야 했다.
@@ -315,6 +343,7 @@ function ChildRoleplayPage() {
                 onModeChange={setInputMode}
                 onSend={sendText}
                 onVoiceResult={handleVoiceResult}
+                onRecordingStart={stopSpeech}
                 disabled={turnMutation.isPending}
               />
             )}

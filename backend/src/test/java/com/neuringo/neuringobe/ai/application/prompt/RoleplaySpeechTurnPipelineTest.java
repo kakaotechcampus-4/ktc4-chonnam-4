@@ -46,7 +46,7 @@ class RoleplaySpeechTurnPipelineTest {
             new SpeechTranscriptionRequest(
                     RoleplayFixtures.trace(null, null), 1, new byte[] {1, 2, 3}, AudioFormat.WEBM);
     private final RoleplayTurnDeadline deadline = RoleplayTurnDeadline.start();
-    private String raw = "synthetic-unfiltered-name";
+    private String raw = "합성-미정제-이름";
     private Double confidence = 0.9;
     private double sttConfidenceThreshold = 0.40;
     private int sttFailures;
@@ -168,6 +168,24 @@ class RoleplaySpeechTurnPipelineTest {
             assertThat(calls).containsExactly("STT");
             assertThat(llmRequests).isEmpty();
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"嗯?", "Hm.", "うん。", "Yeah?", "123"})
+    void transcriptWithoutHangulIsTreatedAsLowConfidence(String transcript) {
+        raw = transcript;
+        confidence = 0.95;
+        var result = (RoleplayTurnOutcome.Recovery) execute();
+        assertThat(calls).containsExactly("STT");
+        assertThat(result.action()).isEqualTo(RoleplayTurnOutcome.Action.REQUEST_NEW_INPUT);
+        assertThat(llmRequests).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"응.", "OK 좋아", "사과 2개요", "ㅋㅋ"})
+    void koreanTranscriptMixedWithOtherCharactersPasses(String transcript) {
+        raw = transcript;
+        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.SpokenResponse.class);
     }
 
     @Test

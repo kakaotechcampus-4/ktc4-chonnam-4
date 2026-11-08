@@ -739,7 +739,7 @@ export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'SUGGEST_TEX
 export interface RoleplaySpeechData {
   /** TTS 발행 URL이 있을 때만 true */
   available: boolean;
-  /** 인증된 임시 음성 주소; 미제공/재전송은 null */
+  /** 인증된 임시 음성 주소(roleplay.speech.delivery=inline 이면 응답에만 실리는 data:audio/...;base64 URL); 미제공/재전송은 null */
   url: string | null;
 }
 export type RoleplaySpeakerRole = 'DIALOGUE' | 'HINT';
