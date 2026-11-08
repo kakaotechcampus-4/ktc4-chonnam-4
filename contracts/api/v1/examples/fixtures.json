@@ -925,6 +925,53 @@
     "unavailable": false
   },
   {
+    "id": "API-ACT-05",
+    "fn": "listClassroomActivities",
+    "draft": false,
+    "method": "GET",
+    "route": "/api/v1/classrooms/{classId}/activities",
+    "args": {
+      "classId": "20000000-0000-4000-8000-000000000001",
+      "query": {
+        "page": 0,
+        "size": 20
+      }
+    },
+    "response": {
+      "data": [
+        {
+          "activityId": "40000000-0000-4000-8000-000000000001",
+          "childId": "10000000-0000-4000-8000-000000000001",
+          "goalId": "30000000-0000-4000-8000-000000000001",
+          "scenarioId": null,
+          "scenarioSource": null,
+          "initialSupportLevel": null,
+          "difficultyFallbackApplied": false,
+          "status": "NOT_STARTED",
+          "assignedAt": "2026-10-06T12:00:00+09:00",
+          "startedAt": null,
+          "completedAt": null,
+          "rewardIssuedAt": null,
+          "activityType": "FIRST_COMBINED",
+          "childName": "민준",
+          "goalTitle": "친구가 속상할 때 위로하는 말을 한다"
+        }
+      ],
+      "meta": {
+        "traceId": "90000000-0000-4000-8000-000000000001"
+      }
+    },
+    "status": 200,
+    "key": false,
+    "mode": "instructor",
+    "form": false,
+    "expectedStatuses": [
+      200
+    ],
+    "conditional": false,
+    "unavailable": false
+  },
+  {
     "id": "API-ACT-03",
     "fn": "getActivity",
     "draft": false,
@@ -2187,7 +2234,10 @@
               ]
             }
           ]
-        }
+        },
+        "activityType": "FIRST_COMBINED",
+        "childName": "민준",
+        "goalTitle": "친구가 속상할 때 위로하는 말을 한다"
       },
       "meta": {
         "traceId": "90000000-0000-4000-8000-000000000001"
@@ -2347,7 +2397,10 @@
                 ]
               }
             ]
-          }
+          },
+          "activityType": "FIRST_COMBINED",
+          "childName": "민준",
+          "goalTitle": "친구가 속상할 때 위로하는 말을 한다"
         }
       ],
       "meta": {

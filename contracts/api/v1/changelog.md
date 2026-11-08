@@ -1,5 +1,11 @@
 # API v1 변경 이력
 
+## 학급 단위 조회(강사 대시보드·학급 상세·리포트 목록)
+
+- [API-ACT-05](./activities/list-classroom-activities.md) `GET /api/v1/classrooms/{classId}/activities`를 더했습니다. 학급 아동 전체의 활동을 최근 배정 순으로 주고, 각 줄에 `childName`·`goalTitle`을 덧붙입니다. 준비 상태(`nextAction`)는 넣지 않습니다. 남의 학급은 404 `CLASSROOM_NOT_FOUND`입니다.
+- [API-REC-02](./reports-recommendations/list-learning-reports.md)에 `classId`를 더했습니다. `childId`와 `classId` 중 하나만 보내고, 둘 다 있거나 둘 다 없으면 400 `INVALID_REQUEST`입니다.
+- [API-REC-01](./reports-recommendations/get-learning-report.md)·REC-02 리포트에 `activityType`·`childName`·`goalTitle`이 더해집니다. 기존 칸은 바뀌지 않습니다.
+
 ## 2026-11-06 — 아동 입장 시도 제한(429)
 
 - [API-IAM-08](./auth/enter-child.md)에 429 두 가지를 더했습니다. 둘 다 `Retry-After`(초)를 붙이고 몸통은 같은 오류 envelope 입니다. FE 는 429 상태로 분기하고 `Retry-After` 동안 입력을 막습니다(헤더가 없으면 60초).
