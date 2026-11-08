@@ -159,6 +159,31 @@ class RoleplayHttpIntegrationTest {
         var rawFile = RAW_DIAGNOSTICS.resolve(requestTrace).resolve("diagnostics.jsonl");
         assertThat(Files.readString(rawFile))
                 .contains("MODEL_REQUEST", "MODEL_RESPONSE", "VALIDATION", "HTTP_RESULT");
+        var timing = timingEvents(requestTrace);
+        assertThat(
+                        timing.stream()
+                                .filter(e -> e.path("event").asString().equals("STAGE"))
+                                .map(e -> e.path("stage").asString())
+                                .toList())
+                .contains(
+                        "WORKER_QUEUE",
+                        "WORKER_EXECUTION",
+                        "CONTEXT_PREPARATION",
+                        "STT",
+                        "INPUT_PROCESSING",
+                        "LLM_CALL",
+                        "OUTPUT_VALIDATION",
+                        "TTS",
+                        "RESULT_COMMIT");
+        assertThat(timing)
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("request_id").asString()).isEqualTo(requestTrace);
+                            assertThat(e.path("llm_calls").asInt())
+                                    .isEqualTo(state.llmRequests.size());
+                            assertThat(e.path("in_progress_at_response").asInt()).isZero();
+                        });
         var finalEvent = Files.readAllLines(rawFile).getLast();
         assertThat(
                         new tools.jackson.databind.json.JsonMapper()
@@ -610,17 +635,37 @@ class RoleplayHttpIntegrationTest {
                 .andExpect(status().isOk());
         retention.completeNormallyAndDelete(f.session(), f.child(), f.activity());
         state.calls.clear();
-        mvc.perform(
-                        request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
-                                .session(session)
-                                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.replayed").value(true))
-                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
-                .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"));
+        var replay =
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.replayed").value(true))
+                        .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                        .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"))
+                        .andReturn();
+        assertThat(timingEvents(replay.getResponse().getHeader("X-Trace-Id")))
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("replayed").asBoolean()).isTrue();
+                            assertThat(e.path("llm_calls").asInt()).isZero();
+                        });
         assertThat(state.calls).isEmpty();
         assertThat(count(f)).isEqualTo(1);
         assertEmptySpool();
+    }
+
+    private static List<tools.jackson.databind.JsonNode> timingEvents(String requestId)
+            throws Exception {
+        var mapper = new tools.jackson.databind.json.JsonMapper();
+        return Files.readAllLines(RAW_DIAGNOSTICS.resolve(requestId).resolve("diagnostics.jsonl"))
+                .stream()
+                .map(mapper::readTree)
+                .filter(e -> e.path("event").asString().equals("TIMING"))
+                .map(e -> e.path("data"))
+                .toList();
     }
 
     @Test

@@ -1,5 +1,8 @@
 package com.neuringo.neuringobe.roleplay.application;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.*;
 import com.neuringo.neuringobe.roleplay.service.RoleplayRequestScopeService.Scope;
@@ -45,17 +48,27 @@ public final class RoleplayScopedTextTurnExecutor {
                     return new RoleplayCheckpointedTurnExecutor.PreparedExecution(
                             identity,
                             active -> {
-                                var prepared = contexts.prepare(scope, requestId, turnId, active);
+                                var prepared =
+                                        RoleplayTiming.measure(
+                                                CONTEXT_PREPARATION,
+                                                () ->
+                                                        contexts.prepare(
+                                                                scope, requestId, turnId, active));
                                 var progress =
                                         Objects.requireNonNull(
-                                                recoveries.progress(
-                                                        new RoleplayVoiceRecoverySource.Key(
-                                                                scope.childId(),
-                                                                scope.activityId(),
-                                                                scope.sessionId(),
-                                                                scope.scenarioId(),
-                                                                scope.scenarioVersion()),
-                                                        active));
+                                                RoleplayTiming.measure(
+                                                        CONTEXT_PREPARATION,
+                                                        () ->
+                                                                recoveries.progress(
+                                                                        new RoleplayVoiceRecoverySource
+                                                                                .Key(
+                                                                                scope.childId(),
+                                                                                scope.activityId(),
+                                                                                scope.sessionId(),
+                                                                                scope.scenarioId(),
+                                                                                scope
+                                                                                        .scenarioVersion()),
+                                                                        active)));
                                 var snapshot =
                                         new RoleplayTurnInput.InputRecoverySnapshot(
                                                 progress.failureCount(),

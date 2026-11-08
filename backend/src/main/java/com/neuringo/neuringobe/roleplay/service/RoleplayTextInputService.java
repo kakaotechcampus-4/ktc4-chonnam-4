@@ -1,5 +1,8 @@
 package com.neuringo.neuringobe.roleplay.service;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.roleplay.*;
 import com.neuringo.neuringobe.common.TraceIds;
 import com.neuringo.neuringobe.roleplay.application.*;
@@ -47,9 +50,17 @@ public final class RoleplayTextInputService {
             String text,
             RoleplayTurnDeadline deadline) {
         try (var ignored =
-                retentionGate == null ? null : retentionGate.enterInput(sessionId, deadline)) {
+                RoleplayTiming.measure(
+                        REQUEST_PREPARATION,
+                        () ->
+                                retentionGate == null
+                                        ? null
+                                        : retentionGate.enterInput(sessionId, deadline))) {
             deadline.requireActive();
-            var scope = scopes.loadForChildSession(authentication, sessionId);
+            var scope =
+                    RoleplayTiming.measure(
+                            REQUEST_PREPARATION,
+                            () -> scopes.loadForChildSession(authentication, sessionId));
             deadline.requireActive();
             if (text.codePointCount(0, text.length()) > maximumCharacters) {
                 if (!scope.acceptsNewTurn())

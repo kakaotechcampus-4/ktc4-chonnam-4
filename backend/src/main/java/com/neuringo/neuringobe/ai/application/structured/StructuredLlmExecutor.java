@@ -1,10 +1,13 @@
 package com.neuringo.neuringobe.ai.application.structured;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiFailure;
 import com.neuringo.neuringobe.ai.application.model.AiFailureType;
 import com.neuringo.neuringobe.ai.application.model.LlmCompletion;
 import com.neuringo.neuringobe.ai.application.model.LlmRequest;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
@@ -81,7 +84,9 @@ public final class StructuredLlmExecutor {
         LlmCompletion completion = (LlmCompletion) success.data();
 
         try {
-            T output = parser.parse(completion.content());
+            T output =
+                    RoleplayTiming.measure(
+                            OUTPUT_VALIDATION, () -> parser.parse(completion.content()));
             observed(request, "VALID");
             diagnostic(request, "VALID", null, output);
             return new AiCallResult.Success<>(output, success.metadata());

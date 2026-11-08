@@ -139,3 +139,6 @@ fork refactor push → 팀 develop 대상 PR → CI/리뷰 → 승인된 merge �
 - DEBUG 예외 메시지 노출 회귀를 검사에서 발견해 고정 코드로 수정했다. 배포 스크립트·마이그레이션 가드는 Linux에서 통과했다.
 - 검수 계약·평가 실행기·Dev 요청 관측을 목적별 로컬 커밋으로 나누고 [PR 본문](pr-roleplay-evaluation-output-retry.md)을 준비했다.
 - 다음 단계는 fork push 별도 승인이다. 서버 관측의 실제 실행 절차는 [runbook](roleplay-dev-observation-runbook-2026-11-08.md)을 따른다.
+- 후속 승인으로 큐·문맥·입력·AI·검증·STT/TTS·저장 구간의 시간 관측을 추가했다.
+  포함/자체 시간·반복 호출·응답 시 미완료·응답 후 종료를 구분하고 원문 진단 없이도 시간 로그를 남긴다.
+  최종 추가 변경본 전체 build 성공: 총 2,865개, 통과 2,859개, 선택 실행 제외 6개, 실패 0개(2분 57초).

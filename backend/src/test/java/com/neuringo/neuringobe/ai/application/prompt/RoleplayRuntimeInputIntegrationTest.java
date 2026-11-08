@@ -18,10 +18,13 @@ import java.nio.file.Path;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.*;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,6 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 
 @IntegrationTest
+@ExtendWith(OutputCaptureExtension.class)
 @Import({
     RoleplayHttpTestConfiguration.class,
     RoleplayRuntimeInputIntegrationTest.RuntimeInput.class
@@ -38,6 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
 @TestPropertySource(
         properties = {
             "roleplay.http.enabled=true",
+            "neuringo.ai.call-log=true",
             "roleplay.text.enabled=true",
             "roleplay.text.maximum-characters=256",
             "roleplay.progress.maximum-turn-count=77",
@@ -91,8 +96,8 @@ class RoleplayRuntimeInputIntegrationTest {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
-    void actualProcessorMasksBothInputsBeforeAnalysisAndReplayDoesNotCallItAgain(boolean voice)
-            throws Exception {
+    void actualProcessorMasksBothInputsBeforeAnalysisAndReplayDoesNotCallItAgain(
+            boolean voice, CapturedOutput output) throws Exception {
         assertThat(processor).isInstanceOf(ModelRoleplayInputProcessor.class);
         var f = RoleplayHttpFixtures.fixture(jdbc);
         jdbc.update("update child set display_name='김하늘' where child_id=?", f.child());
@@ -105,6 +110,9 @@ class RoleplayRuntimeInputIntegrationTest {
                 .andExpect(jsonPath("$.data.status").value("DELIVERED"))
                 .andExpect(jsonPath("$.data.acceptedInput").value(canonical));
         assertThat(state.llmRequests).anyMatch(r -> r.operation() == AiOperation.INPUT_VALIDATION);
+        assertThat(output)
+                .contains("ROLEPLAY_TIMING", "operation=INPUT_VALIDATION", "INPUT_VALIDATION=1")
+                .doesNotContain("김하늘", "010-1234-5678");
         assertThat(state.llmRequests)
                 .allSatisfy(r -> assertThat(r.userPrompt()).doesNotContain("김하늘", "010-1234-5678"));
         assertThat(

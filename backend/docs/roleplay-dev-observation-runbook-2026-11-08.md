@@ -91,6 +91,8 @@ sudo docker compose --env-file /opt/neuringo/state/dev.env -f /opt/neuringo/curr
 | `LLM_CALL outcome=OK` | 제공자 호출 성공. 서버 검사나 검수 PASS까지 뜻하지 않음 |
 | `LLM_VALIDATION outcome=VALID` | 서버가 출력을 유효하게 해석함. 유효한 REGENERATE/REANALYZE도 포함 |
 | `ROLEPLAY_REQUEST` | 같은 UUID의 최종 기술 결과. HTTP 200만 보지 않고 `completion`·`result`도 확인 |
+| `ROLEPLAY_STAGE` | 같은 요청의 구간별 시작 위치·포함 시간·자체 시간·완료 여부 |
+| `ROLEPLAY_TIMING` | 요청 전체와 구간별 시간 집계·AI 호출 수·반복 호출·응답 시 미완료 구간 요약 |
 
 원문 입력은 개인정보 마스킹 등 기존 처리를 거친 **실제 모델 입력**이다.
 마스킹 전 사용자 입력·음성 파일·모델의 비공개 내부 추론은 수집하지 않는다.
@@ -99,6 +101,48 @@ sudo docker compose --env-file /opt/neuringo/state/dev.env -f /opt/neuringo/curr
 시간 단위도 구분한다. `capture_elapsed_ms`는 진단 수집 시작 이후의 위치이며 요청 시간이나 AI 응답 시간이 아니다.
 호출 시간은 응답 메타데이터의 `elapsedMs`, 전체 HTTP 시간은 `HTTP_RESULT.data.elapsed_ms` 또는 `ROLEPLAY_REQUEST ms`다.
 원문 파일 쓰기 자체의 부하도 있으므로 진단 활성 여부를 비교 조건에 남긴다.
+
+### TTFB가 18.8초에서 35.6초로 늘어난 경우
+
+두 Network 요청의 X-Trace-Id를 각각 기록하고 같은 ID의 ROLEPLAY_TIMING/ROLEPLAY_STAGE를 비교한다.
+구간별 기술 시간은 ai/call-log=true이면 원문 진단을 끈 상태에서도 기록된다.
+설정 적용·배포 이전 요청에 대해 새 구간별 시간을 소급해 얻을 수는 없다.
+
+| 구간/필드 | 확인할 질문 |
+| --- | --- |
+| REQUEST_PREPARATION / UPLOAD_VALIDATION | 세션 조회·보존 게이트·음성 업로드 검사에서 지연됐는가? |
+| WORKER_QUEUE | 제한된 worker에 들어가기 전 기다린 시간이 늘었는가? |
+| TURN_PREPARATION / REQUEST_CLAIM / CHECKPOINT_LOOKUP | 입력 준비·처리권 획득·기존 처리 결과 조회에서 지연됐는가? |
+| CONTEXT_PREPARATION | 대화·학습 문맥과 진행 상태 조회가 느린가? |
+| INPUT_PROCESSING | 입력 판정/전처리에 걸린 시간은 얼마인가? 내부 AI 호출도 포함하므로 자체 시간을 함께 봄 |
+| STT / TTS | 음성 인식 또는 응답 음성 생성이 느린가? 각 시도별로 기록 |
+| LLM_CALL | operation별 입력 판정·분석·생성·검수 중 무엇이 느린가? |
+| OUTPUT_VALIDATION | 모델 응답 후 서버 파싱·도메인 검증이 느린가? |
+| RESULT_COMMIT | 결과 저장 호출 경계가 느린가? 개별 SQL/DB 연결 대기 시간과는 구분 |
+| llm_calls_by_operation / repeated_llm_calls | 호출 자체가 느려졌는가, 같은 목적의 호출이 늘었는가? |
+
+각 STAGE의 start_ms는 이 요청 측정 시작 후 위치이고 duration_ms는 해당 구간의 포함 시간이다.
+구간 기록은 응답 직전에 모아서 출력하므로 파일에 추가된 행 순서만으로 실행 순서를 추정하지 않는다.
+start_ms·span_id·parent_span_id로 읽는다. 밀리초 미만 시간은 버림 처리돼 0ms로 표시될 수 있다.
+self_ms는 직계 자식 구간이 차지한 시간의 합집합을 제외한 시간이다.
+HTTP_REQUEST·WORKER_EXECUTION·INPUT_PROCESSING 같은 부모와 내부 LLM_CALL을 더하면 중복 집계된다.
+inclusive_ms_by_stage와 self_ms_by_stage는 같은 구간 종류의 요청 내 집계다.
+동시에 실행된 구간은 자체 시간 집계도 겹칠 수 있으므로 모든 값을 더해 HTTP 시간과 같다고 가정하지 않는다.
+unclassified_ms는 HTTP 루트의 자체 시간이다. worker 내부의 아직 분류되지 않은 작업은 WORKER_EXECUTION의 자체 시간에도 남는다.
+이 나머지를 전부 DB나 네트워크 지연이라고 부르지 않는다.
+
+repeated_llm_calls는 각 목적의 첫 호출을 제외한 추가 호출 수다. 재시도/재분석 흐름은 operation·attempt·시작 위치·검증 결과를 함께 읽는다.
+outcome=COMPLETED는 해당 함수가 반환됐다는 기술 의미다. 최종 전달·저장 성공은 ROLEPLAY_REQUEST의 result·checkpoint·replayed와 재조회로 확인한다.
+큐 거절/시작 전 취소는 REJECTED_BEFORE_START·TIMED_OUT_BEFORE_START·CANCELLED_BEFORE_START 등으로 표시한다.
+응답 시 실행 중인 구간은 IN_PROGRESS_AT_RESPONSE이며, 응답 후 종료하면 STAGE_LATE/after_response=true로 따로 기록한다.
+늦게 끝난 구간의 전체 시간을 이미 보낸 응답의 대기 시간에 더하지 않는다.
+truncated=true이면 요청당 256개 구간 한도에 도달한 불완전한 기록이다.
+
+ROLEPLAY_TIMING은 요청 측정 종료 시점의 스냅샷이다. 이후 시간 로그/진단 파일을 쓰는 부하가 ROLEPLAY_REQUEST ms에 추가될 수 있다.
+result=null이면 정상 역할극 결과가 기록되지 않은 요청이므로 HTTP 상태·completion·오류 응답을 함께 확인한다.
+브라우저 TTFB와 앱 시간은 네트워크·앞단·측정 경계가 달라 반드시 일치하지 않는다.
+외부 AI 호출 시간이 늘어도 제공자 내부 대기·네트워크·추론을 이 기록만으로 분리하지 못한다.
+문맥/저장 구간이 느린 근거가 생기면 해당 쿼리·연결 풀 등으로 다음 조사 범위를 좁힌다.
 
 ## 6. 무엇을 결론 내릴 수 있나
 
@@ -111,7 +155,7 @@ sudo docker compose --env-file /opt/neuringo/state/dev.env -f /opt/neuringo/curr
 - 제공자 OK → 형식 거절이라면 연결 문제와 구분해 구조·스키마·도메인 검사를 조사한다.
 - 유효한 평가인데 판단이 틀렸다면 스키마 통과와 의미 정확성을 구분한다.
 - `replayed=true`면 이전 처리 결과의 재전달일 수 있어 새 AI 처리 시간 표본으로 합치지 않는다.
-- 음성은 텍스트 경로를 확인한 뒤 따로 관측한다. HTTP 시간에는 음성 처리도 포함되지만 이번 구현에 STT/TTS 개별 타이머는 없다.
+- 음성은 텍스트 경로를 확인한 뒤 따로 관측한다. STT/TTS는 구간별로 확인하고 텍스트 응답의 TTS도 구분한다.
 
 한두 건으로 성공률·p95·운영 timeout을 확정하지 않는다. 지금의 완료 기준은 실제 입력의 실행 경로와 실패 원인을 추적할 수 있는가다.
 

@@ -1,6 +1,9 @@
 package com.neuringo.neuringobe.ai.infrastructure.diagnostics;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
 import com.neuringo.neuringobe.ai.application.model.*;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 
@@ -17,7 +20,12 @@ public final class DiagnosticLlmProvider implements LlmProvider {
     @Override
     public AiCallResult<LlmCompletion> complete(LlmRequest request) {
         var id = request.traceContext().requestId();
-        if (!diagnostics.active(id)) return delegate.complete(request);
+        if (!diagnostics.active(id))
+            return RoleplayTiming.ai(
+                    LLM_CALL,
+                    request.operation(),
+                    request.currentAttempt(),
+                    () -> delegate.complete(request));
         diagnostics.record(
                 id,
                 "MODEL_REQUEST",
@@ -41,7 +49,12 @@ public final class DiagnosticLlmProvider implements LlmProvider {
                         "response_schema",
                         request.responseJsonSchema()));
         try {
-            var result = delegate.complete(request);
+            var result =
+                    RoleplayTiming.ai(
+                            LLM_CALL,
+                            request.operation(),
+                            request.currentAttempt(),
+                            () -> delegate.complete(request));
             if (result instanceof AiCallResult.Success<LlmCompletion> success)
                 diagnostics.record(
                         id,

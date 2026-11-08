@@ -1,5 +1,8 @@
 package com.neuringo.neuringobe.roleplay.controller;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.common.TraceIds;
 import com.neuringo.neuringobe.roleplay.dto.RoleplayTurnResponse;
@@ -62,12 +65,17 @@ public final class RoleplayRequestObservationFilter extends OncePerRequestFilter
         String completion = "ERROR";
         MDC.put(TraceIds.REQUEST_KEY, id);
         response.setHeader("X-Trace-Id", id);
+        var timing = RoleplayTiming.begin(UUID.fromString(id), diagnostics);
         try {
             diagnostics.begin(UUID.fromString(id));
             chain.doFilter(request, response);
             completion = "COMPLETE";
         } finally {
             try {
+                timing.finish(
+                        "ERROR".equals(completion),
+                        request.getAttribute(RESULT),
+                        request.getAttribute(REPLAYED));
                 diagnostics.end(
                         UUID.fromString(id),
                         AiDiagnostics.fields(
