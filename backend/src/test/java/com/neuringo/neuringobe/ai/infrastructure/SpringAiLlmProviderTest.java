@@ -27,6 +27,80 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 class SpringAiLlmProviderTest {
 
     @Test
+    void sendsStrictSchemaOverTheWireExactlyOnceAndKeepsUsage() throws Exception {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var received = new AtomicReference<tools.jackson.databind.JsonNode>();
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        var server =
+                com.sun.net.httpserver.HttpServer.create(
+                        new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/v1/chat/completions",
+                exchange -> {
+                    count.incrementAndGet();
+                    received.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+                    var body =
+                            """
+                    {"id":"test","object":"chat.completion","created":1,"model":"test-model",
+                     "choices":[{"index":0,"message":{"role":"assistant","content":"{\\"valid\\":true}"},"finish_reason":"stop"}],
+                     "usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}
+                    """
+                                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                    exchange.close();
+                });
+        server.start();
+        try {
+            var model =
+                    OpenAiChatModel.builder()
+                            .options(
+                                    OpenAiChatOptions.builder()
+                                            .apiKey("test-key")
+                                            .baseUrl(
+                                                    "http://127.0.0.1:"
+                                                            + server.getAddress().getPort()
+                                                            + "/v1")
+                                            .maxRetries(0)
+                                            .build())
+                            .build();
+            String schema =
+                    "{\"type\":\"object\",\"properties\":{\"valid\":{\"type\":\"boolean\"}},\"required\":[\"valid\"],\"additionalProperties\":false}";
+            var request =
+                    request()
+                            .withResponseJsonSchema(schema)
+                            .withCallBudget(
+                                    new com.neuringo.neuringobe.ai.application.model.AiCallBudget(
+                                            () -> Duration.ofSeconds(5)));
+            var result = (AiCallResult.Success<LlmCompletion>) provider(model).complete(request);
+            assertThat(count.get()).isEqualTo(1);
+            assertThat(received.get().path("response_format").path("type").asString())
+                    .isEqualTo("json_schema");
+            var actual = received.get().path("response_format").path("json_schema");
+            assertThat(actual.path("strict").asBoolean()).isTrue();
+            assertThat(actual.path("schema")).isEqualTo(mapper.readTree(schema));
+            assertThat(received.get().path("model").asString()).isEqualTo("test-model");
+            assertThat(result.metadata().inputTokens()).isEqualTo(11);
+            assertThat(result.metadata().outputTokens()).isEqualTo(7);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void requestsWithoutASchemaKeepTheExistingOptions() {
+        var seen = new AtomicReference<OpenAiChatOptions>();
+        provider(
+                        prompt -> {
+                            seen.set((OpenAiChatOptions) prompt.getOptions());
+                            return new ChatResponse(List.of());
+                        })
+                .complete(request());
+        assertThat(seen.get().getResponseFormat()).isNull();
+    }
+
+    @Test
     void convertsKnownProviderExceptionToFailureResult() {
         ChatModel chatModel =
                 prompt -> {

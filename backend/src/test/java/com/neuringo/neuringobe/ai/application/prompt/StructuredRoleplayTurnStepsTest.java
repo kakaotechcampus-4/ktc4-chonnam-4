@@ -19,6 +19,7 @@ import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.RetryTarget;
 import com.neuringo.neuringobe.roleplay.application.RoleplayObservationTestPlans;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -91,6 +93,174 @@ class StructuredRoleplayTurnStepsTest {
         assertThat(first.traceContext()).isEqualTo(retry.traceContext());
         assertThat(retry.currentAttempt()).isEqualTo(2);
         assertThat(retry.attemptContext().evaluationAttempt()).isEqualTo(2);
+        assertThat(body(retry).has("retry")).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2, 3, 4, 5})
+    void recordedLegacyEvaluationOutputsAreRejectedAndRetriedWithoutChangingTheCandidate(int index)
+            throws Exception {
+        var sample = evaluationFailure(index);
+        provider.evaluationOutputs.add(sample.path("content").asText());
+
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(operations())
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        var first = provider.requests.get(2);
+        var retry = provider.requests.get(3);
+        assertThat(first.traceContext()).isEqualTo(retry.traceContext());
+        assertThat(retry.currentAttempt()).isEqualTo(2);
+        assertThat(retry.callBudget()).isNotNull();
+        assertThat(body(first).has("retry")).isFalse();
+        assertThat(body(retry).path("retry").path("error_code").asText())
+                .isEqualTo(index == 2 || index == 5 ? "UNKNOWN_FAILURE_CODE" : "INVALID_STRUCTURE");
+        assertThat(body(retry).path("retry").path("correction").asText()).isNotBlank();
+        assertThat(EvaluationWireFixtures.analysisForRequest(body(retry)))
+                .isEqualTo(EvaluationWireFixtures.analysisForRequest(body(first)));
+        assertThat(body(retry).path("candidate_response"))
+                .isEqualTo(body(first).path("candidate_response"));
+        assertThat(retry.userPrompt())
+                .doesNotContain("ValueInstantiationException", "StreamReadException");
+    }
+
+    @Test
+    void malformedEvaluationStillStopsAtThreeAttemptsWithoutApprovingTheCandidate()
+            throws Exception {
+        var invalid = evaluationFailure(1).path("content").asText();
+        provider.evaluationOutputs.addAll(List.of(invalid, invalid, invalid));
+
+        var result =
+                (RoleplayTurnResult.RecoveryRequired)
+                        executor.execute(RoleplayFixtures.TURN_ID, steps);
+        assertThat(result.target()).isEqualTo(RetryTarget.SAFE_FALLBACK);
+        assertThat(result.reason()).isEqualTo(RoleplayTurnResult.RecoveryReason.LIMIT_REACHED);
+        assertThat(provider.requests).hasSize(5);
+        assertThat(provider.requests.subList(3, 5))
+                .allSatisfy(
+                        request ->
+                                assertThat(body(request).path("retry").path("error_code").asText())
+                                        .isEqualTo("INVALID_STRUCTURE"));
+    }
+
+    @Test
+    void correctedReanalysisRunsAnalysisAgainAndClearsEvaluationFeedbackForTheNewCandidate()
+            throws Exception {
+        provider.evaluationOutputs.add(evaluationFailure(1).path("content").asText());
+        provider.decisions.add(EvaluationDecision.REANALYZE);
+
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(operations())
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        assertThat(body(provider.requests.get(3)).path("retry").path("error_code").asText())
+                .isEqualTo("INVALID_STRUCTURE");
+        assertThat(body(provider.requests.get(6)).has("retry")).isFalse();
+        assertThat(provider.requests.get(6).traceContext().candidateId())
+                .isNotEqualTo(provider.requests.get(2).traceContext().candidateId());
+    }
+
+    @Test
+    void contradictoryEvaluationRetriesSameCandidateBeforeAcceptingAValidPass() throws Exception {
+        provider.evaluationOutputs.add(contradictoryObservationEvaluation());
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(operations())
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        var first = provider.requests.get(2);
+        var retry = provider.requests.get(3);
+        assertThat(retry.traceContext()).isEqualTo(first.traceContext());
+        assertThat(EvaluationWireFixtures.analysisForRequest(body(retry)))
+                .isEqualTo(EvaluationWireFixtures.analysisForRequest(body(first)));
+        assertThat(body(retry).path("candidate_response"))
+                .isEqualTo(body(first).path("candidate_response"));
+        assertThat(body(retry).path("retry").path("error_code").asString())
+                .isEqualTo("INCONSISTENT_DECISION");
+        assertThat(retry.callBudget()).isNotNull();
+        assertThat(retry.userPrompt()).doesNotContain("goal review contradicts analysis check");
+    }
+
+    @Test
+    void contradictoryEvaluationDoesNotTriggerReanalysisUntilAConsistentDecision()
+            throws Exception {
+        provider.evaluationOutputs.add(contradictoryObservationEvaluation());
+        provider.decisions.add(EvaluationDecision.REANALYZE);
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(operations())
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        assertThat(provider.requests.get(2).traceContext())
+                .isEqualTo(provider.requests.get(3).traceContext());
+        assertThat(provider.requests.get(4).traceContext().analysisId())
+                .isNotEqualTo(provider.requests.get(2).traceContext().analysisId());
+        assertThat(body(provider.requests.get(6)).has("retry")).isFalse();
+    }
+
+    @Test
+    void threeContradictoryEvaluationsStopWithoutReanalysisOrDelivery() throws Exception {
+        var invalid = contradictoryObservationEvaluation();
+        provider.evaluationOutputs.addAll(List.of(invalid, invalid, invalid));
+        var result =
+                (RoleplayTurnResult.RecoveryRequired)
+                        executor.execute(RoleplayFixtures.TURN_ID, steps);
+        assertThat(result.operation()).isEqualTo(AiOperation.RESPONSE_EVALUATION);
+        assertThat(result.target()).isEqualTo(RetryTarget.SAFE_FALLBACK);
+        assertThat(result.reason()).isEqualTo(RoleplayTurnResult.RecoveryReason.LIMIT_REACHED);
+        assertThat(operations())
+                .containsExactly(
+                        AiOperation.CAUSE_ANALYSIS,
+                        AiOperation.RESPONSE_GENERATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION,
+                        AiOperation.RESPONSE_EVALUATION);
+        assertThat(provider.requests.subList(2, 5))
+                .allSatisfy(
+                        request -> {
+                            assertThat(request.traceContext())
+                                    .isEqualTo(provider.requests.get(2).traceContext());
+                            assertThat(request.currentAttempt()).isBetween(1, 3);
+                        });
+    }
+
+    @Test
+    void evaluationFeedbackNeverIncludesRejectedModelTextOrLeaksIntoAnotherTurn() {
+        provider.evaluationOutputs.add("not JSON: 민감한 모델 원문");
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(provider.requests.get(3).userPrompt()).doesNotContain("민감한 모델 원문");
+
+        var another =
+                new StructuredRoleplayTurnSteps(
+                        new RoleplayPromptFactory(mapper, null),
+                        new StructuredLlmExecutor(provider),
+                        trace,
+                        input,
+                        RoleplayObservationTestPlans.inputForScenario(input.scenario()));
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, another))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(body(provider.requests.get(6)).has("retry")).isFalse();
     }
 
     @Test
@@ -168,7 +338,7 @@ class StructuredRoleplayTurnStepsTest {
         assertThat(reanalysis.traceContext().analysisId())
                 .isNotEqualTo(provider.requests.getFirst().traceContext().analysisId());
         assertThat(body(reanalysis).get("retry").get("failure_codes").get(0).asText())
-                .isEqualTo("TOO_LONG");
+                .isEqualTo("UNSUPPORTED_CAUSE_ANALYSIS");
         assertThat(body(reanalysis).get("retry").get("focus").get(0).asText()).isEqualTo("shorten");
         assertThat(body(reanalysis).get("retry").get("do_not_assume").get(0).asText())
                 .isEqualTo("invented facts");
@@ -280,6 +450,54 @@ class StructuredRoleplayTurnStepsTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    private String contradictoryObservationEvaluation() {
+        var body =
+                (tools.jackson.databind.node.ObjectNode)
+                        mapper.readTree(
+                                RoleplayFixtures.evaluationOutputJson(
+                                        "REANALYZE", "[\"UNSUPPORTED_CAUSE_ANALYSIS\"]", "null"));
+        body.put("candidate_id", "${candidate_id}");
+        body.put("analysis_id", "${analysis_id}");
+        body.put("decision", "PASS");
+        ((tools.jackson.databind.node.ObjectNode) body.path("observation_reviews").path("o0"))
+                .put("verdict", "UNSUPPORTED")
+                .put("reason_code", "STATUS_MISMATCH")
+                .put("evidence_quote", input.learnerTurn().canonicalUtterance());
+        return body.toString();
+    }
+
+    @Test
+    void indeterminateReviewRetriesTheSameCandidateAndStopsAtTheEvaluationLimit() {
+        var body =
+                (tools.jackson.databind.node.ObjectNode)
+                        mapper.readTree(
+                                RoleplayFixtures.evaluationOutputJson("PASS", "[]", "null"));
+        body.put("candidate_id", "${candidate_id}");
+        body.put("analysis_id", "${analysis_id}");
+        ((tools.jackson.databind.node.ObjectNode) body.path("observation_reviews").path("o0"))
+                .put("verdict", "INSUFFICIENT_CONTEXT")
+                .put("reason_code", "INSUFFICIENT_CONTEXT")
+                .put("explanation", "문맥이 부족하다.");
+        provider.evaluationOutputs.addAll(
+                List.of(body.toString(), body.toString(), body.toString()));
+        var result =
+                (RoleplayTurnResult.RecoveryRequired)
+                        executor.execute(RoleplayFixtures.TURN_ID, steps);
+        assertThat(result.operation()).isEqualTo(AiOperation.RESPONSE_EVALUATION);
+        assertThat(result.target()).isEqualTo(RetryTarget.SAFE_FALLBACK);
+        assertThat(result.reason()).isEqualTo(RoleplayTurnResult.RecoveryReason.LIMIT_REACHED);
+        assertThat(provider.requests).hasSize(5);
+        assertThat(provider.requests.subList(2, 5))
+                .allSatisfy(
+                        request -> {
+                            assertThat(request.traceContext())
+                                    .isEqualTo(provider.requests.get(2).traceContext());
+                            assertThat(request.callBudget()).isNotNull();
+                        });
+        assertThat(body(provider.requests.get(3)).path("retry").path("error_code").asString())
+                .isEqualTo("OBSERVATION_CONTEXT_INSUFFICIENT");
+    }
+
     private List<AiOperation> operations() {
         return provider.requests.stream().map(LlmRequest::operation).toList();
     }
@@ -288,9 +506,37 @@ class StructuredRoleplayTurnStepsTest {
         return mapper.readTree(request.userPrompt());
     }
 
+    private JsonNode evaluationFailure(int index) throws Exception {
+        try (var stream =
+                getClass()
+                        .getResourceAsStream("/ai/mock/roleplay-evaluation-output-failures.json")) {
+            return mapper.readTree(new String(stream.readAllBytes(), StandardCharsets.UTF_8))
+                    .get(index);
+        }
+    }
+
+    @Test
+    void unknownFailureCodeIsCorrectedUsingTheServerAllowedList() {
+        provider.evaluationOutputs.add(
+                RoleplayFixtures.evaluationOutputJson(
+                        "REANALYZE", "[\"ANALYSIS_SUPPORTED\"]", "null"));
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        assertThat(body(provider.requests.get(3)).path("retry").path("error_code").asText())
+                .isEqualTo("UNKNOWN_FAILURE_CODE");
+        var allowed = body(provider.requests.get(3)).path("retry").path("allowed_failure_codes");
+        assertThat(allowed).hasSize(EvaluationOutputSchema.modelFailureCodes().size());
+        assertThat(allowed.toString())
+                .doesNotContain(
+                        "UNSUPPORTED_CAUSE_ANALYSIS",
+                        "STATE_STRATEGY_MISMATCH",
+                        "ANALYSIS_SUPPORTED");
+    }
+
     private final class ScriptedProvider implements LlmProvider {
         private final List<LlmRequest> requests = new ArrayList<>();
         private final Deque<EvaluationDecision> decisions = new ArrayDeque<>();
+        private final Deque<String> evaluationOutputs = new ArrayDeque<>();
         private EvaluationDecision defaultDecision = EvaluationDecision.PASS;
         private AiOperation timeoutOnce;
         private AiOperation malformedOnce;
@@ -368,26 +614,27 @@ class StructuredRoleplayTurnStepsTest {
         }
 
         private String evaluation(LlmRequest request) {
+            if (!evaluationOutputs.isEmpty()) {
+                return evaluationOutputs
+                        .removeFirst()
+                        .replace("${candidate_id}", request.traceContext().candidateId().toString())
+                        .replace("${analysis_id}", request.traceContext().analysisId().toString());
+            }
             var decision = decisions.isEmpty() ? defaultDecision : decisions.removeFirst();
-            var target =
-                    switch (decision) {
-                        case REGENERATE, SAFETY_REGENERATE -> "RESPONSE_GENERATION";
-                        case REANALYZE -> "CAUSE_ANALYSIS";
-                        case SAFE_FALLBACK -> "SAFE_FALLBACK";
-                        default -> null;
-                    };
             var response = new LinkedHashMap<String, Object>();
             response.put(
                     "goal_observation_review",
                     RoleplayFixtures.review(request.traceContext().analysisId()));
             response.put("candidate_id", request.traceContext().candidateId());
             response.put("decision", decision.name());
-            response.put("safe_to_send", decision == EvaluationDecision.PASS);
-            response.put("retry_target", target);
-            response.put("critical_failure_count", 0);
-            response.put(
-                    "failure_codes",
-                    decision == EvaluationDecision.PASS ? List.of() : List.of("TOO_LONG"));
+            List<String> failureCodes =
+                    decision == EvaluationDecision.PASS
+                            ? List.of()
+                            : decision == EvaluationDecision.REANALYZE
+                                    ? List.of("UNSUPPORTED_CAUSE_ANALYSIS")
+                                    : List.of("TOO_LONG");
+            response.put("checks", RoleplayFixtures.evaluationChecks(failureCodes));
+            response.put("failure_codes", failureCodes);
             response.put(
                     "revision_instruction",
                     Map.of(
@@ -399,7 +646,8 @@ class StructuredRoleplayTurnStepsTest {
                             List.of("invented facts"),
                             "required",
                             List.of("ask one question")));
-            return mapper.writeValueAsString(response);
+            return EvaluationWireFixtures.forRequest(
+                    mapper.writeValueAsString(response), body(request));
         }
     }
 }

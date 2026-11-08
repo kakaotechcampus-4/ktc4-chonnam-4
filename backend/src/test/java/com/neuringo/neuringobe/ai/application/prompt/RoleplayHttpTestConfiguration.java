@@ -311,133 +311,145 @@ public class RoleplayHttpTestConfiguration {
 
     @Bean
     LlmProvider httpLlm(State state, ObjectMapper mapper) {
-        return request -> {
-            state.calls.add(request.operation().name());
-            state.llmRequests.add(request);
-            Queue<AiFailureType> failures = state.llmFailures.get(request.operation());
-            AiFailureType failure = failures == null ? null : failures.poll();
-            if (failure != null)
-                return new AiCallResult.Failure<>(
-                        new AiFailure(failure, null), llmMetadata(request));
-            var turnState = mapper.readTree(request.userPrompt()).path("state");
-            int maximum = turnState.path("maximum_turn_count").asInt();
-            boolean maximumReached = maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
-            String json =
-                    switch (request.operation()) {
-                        case INPUT_VALIDATION -> state.inputJudgment;
-                        case CAUSE_ANALYSIS ->
-                                RoleplayFixtures.analysisJson(
-                                        maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",
-                                        RoleplayFixtures.MG_EMOTION,
-                                        "S1");
-                        case RESPONSE_GENERATION -> {
-                            String text = state.candidateTexts.poll();
-                            String candidate =
-                                    RoleplayFixtures.candidateJson(
-                                            text == null
-                                                    ? (maximumReached
-                                                            ? "함께해 줘서 고마워."
-                                                            : "친구는 어떤 기분일까?")
-                                                    : text,
-                                            maximumReached ? "CLOSING" : "GUIDING_QUESTION");
-                            if (maximumReached)
-                                candidate = candidate.replace("PROBE_EMOTION", "CLOSE_ROLEPLAY");
-                            yield candidate.replace(
-                                    "\"previous_failed_candidate_ids\":[]",
-                                    "\"previous_failed_candidate_ids\":"
-                                            + mapper.readTree(request.userPrompt())
-                                                    .get("previous_failed_candidate_ids"));
+        LlmProvider provider =
+                request -> {
+                    state.calls.add(request.operation().name());
+                    state.llmRequests.add(request);
+                    Queue<AiFailureType> failures = state.llmFailures.get(request.operation());
+                    AiFailureType failure = failures == null ? null : failures.poll();
+                    if (failure != null)
+                        return new AiCallResult.Failure<>(
+                                new AiFailure(failure, null), llmMetadata(request));
+                    var turnState = mapper.readTree(request.userPrompt()).path("state");
+                    int maximum = turnState.path("maximum_turn_count").asInt();
+                    boolean maximumReached =
+                            maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
+                    String json =
+                            switch (request.operation()) {
+                                case INPUT_VALIDATION -> state.inputJudgment;
+                                case CAUSE_ANALYSIS ->
+                                        RoleplayFixtures.analysisJson(
+                                                maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",
+                                                RoleplayFixtures.MG_EMOTION,
+                                                "S1");
+                                case RESPONSE_GENERATION -> {
+                                    String text = state.candidateTexts.poll();
+                                    String candidate =
+                                            RoleplayFixtures.candidateJson(
+                                                    text == null
+                                                            ? (maximumReached
+                                                                    ? "함께해 줘서 고마워."
+                                                                    : "친구는 어떤 기분일까?")
+                                                            : text,
+                                                    maximumReached
+                                                            ? "CLOSING"
+                                                            : "GUIDING_QUESTION");
+                                    if (maximumReached)
+                                        candidate =
+                                                candidate.replace(
+                                                        "PROBE_EMOTION", "CLOSE_ROLEPLAY");
+                                    yield candidate.replace(
+                                            "\"previous_failed_candidate_ids\":[]",
+                                            "\"previous_failed_candidate_ids\":"
+                                                    + mapper.readTree(request.userPrompt())
+                                                            .get("previous_failed_candidate_ids"));
+                                }
+                                case RESPONSE_EVALUATION -> {
+                                    String evaluation = state.evaluations.poll();
+                                    yield evaluation == null
+                                            ? RoleplayFixtures.evaluationJson(
+                                                    "PASS", null, true, 0, "[]", "null")
+                                            : evaluation;
+                                }
+                                default -> throw new AssertionError("Unexpected operation");
+                            };
+                    if (request.operation() == AiOperation.CAUSE_ANALYSIS
+                            && state.activityGoalAchieved) {
+                        var body =
+                                mapper.readValue(
+                                        json,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {});
+                        var old =
+                                mapper.readValue(
+                                        mapper.writeValueAsString(body.get("goal_observation")),
+                                        GoalObservationOutput.Analysis.class);
+                        var approved =
+                                old.observations().stream()
+                                        .map(
+                                                o ->
+                                                        new GoalObservationOutput.Observation(
+                                                                o.reference(),
+                                                                GoalObservationOutput.Status
+                                                                        .EXPLICIT))
+                                        .toList();
+                        var basis = new java.util.ArrayList<GoalObservationOutput.Reference>();
+                        approved.forEach(o -> basis.add(o.reference()));
+                        var supplied =
+                                mapper.readValue(
+                                        mapper.readTree(request.userPrompt())
+                                                .get("goal_observation_context")
+                                                .toString(),
+                                        GoalObservationInput.class);
+                        supplied.confirmedObservations().forEach(o -> basis.add(o.reference()));
+                        body.put(
+                                "goal_observation",
+                                new GoalObservationOutput.Analysis(
+                                        old.schemaVersion(),
+                                        old.analysisId(),
+                                        approved,
+                                        new GoalObservationOutput.Assessment(
+                                                GoalObservationOutput.ActivityDecision.ACHIEVED,
+                                                basis)));
+                        json = mapper.writeValueAsString(body);
+                    }
+                    json =
+                            json.replace(
+                                    RoleplayFixtures.TURN_ID.toString(),
+                                    request.traceContext().turnId().toString());
+                    if (request.traceContext().candidateId() != null)
+                        json =
+                                json.replace(
+                                        RoleplayFixtures.CANDIDATE_ID.toString(),
+                                        request.traceContext().candidateId().toString());
+                    if (request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                        json =
+                                EvaluationWireFixtures.forRequest(
+                                        json, mapper.readTree(request.userPrompt()));
+                    }
+                    if ((request.operation() == AiOperation.CAUSE_ANALYSIS
+                                    && state.omitObservationAnalysis)
+                            || (request.operation() == AiOperation.RESPONSE_EVALUATION
+                                    && (state.omitObservationReview
+                                            || state.unsupportedObservationReview))) {
+                        var changed =
+                                mapper.readValue(
+                                        json,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {});
+                        if (request.operation() == AiOperation.CAUSE_ANALYSIS)
+                            changed.remove("goal_observation");
+                        else if (state.omitObservationReview) changed.remove("analysis_id");
+                        else {
+                            changed.put(
+                                    "observation_reviews",
+                                    EvaluationWireFixtures.scopedReviews(
+                                            mapper.readTree(request.userPrompt()), false));
                         }
-                        case RESPONSE_EVALUATION -> {
-                            String evaluation = state.evaluations.poll();
-                            yield evaluation == null
-                                    ? RoleplayFixtures.evaluationJson(
-                                            "PASS", null, true, 0, "[]", "null")
-                                    : evaluation;
-                        }
-                        default -> throw new AssertionError("Unexpected operation");
-                    };
-            if (request.operation() == AiOperation.CAUSE_ANALYSIS && state.activityGoalAchieved) {
-                var body =
-                        mapper.readValue(
-                                json,
-                                new tools.jackson.core.type.TypeReference<
-                                        java.util.Map<String, Object>>() {});
-                var old =
-                        mapper.readValue(
-                                mapper.writeValueAsString(body.get("goal_observation")),
-                                GoalObservationOutput.Analysis.class);
-                var approved =
-                        old.observations().stream()
-                                .map(
-                                        o ->
-                                                new GoalObservationOutput.Observation(
-                                                        o.reference(),
-                                                        GoalObservationOutput.Status.EXPLICIT))
-                                .toList();
-                var basis = new java.util.ArrayList<GoalObservationOutput.Reference>();
-                approved.forEach(o -> basis.add(o.reference()));
-                var supplied =
-                        mapper.readValue(
-                                mapper.readTree(request.userPrompt())
-                                        .get("goal_observation_context")
-                                        .toString(),
-                                GoalObservationInput.class);
-                supplied.confirmedObservations().forEach(o -> basis.add(o.reference()));
-                body.put(
-                        "goal_observation",
-                        new GoalObservationOutput.Analysis(
-                                old.schemaVersion(),
-                                old.analysisId(),
-                                approved,
-                                new GoalObservationOutput.Assessment(
-                                        GoalObservationOutput.ActivityDecision.ACHIEVED, basis)));
-                json = mapper.writeValueAsString(body);
-            }
-            json =
-                    json.replace(
-                            RoleplayFixtures.TURN_ID.toString(),
-                            request.traceContext().turnId().toString());
-            if (request.traceContext().candidateId() != null)
-                json =
-                        json.replace(
-                                RoleplayFixtures.CANDIDATE_ID.toString(),
-                                request.traceContext().candidateId().toString());
-            if ((request.operation() == AiOperation.CAUSE_ANALYSIS && state.omitObservationAnalysis)
-                    || (request.operation() == AiOperation.RESPONSE_EVALUATION
-                            && (state.omitObservationReview
-                                    || state.unsupportedObservationReview))) {
-                var changed =
-                        mapper.readValue(
-                                json,
-                                new tools.jackson.core.type.TypeReference<
-                                        java.util.Map<String, Object>>() {});
-                if (request.operation() == AiOperation.CAUSE_ANALYSIS)
-                    changed.remove("goal_observation");
-                else if (state.omitObservationReview) changed.remove("goal_observation_review");
-                else {
-                    var review =
-                            mapper.readValue(
-                                    mapper.writeValueAsString(
-                                            changed.get("goal_observation_review")),
-                                    new tools.jackson.core.type.TypeReference<
-                                            java.util.Map<String, Object>>() {});
-                    review.put("observations_supported", false);
-                    changed.put("goal_observation_review", review);
-                }
-                json = mapper.writeValueAsString(changed);
-            }
-            return new AiCallResult.Success<>(
-                    new LlmCompletion(
-                            RoleplayFixtures.bindAnalysis(
-                                    json, request.traceContext().analysisId()),
-                            "test-vendor",
-                            "test-model",
-                            "stop",
-                            null,
-                            null),
-                    llmMetadata(request));
-        };
+                        json = mapper.writeValueAsString(changed);
+                    }
+                    return new AiCallResult.Success<>(
+                            new LlmCompletion(
+                                    RoleplayFixtures.bindAnalysis(
+                                            json, request.traceContext().analysisId()),
+                                    "test-vendor",
+                                    "test-model",
+                                    "stop",
+                                    null,
+                                    null),
+                            llmMetadata(request));
+                };
+        return provider;
     }
 
     private static AiCallMetadata llmMetadata(LlmRequest request) {

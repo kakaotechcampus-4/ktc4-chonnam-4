@@ -10,6 +10,7 @@ public enum AiFailureType {
     PROVIDER_RESPONSE_ERROR(true),
     EMPTY_OUTPUT(true),
     INVALID_OUTPUT_FORMAT(true),
+    INDETERMINATE_OUTPUT(true),
     UNKNOWN(false);
 
     private final boolean retryable;

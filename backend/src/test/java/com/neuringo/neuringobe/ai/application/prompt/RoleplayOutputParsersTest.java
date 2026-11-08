@@ -252,7 +252,10 @@ class RoleplayOutputParsersTest {
             assertThatThrownBy(
                             () ->
                                     parser.parse(
-                                            evaluationJson("PASS", null, false, 0, "[]", "null")))
+                                            evaluationOutputJson("PASS", "[]", "null")
+                                                    .replace(
+                                                            "\"safety_valid\":true",
+                                                            "\"safety_valid\":false")))
                     .isInstanceOf(InvalidLlmOutputException.class);
         }
 
@@ -272,22 +275,18 @@ class RoleplayOutputParsersTest {
         }
 
         @Test
-        void rejectsRetryTargetThatDoesNotFitDecision() {
-            assertThatThrownBy(
-                            () ->
-                                    parser.parse(
-                                            evaluationJson(
-                                                    "REANALYZE",
-                                                    "RESPONSE_GENERATION",
-                                                    false,
-                                                    0,
-                                                    "[\"UNSUPPORTED_CAUSE_ANALYSIS\"]",
-                                                    "null")))
+        void rejectsModelSuppliedRoutingFields() {
+            String output =
+                    evaluationOutputJson("REANALYZE", "[\"UNSUPPORTED_CAUSE_ANALYSIS\"]", "null")
+                            .replace(
+                                    "\"decision\":\"REANALYZE\"",
+                                    "\"decision\":\"REANALYZE\",\"retry_target\":\"RESPONSE_GENERATION\"");
+            assertThatThrownBy(() -> parser.parse(output))
                     .isInstanceOf(InvalidLlmOutputException.class);
         }
 
         @Test
-        void rejectsUnknownFailureCodeAndUndercountedCritical() {
+        void rejectsUnknownFailureCodeAndComputesCriticalCountOnTheServer() {
             assertThatThrownBy(
                             () ->
                                     parser.parse(
@@ -299,17 +298,14 @@ class RoleplayOutputParsersTest {
                                                     "[\"SOMETHING_ELSE\"]",
                                                     "null")))
                     .isInstanceOf(InvalidLlmOutputException.class);
-            assertThatThrownBy(
-                            () ->
-                                    parser.parse(
-                                            evaluationJson(
+            assertThat(
+                            parser.parse(
+                                            evaluationOutputJson(
                                                     "REANALYZE",
-                                                    "CAUSE_ANALYSIS",
-                                                    false,
-                                                    0,
-                                                    "[\"REINFORCES_INCORRECT_ANSWER\"]",
-                                                    "null")))
-                    .isInstanceOf(InvalidLlmOutputException.class);
+                                                    "[\"REINFORCES_INCORRECT_ANSWER\",\"UNSUPPORTED_CAUSE_ANALYSIS\"]",
+                                                    "null"))
+                                    .criticalFailureCount())
+                    .isEqualTo(1);
         }
     }
 

@@ -39,15 +39,15 @@ public final class RoleplayPromptFactory {
             "roleplay-response-generation-character/v1";
 
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation/v2";
+            "roleplay-response-evaluation/v7";
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v2";
+            "roleplay-response-evaluation-character/v7";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
-    public static final String EVALUATION_SCHEMA_VERSION = GoalObservationOutput.EVALUATION_VERSION;
+    public static final String EVALUATION_SCHEMA_VERSION = EvaluationOutputSchema.VERSION;
 
     /** 후보 응답 길이 상한(공백 포함). 프롬프트는 60자 이내를 요구하고, 이 값을 넘으면 형식 실패로 막는다. */
     public static final int MAX_RESPONSE_LENGTH = 80;
@@ -76,11 +76,15 @@ public final class RoleplayPromptFactory {
         this.characterResponseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation-character.md");
         this.responseEvaluationSystemPrompt =
-                PromptTemplates.load("roleplay/v2/response-evaluation.md");
+                PromptTemplates.load("roleplay/v2/response-evaluation.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md");
         this.characterCauseAnalysisRules =
                 PromptTemplates.load("roleplay/v2/cause-analysis-character.md");
         this.characterResponseEvaluationSystemPrompt =
-                PromptTemplates.load("roleplay/v2/response-evaluation-character.md");
+                PromptTemplates.load("roleplay/v2/response-evaluation-character.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md");
     }
 
     /** 캐릭터 역할극이면 기본 지시문 뒤에 캐릭터 규칙을 붙인다. 안내자 역할극은 기본 지시문 그대로다. */
@@ -236,6 +240,19 @@ public final class RoleplayPromptFactory {
             AnalysisResult analysis,
             CandidateResponse candidate,
             GoalObservationInput observations) {
+        return responseEvaluation(
+                trace, attempts, currentAttempt, input, analysis, candidate, observations, null);
+    }
+
+    public PreparedPrompt<EvaluationResult> responseEvaluation(
+            AiTraceContext trace,
+            AiAttemptContext attempts,
+            int currentAttempt,
+            RoleplayTurnInput input,
+            AnalysisResult analysis,
+            CandidateResponse candidate,
+            GoalObservationInput observations,
+            EvaluationRetry retry) {
         requireSameTurn(trace, input);
         Objects.requireNonNull(analysis, "analysis must not be null");
         Objects.requireNonNull(candidate, "candidate must not be null");
@@ -252,27 +269,44 @@ public final class RoleplayPromptFactory {
         Map<String, Object> message = turnSections(input);
         addObservationContext(message, observations, input, trace);
         message.put("analysis_result", analysisSection(analysis));
-        message.put("candidate_response", candidateSection(candidate));
+        var scoped =
+                new ScopedAnalysisContext(
+                        objectMapper.valueToTree(message), input, analysis, observations);
+        var schema = new EvaluationOutputSchema(scoped, candidate.candidateId());
+        var modelMessage = (tools.jackson.databind.node.ObjectNode) scoped.input();
+        modelMessage.set(
+                "candidate_response", objectMapper.valueToTree(candidateSection(candidate)));
+        if (retry != null) {
+            Map<String, Object> retrySection = new LinkedHashMap<>();
+            retrySection.put("error_code", retry.name());
+            retrySection.put("correction", retry.correction());
+            if (retry == EvaluationRetry.UNKNOWN_FAILURE_CODE) {
+                retrySection.put(
+                        "allowed_failure_codes", EvaluationOutputSchema.modelFailureCodes());
+            }
+            modelMessage.set("retry", objectMapper.valueToTree(retrySection));
+        }
 
         LlmRequest request =
                 new LlmRequest(
-                        trace,
-                        attempts,
-                        AiOperation.RESPONSE_EVALUATION,
-                        currentAttempt,
-                        characterVoice
-                                ? characterResponseEvaluationSystemPrompt
-                                : responseEvaluationSystemPrompt,
-                        toJson(message),
-                        characterVoice
-                                ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
-                                : RESPONSE_EVALUATION_PROMPT_VERSION,
-                        EVALUATION_SCHEMA_VERSION,
-                        policyVersion);
+                                trace,
+                                attempts,
+                                AiOperation.RESPONSE_EVALUATION,
+                                currentAttempt,
+                                characterVoice
+                                        ? characterResponseEvaluationSystemPrompt
+                                        : responseEvaluationSystemPrompt,
+                                objectMapper.writeValueAsString(modelMessage),
+                                characterVoice
+                                        ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
+                                        : RESPONSE_EVALUATION_PROMPT_VERSION,
+                                EVALUATION_SCHEMA_VERSION,
+                                policyVersion)
+                        .withResponseJsonSchema(schema.jsonSchema());
         return new PreparedPrompt<>(
                 request,
-                RoleplayOutputParsers.evaluation(
-                        objectMapper, candidate.candidateId(), trace.analysisId()));
+                RoleplayOutputParsers.nativeEvaluation(
+                        objectMapper, candidate.candidateId(), trace.analysisId(), scoped, schema));
     }
 
     private static void addObservationContext(
