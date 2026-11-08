@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.model.SpeechEmotion;
 import com.neuringo.neuringobe.ai.application.model.SpeechSynthesisRequest;
 import com.neuringo.neuringobe.ai.application.model.SpeechTranscription;
 import com.neuringo.neuringobe.ai.application.model.SpeechTranscriptionRequest;
@@ -261,7 +262,16 @@ public final class RoleplaySpeechTurnPipeline {
                         trace.turnId(),
                         null,
                         ready.candidate().candidateId());
-        SynthesizedSpeech speech = synthesize(synthesisTrace, ready.candidate().text(), deadline);
+        // 괄호 속 행동 묘사는 화면에만 보이고 소리로 읽지 않는다. 읽을 말이 없으면 음성을 만들지 않는다.
+        String spoken = SpokenText.of(ready.candidate().text());
+        SynthesizedSpeech speech =
+                spoken.isEmpty()
+                        ? null
+                        : synthesize(
+                                synthesisTrace,
+                                spoken,
+                                SpokenText.emotionOf(ready.candidate().text()),
+                                deadline);
         return new RoleplayTurnResult.SpokenReady(ready, canonical, speech, null, null, quality);
     }
 
@@ -288,11 +298,14 @@ public final class RoleplaySpeechTurnPipeline {
     }
 
     private SynthesizedSpeech synthesize(
-            AiTraceContext trace, String text, RoleplayTurnDeadline deadline) {
+            AiTraceContext trace,
+            String text,
+            SpeechEmotion emotion,
+            RoleplayTurnDeadline deadline) {
         for (int attempt = 1; ; attempt++) {
             var request =
                     new SpeechSynthesisRequest(
-                            trace, attempt, text, null, null, deadline.callBudget());
+                            trace, attempt, text, null, emotion, deadline.callBudget());
             var result = deadline.withinBudget(() -> tts.synthesize(request));
             switch (result) {
                 case AiCallResult.Success<SynthesizedSpeech> success -> {

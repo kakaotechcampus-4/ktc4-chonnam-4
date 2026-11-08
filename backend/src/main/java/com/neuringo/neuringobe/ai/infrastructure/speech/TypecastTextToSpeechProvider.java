@@ -112,7 +112,7 @@ public final class TypecastTextToSpeechProvider implements TextToSpeechProvider 
         if (!model.startsWith("ssfm-v21")) {
             prompt.put("emotion_type", "preset");
         }
-        prompt.put("emotion_preset", emotionPreset(request.emotion()));
+        prompt.put("emotion_preset", emotionPreset(supportedEmotion(model, request.emotion())));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("voice_id", voiceId);
@@ -124,6 +124,20 @@ public final class TypecastTextToSpeechProvider implements TextToSpeechProvider 
         body.put("prompt", prompt);
         body.put("output", Map.of("audio_format", audioFormat.fileExtension()));
         return body;
+    }
+
+    /**
+     * ssfm-v21 은 normal·happy·sad·angry 만 지원한다(목소리 조회 API 기준). 지원하지 않는 감정을 보내면 요청이 실패하므로 보통 목소리로
+     * 바꾼다. ssfm-v30 이상은 7가지를 모두 지원한다.
+     */
+    static SpeechEmotion supportedEmotion(String model, SpeechEmotion emotion) {
+        if (model.startsWith("ssfm-v21")
+                && (emotion == SpeechEmotion.WHISPER
+                        || emotion == SpeechEmotion.TONE_UP
+                        || emotion == SpeechEmotion.TONE_DOWN)) {
+            return SpeechEmotion.NORMAL;
+        }
+        return emotion;
     }
 
     static String emotionPreset(SpeechEmotion emotion) {
