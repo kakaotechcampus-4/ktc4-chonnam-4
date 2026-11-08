@@ -10,8 +10,12 @@
 #                 END_ONLY_PR=<번호> 를 같이 주면 그 PR 의 미리보기가 떠 있을 때만 끝낸다(PR 라벨을 떼거나 PR 을 닫을 때.
 #                 다른 PR 의 미리보기를 내리지 않게). 아니면 75 로 건너뛴다.
 #                 미리보기에서 돌아오면 미리보기 DB·계정, 자리 기록, 되돌림 기준점을 지운다.
+#                 DEFER=1 이면 바꾸지 않고 "떠 있어야 할 develop" 으로 적어만 두고 75 로 끝낸다(테스트 주소를 쓰는 중, release.yml).
 #   preview      PR 미리보기(PREVIEW_PR·PREVIEW_BY·PREVIEW_TTL). 미리보기 전용 DB 와 그 DB 의 주인 계정을 새로 만들어 붙인다.
 #                 기본 DB 는 건드리지 않으므로 백업하지 않는다. 다른 PR 이 자리를 잡고 있으면 76 으로 멈춘다.
+#                 OWN_SLOT_ONLY=1 이면 이 PR 이 자리를 잡고 있을 때만 다시 올린다. 아니면 75(24시간 모드에서 push 로 돈 실행).
+# 떠 있어야 할 develop: develop 을 부르면 바꾸든 건너뛰든 먼저 state/<환경>.wanted 에 적는다. 미리보기 자리·쓰는 사람 때문에
+#   건너뛴 것은 자동 끄기 Lambda 가 10분마다 catch-up.sh 로 이어 띄운다(자리가 비고 5분 동안 아무도 안 쓸 때).
 # 되돌릴 곳: 미리보기가 끼어 있으면 미리보기에 들어가기 전의 develop 상태(기준점, state/<환경>.base.*),
 #            아니면 직전 상태(지금 .env + 직전 묶음의 compose). 미리보기가 실패해도 다른 PR 로 돌아가지 않는다.
 #
@@ -19,7 +23,7 @@
 #       → 이미지 받기 → up → 상태 확인(API 200 + 화면 200 + 화면 헤더의 커밋 + 실제로 새 이미지가 떠 있는지)
 #       → 성공하면 기록·정리 / 실패하면 되돌린다
 # 종료 코드: 0 성공 · 1 실패(바꾸기 전에 멈췄거나 되돌릴 것이 없다) · 2 실패했지만 되돌렸다 · 3 되돌리기도 실패
-#            75 건너뜀(미리보기 중) · 76 자리 있음(다른 PR 미리보기 중)
+#            75 건너뜀(미리보기 중·미룸·자기 자리 아님) · 76 자리 있음(다른 PR 미리보기 중)
 # 1(바꾼 뒤)·3 일 때는 web·backend 를 멈춘다(계속 재시작하며 공용 서버의 CPU 크레딧을 태우지 않게).
 #
 # 출력은 SSM 을 거쳐 Actions 로그(공개)에 남는다. 비밀값·레지스트리 주소(계정 ID 가 들어 있다)·앱 로그는 찍지 않는다.
@@ -113,6 +117,7 @@ case $MODE in
 esac
 [[ "$PREVIEW_DB" =~ ^[a-z_][a-z0-9_]{0,40}$ ]] || { say "PREVIEW_DB 이름 모양이 틀렸다"; exit 1; }
 [[ -z "${END_ONLY_PR:-}" || "$END_ONLY_PR" =~ ^[0-9]{1,6}$ ]] || { say "END_ONLY_PR 은 PR 번호"; exit 1; }
+[[ "${DEFER:-0}" =~ ^[01]$ && "${OWN_SLOT_ONLY:-0}" =~ ^[01]$ ]] || { say "DEFER·OWN_SLOT_ONLY 는 0 또는 1"; exit 1; }
 
 umask 077
 mkdir -p "$state_dir" "$log_dir"
@@ -145,6 +150,27 @@ holder() {
   echo "PREVIEW_HOLDER_UNTIL=$(iso "$lease_until")"
 }
 
+# 0. 떠 있어야 할 develop 을 적는다(머리말). 실제로 바꾸기 시작하면 TRIED=1, 성공하거나 이미 떠 있으면 DONE=1 을 붙인다.
+#    catch-up.sh 는 TRIED 없는 것(건너뜀·미룸)을 이어 띄우고, TRIED 인데 DONE 이 없는 것(실패)은 다시 띄우지 않는다.
+#    묶음 폴더(DIR)는 release-bundle.sh 의 정리가 지우지 않는다. 이미지 주소에 계정 ID 가 있어 출력하지 않는다.
+wanted_file="$state_dir/$ENV_NAME.wanted"
+mark_wanted() { [ "$MODE" != develop ] || echo "$1=1" >>"$wanted_file"; }
+if [ "$MODE" = develop ]; then
+  {
+    echo "RELEASE=$RELEASE"
+    echo "IMAGE=$IMAGE"
+    echo "WEB_IMAGE=$WEB_IMAGE"
+    echo "BACKUP_BUCKET=${BACKUP_BUCKET:-}"
+    echo "DIR=$(cd "$HERE/../.." && pwd)"
+    echo "AT=$(iso "$now")"
+  } >"$wanted_file"
+  if [ "${DEFER:-0}" = 1 ]; then
+    say "테스트 주소를 쓰는 중이라 $(short "$RELEASE") 을 지금 띄우지 않는다. 5분 동안 아무도 안 쓰면 서버가 이어서 띄운다(10분마다 확인)"
+    echo "DEPLOY_RESULT=deferred"
+    exit 75
+  fi
+fi
+
 # 1. 자리 확인
 # PR 라벨을 떼거나 PR 을 닫아 끝낼 때는 그 PR 의 미리보기가 떠 있을 때만 끝낸다(다른 사람 미리보기를 내리지 않게).
 if [ "$MODE" = develop ] && [ "${END_PREVIEW:-0}" = 1 ] && [ -n "${END_ONLY_PR:-}" ] &&
@@ -154,7 +180,7 @@ if [ "$MODE" = develop ] && [ "${END_PREVIEW:-0}" = 1 ] && [ -n "${END_ONLY_PR:-
   exit 75
 fi
 if [ "$MODE" = develop ] && [ "$lease_active" = 1 ] && [ "${END_PREVIEW:-0}" != 1 ]; then
-  say "PR #$lease_pr 미리보기가 $(iso "$lease_until") 까지 자리를 잡고 있어 develop 배포를 건너뛴다(끝내기·시간이 지나면 develop 최신으로 돌아간다)"
+  say "PR #$lease_pr 미리보기가 $(iso "$lease_until") 까지 자리를 잡고 있어 develop 배포를 건너뛴다(끝내기를 누르거나 시간이 지나면 서버가 이 커밋으로 이어서 띄운다)"
   holder
   echo "DEPLOY_RESULT=skipped_preview"
   exit 75
@@ -165,6 +191,11 @@ if [ "$MODE" = preview ] && [ "$lease_active" = 1 ] && [ "$lease_pr" != "$PREVIE
   echo "DEPLOY_RESULT=slot_taken"
   exit 76
 fi
+if [ "$MODE" = preview ] && [ "${OWN_SLOT_ONLY:-0}" = 1 ] && { [ "$lease_active" != 1 ] || [ "$lease_pr" != "$PREVIEW_PR" ]; }; then
+  say "24시간 모드라 push 로는 자리를 새로 잡지 않는다(PR #$PREVIEW_PR 의 미리보기가 떠 있지 않다). 보려면 preview 라벨을 떼었다 다시 붙인다"
+  echo "DEPLOY_RESULT=not_own_slot"
+  exit 75
+fi
 
 # PR 코드를 띄우기 전에 컨테이너에서 인스턴스 메타데이터(서버 역할 자격증명)가 막혀 있는지 본다(setup.sh 7번).
 if [ "$MODE" = preview ] && ! iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT >/dev/null 2>&1; then
@@ -172,6 +203,7 @@ if [ "$MODE" = preview ] && ! iptables -C DOCKER-USER -d 169.254.169.254/32 -j R
   echo "DEPLOY_RESULT=needs_host_setup"
   exit 1
 fi
+mark_wanted TRIED
 
 # 2. 설정값: params.txt 에 적힌 것만 Parameter Store 에서 읽어 새 .env 를 만든다(권한 600).
 #    지금 .env 는 되돌릴 때 쓰므로 성공할 때까지 건드리지 않는다.
@@ -419,6 +451,7 @@ echo "DEPLOY_RELEASE=$RELEASE"
 if [ "$MODE" = develop ] && [ "${FORCE:-0}" != 1 ] && [ "$current_mode" = develop ] &&
   [ "$current_release" = "$RELEASE" ] && healthy "$RELEASE"; then
   say "이미 이 커밋이 떠 있다"
+  mark_wanted DONE
   echo "DEPLOY_RESULT=unchanged"
   exit 0
 fi
@@ -533,6 +566,7 @@ if [ "$up_ok" = 1 ] && healthy "$RELEASE" && running_is "$IMAGE" "$WEB_IMAGE" ne
     echo "PREVIEW_UNTIL=$(iso "$until_at")"
   else
     write_release develop "$RELEASE" "" ""
+    mark_wanted DONE
     echo "FLYWAY_VERSION=V$(flyway_version now_compose "$(env_value DB_NAME "$env_file")")"
     if [ -f "$base_env" ] || [ "$current_mode" = preview ]; then
       drop_preview_db now_compose

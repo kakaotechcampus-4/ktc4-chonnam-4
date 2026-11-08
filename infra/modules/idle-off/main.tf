@@ -2,6 +2,8 @@
 # GitHub Actions 예약은 이 레포에서 몇 시간씩 밀리거나 건너뛰어(2026-10-11: 20분마다가 1시간 동안 0번) AWS 안으로 옮겼다.
 # 판단·순서는 lambda/idle_off.py 머리말. 끄는 순서는 dev-server.yml 의 끄기와 같다(대문 닫기 → 확인 → 잠금 → 서버 중지).
 # always_on_until 을 넣으면 그 시각까지는 끄지 않는다(24시간 모드). 대문(CloudFront)을 서버 주소에 맞추는 일은 모드와 상관없이 한다.
+# 밀린 develop 이어 띄우기도 모드와 상관없이 한다: 미리보기 자리·쓰는 사람 때문에 건너뛴 develop 배포를, 자리가 비고 아무도 안 쓸 때
+# 서버의 deploy/host/catch-up.sh 로 띄운다(wanted 에 적힌 develop 묶음의 스크립트. 권한은 이미 있는 SendCommand 하나).
 #
 # 권한은 이 서버 하나·이 배포 하나로 좁힌다(서버 켜기·지우기, IAM, 다른 리소스는 없다). 역할 경로는 /neuringo/(운영진 /ktc/ 는 쓰지 않는다).
 # 비용: Lambda·EventBridge 는 무료 사용량 안(한 달 약 4,300번 · 대부분 1초 안에 끝남). 로그는 14일만 둔다.
@@ -142,7 +144,7 @@ data "aws_iam_policy_document" "permissions" {
     resources = [local.instance_arn]
   }
   statement {
-    sid     = "AskThisServer" # status.sh 읽기 · 배포 잠금 기다리기
+    sid     = "AskThisServer" # status.sh 읽기 · 배포 잠금 기다리기 · 밀린 develop 이어 띄우기(catch-up.sh)
     actions = ["ssm:SendCommand"]
     resources = [
       local.instance_arn,
@@ -164,14 +166,14 @@ resource "aws_iam_role_policy" "this" {
 
 resource "aws_lambda_function" "this" {
   function_name    = local.name
-  description      = "Dev server 안 쓰면 끄기(EventBridge 10분마다)"
+  description      = "Dev server 안 쓰면 끄기·밀린 develop 이어 띄우기(EventBridge 10분마다)"
   role             = aws_iam_role.this.arn
   runtime          = "python3.13"
   handler          = "idle_off.handler"
   filename         = data.archive_file.code.output_path
   source_code_hash = data.archive_file.code.output_base64sha256
   memory_size      = 128
-  timeout          = 900 # 대문이 다 닫히길(2~3분)·배포 잠금(최대 240초) 기다린다
+  timeout          = 900 # 대문이 다 닫히길(2~3분)·배포 잠금(최대 240초)·이어 띄우기(최대 600초, 띄웠으면 끄기 판단 없이 끝) 기다린다
 
   environment {
     variables = {
@@ -179,6 +181,7 @@ resource "aws_lambda_function" "this" {
       DISTRIBUTION_ID = var.distribution_id
       IDLE_MINUTES    = tostring(var.idle_minutes)
       ALWAYS_ON_UNTIL = var.always_on_until
+      NEURINGO_ENV    = var.env
     }
   }
 

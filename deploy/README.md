@@ -12,10 +12,11 @@
 | `deploy/compose.origin.yml` | 원본 비밀 헤더 확인을 켠다. `deploy.sh` 가 Parameter Store `edge/origin-secret` 이 있을 때만 덧붙인다(화면 nginx 가 헤더가 다르면 403) |
 | `deploy/host/params.txt` | 서버 `.env` 에 넣을 설정값 목록(Parameter Store 이름). 여기에 없는 값은 컨테이너에 들어가지 않는다 |
 | `deploy/host/deploy.sh` | 서버에서: 자리 확인 → 설정값 → `.env`(600) → develop 은 배포 전 백업 / 미리보기는 미리보기 DB 새로 → 새 이미지 2개 → 상태 확인(API 200·화면 200·화면 헤더의 커밋) → 안 되면 직전 상태(미리보기가 끼어 있으면 미리보기 전 develop)로 되돌림 → 옛 이미지 정리 |
+| `deploy/host/catch-up.sh` | 서버에서: "떠 있어야 할 develop"(`state/dev.wanted`)이 떠 있지 않으면 — 미리보기 자리가 비었고 5분 동안 아무도 안 쓰고 그 커밋이 실패한 적이 없을 때 — `deploy.sh` 로 이어 띄운다. 안 쓰면 끄기 Lambda 가 10분마다 부른다 |
 | `deploy/host/status.sh` | 서버 상태(올라간 것·자리·컨테이너·여유·사람이 마지막으로 쓴 API 요청·원본 헤더 확인)와, 서버에서 CloudFront 주소로 화면·API·커밋을 불러 본 결과(KEY=값) |
 | `deploy/host/backup.sh` · `restore-check.sh` | `pg_dump` → S3(14일), 그 백업을 서버의 임시 postgres 에 복구해 확인 |
 | `deploy/host/setup.sh` | 서버 기본 설정: Docker·Compose·AWS CLI·swap 2 GiB·journald 상한·보안 업데이트·`/opt/neuringo`·컨테이너의 인스턴스 메타데이터(IMDS) 차단 |
-| `scripts/wait-idle.sh` | 저절로 돈 배포 전에, 테스트 주소를 쓰는 중이면(마지막 API 요청 5분 안) 15분까지 기다리고 그래도 쓰면 미룬다 |
+| `scripts/wait-idle.sh` | 저절로 돈 배포 전에, 테스트 주소를 쓰는 중이면(마지막 API 요청 5분 안) 15분까지 기다리고 그래도 쓰면 미룬다(develop 은 서버에 적어 두고 `catch-up.sh` 가 이어 띄운다) |
 | `scripts/ssm-run.sh` | Actions 에서 서버로 스크립트를 보내고(SSM) 끝날 때까지 기다린다. 출력의 계정 ID·ARN·IP 를 가린다 |
 | `scripts/release-bundle.sh` | 배포 묶음(compose + `deploy/host`)을 서버 스크립트 하나로 만든다. 서버는 `releases/<SHA>` 에 풀고 `current` 를 돌린다 |
 | `scripts/server-power.sh` | 서버(EC2) 켜기·끄기·상태·권한(DryRun). 끄기 권한이 없으면 "OS 를 끄면 중지"일 때만 서버 안에서 끈다 |
@@ -51,13 +52,13 @@
 
 ## Dev server (팀원용)
 
-**PR 을 열면 미리보기가 저절로 뜬다(기본값).** 라벨은 기본값을 바꿀 때만, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda 가 10분마다 본다). 단 24시간 모드 기간(지금은 2026-11-20 23:59 KST 까지, `infra/README.md`)에는 끄지 않는다. 그 동안 테스트 주소를 누가 쓰는 중이면 저절로 돈 배포·미리보기는 다 쓸 때까지(최대 15분) 기다리고, 그래도 쓰면 미룬다. 결과 보고서는 그 실행의 Summary 다. 테스트 주소는 디스코드 고정 메시지. 미리보기 결과(떴음·자리 있음·서버 꺼짐·실패·끝냄·켜기·끄기)도 디스코드 **#pr-주소** 채널에 저절로 온다(secret `DISCORD_PREVIEW_WEBHOOK`, 없으면 알리지 않는다).
+**PR 을 열면 미리보기가 저절로 뜬다(기본값).** 라벨은 기본값을 바꿀 때만, 켜기·끄기·상태는 Actions → **Dev server** → Run workflow. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda 가 10분마다 본다). 단 24시간 모드 기간(지금은 2026-11-20 23:59 KST 까지, `infra/README.md`)에는 끄지 않고, **PR 을 열어도 미리보기를 저절로 올리지 않는다 — 테스트 주소는 늘 develop(머지된 것)이다.** 미리보기는 `preview` 라벨을 붙일 때만 1시간 올라가고, 끝나면 develop 으로 저절로 돌아간다. 테스트 주소를 누가 쓰는 중이면 저절로 돈 배포·미리보기는 다 쓸 때까지(최대 15분) 기다리고, 그래도 쓰면 미룬다. 미룬 develop 과 미리보기 때문에 건너뛴 develop 은 서버가 10분마다 보다가 자리가 비고 5분 동안 아무도 안 쓰면 이어 띄운다. 결과 보고서는 그 실행의 Summary 다. 테스트 주소는 디스코드 고정 메시지. 미리보기 결과(떴음·자리 있음·서버 꺼짐·실패·끝냄·켜기·끄기)도 디스코드 **#pr-주소** 채널에 저절로 온다(secret `DISCORD_PREVIEW_WEBHOOK`, 없으면 알리지 않는다).
 
 | 어디서 | 할 일 | 하는 일 |
 |---|---|---|
-| PR | (아무것도 안 함) PR 열기 · Ready for review · 다시 열기 | `preview` 라벨을 붙인 것과 같다(라벨도 붙여 둔다). draft·`no-preview`·문서만 바꾼 PR·봇 PR 은 빠진다. 다른 PR 이 자리를 쓰면 건너뜀 |
+| PR | (아무것도 안 함) PR 열기 · Ready for review · 다시 열기 | `preview` 라벨을 붙인 것과 같다(라벨도 붙여 둔다). draft·`no-preview`·문서만 바꾼 PR·봇 PR 은 빠진다. 다른 PR 이 자리를 쓰면 건너뜀. 24시간 모드에는 건너뜀 |
 | PR | `preview` 라벨 붙이기 | 이 PR 을 develop 에 합친 코드(워크플로·스크립트 포함)로 화면·API 를 띄운다(꺼져 있으면 켜기부터, 미리보기 DB 는 매번 새로, 자리 1시간) |
-| PR | 라벨이 있는 PR 에 push | 다시 올린다(서버가 켜져 있고 자리가 비었거나 이 PR 것일 때만) |
+| PR | 라벨이 있는 PR 에 push | 다시 올린다(서버가 켜져 있고 자리가 비었거나 이 PR 것일 때만. 24시간 모드에는 이 PR 것일 때만) |
 | PR | 라벨 떼기·닫기·머지 | 이 PR 의 미리보기를 끝낸다(develop 최신으로) |
 | PR | `no-preview` 라벨 | 열 때 붙여 두면 저절로 띄우지 않는다. 나중에 붙이면 미리보기를 끝내고 `preview` 라벨을 뗀다 |
 | PR | `dev-off` 라벨 | 지금 끈다(안 붙여도 30분 동안 안 쓰면 꺼진다) |

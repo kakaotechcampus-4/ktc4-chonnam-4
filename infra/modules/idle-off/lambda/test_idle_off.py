@@ -40,8 +40,13 @@ class FakeEC2:
 
 
 class FakeSSM:
-    def __init__(self, status="", lock="LOCK_FREE=1", commands=(), status_result="Success", later_commands=()):
-        self.outputs = {"status.sh": (status_result, status), "deploy.lock": ("Success", lock)}
+    def __init__(self, status="", lock="LOCK_FREE=1", commands=(), status_result="Success", later_commands=(),
+                 catch_up="CATCHUP_RESULT=none", catch_up_result="Success"):
+        self.outputs = {
+            "status.sh": (status_result, status),
+            "deploy.lock": ("Success", lock),
+            "catch-up.sh": (catch_up_result, catch_up),
+        }
         self.commands = list(commands)
         self.later_commands = list(later_commands)  # 대문을 닫는 사이에 새로 온 명령
         self.sent, self.pending = [], {}
@@ -50,7 +55,7 @@ class FakeSSM:
     def send_command(self, **kwargs):
         self.sent.append(kwargs)
         script = kwargs["Parameters"]["commands"][0]
-        key = "status.sh" if "status.sh" in script else "deploy.lock"
+        key = next(k for k in ("catch-up.sh", "status.sh", "deploy.lock") if k in script)
         command_id = f"c{len(self.sent)}"
         self.pending[command_id] = self.outputs[key]
         return {"Command": {"CommandId": command_id}}
@@ -110,6 +115,15 @@ def status(**over):
     return "\n".join(f"{k}={v}" for k, v in values.items() if v is not None)
 
 
+def catch_up_out(**values):
+    return "\n".join(f"{k}={v}" for k, v in values.items())
+
+
+def sent_script(command):
+    script = command["Parameters"]["commands"][0]
+    return next(k for k in ("catch-up.sh", "status.sh", "deploy.lock") if k in script)
+
+
 def ci(minutes_ago, comment="neuringo"):
     return {"RequestedDateTime": at(minutes_ago), "Comment": comment}
 
@@ -160,13 +174,14 @@ class IdleOffTest(unittest.TestCase):
         self.run_handler(ssm=FakeSSM(status(STATUS_LAST_REQUEST=iso(at(3)))), cf=cf)
         self.assertEqual(cf.updates, [], "닫힌 대문은 Dev server 켜기·끄기가 다룬다")
 
-    def test_always_on_keeps_idle_server_without_asking_it(self):
+    def test_always_on_keeps_idle_server_asking_only_for_catch_up(self):
         os.environ["ALWAYS_ON_UNTIL"] = "2026-11-20T23:59:00+09:00"
         result = self.run_handler()
         self.assertEqual(result["result"], "keep")
         self.assertIn("24시간 모드", result["reason"])
         self.assertIn("11/20 23:59", result["reason"])
-        self.assertEqual((self.ec2.stopped, self.cf.updates, self.ssm.sent), (0, [], []))
+        self.assertEqual((self.ec2.stopped, self.cf.updates), (0, []))
+        self.assertEqual([sent_script(c) for c in self.ssm.sent], ["catch-up.sh"], "상태 보기·잠금은 묻지 않는다")
 
     def test_always_on_still_fixes_edge_after_reboot(self):
         os.environ["ALWAYS_ON_UNTIL"] = "2026-11-20T23:59:00+09:00"
@@ -182,6 +197,53 @@ class IdleOffTest(unittest.TestCase):
     def test_always_on_after_its_end_turns_off_as_usual(self):
         os.environ["ALWAYS_ON_UNTIL"] = iso(at(1))
         self.assertEqual(self.run_handler()["result"], "stopped")
+
+    def test_catch_up_runs_wanted_develop_bundle_script(self):
+        self.run_handler(ssm=FakeSSM(status(STATUS_LAST_REQUEST=iso(at(3)))))
+        sent = self.ssm.sent[0]
+        script = sent["Parameters"]["commands"][0]
+        self.assertIn("/opt/neuringo/state/dev.wanted", script, "wanted 에 적힌 develop 묶음의 스크립트를 부른다(PR 코드 아님)")
+        self.assertIn("NEURINGO_ENV=dev bash", script)
+        self.assertEqual(sent["Parameters"]["executionTimeout"], [str(idle_off.CATCH_UP_SECONDS)])
+        self.assertEqual(sent["Comment"], idle_off.OWN_COMMENT, "이어 띄우기 명령은 GitHub 작업(사용)으로 세지 않는다")
+
+    def test_caught_up_develop_returns_without_stopping(self):
+        out = catch_up_out(CATCHUP_RESULT="ok", CATCHUP_RELEASE="abc1234", CATCHUP_DEPLOY_RESULT="ok")
+        result = self.run_handler(ssm=FakeSSM(status(), catch_up=out))
+        self.assertEqual(result["result"], "caught_up")
+        self.assertIn("abc1234", result["reason"])
+        self.assertEqual(self.ec2.stopped, 0, "방금 띄웠으니 이번에는 끄지 않는다")
+        self.assertEqual([sent_script(c) for c in self.ssm.sent], ["catch-up.sh"])
+
+    def test_catch_up_also_runs_in_always_on_mode(self):
+        os.environ["ALWAYS_ON_UNTIL"] = "2026-11-20T23:59:00+09:00"
+        result = self.run_handler(ssm=FakeSSM(status(), catch_up=catch_up_out(CATCHUP_RESULT="ok", CATCHUP_RELEASE="abc1234")))
+        self.assertEqual(result["result"], "caught_up")
+
+    def test_failed_catch_up_raises_for_alarm_without_stopping(self):
+        out = catch_up_out(CATCHUP_RESULT="failed", CATCHUP_RELEASE="abc1234", CATCHUP_DEPLOY_RESULT="rolled_back")
+        with self.assertRaises(RuntimeError) as raised:
+            self.run_handler(ssm=FakeSSM(status(), catch_up=out))
+        self.assertIn("rolled_back", str(raised.exception))
+        self.assertIn("catch-up-dev.log", str(raised.exception))
+        self.assertEqual((self.ec2.stopped, self.cf.updates), (0, []))
+
+    def test_waiting_catch_up_goes_on_to_idle_check(self):
+        for waiting in ("busy", "preview", "up_to_date", "failed_before", "locked", "running", "unknown", "none"):
+            result = self.run_handler(ssm=FakeSSM(status(), catch_up=f"CATCHUP_RESULT={waiting}"))
+            self.assertEqual(result["result"], "stopped", waiting)
+
+    def test_unreachable_catch_up_does_not_block_idle_check(self):
+        result = self.run_handler(ssm=FakeSSM(status(), catch_up="", catch_up_result="Failed"))
+        self.assertEqual(result["result"], "stopped")
+        self.assertTrue(any(entry.get("result") == "warn" for entry in self.logs))
+
+    def test_strange_env_name_is_refused(self):
+        os.environ["NEURINGO_ENV"] = "dev; rm -rf /"
+        self.addCleanup(os.environ.pop, "NEURINGO_ENV", None)
+        with self.assertRaises(RuntimeError):
+            self.run_handler()
+        self.assertEqual(self.ssm.sent, [])
 
     def test_idle_for_30_minutes_closes_edge_first_then_stops(self):
         result = self.run_handler()

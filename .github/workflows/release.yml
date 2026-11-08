@@ -58,6 +58,10 @@ on:
         description: 서버 꺼짐·자리 있음을 실패가 아니라 건너뜀으로 본다(PR 을 열거나 push 해서 저절로 돈 실행)
         type: boolean
         default: false
+      own_slot_only:
+        description: PR 미리보기를 이 PR 이 자리를 잡고 있을 때만 다시 올린다(24시간 모드에서 push 로 돈 실행)
+        type: boolean
+        default: false
       force:
         description: 같은 커밋이 떠 있어도 다시 띄운다(설정값만 바꿨을 때)
         type: boolean
@@ -72,7 +76,7 @@ on:
         default: 0
     outputs:
       result:
-        description: ok·unchanged·rolled_back·failed·skipped_preview·slot_taken·server_off·busy(쓰는 중이라 미룸)·…
+        description: ok·unchanged·rolled_back·failed·skipped_preview·slot_taken·not_own_slot·server_off·busy(쓰는 중이라 미룸 — develop 은 서버가 이어 띄운다)·…
         value: ${{ jobs.deploy.outputs.result }}
 
 permissions:
@@ -138,6 +142,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           PR: ${{ inputs.pr }}
           END_ONLY_PR: ${{ inputs.end_only_pr }}
+          OWN_SLOT_ONLY: ${{ inputs.own_slot_only }}
         run: |
           ready=$INFRA_READY
           state=""
@@ -164,6 +169,10 @@ jobs:
                 printf '## ⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다\n\n서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다.\n' >>"$GITHUB_STEP_SUMMARY"
                 echo "::notice title=건너뜀::PR #$END_ONLY_PR 의 미리보기가 떠 있지 않다"
               fi
+            elif [ "$OWN_SLOT_ONLY" = true ] && { [ "$(value LEASE_ACTIVE)" != 1 ] || [ "$(value LEASE_PR)" != "$PR" ]; }; then
+              ready=false
+              printf '## ⏭️ 건너뜀 — 24시간 모드라 push 로는 미리보기를 새로 올리지 않는다\n\n테스트 주소는 develop(머지된 것)을 보여 준다. 이 PR 의 미리보기가 떠 있을 때만 push 로 다시 올린다. 지금 보려면 preview 라벨을 떼었다 다시 붙인다(자리 1시간이 끝나면 develop 으로 저절로 돌아간다).\n' >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=건너뜀::24시간 모드 — 이 PR 의 미리보기가 떠 있지 않다"
             elif [ "$(value LEASE_ACTIVE)" = 1 ] && [ "$(value LEASE_PR)" != "$PR" ]; then
               ready=false
               holder="PR #$(value LEASE_PR) · $(value LEASE_BY) · $(kst "$(value LEASE_UNTIL)") (KST) 까지"
@@ -336,16 +345,21 @@ jobs:
               echo
               echo "${WAIT} 분 기다렸지만 계속 쓰였다(마지막 API 요청 $last KST). 쓰는 사람을 끊지 않으려고 서버는 바꾸지 않았다. 이미지는 ECR 에 올려 두었다."
               echo
-              echo "다 쓴 뒤 다시 실행(Re-run)하거나, 지금 바꿔야 하면 사람이 직접 누른다(Actions → Deploy 또는 Dev server — 직접 누르면 기다리지 않는다)."
+              if [ "$MODE" = develop ]; then
+                echo "이 커밋을 서버에 '떠 있어야 할 develop' 으로 적어 둔다(아래 단계). 5분 동안 아무도 안 쓰면 자동 점검(10분마다)이 이어서 띄운다. 지금 바꿔야 하면 사람이 직접 누른다(Actions → Deploy — 직접 누르면 기다리지 않는다)."
+              else
+                echo "다 쓴 뒤 다시 실행(Re-run)하거나, 지금 바꿔야 하면 사람이 직접 누른다(Actions → Dev server — 직접 누르면 기다리지 않는다)."
+              fi
             } >>"$GITHUB_STEP_SUMMARY"
             echo "::notice title=배포 미룸::테스트 주소를 쓰는 중이다(마지막 API 요청 $last KST). 다 쓴 뒤 Re-run"
           elif [ "${waited:-0}" -gt 0 ]; then
             echo "::notice title=기다림::쓰는 사람이 멈출 때까지 ${waited}분 기다린 뒤 배포한다"
           fi
 
+      # 쓰는 중이라 미룬 develop 은 서버에 묶음만 풀고 "떠 있어야 할 develop" 으로 적는다(DEFER). 바꾸지는 않는다.
       - name: Deploy to server (SSM)
         id: deploy
-        if: steps.idle.outputs.busy != 'true'
+        if: steps.idle.outputs.busy != 'true' || inputs.mode == 'develop'
         env:
           REPO: ${{ steps.infra.outputs.ecr_repository_url }}
           SHA: ${{ inputs.sha }}
@@ -360,12 +374,14 @@ jobs:
           END_ONLY_PR: ${{ inputs.end_only_pr }}
           QUIET: ${{ inputs.quiet }}
           FORCE: ${{ inputs.force && '1' || '0' }}
+          DEFER: ${{ steps.idle.outputs.busy == 'true' && '1' || '0' }}
+          OWN_SLOT_ONLY: ${{ inputs.own_slot_only && '1' || '0' }}
           BACKUP_BUCKET: ${{ steps.infra.outputs.backup_bucket }}
         run: |
           remote="$RUNNER_TEMP/remote.sh"
           IMAGE="$REPO:$SHA" WEB_IMAGE="$REPO:web-$SHA" RELEASE="$SHA" NEURINGO_ENV=dev MODE="$MODE" \
             PREVIEW_PR="$PR" PREVIEW_BY="$BY" END_PREVIEW="$END_PREVIEW" END_ONLY_PR="$END_ONLY_PR" FORCE="$FORCE" \
-            bash scripts/release-bundle.sh >"$remote"
+            DEFER="$DEFER" OWN_SLOT_ONLY="$OWN_SLOT_ONLY" bash scripts/release-bundle.sh >"$remote"
           code=0
           out=$(bash scripts/ssm-run.sh "$remote" "release ${SHA:0:7} $MODE") || code=$?
           rm -f "$remote"
@@ -384,6 +400,8 @@ jobs:
             0:ok) head="✅ 올라감" ;;
             0:unchanged) head="✅ 이미 이 커밋이 떠 있다(바꾸지 않음)" ;;
             75:not_this_pr) head="⏭️ 건너뜀 — 이 PR 의 미리보기가 떠 있지 않아 끝낼 것이 없다" ;;
+            75:deferred) head="⏸️ 미룸 — 다 쓰면 서버가 이어서 띄운다" ;;
+            75:not_own_slot) head="⏭️ 건너뜀 — 24시간 모드라 push 로는 미리보기를 새로 올리지 않는다" ;;
             75:*) head="⏭️ 건너뜀 — PR 미리보기가 자리를 쓰는 중" ;;
             76:*) head="⛔ 자리 있음 — 다른 PR 이 미리보기 중" ;;
             69:*) head="⏭️ 건너뜀 — 서버가 꺼져 있다" ;;
@@ -423,7 +441,9 @@ jobs:
             echo
             case $code:$result in
               75:not_this_pr) echo "서버에는 develop 이나 다른 PR 의 미리보기가 떠 있다. 그대로 둔다." ;;
-              75:*) echo "미리보기가 끝나면(끝내기 또는 자리 시간이 지난 뒤 develop 배포·켜기) develop 최신으로 돌아간다. 이미지는 ECR 에 올려 두었다." ;;
+              75:deferred) echo "이 커밋을 서버에 '떠 있어야 할 develop' 으로 적어 두었다. 5분 동안 아무도 안 쓰면 자동 점검(10분마다, deploy/host/catch-up.sh)이 이어서 띄운다." ;;
+              75:not_own_slot) echo "테스트 주소는 develop 을 보여 준다. 이 PR 을 다시 보려면 preview 라벨을 떼었다 다시 붙인다." ;;
+              75:*) echo "이 커밋을 서버에 '떠 있어야 할 develop' 으로 적어 두었다. 미리보기가 끝나면(끝내기 또는 자리 1시간이 지난 뒤) 자동 점검(10분마다)이 이 커밋으로 이어서 띄운다. 이미지는 ECR 에 올려 두었다." ;;
               76:*) echo "자리 주인이 **미리보기 끝내기**를 누르거나 시간이 지난 뒤 다시 누른다." ;;
               2:*) echo "새 버전이 상태 확인(API 200·화면 200·화면 헤더의 커밋)을 통과하지 못해 직전 상태로 되돌렸다. 앱 로그는 서버의 \`/opt/neuringo/logs/failed-*.log\`(SSM 세션)." ;;
               3:*) echo "web·backend 를 멈췄다. SSM 세션으로 서버에 들어가 \`/opt/neuringo/logs\` 를 본다." ;;

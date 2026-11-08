@@ -111,6 +111,13 @@ export function compose(input) {
         `그 뒤에 PR #${pr} 에서 \`preview\` 라벨을 뗐다가 다시 붙이면 뜹니다.`,
       )
     }
+    // 24시간 모드의 push: 이 PR 이 자리를 잡고 있지 않으면 올리지 않는다(테스트 주소는 develop). 알릴 것이 없다.
+    if (
+      result === "not_own_slot" ||
+      (task === "PR 미리보기 다시 올리기" && running && !result && state.LEASE_ACTIVE !== "1" && releaseJob !== "failure")
+    ) {
+      return null
+    }
     if (result === "busy") {
       return lines(
         `⏸️ **PR #${pr} 미리보기를 미뤘습니다** — 테스트 주소를 누가 쓰는 중이라 기다렸지만 계속 쓰였습니다`,
