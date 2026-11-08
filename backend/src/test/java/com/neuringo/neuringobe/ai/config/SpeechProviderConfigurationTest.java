@@ -95,4 +95,24 @@ class SpeechProviderConfigurationTest {
                             assertThat(properties.language()).isEqualTo("kor");
                         });
     }
+
+    @Test
+    void openAiTtsFallsBackToSttKeyWhenTtsKeyIsBlank() {
+        runner.withPropertyValues(
+                        "neuringo.ai.stt.provider=openai",
+                        "neuringo.ai.stt.api-key=stt-key",
+                        "neuringo.ai.tts.provider=openai")
+                .run(
+                        context -> {
+                            assertThat(context).hasNotFailed();
+                            assertThat(context.getBean(TextToSpeechProvider.class))
+                                    .isInstanceOf(OpenAiTextToSpeechProvider.class);
+                        });
+    }
+
+    @Test
+    void openAiTtsFailsFastWithoutAnyKey() {
+        runner.withPropertyValues("neuringo.ai.tts.provider=openai")
+                .run(context -> assertThat(context).hasFailed());
+    }
 }

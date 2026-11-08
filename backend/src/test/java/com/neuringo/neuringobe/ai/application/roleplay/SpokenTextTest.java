@@ -3,6 +3,9 @@ package com.neuringo.neuringobe.ai.application.roleplay;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neuringo.neuringobe.ai.application.model.SpeechEmotion;
+import java.time.Duration;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -52,5 +55,18 @@ class SpokenTextTest {
             })
     void picksVoiceEmotionFromStageDirections(String text, SpeechEmotion emotion) {
         assertThat(SpokenText.emotionOf(text)).isEqualTo(emotion);
+    }
+
+    @Test
+    void longCryingSoundDoesNotBacktrackExponentially() {
+        // "(흑+)+" 이던 때는 "흑" 이 길게 이어지고 뒤에 한글이 붙으면(낱말이 아님) 나누는 방법을 모두 시도해 멈춘 것처럼 느려졌다(CodeQL
+        // java/redos).
+        String sobs = "흑".repeat(5_000);
+        Assertions.assertTimeoutPreemptively(
+                Duration.ofSeconds(2),
+                () -> {
+                    assertThat(SpokenText.of(sobs + "백")).isEqualTo(sobs + "백");
+                    assertThat(SpokenText.of("아야… " + sobs)).isEqualTo("아야…");
+                });
     }
 }

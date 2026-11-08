@@ -18,9 +18,16 @@ public final class SpokenText {
     /** 반각·전각 괄호 한 쌍. 괄호 안에 다른 괄호는 없다고 본다. */
     private static final Pattern STAGE_DIRECTION = Pattern.compile("[(（][^()（）]*[)）]");
 
-    /** 괄호 밖의 울음소리 낱말과 뒤따르는 문장부호. 앞뒤가 다른 한글 글자와 붙어 있으면(예: "훌쩍이며", "흑백") 낱말로 보지 않는다. */
+    /**
+     * 괄호 밖의 울음소리 낱말과 뒤따르는 문장부호. 앞뒤가 다른 한글 글자와 붙어 있으면(예: "훌쩍이며", "흑백") 낱말로 보지 않는다.
+     *
+     * <p>낱말 묶음은 possessive(++)로 둔다. "(흑+)+"처럼 반복 안에 반복이 있으면 "흑흑흑…" 뒤에 한글이 붙었을 때 나누는 방법을 모두 되짚을 수 있다
+     * (CodeQL java/redos). 묶음 안 글자는 모두 한글이고 바로 뒤에 한글이 오면 어차피 실패하므로, 되짚지 않아도 결과는 같다. 문장부호는 되짚어야
+     * "흑.가"처럼 끝의 마침표만 빼고 맞출 수 있어 그대로 둔다. 바깥 반복이 "흑" 한 글자씩 돌면 Java 정규식이 재귀가 깊어져 StackOverflowError 가
+     * 나므로 안쪽은 "흑++"로 한 번에 먹는다.
+     */
     private static final Pattern CRYING_SOUND =
-            Pattern.compile("(?<![가-힣])(흐+으*윽+|흑+|훌쩍|엉엉|으+아*앙+)+[…~.,!]*(?![가-힣])");
+            Pattern.compile("(?<![가-힣])(?:흐++으*+윽++|흑++|훌쩍|엉엉|으++아*+앙++)++[…~.,!]*(?![가-힣])");
 
     /** 지운 뒤 문장 앞에 남은 문장부호와, 문장 끝에 남은 쉼표. */
     private static final Pattern LEADING_PUNCTUATION = Pattern.compile("^[\\s…~.,!]+");

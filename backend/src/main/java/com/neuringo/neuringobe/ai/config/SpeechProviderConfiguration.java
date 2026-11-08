@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 /** STT·TTS 는 LLM 과 따로 켠다. 기본값은 둘 다 꺼짐(none)이다. */
 public final class SpeechProviderConfiguration {
@@ -88,10 +89,17 @@ public final class SpeechProviderConfiguration {
     static class OpenAiTextToSpeech {
 
         @Bean
-        TextToSpeechProvider textToSpeechProvider(TextToSpeechProperties properties) {
+        TextToSpeechProvider textToSpeechProvider(
+                TextToSpeechProperties properties, Environment environment) {
+            // TTS 키를 따로 두지 않으면 STT 의 OpenAI 키를 쓴다. 같은 OpenAI 계정이라 키를 두 번 넣지 않게 한다.
+            String apiKey =
+                    hasText(properties.apiKey())
+                            ? properties.apiKey()
+                            : environment.getProperty("neuringo.ai.stt.api-key");
             return new OpenAiTextToSpeechProvider(
                     properties.baseUrl(),
-                    requireConfigured(properties.apiKey(), "neuringo.ai.tts.api-key"),
+                    requireConfigured(
+                            apiKey, "neuringo.ai.tts.api-key(또는 neuringo.ai.stt.api-key)"),
                     properties.requestTimeout(),
                     new OpenAiFailureClassifier(),
                     properties.providerName(),
@@ -99,6 +107,10 @@ public final class SpeechProviderConfiguration {
                     properties.voiceId(),
                     AudioFormat.valueOf(properties.audioFormat().toUpperCase(Locale.ROOT)));
         }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank() && !value.equals("not-configured");
     }
 
     private static String requireConfigured(String value, String propertyName) {
