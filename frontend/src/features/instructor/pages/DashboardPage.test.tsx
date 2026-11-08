@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
-import { envelope, fixtures, seedActivity } from "@/test/msw/handlers"
+import { apiError, envelope, fixtures, seedActivity } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import type { ScenarioApprovalItem } from "../api"
@@ -51,5 +51,23 @@ describe("강사 대시보드", () => {
     const classes = screen.getByRole("region", { name: "담당 학급 요약" })
     expect(within(classes).getByRole("link", { name: "햇살반" })).toBeInTheDocument()
     expect(await within(classes).findByText("아동 2 · 활동 완료 1/1")).toBeInTheDocument()
+  })
+
+  it("학급 하나의 아동·활동 조회가 실패해도 나머지 학급으로 그리고, 실패한 학급은 불러오지 못했다고 알린다", async () => {
+    const B1 = fixtures.classroomB1.classId
+    seedActivity({ childId: fixtures.childA1_1.childId, goalTitle: "위로하는 말 하기", status: "COMPLETED" })
+    server.use(
+      http.get(`*/api/v1/classrooms/${B1}/children`, () => apiError(500, "INTERNAL_ERROR", "오류", "/x")),
+      http.get(`*/api/v1/classrooms/${B1}/activities`, () => apiError(500, "INTERNAL_ERROR", "오류", "/x")),
+    )
+    renderDashboard()
+
+    expect(await screen.findByText("진행 중 0 · 완료 1")).toBeInTheDocument()
+    expect(await screen.findByText("학급 1곳은 불러오지 못했어요")).toBeInTheDocument()
+    expect(screen.getByText("2명")).toBeInTheDocument()
+    const timeline = screen.getByRole("region", { name: "최근 학습 타임라인" })
+    expect(within(timeline).getByRole("link", { name: /위로하는 말 하기/ })).toBeInTheDocument()
+    const classes = screen.getByRole("region", { name: "담당 학급 요약" })
+    expect(within(classes).getByText("아동 불러오지 못함 · 활동 완료 불러오지 못함")).toBeInTheDocument()
   })
 })

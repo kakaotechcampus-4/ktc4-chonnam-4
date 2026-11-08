@@ -69,6 +69,21 @@ describe("아동 상세 화면", () => {
     expect(within(panel).getByText("완료", { selector: "p" }).nextElementSibling?.textContent).toBe("1")
   })
 
+  it("새 역할극의 요약이 아직 없어도 이전 리포트 요약을 보이고, 최근 요약은 준비 중이라고 알린다", async () => {
+    seedRoleplayLearning({ childId: CHILD.childId, goalTitle: "이전 역할극" })
+    // 다음 역할극을 마쳐 난이도는 새 활동 기준으로 바뀌었지만 AI 요약은 아직 없다.
+    seedRoleplayLearning({ childId: CHILD.childId, goalTitle: "새 역할극", withReport: false })
+    const { user } = renderChildDetail()
+
+    await user.click(await screen.findByRole("tab", { name: "개요 · 학습 상태" }))
+    const panel = await screen.findByRole("tabpanel", { name: "개요 · 학습 상태" })
+    expect(
+      await within(panel).findByText("감정 이름은 처음 단서로 말했고, 이유는 두 선택지를 듣고 말했어요."),
+    ).toBeInTheDocument()
+    expect(within(panel).getByText("가장 최근 역할극의 요약은 아직 준비 중이거나 만들지 못했어요.")).toBeInTheDocument()
+    expect(within(panel).queryByText("아직 완료한 역할극 리포트가 없습니다.")).not.toBeInTheDocument()
+  })
+
   it("역할극을 마친 적 없으면 난이도 대신 아직 정해지지 않았다고 알린다", async () => {
     const { user } = renderChildDetail()
 

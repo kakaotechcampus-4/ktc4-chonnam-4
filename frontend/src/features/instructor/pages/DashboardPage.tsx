@@ -25,12 +25,14 @@ function DashboardPage() {
   const classroomsQuery = useQuery({ queryKey: ['classrooms'], queryFn: listClassrooms })
   const classrooms = classroomsQuery.data ?? []
   const approvalsQuery = useQuery({ queryKey: ['scenario-approvals'], queryFn: listScenarioApprovals })
+  // 학급마다 아동 수. 실패한 학급은 null 로 남겨 로딩(undefined)과 구분한다.
   const childCounts = useQueries({
     queries: classrooms.map((classroom) => ({
       queryKey: ['classrooms', classroom.classId, 'children'],
       queryFn: () => listChildren(classroom.classId),
     })),
-    combine: (results) => results.map((result) => result.data?.length),
+    combine: (results) =>
+      results.map((result): number | null | undefined => (result.isError ? null : result.data?.length)),
   })
   const activityResults = useActivitiesOfClassrooms(classroomsQuery.data)
 
@@ -38,12 +40,13 @@ function DashboardPage() {
   const activities = activityResults.flatMap((result, index) =>
     (result.data ?? []).map((activity) => ({ ...activity, classId: classrooms[index].classId })),
   )
-  const activitiesReady = activityResults.every((result) => result.isSuccess)
+  // 학급 하나가 실패해도 나머지 학급으로 그린다. 모든 요청이 끝났으면(성공·실패) 준비된 것으로 본다.
+  const activitiesReady = activityResults.every((result) => !result.isPending)
   const activityError = activityResults.find((result) => result.isError)?.error
   const counts = activitiesReady ? countByStatus(activities) : null
-  const totalChildren = childCounts.every((count) => count !== undefined)
-    ? childCounts.reduce<number>((sum, count) => sum + (count ?? 0), 0)
-    : null
+  const childrenReady = childCounts.every((count) => count !== undefined)
+  const failedChildCounts = childCounts.filter((count) => count === null).length
+  const totalChildren = childrenReady ? childCounts.reduce<number>((sum, count) => sum + (count ?? 0), 0) : null
   const attention = activities.filter((a) => a.status === 'PAUSED' || a.status === 'RECOVERY_NEEDED')
   const approvals = approvalsQuery.data ?? []
 
@@ -64,7 +67,11 @@ function DashboardPage() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="담당 학급" value={String(classrooms.length)} note={classrooms.map((c) => c.name).join(' · ')} />
-            <StatCard label="등록 아동" value={totalChildren === null ? '…' : `${totalChildren}명`} />
+            <StatCard
+              label="등록 아동"
+              value={totalChildren === null ? '…' : `${totalChildren}명`}
+              note={failedChildCounts > 0 ? `학급 ${failedChildCounts}곳은 불러오지 못했어요` : undefined}
+            />
             <StatCard
               label="활동 현황"
               value={counts ? `진행 중 ${counts.inProgress} · 완료 ${counts.completed}` : '…'}
@@ -73,7 +80,11 @@ function DashboardPage() {
             <StatCard label="승인 대기" value={approvalsQuery.data ? `${approvals.length}건` : '…'} />
           </div>
 
-          {activityError && <Notice tone="error">{describeError(activityError, '활동을 불러오지 못했습니다.')}</Notice>}
+          {activityError && (
+            <Notice tone="error">
+              {describeError(activityError, '활동을 불러오지 못했습니다.')} 불러온 학급의 활동만 보여요.
+            </Notice>
+          )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="flex flex-col gap-4">
@@ -164,16 +175,21 @@ function DashboardPage() {
                 </h2>
                 <ul className="flex flex-col gap-2 text-sm">
                   {classrooms.map((classroom, index) => {
-                    const ofClass = activityResults[index]?.data
-                    const classCounts = ofClass ? countByStatus(ofClass) : null
+                    const result = activityResults[index]
+                    const classCounts = result?.data ? countByStatus(result.data) : null
+                    const childCount = childCounts[index]
                     return (
                       <li key={classroom.classId} className="flex items-center justify-between gap-3">
                         <Link to={`/classrooms/${classroom.classId}`} className="hover:underline">
                           {classNames.get(classroom.classId)}
                         </Link>
                         <span className="text-xs text-[var(--instructor-text-subtle)]">
-                          아동 {childCounts[index] ?? '…'} · 활동 완료{' '}
-                          {classCounts ? `${classCounts.completed}/${classCounts.total}` : '…'}
+                          아동 {childCount === null ? '불러오지 못함' : (childCount ?? '…')} · 활동 완료{' '}
+                          {classCounts
+                            ? `${classCounts.completed}/${classCounts.total}`
+                            : result?.isError
+                              ? '불러오지 못함'
+                              : '…'}
                         </span>
                       </li>
                     )

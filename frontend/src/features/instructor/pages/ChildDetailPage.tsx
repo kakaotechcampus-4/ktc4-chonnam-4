@@ -1,7 +1,15 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteChild, getChild, getClassroom, issueChildCode, listChildActivities, listLearningGoals } from '../api'
+import {
+  deleteChild,
+  getChild,
+  getClassroom,
+  issueChildCode,
+  listChildActivities,
+  listLearningGoals,
+  listLearningReports,
+} from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
@@ -386,6 +394,16 @@ function ChildOverview({
   activitiesError: Error | null
 }) {
   const learning = useChildLatestLearning(childId)
+  // 최근 리포트 요약은 최신 난이도와 상관없이 가장 최근 완료 리포트다. 새 역할극의 요약이 아직 없어도 이전 요약은 보인다.
+  // 추천 화면과 같은 캐시 키라 다시 부르지 않는다.
+  const latestReportQuery = useQuery({
+    queryKey: ['learning-records', { childId, size: 1 }],
+    queryFn: () => listLearningReports(childId, 1),
+  })
+  const latestReport = latestReportQuery.data?.[0] ?? null
+  // 가장 최근 역할극(난이도를 정한 활동)의 요약이 아직 생성 중이거나 만들지 못한 경우.
+  const newestSummaryPending =
+    learning.difficulty !== null && latestReportQuery.isSuccess && latestReport?.activityId !== learning.difficulty.sourceActivityId
   const counts = activities ? countByStatus(activities) : null
   const latest = activities?.[0]
   const difficulty = learning.difficulty
@@ -435,19 +453,26 @@ function ChildOverview({
 
       <div className={cn(cardClass, 'flex flex-col gap-2 p-5')}>
         <h2 className="text-sm font-semibold">최근 리포트 요약</h2>
-        {learning.report ? (
+        {newestSummaryPending && (
+          <p className="text-xs text-[var(--instructor-text-subtle)]">
+            가장 최근 역할극의 요약은 아직 준비 중이거나 만들지 못했어요.
+          </p>
+        )}
+        {latestReportQuery.isError ? (
+          <Notice tone="error">{describeError(latestReportQuery.error, '리포트를 불러오지 못했습니다.')}</Notice>
+        ) : latestReport ? (
           <>
-            <p className="text-sm">{learning.report.summary}</p>
+            <p className="text-sm">{latestReport.summary}</p>
             <Link
-              to={`/activities/${learning.report.activityId}/report`}
+              to={`/activities/${latestReport.activityId}/report`}
               className="self-start text-xs text-[var(--instructor-link)] hover:underline"
             >
-              리포트 보기 · {formatDate(learning.report.completedAt)}
+              리포트 보기 · {formatDate(latestReport.completedAt)}
             </Link>
           </>
         ) : (
           <p className="text-sm text-[var(--instructor-text-muted)]">
-            {learning.isLoading ? '불러오는 중...' : '아직 완료한 역할극 리포트가 없습니다.'}
+            {latestReportQuery.isLoading ? '불러오는 중...' : '아직 완료한 역할극 리포트가 없습니다.'}
           </p>
         )}
       </div>
