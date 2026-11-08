@@ -69,8 +69,8 @@ UNSUPPORTED_CAUSE_ANALYSIS·STATE_STRATEGY_MISMATCH는 분석 검수 결과에�
 
 ## 버전과 적용 범위
 
-- 안내자·캐릭터 평가 프롬프트: roleplay-response-evaluation/v7, roleplay-response-evaluation-character/v7
-- 제공자 출력 스키마: evaluation-output/v5, 요청별 동적 스키마
+- 안내자·캐릭터 평가 프롬프트: roleplay-response-evaluation/v8, roleplay-response-evaluation-character/v8
+- 제공자 출력 스키마: evaluation-output/v6, 요청별 동적 스키마
 - 내부 목표 검수 계약: 기존 evaluation-result/v2 유지
 - 내부 EvaluationResult·공개 API·DB·분석/생성 출력 계약은 유지한다.
 - 정상 경로는 분석→생성→평가 3회이며 별도 검수 호출은 추가하지 않는다.
@@ -198,3 +198,18 @@ A 1회에서 사건 관찰은 SUPPORTED, 스키마는 통과했으나 analysis_s
 activity_goal_supported=false가 모순돼 INVALID_OUTPUT_FORMAT으로 중단했다. B는 호출하지 않았다.
 A는 4.384초, 입력/출력 6,279/329토큰이다. 관찰 분류의 단건 일치와 전체 평가 거절을 구분해야 한다.
 상세 조건·결과·한계는 roleplay-integrated-evaluation-diagnostic-design-2026-11-08.md에 기록했다.
+
+
+## 2026-11-09 S3 계약과 직접성 거절 검증
+
+캐릭터 생성·검수에는 서버 지원 보정 후 동일한 `character_response_contract`를 전달한다. 다섯 학습 전략(PROBE_EVENT/EMOTION/CAUSE/ACTION, ADVANCE_GOAL)은 S3에서 ANSWER_REVEAL이며, S0~S2에서는 GUIDING_QUESTION이다. 후보 파서가 조합을 검사한다. 타입만 맞는 대사가 교육적으로 올바른지는 여전히 독립 검수 대상이다.
+
+검수 출력 v6는 `answer_directness_violation`을 필수 nullable 필드로 받는다. 캐릭터 일반 경로에서 ANSWER_TOO_DIRECT가 있으면 실제 인용과 reason/speaker_role이 필요하다. TARGET_ANSWER_BEFORE_S3는 S0~S2 캐릭터 대사에서만, MASCOT_ANSWER_REVEAL은 존재하는 마스코트 힌트에서만 허용한다. 코드와 difficulty_appropriate=false도 일치해야 한다. 코드가 없으면 null이다. 안전·입력 확인 우선 경로는 null로 검수를 생략할 수 있다.
+
+요청별 native 스키마가 사유를 좁히고 수신 검증이 인용·코드·검사 일치를 확인한다. 모순된 검수는 DIRECTNESS_CONTRACT_CONFLICT로 같은 후보의 검수를 재시도한다. PASS로 바꾸거나 후보를 바로 재생성하지 않는다. 기존 공유 60초·시도 상한·SDK 재시도 0을 유지한다.
+
+생성 출력 오류는 `output_retry.error_code/correction`으로 전달한다. 지원 계약 오류는 RESPONSE_CONTRACT_CONFLICT이며 새 후보에서는 초기화한다. 검수 거절에 따른 기존 `retry`와 구분한다. 원문·예외 문구는 피드백에 복사하지 않는다.
+
+분석 v4, 캐릭터 생성 v2, 평가 v8이다. 내부 evaluation-result/v2·candidate-response/v1·HTTP·DB 구조는 유지한다. 새 유형 제약은 캐릭터 역할극에 적용한다. 정답 제공 이력은 전달 확정된 ANSWER_REVEAL에만 반영하며 과거 이력을 소급 변경하지 않는다.
+
+설계: [S3 검수 정합성](roleplay-s3-review-consistency-design-2026-11-09.md). 정보량 조사: [입력·출력 크기](roleplay-payload-size-review-2026-11-09.md). 실제 모델의 의미 정확성·시간 개선은 아직 재측정하지 않았다.

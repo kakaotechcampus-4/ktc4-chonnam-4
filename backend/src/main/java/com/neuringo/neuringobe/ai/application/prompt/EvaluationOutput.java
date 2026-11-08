@@ -24,7 +24,9 @@ record EvaluationOutput(
         @JsonProperty("observation_reviews")
                 java.util.Map<String, tools.jackson.databind.JsonNode> observationReviews,
         @JsonProperty("failure_codes") List<String> failureCodes,
-        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction) {
+        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
+        @JsonProperty("answer_directness_violation")
+                AnswerDirectnessViolation answerDirectnessViolation) {
 
     EvaluationResult toResult(ScopedAnalysisContext.Approvals approvals) {
         boolean priority =

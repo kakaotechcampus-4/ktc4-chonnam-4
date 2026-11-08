@@ -327,6 +327,7 @@ class EvidenceSelectionDiagnosticTest {
         body.put("decision", input.path("observation_tasks").size() == 1 ? "PASS" : "REANALYZE");
         body.putArray("failure_codes");
         body.putNull("revision_instruction");
+        body.putNull("answer_directness_violation");
         return body;
     }
 

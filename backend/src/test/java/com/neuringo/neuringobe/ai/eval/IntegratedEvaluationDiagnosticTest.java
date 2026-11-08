@@ -39,8 +39,8 @@ class IntegratedEvaluationDiagnosticTest {
                                     .path("state")
                                     .path("current_micro_goal_id"));
             assertThat(request.promptVersion())
-                    .isEqualTo("roleplay-response-evaluation-character/v7");
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v5");
+                    .isEqualTo("roleplay-response-evaluation-character/v8");
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v6");
             assertThat(request.userPrompt())
                     .doesNotContain("expected_verdict", "case_id", "expected_status");
         }
@@ -202,6 +202,7 @@ class IntegratedEvaluationDiagnosticTest {
         var body = EvalReport.JSON.createObjectNode();
         body.put("candidate_id", request.traceContext().candidateId().toString());
         body.putNull("revision_instruction");
+        body.putNull("answer_directness_violation");
         body.put("analysis_id", request.traceContext().analysisId().toString());
         body.set(
                 "activity_review",

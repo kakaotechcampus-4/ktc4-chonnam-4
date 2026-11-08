@@ -5,6 +5,7 @@ import com.neuringo.neuringobe.ai.application.model.AiFailureType;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.prompt.AnalysisRetry;
 import com.neuringo.neuringobe.ai.application.prompt.EvaluationRetry;
+import com.neuringo.neuringobe.ai.application.prompt.GenerationOutputRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GenerationRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
@@ -33,6 +34,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
     private boolean invalidAnalysisOutput;
     private UUID evaluationCandidateId;
     private EvaluationRetry evaluationRetry;
+    private UUID generationCandidateId;
+    private GenerationOutputRetry generationOutputRetry;
 
     public StructuredRoleplayTurnSteps(
             RoleplayPromptFactory prompts,
@@ -86,6 +89,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
     public AiCallResult<CandidateResponse> generate(
             UUID turnId, UUID candidateId, AnalysisResult analysis, RoleplayRetryContext retry) {
         requireTurn(turnId);
+        if (!candidateId.equals(generationCandidateId)) generationOutputRetry = null;
+        generationCandidateId = candidateId;
         var prepared =
                 prompts.responseGeneration(
                         stageTrace(candidateId),
@@ -94,9 +99,21 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         input,
                         analysis,
                         candidateId,
-                        generationRetry(retry));
-        return llm.execute(
-                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
+                        generationRetry(retry),
+                        generationOutputRetry);
+        var result =
+                llm.execute(
+                        prepared.request().withCallBudget(retry.callBudget()),
+                        content -> {
+                            try {
+                                return prepared.parser().parse(content);
+                            } catch (InvalidLlmOutputException failure) {
+                                generationOutputRetry = GenerationOutputRetry.from(failure);
+                                throw failure;
+                            }
+                        });
+        if (result instanceof AiCallResult.Success<?>) generationOutputRetry = null;
+        return result;
     }
 
     @Override

@@ -41,10 +41,10 @@ class RoleplayPromptFactoryTest {
                                     RoleplayObservationTestPlans.inputForScenario(input.scenario()),
                                     EvaluationRetry.INVALID_STRUCTURE)
                             .request();
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v5");
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v6");
             assertThat(request.responseJsonSchema())
                     .contains("additionalProperties", "failure_codes");
-            assertThat(request.promptVersion()).endsWith("/v7");
+            assertThat(request.promptVersion()).endsWith("/v8");
             assertThat(request.systemPrompt())
                     .contains(
                             "현재 목표 달성과 활동 전체 판정을 구분한다",
@@ -74,7 +74,7 @@ class RoleplayPromptFactoryTest {
 
         LlmRequest request = prompt.request();
         assertThat(request.operation()).isEqualTo(AiOperation.CAUSE_ANALYSIS);
-        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v3");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v4");
         assertThat(request.responseSchemaVersion()).isEqualTo("analysis-result/v2");
         assertThat(request.policyVersion()).isEqualTo("SUPPORT-MVP-001");
         assertThat(request.systemPrompt()).contains("원인 판단 단계");
@@ -295,7 +295,7 @@ class RoleplayPromptFactoryTest {
                                 .path("proposed_learning_state")
                                 .asString())
                 .isEqualTo("PARTIAL_UNDERSTANDING");
-        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v7");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v8");
     }
 
     @Test

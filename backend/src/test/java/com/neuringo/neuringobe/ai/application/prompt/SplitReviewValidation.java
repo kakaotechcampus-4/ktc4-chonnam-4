@@ -156,7 +156,8 @@ public final class SplitReviewValidation {
                                     ? null
                                     : JSON.treeToValue(
                                             output.path("revision_instruction"),
-                                            RevisionInstruction.class));
+                                            RevisionInstruction.class),
+                            null);
             boolean priority =
                     decision == EvaluationDecision.SAFETY_ESCALATION
                             || decision == EvaluationDecision.CONFIRM_INPUT;

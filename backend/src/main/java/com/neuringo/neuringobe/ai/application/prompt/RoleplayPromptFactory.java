@@ -30,20 +30,20 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class RoleplayPromptFactory {
 
-    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v3";
+    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v4";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
 
     /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
     public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v1";
+            "roleplay-response-generation-character/v2";
 
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation/v7";
+            "roleplay-response-evaluation/v8";
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v7";
+            "roleplay-response-evaluation-character/v8";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -153,6 +153,19 @@ public final class RoleplayPromptFactory {
             AnalysisResult analysis,
             UUID candidateId,
             GenerationRetry retry) {
+        return responseGeneration(
+                trace, attempts, currentAttempt, input, analysis, candidateId, retry, null);
+    }
+
+    public PreparedPrompt<CandidateResponse> responseGeneration(
+            AiTraceContext trace,
+            AiAttemptContext attempts,
+            int currentAttempt,
+            RoleplayTurnInput input,
+            AnalysisResult analysis,
+            UUID candidateId,
+            GenerationRetry retry,
+            GenerationOutputRetry outputRetry) {
         requireSameTurn(trace, input);
         Objects.requireNonNull(analysis, "analysis must not be null");
         Objects.requireNonNull(candidateId, "candidateId must not be null");
@@ -163,11 +176,21 @@ public final class RoleplayPromptFactory {
 
         Map<String, Object> message = turnSections(input);
         message.put("analysis_result", analysisSection(analysis));
+        if (input.scenario().aiCharacter() != null)
+            message.put("character_response_contract", CharacterResponseContract.from(analysis));
         message.put("candidate_id", candidateId);
         Optional<MascotHintRule.Reason> mascotHint = MascotHintRule.decide(input, analysis);
         mascotHint.ifPresent(reason -> message.put("mascot_hint", Map.of("reason", reason.name())));
         List<UUID> failedIds = retry == null ? List.of() : retry.failedCandidateIds();
         message.put("previous_failed_candidate_ids", failedIds);
+        if (outputRetry != null)
+            message.put(
+                    "output_retry",
+                    Map.of(
+                            "error_code",
+                            outputRetry.name(),
+                            "correction",
+                            outputRetry.correction()));
         if (retry != null) {
             Map<String, Object> retrySection = new LinkedHashMap<>();
             retrySection.put(
@@ -269,10 +292,16 @@ public final class RoleplayPromptFactory {
         Map<String, Object> message = turnSections(input);
         addObservationContext(message, observations, input, trace);
         message.put("analysis_result", analysisSection(analysis));
+        if (input.scenario().aiCharacter() != null)
+            message.put("character_response_contract", CharacterResponseContract.from(analysis));
         var scoped =
                 new ScopedAnalysisContext(
                         objectMapper.valueToTree(message), input, analysis, observations);
-        var schema = new EvaluationOutputSchema(scoped, candidate.candidateId());
+        var schema =
+                new EvaluationOutputSchema(
+                        scoped,
+                        candidate,
+                        characterVoice ? CharacterResponseContract.from(analysis) : null);
         var modelMessage = (tools.jackson.databind.node.ObjectNode) scoped.input();
         modelMessage.set(
                 "candidate_response", objectMapper.valueToTree(candidateSection(candidate)));

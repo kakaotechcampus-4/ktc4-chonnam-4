@@ -137,6 +137,8 @@ public final class IntegratedEvaluationDiagnostic {
                         "activity_assessment",
                         "interpretation_strategy")) restored.remove(key);
         restored.set("analysis_result", scoped.restoreAnalysis(actual));
+        // 새 서버 계약은 파생 정보이며 과거 대조쌍의 원본 입력 비교에서는 제외한다.
+        restored.remove("character_response_contract");
         if (!restored.equals(original)) {
             throw new IllegalArgumentException("고정 입력과 운영 평가 요청이 다릅니다. 호출하지 않습니다.");
         }

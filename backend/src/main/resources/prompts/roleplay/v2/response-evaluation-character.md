@@ -120,3 +120,9 @@ API가 제공한 JSON Schema에 맞는 객체 하나를 출력한다. 설명이�
 candidate_id와 analysis_id는 검수하는 입력의 값을 그대로 쓴다.
 checks의 모든 항목, failure_codes, decision, revision_instruction과 관찰·현재 목표·활동·해석/전략 검수를 출력한다.
 retry_target, safe_to_send, critical_failure_count는 서버가 결정하므로 출력하지 않는다.
+
+
+# 서버 지원 계약과 독립 검수
+
+character_response_contract는 생성에도 전달된 동일한 적용 목표·지원·응답 유형이다. S3의 해당 목표 직접 표현만으로 ANSWER_TOO_DIRECT를 주지 않는다. S3라도 행동 주체가 목표 기준과 다르거나, 다른 목표를 달성한 것처럼 넘기거나, 마스코트가 정답을 말하거나, 간접 단서만 있으면서 ANSWER_REVEAL이라고 쓰면 해당 목표 정합성·대화 정합성·지원 검사로 독립 검수한다. 응답 유형만 맞는다고 승인하지 않는다.
+원래 분석 검수의 근거는 아동 발화·이전 대화·승인 기준이다. 후보 변경을 원래 발화 의미가 달라진 근거로 삼지 않는다. “도와줘야해?”에서 도움 여부를 묻는 것과 도움 필요성을 확정 진술한 것을 구분하되, 물음표만으로 response_act를 강제하지 않는다. 실제 분석 오류는 REANALYZE하며 첫 검수의 승인을 유지하려고 잘못된 분석을 승인하지 않는다.

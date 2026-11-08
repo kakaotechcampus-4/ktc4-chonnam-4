@@ -208,6 +208,13 @@ final class RoleplayOutputParsers {
             check(
                     oneOf(RoleplayCodes.RESPONSE_TYPES, result.responseType()),
                     "unknown response_type");
+            if (characterVoice)
+                check(
+                        result.responseType()
+                                .equals(
+                                        CharacterResponseContract.from(analysis)
+                                                .expectedResponseType()),
+                        "응답 유형이 캐릭터 지원 계약과 다릅니다.");
             check(
                     !maximumTurnReached
                             || ("CLOSE_ROLEPLAY".equals(result.strategyUsed())
@@ -254,18 +261,8 @@ final class RoleplayOutputParsers {
     private static CandidateResponse withStrategyNameAsResponseTypeFixed(CandidateResponse result) {
         if (!result.responseType().equals(result.strategyUsed())) return result;
         String responseType =
-                switch (result.strategyUsed()) {
-                    case "PROBE_EVENT", "PROBE_EMOTION", "PROBE_CAUSE" ->
-                            "S3".equals(result.supportLevel())
-                                    ? "ANSWER_REVEAL"
-                                    : "GUIDING_QUESTION";
-                    case "PROBE_ACTION", "ADVANCE_GOAL" -> "GUIDING_QUESTION";
-                    case "REDIRECT_TO_SCENARIO" -> "REDIRECT";
-                    case "CONFIRM_UNDERSTANDING" -> "CONFIRMATION";
-                    case "CLOSE_ROLEPLAY" -> "CLOSING";
-                    default -> null;
-                };
-        if (responseType == null) return result;
+                CharacterResponseContract.responseType(
+                        result.strategyUsed(), result.supportLevel());
         return new CandidateResponse(
                 result.candidateId(),
                 result.turnId(),
@@ -297,6 +294,7 @@ final class RoleplayOutputParsers {
                         withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
                 schema.validate(repaired);
                 var output = delegate.parse(repaired);
+                schema.requireValidDirectness(output);
                 check(
                         output.candidateId().equals(expectedCandidateId),
                         "candidate_id does not match the request");

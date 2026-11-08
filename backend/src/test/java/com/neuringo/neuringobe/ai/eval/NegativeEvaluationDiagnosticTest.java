@@ -38,7 +38,7 @@ class NegativeEvaluationDiagnosticTest {
                         s ->
                                 assertThat(s.prepared().request().userPrompt())
                                         .doesNotContain(
-                                                "expected", "REANALYZE_FALSE_EMOTION_ONLY"));
+                                                "\"expected\":", "REANALYZE_FALSE_EMOTION_ONLY"));
     }
 
     @Test

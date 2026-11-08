@@ -4,6 +4,8 @@ import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputExcepti
 
 /** 모델 원문이나 예외 내용을 다시 보내지 않고 서버가 확인한 수정 조건만 전달한다. */
 public enum EvaluationRetry {
+    DIRECTNESS_CONTRACT_CONFLICT(
+            "ANSWER_TOO_DIRECT에는 answer_directness_violation의 실제 발화 인용과 허용 사유가 필요하다. S3의 해당 목표 직접 표현을 TARGET_ANSWER_BEFORE_S3로 거절하지 않는다. 마스코트 거절은 실제 힌트에서 인용한다. 코드·사유·difficulty_appropriate를 일치시키고 다른 목표·행동 주체·안전 문제는 해당 검사로 독립 판단한다. 통과하려고 코드를 지우거나 PASS로 바꾸지 않는다."),
     REVIEW_SCOPE_INVALID(
             "이번 observation_tasks의 키만 빠짐없이 검수한다. 현재 목표 ID·상태와 활동 판정은 요청값을 검수하고 다른 목표나 후보 대사를 근거로 삼지 않는다."),
     ACTIVITY_REVIEW_INVALID(
@@ -53,6 +55,7 @@ public enum EvaluationRetry {
     private static EvaluationRetry knownReason(String reason) {
         if (reason == null) return null;
         return switch (reason) {
+            case AnswerDirectnessViolation.CONFLICT -> DIRECTNESS_CONTRACT_CONFLICT;
             case "목표 관찰과 활동 목표 판정이 모두 승인되어야 합니다.", "근거 없는 분석은 후보만 재생성할 수 없습니다." ->
                     UNAPPROVED_GOAL_REVIEW;
             case "observation review references do not match",
