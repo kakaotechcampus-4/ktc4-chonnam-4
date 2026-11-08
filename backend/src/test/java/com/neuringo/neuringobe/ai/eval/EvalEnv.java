@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * 측정 실행기의 설정값. 셸 환경변수에 값이 있으면 그것을, 없으면 backend/.env.local 의 KEY=VALUE 를 쓴다. 값은 출력하지 않는다.
+ * 측정 실행기의 설정값. backend/.env.local 의 KEY=VALUE 를 우선하고, 없으면 셸 환경변수를 쓴다. 값은 출력하지 않는다.
  *
  * <p>roleplayEval 은 Gradle 이 .env.local 을 환경변수로 넣어 주지만, reportEval 은 이 클래스가 직접 읽어서 build.gradle 에
  * 같은 코드를 또 두지 않는다.
@@ -28,7 +28,14 @@ final class EvalEnv {
         Map<String, String> values = new LinkedHashMap<>();
         if (Files.isRegularFile(envFile)) {
             try {
-                for (String raw : Files.readAllLines(envFile, StandardCharsets.UTF_8)) {
+                byte[] bytes = Files.readAllBytes(envFile);
+                boolean utf16 =
+                        bytes.length >= 2
+                                && ((bytes[0] == (byte) 0xff && bytes[1] == (byte) 0xfe)
+                                        || (bytes[0] == (byte) 0xfe && bytes[1] == (byte) 0xff));
+                String text =
+                        new String(bytes, utf16 ? StandardCharsets.UTF_16 : StandardCharsets.UTF_8);
+                for (String raw : text.split("\\R")) {
                     String line = raw.strip().replace("﻿", "");
                     if (line.isEmpty() || line.startsWith("#")) continue;
                     if (line.startsWith("export ")) line = line.substring(7).strip();
@@ -50,10 +57,10 @@ final class EvalEnv {
     }
 
     String get(String name, String fallback) {
-        String shell = System.getenv(name);
-        if (shell != null && !shell.isBlank()) return shell;
         String value = file.get(name);
-        return value == null || value.isBlank() ? fallback : value;
+        if (value != null && !value.isBlank()) return value;
+        String shell = System.getenv(name);
+        return shell == null || shell.isBlank() ? fallback : shell;
     }
 
     String require(String name) {

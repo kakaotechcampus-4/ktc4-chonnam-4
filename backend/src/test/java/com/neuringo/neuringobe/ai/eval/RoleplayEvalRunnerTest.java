@@ -28,6 +28,127 @@ class RoleplayEvalRunnerTest {
     private static final RegressionSet SET = RegressionSet.load(RegressionSet.DEFAULT_RESOURCE);
 
     @Test
+    void oldReportsWithoutIndeterminateCountsRemainReadable() {
+        var records = runner(Set.of()).run(1, c -> c.id().equals("P1"), ignored -> {});
+        var record =
+                (tools.jackson.databind.node.ObjectNode)
+                        EvalReport.JSON.valueToTree(records.getFirst());
+        record.remove("indeterminate_evaluations");
+        assertThat(EvalReport.JSON.treeToValue(record, TurnRecord.class).indeterminateEvaluations())
+                .isZero();
+        var summary =
+                (tools.jackson.databind.node.ObjectNode)
+                        EvalReport.JSON.valueToTree(EvalSummary.of(run(), records));
+        summary.remove("indeterminate_evaluations");
+        assertThat(
+                        EvalReport.JSON
+                                .treeToValue(summary, EvalSummary.class)
+                                .indeterminateEvaluations())
+                .isZero();
+    }
+
+    @Test
+    void indeterminateEvaluationIsCountedSeparatelyFromFormatAndProviderFailures() {
+        var delegate = new ScriptedLlmProvider();
+        var evaluations = new java.util.concurrent.atomic.AtomicInteger();
+        com.neuringo.neuringobe.ai.application.port.LlmProvider provider =
+                request -> {
+                    var result =
+                            (com.neuringo.neuringobe.ai.application.model.AiCallResult.Success<
+                                            com.neuringo.neuringobe.ai.application.model
+                                                    .LlmCompletion>)
+                                    delegate.complete(request);
+                    var completion = result.data();
+                    var output =
+                            (tools.jackson.databind.node.ObjectNode)
+                                    EvalReport.JSON.readTree(completion.content());
+                    var message = EvalReport.JSON.readTree(request.userPrompt());
+                    if (request.operation() == AiOperation.CAUSE_ANALYSIS) {
+                        var criterion =
+                                message.path("goal_observation_context")
+                                        .path("approved_criteria")
+                                        .get(0);
+                        var row =
+                                ((tools.jackson.databind.node.ArrayNode)
+                                                output.path("goal_observation")
+                                                        .path("observations"))
+                                        .addObject();
+                        row.putObject("reference")
+                                .put(
+                                        "turn_id",
+                                        message.path("learner_turn").path("turn_id").asString())
+                                .put("micro_goal_id", criterion.path("micro_goal_id").asString())
+                                .put("criterion_reference", criterion.path("reference").asString());
+                        row.put("status", "NOT_EXPRESSED");
+                    } else if (request.operation() == AiOperation.RESPONSE_EVALUATION
+                            && evaluations.getAndIncrement() == 0) {
+                        ((tools.jackson.databind.node.ObjectNode)
+                                        output.path("observation_reviews").path("o0"))
+                                .put("verdict", "INSUFFICIENT_CONTEXT")
+                                .put("reason_code", "INSUFFICIENT_CONTEXT")
+                                .put("explanation", "정보가 부족하다.");
+                    }
+                    return new com.neuringo.neuringobe.ai.application.model.AiCallResult.Success<>(
+                            new com.neuringo.neuringobe.ai.application.model.LlmCompletion(
+                                    output.toString(),
+                                    completion.provider(),
+                                    completion.model(),
+                                    completion.finishReason(),
+                                    completion.inputTokens(),
+                                    completion.outputTokens()),
+                            result.metadata());
+                };
+        var runner = new RoleplayEvalRunner(SET, provider, PROMPTS, Duration.ofSeconds(60));
+        var records = runner.run(1, c -> c.id().equals("P1"), ignored -> {});
+        var record = records.getFirst();
+        assertThat(record.delivered()).isTrue();
+        assertThat(record.llmCalls()).isEqualTo(4);
+        assertThat(record.firstEvaluationPass()).isFalse();
+        assertThat(record.indeterminateEvaluations()).isEqualTo(1);
+        assertThat(record.formatFailures()).isEmpty();
+        assertThat(record.calls()).allSatisfy(call -> assertThat(call.providerFailure()).isNull());
+    }
+
+    @Test
+    void characterP1PreservesTheOriginalInputAndSelectsCharacterPrompts() {
+        var character = RegressionSet.load(RegressionSet.CHARACTER_P1_RESOURCE);
+        var oldCase = caseOf("P1");
+        var newCase = character.cases().getFirst();
+        assertThat(character.cases()).containsExactly(oldCase);
+        assertThat(character.policy()).isEqualTo(SET.policy());
+        var original = SET.toInput(oldCase);
+        var input = character.toInput(newCase);
+        assertThat(original.scenario().aiCharacter()).isNull();
+        assertThat(input.scenario().aiCharacter().id()).isEqualTo("FRIEND");
+        assertThat(input.state()).isEqualTo(original.state());
+        assertThat(input.learnerTurn()).isEqualTo(original.learnerTurn());
+        assertThat(input.recentDialogue()).isEqualTo(original.recentDialogue());
+        var scenario = input.scenario();
+        assertThat(
+                        new RoleplayTurnInput.Scenario(
+                                scenario.learningGoal(),
+                                scenario.scenarioLevel(),
+                                scenario.scenarioFacts(),
+                                scenario.prohibitedInferences(),
+                                scenario.microGoals()))
+                .isEqualTo(original.scenario());
+
+        var diagnostics = new P1Diagnostics(new ScriptedLlmProvider());
+        var runner =
+                new RoleplayEvalRunner(character, diagnostics, PROMPTS, Duration.ofSeconds(60));
+        assertThat(runner.run(1, ignored -> true, ignored -> {}).getFirst().delivered()).isTrue();
+        assertThat(RoleplayEvalMain.promptVersions(character))
+                .contains(
+                        RoleplayPromptFactory.CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION,
+                        RoleplayPromptFactory.CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
+        assertThat(RoleplayEvalMain.promptVersions(SET))
+                .contains(
+                        RoleplayPromptFactory.RESPONSE_GENERATION_PROMPT_VERSION,
+                        RoleplayPromptFactory.RESPONSE_EVALUATION_PROMPT_VERSION)
+                .doesNotContain("character");
+    }
+
+    @Test
     void regressionSetHoldsThePocFourteenTurnsAsValidPromptInputs() {
         assertThat(SET.cases())
                 .extracting(RegressionSet.Case::id)
@@ -134,6 +255,19 @@ class RoleplayEvalRunnerTest {
                         });
         EvalSummary summary = EvalSummary.of(run(), records);
         assertThat(summary.formatFailure()).isEqualTo(new EvalSummary.Rate(1, 4));
+    }
+
+    @Test
+    void passAfterAnInvalidEvaluationIsRecoverySuccessRatherThanFirstPass() {
+        var record =
+                runner(Set.of(AiOperation.RESPONSE_EVALUATION))
+                        .run(1, turn -> turn.id().equals("P1"), ignored -> {})
+                        .getFirst();
+        assertThat(record.outcome()).isEqualTo("DELIVERED");
+        assertThat(record.llmCalls()).isEqualTo(4);
+        assertThat(record.evaluationDecisions()).containsExactly("PASS");
+        assertThat(record.firstEvaluationPass()).isFalse();
+        assertThat(record.formatFailures()).hasSize(1);
     }
 
     @Test

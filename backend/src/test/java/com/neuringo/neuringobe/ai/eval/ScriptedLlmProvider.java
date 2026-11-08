@@ -86,6 +86,11 @@ final class ScriptedLlmProvider implements LlmProvider {
                                     true));
                 }
                 content = JSON.writeValueAsString(body);
+                if (request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                    content =
+                            com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                                    .forRequest(content, message);
+                }
             }
         }
         int inputTokens = (request.systemPrompt().length() + request.userPrompt().length()) / 2;
@@ -225,11 +230,28 @@ final class ScriptedLlmProvider implements LlmProvider {
     }
 
     private static String evaluation(JsonNode message) {
-        return """
-                {"candidate_id":"%s","checks":{"format_valid":true},"failure_codes":[],
-                 "critical_failure_count":0,"decision":"PASS","retry_target":null,
-                 "safe_to_send":true,"revision_instruction":null}
-                """
-                .formatted(message.get("candidate_response").get("candidate_id").asString());
+        var checks = new java.util.LinkedHashMap<String, Boolean>();
+        for (String key :
+                java.util.List.of(
+                        "format_valid",
+                        "safety_valid",
+                        "privacy_valid",
+                        "scenario_consistent",
+                        "analysis_supported",
+                        "analysis_response_consistent",
+                        "goal_aligned",
+                        "educationally_correct",
+                        "difficulty_appropriate",
+                        "conversation_coherent",
+                        "answerable",
+                        "non_repetitive")) checks.put(key, true);
+        var output = new java.util.LinkedHashMap<String, Object>();
+        output.put(
+                "candidate_id", message.path("candidate_response").path("candidate_id").asText());
+        output.put("checks", checks);
+        output.put("failure_codes", java.util.List.of());
+        output.put("decision", "PASS");
+        output.put("revision_instruction", null);
+        return JSON.writeValueAsString(output);
     }
 }

@@ -25,6 +25,7 @@ record EvalSummary(
         Double costPerTurnUsd,
         Double costTotalUsd,
         Rate formatFailure,
+        Integer indeterminateEvaluations,
         Map<String, Integer> formatFailuresByOperation,
         Map<String, Integer> formatFailureReasons,
         Map<String, Integer> providerFailures,
@@ -33,6 +34,10 @@ record EvalSummary(
         Rate expectation,
         Map<String, Rate> expectationByCheck,
         List<CaseRow> cases) {
+
+    EvalSummary {
+        indeterminateEvaluations = indeterminateEvaluations == null ? 0 : indeterminateEvaluations;
+    }
 
     /** 실행 조건. 결과를 다시 볼 때 무엇으로 쟀는지 알 수 있게 남긴다. */
     record Run(
@@ -159,6 +164,7 @@ record EvalSummary(
                 costTotal == null || turns == 0 ? null : costTotal / turns,
                 costTotal,
                 new Rate(formatFailures.size(), providerSuccesses),
+                records.stream().mapToInt(TurnRecord::indeterminateEvaluations).sum(),
                 tally(
                         formatFailures.stream()
                                 .map(TurnRecord.FormatFailureSummary::operation)

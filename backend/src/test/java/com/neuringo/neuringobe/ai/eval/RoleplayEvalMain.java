@@ -49,6 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
  * --speech                     TTS→STT 음성 왕복도 잰다(TTS_*·STT_* 환경변수 필요)
  * --skip-llm                   음성 왕복만 잰다
  * --note "..."                 summary 에 남길 메모
+ * --diagnostics                승인된 합성 P1 1회만 실제 입력·출력 진단 기록
  * --out build/eval             결과 위치
  * --compare DIR1,DIR2,...      여러 실행의 summary.json 으로 모델 비교표(comparison.md)를 만든다
  * </pre>
@@ -63,6 +64,7 @@ public final class RoleplayEvalMain {
 
     public static void main(String[] args) {
         Map<String, String> options = parse(args);
+        P1Diagnostics.requireAllowed(options);
         if (options.containsKey("compare")) {
             compare(options);
             return;
@@ -94,10 +96,12 @@ public final class RoleplayEvalMain {
                 } else {
                     throw new IllegalArgumentException("unknown --provider " + provider);
                 }
+                P1Diagnostics diagnostics =
+                        options.containsKey("diagnostics") ? new P1Diagnostics(llm) : null;
                 RoleplayEvalRunner runner =
                         new RoleplayEvalRunner(
                                 set,
-                                llm,
+                                diagnostics == null ? llm : diagnostics,
                                 new RoleplayPromptFactory(JsonMapper.builder().build(), null),
                                 budget);
                 System.out.printf("[%s] %s × %d회 시작%n", runId, model, repeats);
@@ -130,18 +134,13 @@ public final class RoleplayEvalMain {
                                         gitCommit(),
                                         repeats,
                                         budget.toMillis(),
-                                        String.join(
-                                                ", ",
-                                                RoleplayPromptFactory.CAUSE_ANALYSIS_PROMPT_VERSION,
-                                                RoleplayPromptFactory
-                                                        .RESPONSE_GENERATION_PROMPT_VERSION,
-                                                RoleplayPromptFactory
-                                                        .RESPONSE_EVALUATION_PROMPT_VERSION),
+                                        promptVersions(set),
                                         price("EVAL_PRICE_INPUT_PER_MTOK"),
                                         price("EVAL_PRICE_OUTPUT_PER_MTOK"),
                                         options.get("note")),
                                 records);
                 EvalReport.writeRun(dir, summary, records, runner.formatFailureSamples());
+                if (diagnostics != null) diagnostics.write(dir);
                 System.out.printf(
                         "전달 %s · 첫 PASS %s · 기대값 %s · 형식 실패 %s · p50 %dms p95 %dms%n",
                         summary.delivered().percent(),
@@ -260,6 +259,26 @@ public final class RoleplayEvalMain {
                 .run(properties.toArray(String[]::new));
     }
 
+    static Path diagnosticOutput(String name, String model) throws IOException {
+        Path root = Path.of("build/eval");
+        Files.createDirectories(root);
+        return Files.createTempDirectory(
+                root, name + "-" + model.replaceAll("[^A-Za-z0-9.-]", "_") + "-");
+    }
+
+    static String promptVersions(RegressionSet set) {
+        boolean character = set.scenario().aiCharacter() != null;
+        return String.join(
+                ", ",
+                RoleplayPromptFactory.CAUSE_ANALYSIS_PROMPT_VERSION,
+                character
+                        ? RoleplayPromptFactory.CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION
+                        : RoleplayPromptFactory.RESPONSE_GENERATION_PROMPT_VERSION,
+                character
+                        ? RoleplayPromptFactory.CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
+                        : RoleplayPromptFactory.RESPONSE_EVALUATION_PROMPT_VERSION);
+    }
+
     private static Predicate<RegressionSet.Case> filter(Map<String, String> options) {
         Set<String> cases = csv(options.get("cases"));
         Set<String> suites = csv(options.get("suites"));
@@ -321,22 +340,15 @@ public final class RoleplayEvalMain {
     }
 
     static Double price(String name) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? null : Double.valueOf(value);
+        return EvalEnv.load(Path.of(".env.local")).number(name);
     }
 
     static String env(String name, String fallback) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? fallback : value;
+        return EvalEnv.load(Path.of(".env.local")).get(name, fallback);
     }
 
     static String requireEnv(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                    name + " is not set (backend/.env.local or shell environment)");
-        }
-        return value;
+        return EvalEnv.load(Path.of(".env.local")).require(name);
     }
 
     /**
