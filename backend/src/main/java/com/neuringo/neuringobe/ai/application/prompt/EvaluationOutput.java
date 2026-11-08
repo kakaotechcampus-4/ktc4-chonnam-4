@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.prompt;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
+import com.neuringo.neuringobe.ai.application.structured.output.AnalysisReviewIssue;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
 import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationOutput;
@@ -26,7 +27,8 @@ record EvaluationOutput(
         @JsonProperty("failure_codes") List<String> failureCodes,
         @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
         @JsonProperty("answer_directness_violation")
-                AnswerDirectnessViolation answerDirectnessViolation) {
+                AnswerDirectnessViolation answerDirectnessViolation,
+        @JsonProperty("goal_progress_violation") GoalProgressViolation goalProgressViolation) {
 
     EvaluationResult toResult(ScopedAnalysisContext.Approvals approvals) {
         boolean priority =
@@ -70,7 +72,64 @@ record EvaluationOutput(
                 critical,
                 List.copyOf(codes),
                 revisionInstruction,
-                review);
+                review,
+                priority ? List.of() : analysisReviewIssues());
+    }
+
+    private List<AnalysisReviewIssue> analysisReviewIssues() {
+        var issues =
+                new java.util.ArrayList<
+                        com.neuringo.neuringobe.ai.application.structured.output
+                                .AnalysisReviewIssue>();
+        if (currentGoalReview.verdict() == ObservationReview.Verdict.UNSUPPORTED)
+            issues.add(
+                    issue(
+                            "CURRENT_GOAL",
+                            "learning_state",
+                            currentGoalReview.reasonCode(),
+                            currentGoalReview.explanation()));
+        if (activityReview.verdict() == ObservationReview.Verdict.UNSUPPORTED)
+            issues.add(
+                    issue(
+                            "ACTIVITY",
+                            "goal_observation.activity_goal",
+                            activityReview.reasonCode(),
+                            activityReview.explanation()));
+        if (interpretationStrategyReview.verdict() == ObservationReview.Verdict.UNSUPPORTED)
+            issues.add(
+                    issue(
+                            "INTERPRETATION_STRATEGY",
+                            reviewedLogicField(interpretationStrategyReview.reasonCode()),
+                            interpretationStrategyReview.reasonCode(),
+                            interpretationStrategyReview.explanation()));
+        observationReviews.forEach(
+                (key, value) -> {
+                    if (value.path("verdict").asString().equals("UNSUPPORTED"))
+                        issues.add(
+                                issue(
+                                        "OBSERVATION",
+                                        "goal_observation.observations[" + key.substring(1) + "]",
+                                        value.path("reason_code").asString(),
+                                        value.path("explanation").asString()));
+                });
+        return List.copyOf(issues);
+    }
+
+    private static String reviewedLogicField(String reason) {
+        return switch (reason) {
+            case "RESPONSE_ACT_MISMATCH" -> "response_act";
+            case "RELEVANCE_MISMATCH" -> "relevance";
+            case "LEARNING_STATE_MISMATCH" -> "learning_state";
+            case "PRIMARY_GAP_MISMATCH" -> "primary_gap";
+            case "SUPPORT_LEVEL_MISMATCH" -> "next_strategy.recommended_support_level";
+            default -> "next_strategy";
+        };
+    }
+
+    private static AnalysisReviewIssue issue(
+            String scope, String field, String reason, String explanation) {
+        return new AnalysisReviewIssue(
+                AnalysisReviewIssue.Scope.valueOf(scope), field, reason, explanation);
     }
 
     private void requireConsistentEvaluation(boolean analysisSupported) {

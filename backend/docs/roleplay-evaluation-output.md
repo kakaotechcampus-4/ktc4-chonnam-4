@@ -69,11 +69,13 @@ UNSUPPORTED_CAUSE_ANALYSIS·STATE_STRATEGY_MISMATCH는 분석 검수 결과에�
 
 ## 버전과 적용 범위
 
-- 안내자·캐릭터 평가 프롬프트: roleplay-response-evaluation/v8, roleplay-response-evaluation-character/v8
-- 제공자 출력 스키마: evaluation-output/v6, 요청별 동적 스키마
+- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v9. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v10.
+- 제공자 검수 출력 스키마: evaluation-output/v7, 요청별 동적 스키마
 - 내부 목표 검수 계약: 기존 evaluation-result/v2 유지
 - 내부 EvaluationResult·공개 API·DB·분석/생성 출력 계약은 유지한다.
 - 정상 경로는 분석→생성→평가 3회이며 별도 검수 호출은 추가하지 않는다.
+
+기본 캐릭터 분석/생성은 모델 전용 character-analysis-output/v1·character-candidate-output/v1을 사용한다. 서버가 내부 analysis-result/v2·candidate-response/v1으로 복원해 기존 검증을 수행한다. 안내자 경로와 과거 진단용 기존 출력 형태는 유지한다.
 
 ScopedAnalysisContext는 분석 입력을 범위별로 구성하고 키와 원본 관찰을 같은 요청에 묶는다.
 EvaluationOutputSchema는 그 바인딩과 후보 ID로 스키마를 만들며 제공자 제약과 수신 검증에 동일하게 사용한다.
@@ -213,3 +215,14 @@ A는 4.384초, 입력/출력 6,279/329토큰이다. 관찰 분류의 단건 일�
 분석 v4, 캐릭터 생성 v2, 평가 v8이다. 내부 evaluation-result/v2·candidate-response/v1·HTTP·DB 구조는 유지한다. 새 유형 제약은 캐릭터 역할극에 적용한다. 정답 제공 이력은 전달 확정된 ANSWER_REVEAL에만 반영하며 과거 이력을 소급 변경하지 않는다.
 
 설계: [S3 검수 정합성](roleplay-s3-review-consistency-design-2026-11-09.md). 정보량 조사: [입력·출력 크기](roleplay-payload-size-review-2026-11-09.md). 실제 모델의 의미 정확성·시간 개선은 아직 재측정하지 않았다.
+
+
+## 2026-11-09 목표 진행 사유·재분석 전달·간결 출력
+
+v7의 goal_progress_violation은 보통 null이며, 캐릭터 일반 경로에서 GOAL_SKIPPED일 때 실제 달성 주장 또는 부당한 마무리의 출처를 받는다. 분석에 달성/마무리 판단이 없거나 후보 인용이 존재하지 않으면 검수를 재시도한다. 단순 목표 초점 변경을 선행 목표 미달성이라는 이유로 거절하지 않는다. 자연어 인용의 의미 판단은 여전히 독립 검수 대상이다.
+
+REANALYZE의 거절 영역·사유·수정 경로는 내부 AnalysisReviewIssue로 보존하고 retry.review_issues에 연결한다. 공개/저장용 EvaluationResult JSON은 변경하지 않는다. 설명은 짧은 비신뢰 검수 자료이며 실행할 지시로 취급하지 않는다.
+
+서버와 roleplayEval 기본값은 간결 캐릭터 경로다. 기존 2인자 RoleplayPromptFactory 생성자는 과거 진단 재생과 비교용 형태이며 서버 설정은 3인자로 간결 경로를 명시한다. roleplayEval은 --output-mode legacy|compact로 비교하고 실행 메타데이터에 모드와 실제 프롬프트 버전을 기록한다. .env.local의 모델 선택은 유지한다.
+
+[설계](roleplay-latency-improvement-design-2026-11-09.md)와 [검증 결과·크기 비교·실측 안내](roleplay-latency-improvement-results-2026-11-09.md)를 참고한다. 실제 제공자의 새 계약 수용·의미 품질·지연은 아직 측정하지 않았다.

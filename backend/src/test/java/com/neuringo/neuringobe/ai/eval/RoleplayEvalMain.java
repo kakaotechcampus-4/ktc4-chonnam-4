@@ -65,6 +65,7 @@ public final class RoleplayEvalMain {
     public static void main(String[] args) {
         Map<String, String> options = parse(args);
         P1Diagnostics.requireAllowed(options);
+        boolean compactOutput = compactOutput(options);
         if (options.containsKey("compare")) {
             compare(options);
             return;
@@ -102,7 +103,8 @@ public final class RoleplayEvalMain {
                         new RoleplayEvalRunner(
                                 set,
                                 diagnostics == null ? llm : diagnostics,
-                                new RoleplayPromptFactory(JsonMapper.builder().build(), null),
+                                new RoleplayPromptFactory(
+                                        JsonMapper.builder().build(), null, compactOutput),
                                 budget);
                 System.out.printf("[%s] %s × %d회 시작%n", runId, model, repeats);
                 List<TurnRecord> records =
@@ -134,7 +136,7 @@ public final class RoleplayEvalMain {
                                         gitCommit(),
                                         repeats,
                                         budget.toMillis(),
-                                        promptVersions(set),
+                                        promptVersions(set, compactOutput),
                                         price("EVAL_PRICE_INPUT_PER_MTOK"),
                                         price("EVAL_PRICE_OUTPUT_PER_MTOK"),
                                         options.get("note")),
@@ -264,6 +266,26 @@ public final class RoleplayEvalMain {
         Files.createDirectories(root);
         return Files.createTempDirectory(
                 root, name + "-" + model.replaceAll("[^A-Za-z0-9.-]", "_") + "-");
+    }
+
+    static boolean compactOutput(Map<String, String> options) {
+        return switch (options.getOrDefault("output-mode", "compact")) {
+            case "compact" -> true;
+            case "legacy" -> false;
+            default ->
+                    throw new IllegalArgumentException("--output-mode는 compact 또는 legacy여야 합니다.");
+        };
+    }
+
+    static String promptVersions(RegressionSet set, boolean compact) {
+        if (!compact || set.scenario().aiCharacter() == null)
+            return "output-mode=legacy; " + promptVersions(set);
+        return "output-mode=compact; "
+                + String.join(
+                        ", ",
+                        RoleplayPromptFactory.COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION,
+                        RoleplayPromptFactory.COMPACT_CHARACTER_GENERATION_PROMPT_VERSION,
+                        RoleplayPromptFactory.COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION);
     }
 
     static String promptVersions(RegressionSet set) {

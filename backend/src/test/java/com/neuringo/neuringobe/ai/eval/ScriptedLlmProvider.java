@@ -93,6 +93,10 @@ final class ScriptedLlmProvider implements LlmProvider {
                 }
             }
         }
+        if (!(formatFailureOnce.contains(request.operation()) && firstTry))
+            content =
+                    com.neuringo.neuringobe.ai.application.prompt.CharacterWireFixtures.forRequest(
+                            content, request);
         int inputTokens = (request.systemPrompt().length() + request.userPrompt().length()) / 2;
         int outputTokens = content.length() / 2;
         AiCallMetadata metadata =

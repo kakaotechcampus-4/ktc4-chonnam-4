@@ -18,6 +18,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.CandidateRespons
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -188,7 +189,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                 codes.stream().distinct().toList(),
                 focus.stream().distinct().toList(),
                 avoid.stream().distinct().toList(),
-                rejectedReview ? last.analysis() : null);
+                rejectedReview ? last.analysis() : null,
+                rejectedReview ? last.evaluation().analysisReviewIssues() : List.of());
     }
 
     private GenerationRetry generationRetry(RoleplayRetryContext retry) {

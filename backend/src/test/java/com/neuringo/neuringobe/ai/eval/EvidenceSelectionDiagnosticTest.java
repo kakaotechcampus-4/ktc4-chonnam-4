@@ -328,6 +328,7 @@ class EvidenceSelectionDiagnosticTest {
         body.putArray("failure_codes");
         body.putNull("revision_instruction");
         body.putNull("answer_directness_violation");
+        body.putNull("goal_progress_violation");
         return body;
     }
 

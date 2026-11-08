@@ -17,6 +17,7 @@ public final class EvaluationWireFixtures {
         if (request.has("observation_tasks")) return scoped(content, request);
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
+        body.putIfAbsent("goal_progress_violation", null);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         if (legacyLogic != null || !body.containsKey("analysis_logic_review")) {
@@ -53,6 +54,7 @@ public final class EvaluationWireFixtures {
     private static String scoped(String content, JsonNode request) {
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
+        body.putIfAbsent("goal_progress_violation", null);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         var old = body.remove("goal_observation_review");

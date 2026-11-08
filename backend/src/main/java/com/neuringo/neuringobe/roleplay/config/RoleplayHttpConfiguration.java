@@ -137,7 +137,7 @@ public class RoleplayHttpConfiguration {
                 stt,
                 tts,
                 inputProcessor,
-                new RoleplayPromptFactory(mapper, null),
+                new RoleplayPromptFactory(mapper, null, true),
                 new StructuredLlmExecutor(llm, callLog, diagnostics.orElse(AiDiagnostics.NONE)),
                 inputProperties.sttConfidenceThreshold());
     }

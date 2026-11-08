@@ -4,6 +4,7 @@ import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
+import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import java.util.List;
 import java.util.UUID;
@@ -12,13 +13,15 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** 요청의 바인딩과 같은 스키마를 제공자 제약과 수신 검증에 사용한다. */
 final class EvaluationOutputSchema {
-    static final String VERSION = "evaluation-output/v6";
+    static final String VERSION = "evaluation-output/v7";
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final String jsonSchema;
     private final Schema validator;
     private final Schema directnessValidator;
     private final CharacterResponseContract contract;
     private final CandidateResponse candidate;
+    private final AnalysisResult analysis;
+    private final Schema progressValidator;
 
     EvaluationOutputSchema(ScopedAnalysisContext context, UUID candidateId) {
         this(context, candidateId, null, null);
@@ -37,6 +40,7 @@ final class EvaluationOutputSchema {
             CandidateResponse candidate,
             CharacterResponseContract contract) {
         this.contract = contract;
+        this.analysis = context.reviewedAnalysis();
         this.candidate = candidate;
         var schema = (ObjectNode) JSON.readTree(context.evaluationSchema());
         var properties = (ObjectNode) schema.path("properties");
@@ -62,6 +66,11 @@ final class EvaluationOutputSchema {
         directnessValidator =
                 SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
                         .getSchema(directness.toString());
+        var progress = JSON.valueToTree(GoalProgressViolation.schema());
+        properties.set("goal_progress_violation", progress);
+        progressValidator =
+                SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
+                        .getSchema(progress.toString());
         var required = schema.putArray("required");
         properties.propertyNames().forEach(required::add);
         jsonSchema = schema.toString();
@@ -82,6 +91,10 @@ final class EvaluationOutputSchema {
                         .validate(node.path("answer_directness_violation"))
                         .isEmpty())
             throw new InvalidLlmOutputException(AnswerDirectnessViolation.CONFLICT, null);
+        if (node != null
+                && node.has("goal_progress_violation")
+                && !progressValidator.validate(node.path("goal_progress_violation")).isEmpty())
+            throw new InvalidLlmOutputException(GoalProgressViolation.CONFLICT, null);
         if (node == null || !validator.validate(node).isEmpty()) {
             if (node != null && node.path("failure_codes").isArray()) {
                 for (var code : node.path("failure_codes")) {
@@ -95,6 +108,7 @@ final class EvaluationOutputSchema {
 
     void requireValidDirectness(EvaluationOutput output) {
         AnswerDirectnessViolation.requireValid(output, contract, candidate);
+        if (contract != null) GoalProgressViolation.requireValid(output, analysis, candidate);
     }
 
     static List<String> modelFailureCodes() {

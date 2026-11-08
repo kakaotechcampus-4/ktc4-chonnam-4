@@ -442,6 +442,7 @@ public class RoleplayHttpTestConfiguration {
                         }
                         json = mapper.writeValueAsString(changed);
                     }
+                    json = CharacterWireFixtures.forRequest(json, request);
                     return new AiCallResult.Success<>(
                             new LlmCompletion(
                                     RoleplayFixtures.bindAnalysis(
