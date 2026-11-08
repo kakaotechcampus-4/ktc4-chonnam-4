@@ -500,6 +500,27 @@ export async function listChildActivities(childId: string): Promise<Activity[]> 
   }
 }
 
+/** 학급 활동 목록의 한 줄(API-ACT-05). 준비 상태(nextAction)는 없고 아동 이름·목표 제목이 붙는다. */
+export type ClassroomActivity = Omit<Activity, 'nextAction' | 'blockedReason'> & {
+  childName: string
+  goalTitle: string | null
+}
+
+// 학급 단위 목록은 서버 최대 크기로 받아 요청 수를 줄인다.
+const CLASS_PAGE_SIZE = 100
+
+/** 학급 아동 전체의 활동을 최근 배정 순으로 전부 받는다. 받은 개수가 페이지 크기보다 적을 때까지 다음 페이지를 이어 받는다. */
+export async function listClassroomActivities(classId: string): Promise<ClassroomActivity[]> {
+  const all: ClassroomActivity[] = []
+  for (let page = 0; ; page++) {
+    const batch = await readRequest<ClassroomActivity[]>(
+      `/classrooms/${encodeURIComponent(classId)}/activities?page=${page}&size=${CLASS_PAGE_SIZE}`,
+    )
+    all.push(...batch)
+    if (batch.length < CLASS_PAGE_SIZE) return all
+  }
+}
+
 export function getActivity(activityId: string): Promise<ActivityDetail> {
   return readRequest<ActivityDetail>(`/activities/${encodeURIComponent(activityId)}`)
 }
@@ -757,6 +778,10 @@ export type LearningReport = {
     effectiveSupports: ReportNarrativeItem[]
     difficultPoints: ReportNarrativeItem[]
   } | null
+  /** 리포트 목록 표에 쓰는 활동 유형·아동 이름·목표 제목. 목표가 없는 활동은 goalTitle 이 null 이다. */
+  activityType: ActivityType
+  childName: string
+  goalTitle: string | null
 }
 
 export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND'
@@ -825,6 +850,18 @@ export function getLearningReport(activityId: string): Promise<LearningReport> {
 /** 최근 완료 순. 학급 요약·추천 화면은 아동마다 첫 몇 개만 읽는다. */
 export function listLearningReports(childId: string, size = 5): Promise<LearningReport[]> {
   return readRequest<LearningReport[]>(`/learning-records?childId=${childId}&page=0&size=${size}`)
+}
+
+/** 학급 아동 전체의 완료 리포트(API-REC-02 classId). 응답에 전체 개수가 없어 받은 개수가 페이지 크기보다 적을 때까지 이어 받는다. */
+export async function listClassroomLearningReports(classId: string): Promise<LearningReport[]> {
+  const all: LearningReport[] = []
+  for (let page = 0; ; page++) {
+    const batch = await readRequest<LearningReport[]>(
+      `/learning-records?classId=${encodeURIComponent(classId)}&page=${page}&size=${CLASS_PAGE_SIZE}`,
+    )
+    all.push(...batch)
+    if (batch.length < CLASS_PAGE_SIZE) return all
+  }
 }
 
 /** 추천은 AI 요약과 따로 만들어져서 리포트가 아직 없어도 있을 수 있다. */

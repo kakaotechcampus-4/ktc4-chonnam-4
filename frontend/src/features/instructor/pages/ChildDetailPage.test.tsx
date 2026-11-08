@@ -1,7 +1,7 @@
 import { act, screen, within } from "@testing-library/react"
 import { http } from "msw"
 import { afterEach, describe, expect, it, beforeEach } from "vitest"
-import { apiError, fixtures, seedActivity } from "@/test/msw/handlers"
+import { apiError, fixtures, seedActivity, seedRoleplayLearning } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { getChild, listChildren } from "../api"
 import { renderRoutes, signIn } from "@/test/render"
@@ -46,13 +46,36 @@ describe("아동 상세 화면", () => {
     expect(within(rows[1]).getByText("완료")).toBeInTheDocument()
   })
 
-  it("처음에는 활동 이력 탭이 열리고, 개요 탭은 준비 중으로 보인다", async () => {
+  it("처음에는 활동 이력 탭이 열리고, 개요 탭도 고를 수 있다", async () => {
     renderChildDetail()
 
     const tabs = await screen.findByRole("tablist", { name: "아동 상세" })
     expect(within(tabs).getByRole("tab", { name: "활동 이력" })).toHaveAttribute("aria-selected", "true")
     expect(within(tabs).getByRole("tab", { name: "접근 코드" })).toHaveAttribute("aria-selected", "false")
-    expect(within(tabs).getByRole("tab", { name: "개요 · 학습 상태" })).toHaveAttribute("aria-disabled", "true")
+    expect(within(tabs).getByRole("tab", { name: "개요 · 학습 상태" })).toHaveAttribute("aria-selected", "false")
+  })
+
+  it("개요 탭은 다음 역할극 난이도·시작 지원, 상태별 개수, 최근 활동과 최근 리포트 요약을 보인다", async () => {
+    seedRoleplayLearning({ childId: CHILD.childId, goalTitle: "넘어진 친구의 속상한 마음 알아보기" })
+    seedActivity({ childId: CHILD.childId, goalTitle: "도움이 필요할 때 말로 요청한다", status: "IN_PROGRESS" })
+    const { user } = renderChildDetail()
+
+    await user.click(await screen.findByRole("tab", { name: "개요 · 학습 상태" }))
+    const panel = await screen.findByRole("tabpanel", { name: "개요 · 학습 상태" })
+    expect(await within(panel).findByText("다음 역할극 난이도")).toBeInTheDocument()
+    expect(await within(panel).findByText("감정 이름은 처음 단서로 말했고, 이유는 두 선택지를 듣고 말했어요.")).toBeInTheDocument()
+    expect(within(panel).getByRole("link", { name: "도움이 필요할 때 말로 요청한다" })).toBeInTheDocument()
+    expect(within(panel).getByText("진행 중", { selector: "p" }).nextElementSibling?.textContent).toBe("1")
+    expect(within(panel).getByText("완료", { selector: "p" }).nextElementSibling?.textContent).toBe("1")
+  })
+
+  it("역할극을 마친 적 없으면 난이도 대신 아직 정해지지 않았다고 알린다", async () => {
+    const { user } = renderChildDetail()
+
+    await user.click(await screen.findByRole("tab", { name: "개요 · 학습 상태" }))
+    const panel = await screen.findByRole("tabpanel", { name: "개요 · 학습 상태" })
+    expect(await within(panel).findByText("역할극을 마치면 정해져요")).toBeInTheDocument()
+    expect(await within(panel).findByText("아직 완료한 역할극 리포트가 없습니다.")).toBeInTheDocument()
   })
 
   it("활동을 누르면 그 활동의 리포트로 간다", async () => {

@@ -10,6 +10,8 @@ import { ActivityReportPage } from './features/instructor/pages/ActivityReportPa
 import { RecommendationsPage } from './features/instructor/pages/RecommendationsPage'
 import { AccountPage } from './features/instructor/pages/AccountPage'
 import { ContentApprovalPage } from './features/instructor/pages/ContentApprovalPage'
+import { DashboardPage } from './features/instructor/pages/DashboardPage'
+import { ReportsPage } from './features/instructor/pages/ReportsPage'
 import { ScenarioReviewPage } from './features/instructor/pages/ScenarioReviewPage'
 import { LoginPage } from './features/instructor/pages/LoginPage'
 import { SignupPage } from './features/instructor/pages/SignupPage'
@@ -28,6 +30,22 @@ export const router = createBrowserRouter([
   { path: '/', element: <App /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+  {
+    path: '/dashboard',
+    element: (
+      <RequireInstructorAuth>
+        <DashboardPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/reports',
+    element: (
+      <RequireInstructorAuth>
+        <ReportsPage />
+      </RequireInstructorAuth>
+    ),
+  },
   {
     path: '/classrooms',
     element: (
