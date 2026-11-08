@@ -4,11 +4,13 @@ import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiFailureType;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.prompt.AnalysisRetry;
+import com.neuringo.neuringobe.ai.application.prompt.EvaluationRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GenerationRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayRetryContext.RejectedCandidate;
+import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
@@ -29,6 +31,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
     private final GoalObservationInput observations;
     private UUID currentAnalysisId;
     private boolean invalidAnalysisOutput;
+    private UUID evaluationCandidateId;
+    private EvaluationRetry evaluationRetry;
 
     public StructuredRoleplayTurnSteps(
             RoleplayPromptFactory prompts,
@@ -102,6 +106,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
             CandidateResponse candidate,
             RoleplayRetryContext retry) {
         requireTurn(turnId);
+        if (!candidate.candidateId().equals(evaluationCandidateId)) evaluationRetry = null;
+        evaluationCandidateId = candidate.candidateId();
         var prepared =
                 prompts.responseEvaluation(
                         stageTrace(candidate.candidateId()),
@@ -110,9 +116,27 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         input,
                         analysis,
                         candidate,
-                        observations);
-        return llm.execute(
-                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
+                        observations,
+                        evaluationRetry);
+        var result =
+                llm.execute(
+                        prepared.request().withCallBudget(retry.callBudget()),
+                        content -> {
+                            try {
+                                return prepared.parser().parse(content);
+                            } catch (
+                                    com.neuringo.neuringobe.ai.application.structured
+                                                    .IndeterminateLlmOutputException
+                                            failure) {
+                                evaluationRetry = EvaluationRetry.OBSERVATION_CONTEXT_INSUFFICIENT;
+                                throw failure;
+                            } catch (InvalidLlmOutputException failure) {
+                                evaluationRetry = EvaluationRetry.from(failure);
+                                throw failure;
+                            }
+                        });
+        if (result instanceof AiCallResult.Success<?>) evaluationRetry = null;
+        return result;
     }
 
     private AnalysisRetry analysisRetry(RoleplayRetryContext retry) {

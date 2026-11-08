@@ -1,0 +1,20 @@
+[
+  {
+    "source_run": "elice-p1-character-01",
+    "sequence": 3,
+    "accepted": true,
+    "content": "{\"candidate_id\":\"${candidate_id}\",\"checks\":{\"format_valid\":true,\"safety_valid\":true,\"privacy_valid\":true,\"scenario_consistent\":true,\"analysis_supported\":false,\"analysis_response_consistent\":false,\"goal_aligned\":false,\"educationally_correct\":false,\"difficulty_appropriate\":true,\"conversation_coherent\":false,\"answerable\":true,\"non_repetitive\":true},\"failure_codes\":[\"REINFORCES_INCORRECT_ANSWER\",\"ANALYSIS_RESPONSE_MISMATCH\",\"UNSUPPORTED_CAUSE_ANALYSIS\",\"CHARACTER_BREAK\"],\"decision\":\"REANALYZE\",\"revision_instruction\":null,\"goal_observation_review\":{\"schema_version\":\"evaluation-result/v2\",\"analysis_id\":\"${analysis_id}\",\"observations_supported\":false,\"activity_goal_supported\":false}}"
+  },
+  {
+    "source_run": "elice-p1-character-01",
+    "sequence": 6,
+    "accepted": true,
+    "content": "{\"candidate_id\":\"${candidate_id}\",\"checks\":{\"format_valid\":true,\"safety_valid\":true,\"privacy_valid\":true,\"scenario_consistent\":false,\"analysis_supported\":false,\"analysis_response_consistent\":false,\"goal_aligned\":true,\"educationally_correct\":true,\"difficulty_appropriate\":false,\"conversation_coherent\":false,\"answerable\":true,\"non_repetitive\":true},\"failure_codes\":[\"SCENARIO_CONTRADICTION\",\"UNSUPPORTED_CAUSE_ANALYSIS\",\"ANALYSIS_RESPONSE_MISMATCH\",\"SUPPORT_LEVEL_MISMATCH\",\"CHARACTER_BREAK\",\"TOO_DIFFICULT\"],\"decision\":\"REANALYZE\",\"revision_instruction\":null,\"goal_observation_review\":{\"schema_version\":\"evaluation-result/v2\",\"analysis_id\":\"${analysis_id}\",\"observations_supported\":false,\"activity_goal_supported\":false}}"
+  },
+  {
+    "source_run": "elice-p1-character-01",
+    "sequence": 9,
+    "accepted": false,
+    "content": "{\"candidate_id\":\"${candidate_id}\",\"checks\":{\"format_valid\":true,\"safety_valid\":true,\"privacy_valid\":true,\"scenario_consistent\":true,\"analysis_supported\":true,\"analysis_response_consistent\":true,\"goal_aligned\":true,\"educationally_correct\":true,\"difficulty_appropriate\":true,\"conversation_coherent\":true,\"answerable\":true,\"non_repetitive\":true},\"failure_codes\":[\"GOAL_SKIPPED\"],\"decision\":\"REANALYZE\",\"revision_instruction\":null,\"goal_observation_review\":{\"schema_version\":\"evaluation-result/v2\",\"analysis_id\":\"${analysis_id}\",\"observations_supported\":false,\"activity_goal_supported\":false}}"
+  }
+]

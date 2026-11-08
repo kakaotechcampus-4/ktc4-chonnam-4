@@ -1,6 +1,9 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import java.util.Objects;
@@ -114,7 +117,10 @@ public final class RoleplayCheckpointedTurnExecutor {
             return runner.executeWithTimeout(
                     deadline,
                     shared -> {
-                        var prepared = shared.withinBudget(() -> preparation.apply(shared));
+                        var prepared =
+                                RoleplayTiming.measure(
+                                        TURN_PREPARATION,
+                                        () -> shared.withinBudget(() -> preparation.apply(shared)));
                         return executeOwned(
                                 prepared.identity(),
                                 shared,
@@ -176,7 +182,9 @@ public final class RoleplayCheckpointedTurnExecutor {
             boolean voiceInput) {
         java.util.Optional<RoleplayRequestGuard.Lease> ownership;
         try {
-            ownership = requests.tryAcquire(identity, shared);
+            ownership =
+                    RoleplayTiming.measure(
+                            REQUEST_CLAIM, () -> requests.tryAcquire(identity, shared));
         } catch (RoleplayRequestGuard.InputConflict conflict) {
             return new Conflict();
         } catch (RoleplayRequestGuard.CapacityUnavailable unavailable) {
@@ -185,13 +193,16 @@ public final class RoleplayCheckpointedTurnExecutor {
         if (ownership.isEmpty()) return new Processing();
         try (var lease = ownership.get()) {
             shared.requireActive();
-            var failure = inputFailures.findRecorded(identity, shared);
+            var failure =
+                    RoleplayTiming.measure(
+                            CHECKPOINT_LOOKUP, () -> inputFailures.findRecorded(identity, shared));
             if (failure instanceof RoleplayInputFailureStore.Recorded recorded)
                 return inputRecovery(recorded);
             if (failure instanceof RoleplayInputFailureStore.Expired) return timeout();
             if (failure instanceof RoleplayInputFailureStore.PolicyRequired)
                 throw new IllegalStateException("실패 조회에 집계 정책 판정이 반환됐습니다.");
-            return switch (checkpoints.findConfirmed(identity, shared)) {
+            return switch (RoleplayTiming.measure(
+                    CHECKPOINT_LOOKUP, () -> checkpoints.findConfirmed(identity, shared))) {
                 case RoleplayCheckpointStore.Found found -> replay(found.result());
                 case RoleplayCheckpointStore.Conflict ignored -> new Conflict();
                 case RoleplayCheckpointStore.Expired ignored -> timeout();
@@ -211,7 +222,9 @@ public final class RoleplayCheckpointedTurnExecutor {
             boolean voiceInput) {
         if (result instanceof RoleplayTurnResult.InputRejected rejected) {
             if (!voiceInput) return new Recovery(outcomes.resolve(result));
-            return switch (inputFailures.recordFailure(identity, rejected, deadline)) {
+            return switch (RoleplayTiming.measure(
+                    RESULT_COMMIT,
+                    () -> inputFailures.recordFailure(identity, rejected, deadline))) {
                 case RoleplayInputFailureStore.Recorded recorded -> inputRecovery(recorded);
                 case RoleplayInputFailureStore.PolicyRequired policy ->
                         policy.textRecommended()
@@ -233,7 +246,9 @@ public final class RoleplayCheckpointedTurnExecutor {
                         identity.idempotencyKey(),
                         identity.fingerprint(),
                         spoken);
-        return switch (checkpoints.commitApproved(command, spoken.ready(), deadline)) {
+        return switch (RoleplayTiming.measure(
+                RESULT_COMMIT,
+                () -> checkpoints.commitApproved(command, spoken.ready(), deadline))) {
             case RoleplayCheckpointStore.Conflict ignored -> new Conflict();
             case RoleplayCheckpointStore.Expired ignored -> timeout();
             case RoleplayCheckpointStore.Committed saved -> confirmed(command, saved, spoken);

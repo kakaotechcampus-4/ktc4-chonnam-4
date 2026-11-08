@@ -24,11 +24,13 @@ record TurnRecord(
         List<String> evaluationDecisions,
         List<String> failureCodes,
         List<FormatFailureSummary> formatFailures,
+        Integer indeterminateEvaluations,
         Analysis analysis,
         Response response,
         List<Check> checks) {
 
     TurnRecord {
+        indeterminateEvaluations = indeterminateEvaluations == null ? 0 : indeterminateEvaluations;
         calls = List.copyOf(calls);
         evaluationDecisions = List.copyOf(evaluationDecisions);
         failureCodes = List.copyOf(failureCodes);

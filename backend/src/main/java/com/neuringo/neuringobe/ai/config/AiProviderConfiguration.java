@@ -1,13 +1,16 @@
 package com.neuringo.neuringobe.ai.config;
 
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
+import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
+import com.neuringo.neuringobe.ai.infrastructure.diagnostics.DiagnosticLlmProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.CallLoggingLlmProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OpenAiFailureClassifier;
 import com.neuringo.neuringobe.ai.infrastructure.springai.OperationRoutingLlmProvider;
 import com.neuringo.neuringobe.ai.infrastructure.springai.SpringAiLlmProvider;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -21,6 +24,8 @@ import org.springframework.core.env.Environment;
 @EnableConfigurationProperties({AiProviderProperties.class, AiRouteProperties.class})
 @ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = "openai")
 public class AiProviderConfiguration {
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AiProviderConfiguration.class);
 
     private static final int SPRING_AI_DEFAULT_RETRIES = 3;
 
@@ -29,7 +34,8 @@ public class AiProviderConfiguration {
             ChatModel chatModel,
             AiProviderProperties properties,
             AiRouteProperties routes,
-            Environment environment) {
+            Environment environment,
+            Optional<AiDiagnostics> diagnostics) {
         var provider =
                 new SpringAiLlmProvider(
                         chatModel,
@@ -54,10 +60,27 @@ public class AiProviderConfiguration {
                             routed.put(operation, routeProvider(route, apiKey, properties)));
             chosen = new OperationRoutingLlmProvider(provider, routed);
         }
-        // 글 내용 없이 호출 결과만 남긴다. 기본은 끔.
-        return environment.getProperty("neuringo.ai.call-log", Boolean.class, false)
-                ? new CallLoggingLlmProvider(chosen)
-                : chosen;
+        chosen = new DiagnosticLlmProvider(chosen, diagnostics.orElse(AiDiagnostics.NONE));
+        if (environment.getProperty("neuringo.ai.call-log", Boolean.class, false)) {
+            log.info(
+                    "AI_SETTINGS scope=DEFAULT model={} reasoning={} timeout_ms={} max_output_tokens={} sdk_retries={}",
+                    properties.model(),
+                    properties.reasoningEffort(),
+                    properties.requestTimeout().toMillis(),
+                    properties.maxOutputTokens(),
+                    properties.maxRetries());
+            active.forEach(
+                    (operation, route) ->
+                            log.info(
+                                    "AI_SETTINGS scope={} model={} reasoning={} timeout_ms={} max_output_tokens={} sdk_retries=0",
+                                    operation,
+                                    route.model(),
+                                    route.reasoningEffort(),
+                                    route.requestTimeout().toMillis(),
+                                    route.maxOutputTokens()));
+            return new CallLoggingLlmProvider(chosen);
+        }
+        return chosen;
     }
 
     /**

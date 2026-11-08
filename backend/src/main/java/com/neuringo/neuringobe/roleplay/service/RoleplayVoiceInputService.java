@@ -1,10 +1,14 @@
 package com.neuringo.neuringobe.roleplay.service;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayAudioResource;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointedTurnExecutor;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnOutcomeResolver;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnResult;
+import com.neuringo.neuringobe.common.TraceIds;
 import com.neuringo.neuringobe.roleplay.application.RoleplayAudioInspector;
 import com.neuringo.neuringobe.roleplay.application.RoleplayScopedVoiceTurnExecutor;
 import com.neuringo.neuringobe.roleplay.application.RoleplayTurnResponseMapper;
@@ -139,19 +143,28 @@ public final class RoleplayVoiceInputService {
             RoleplayTurnDeadline deadline) {
         try (var input = new CloseOnceInputStream(Objects.requireNonNull(source));
                 var lease =
-                        retentionGate == null
-                                ? null
-                                : retentionGate.enterInput(sessionId, deadline)) {
+                        RoleplayTiming.measure(
+                                REQUEST_PREPARATION,
+                                () ->
+                                        retentionGate == null
+                                                ? null
+                                                : retentionGate.enterInput(sessionId, deadline))) {
             Objects.requireNonNull(deadline).requireActive();
             Objects.requireNonNull(idempotencyKey);
-            var scope = scopeLookup.get();
+            var scope = RoleplayTiming.measure(REQUEST_PREPARATION, scopeLookup);
             deadline.requireActive();
-            UUID requestId = UUID.randomUUID(), turnId = UUID.randomUUID();
+            UUID requestId = UUID.fromString(TraceIds.newTraceId()), turnId = UUID.randomUUID();
             RoleplayAudioResource audio;
             try {
                 audio =
-                        uploads.create(
-                                input, contentType, scope.trace(requestId, turnId), deadline);
+                        RoleplayTiming.measure(
+                                UPLOAD_VALIDATION,
+                                () ->
+                                        uploads.create(
+                                                input,
+                                                contentType,
+                                                scope.trace(requestId, turnId),
+                                                deadline));
             } catch (RoleplayUploadSpoolFactory.Rejected
                     | RoleplayAudioInspector.Unavailable rejected) {
                 var reason =

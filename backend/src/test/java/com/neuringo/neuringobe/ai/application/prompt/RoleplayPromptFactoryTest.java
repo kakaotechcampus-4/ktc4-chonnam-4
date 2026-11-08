@@ -27,6 +27,40 @@ class RoleplayPromptFactoryTest {
             new RoleplayPromptFactory(JSON, "SUPPORT-MVP-001");
 
     @Test
+    void narratorAndCharacterEvaluationShareNativeContractAndSafeRetryFeedback() {
+        for (var input : List.of(input("친구가 울고 있어."), characterInput("친구가 울고 있어."))) {
+            var analysis = parsedAnalysis();
+            var request =
+                    factory.responseEvaluation(
+                                    trace(ANALYSIS_ID, CANDIDATE_ID),
+                                    attempts(),
+                                    2,
+                                    input,
+                                    analysis,
+                                    parsedCandidate(analysis),
+                                    RoleplayObservationTestPlans.inputForScenario(input.scenario()),
+                                    EvaluationRetry.INVALID_STRUCTURE)
+                            .request();
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v5");
+            assertThat(request.responseJsonSchema())
+                    .contains("additionalProperties", "failure_codes");
+            assertThat(request.promptVersion()).endsWith("/v7");
+            assertThat(request.systemPrompt())
+                    .contains(
+                            "현재 목표 달성과 활동 전체 판정을 구분한다",
+                            "retry_target, safe_to_send, critical_failure_count는 서버가 결정하므로 출력하지 않는다",
+                            "error_code와 correction",
+                            "통과하려고 승인하거나 판정을 임의로 PASS로 바꾸지 않는다");
+            assertThat(
+                            JSON.readTree(request.userPrompt())
+                                    .path("retry")
+                                    .path("error_code")
+                                    .asText())
+                    .isEqualTo("INVALID_STRUCTURE");
+        }
+    }
+
+    @Test
     void causeAnalysisRequestCarriesVersionsAndTurnData() {
         PreparedPrompt<AnalysisResult> prompt =
                 factory.causeAnalysis(
@@ -256,9 +290,12 @@ class RoleplayPromptFactoryTest {
         JsonNode message = JSON.readTree(request.userPrompt());
         assertThat(message.path("candidate_response").path("text").asString())
                 .isEqualTo("친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?");
-        assertThat(message.path("analysis_result").path("learning_state").asString())
+        assertThat(
+                        message.path("current_goal_assessment")
+                                .path("proposed_learning_state")
+                                .asString())
                 .isEqualTo("PARTIAL_UNDERSTANDING");
-        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v2");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-response-evaluation/v7");
     }
 
     @Test

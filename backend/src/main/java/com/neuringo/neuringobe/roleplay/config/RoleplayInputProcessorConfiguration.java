@@ -1,9 +1,12 @@
 package com.neuringo.neuringobe.roleplay.config;
 
+import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayInputProcessor;
 import com.neuringo.neuringobe.ai.infrastructure.input.ModelRoleplayInputProcessor;
 import com.neuringo.neuringobe.roleplay.service.RoleplayLearnerPrivacyService;
+import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -16,7 +19,11 @@ public class RoleplayInputProcessorConfiguration {
     @Bean
     @ConditionalOnMissingBean(RoleplayInputProcessor.class)
     public RoleplayInputProcessor roleplayInputProcessor(
-            LlmProvider llm, JsonMapper mapper, RoleplayLearnerPrivacyService privacy) {
+            LlmProvider llm,
+            JsonMapper mapper,
+            RoleplayLearnerPrivacyService privacy,
+            @Value("${neuringo.ai.call-log:false}") boolean callLog,
+            Optional<AiDiagnostics> diagnostics) {
         String prompt;
         try (var stream =
                 getClass().getResourceAsStream("/prompts/roleplay/v1/input-validation.md")) {
@@ -25,6 +32,12 @@ public class RoleplayInputProcessorConfiguration {
         } catch (java.io.IOException error) {
             throw new IllegalStateException("입력 판정 프롬프트를 읽을 수 없습니다.");
         }
-        return new ModelRoleplayInputProcessor(llm, mapper, privacy::learnerName, prompt);
+        return new ModelRoleplayInputProcessor(
+                llm,
+                mapper,
+                privacy::learnerName,
+                prompt,
+                callLog,
+                diagnostics.orElse(AiDiagnostics.NONE));
     }
 }

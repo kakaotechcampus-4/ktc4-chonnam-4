@@ -1,5 +1,7 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.model.SpeechEmotion;
@@ -7,6 +9,7 @@ import com.neuringo.neuringobe.ai.application.model.SpeechSynthesisRequest;
 import com.neuringo.neuringobe.ai.application.model.SpeechTranscription;
 import com.neuringo.neuringobe.ai.application.model.SpeechTranscriptionRequest;
 import com.neuringo.neuringobe.ai.application.model.SynthesizedSpeech;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
@@ -256,11 +259,14 @@ public final class RoleplaySpeechTurnPipeline {
             String text, AiTraceContext trace, RoleplayTurnDeadline deadline) {
         try {
             var result =
-                    deadline.withinBudget(
+                    RoleplayTiming.measure(
+                            INPUT_PROCESSING,
                             () ->
-                                    inputProcessor.process(
-                                            new RoleplayInputProcessor.Input(
-                                                    text, trace, deadline)));
+                                    deadline.withinBudget(
+                                            () ->
+                                                    inputProcessor.process(
+                                                            new RoleplayInputProcessor.Input(
+                                                                    text, trace, deadline))));
             return result == null ? new RoleplayInputProcessor.Unavailable() : result;
         } catch (RoleplayTurnDeadline.Expired expired) {
             throw expired;
@@ -325,7 +331,13 @@ public final class RoleplaySpeechTurnPipeline {
                             audio.audio(),
                             audio.format(),
                             deadline.callBudget());
-            var result = deadline.withinBudget(() -> stt.transcribe(request));
+            var result =
+                    RoleplayTiming.ai(
+                            STT,
+                            com.neuringo.neuringobe.ai.application.model.AiOperation
+                                    .SPEECH_TRANSCRIPTION,
+                            request.currentAttempt(),
+                            () -> deadline.withinBudget(() -> stt.transcribe(request)));
             switch (result) {
                 case AiCallResult.Success<SpeechTranscription> success -> {
                     return success;
@@ -346,7 +358,13 @@ public final class RoleplaySpeechTurnPipeline {
             var request =
                     new SpeechSynthesisRequest(
                             trace, attempt, text, null, emotion, deadline.callBudget());
-            var result = deadline.withinBudget(() -> tts.synthesize(request));
+            var result =
+                    RoleplayTiming.ai(
+                            TTS,
+                            com.neuringo.neuringobe.ai.application.model.AiOperation
+                                    .SPEECH_SYNTHESIS,
+                            request.currentAttempt(),
+                            () -> deadline.withinBudget(() -> tts.synthesize(request)));
             switch (result) {
                 case AiCallResult.Success<SynthesizedSpeech> success -> {
                     return success.data();

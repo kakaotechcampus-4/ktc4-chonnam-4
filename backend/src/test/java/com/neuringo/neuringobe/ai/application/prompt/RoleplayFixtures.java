@@ -132,22 +132,105 @@ final class RoleplayFixtures {
             int critical,
             String failureCodes,
             String revision) {
-        return """
-                {"candidate_id":"%s",
-                 "checks":{"format_valid":true,"safety_valid":true},
-                 "failure_codes":%s,"critical_failure_count":%d,
-                 "decision":"%s","retry_target":%s,"safe_to_send":%s,
-                 "revision_instruction":%s,
-                 "goal_observation_review":{"schema_version":"evaluation-result/v2","analysis_id":"%s","observations_supported":true,"activity_goal_supported":true}}
-                """
-                .formatted(
-                        CANDIDATE_ID,
-                        failureCodes,
-                        critical,
-                        decision,
-                        retryTarget == null ? "null" : "\"" + retryTarget + "\"",
-                        safe,
-                        revision,
-                        ANALYSIS_ID);
+        return evaluationOutputJson(decision, failureCodes, revision);
+    }
+
+    static java.util.Map<String, Boolean> allChecks() {
+        var checks = new java.util.LinkedHashMap<String, Boolean>();
+        for (String key :
+                List.of(
+                        "format_valid",
+                        "safety_valid",
+                        "privacy_valid",
+                        "scenario_consistent",
+                        "analysis_supported",
+                        "analysis_response_consistent",
+                        "goal_aligned",
+                        "educationally_correct",
+                        "difficulty_appropriate",
+                        "conversation_coherent",
+                        "answerable",
+                        "non_repetitive")) checks.put(key, true);
+        return checks;
+    }
+
+    static java.util.Map<String, Boolean> evaluationChecks(List<String> codes) {
+        var checks = allChecks();
+        if (codes.contains("GOAL_SKIPPED")) checks.put("goal_aligned", false);
+        if (codes.contains("UNSUPPORTED_CAUSE_ANALYSIS")) checks.put("analysis_supported", false);
+        if (codes.contains("ANALYSIS_RESPONSE_MISMATCH")) {
+            checks.put("analysis_response_consistent", false);
+        }
+        return checks;
+    }
+
+    static String recordedCharacterEvaluation(int index) throws Exception {
+        try (var stream =
+                RoleplayFixtures.class.getResourceAsStream(
+                        "/ai/mock/roleplay-character-evaluation-replay.json")) {
+            return tools.jackson.databind.json.JsonMapper.builder()
+                    .build()
+                    .readTree(
+                            new String(
+                                    java.util.Objects.requireNonNull(stream).readAllBytes(),
+                                    java.nio.charset.StandardCharsets.UTF_8))
+                    .get(index)
+                    .path("content")
+                    .asString();
+        }
+    }
+
+    static String evaluationOutputJson(String decision, String codes, String revision) {
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("candidate_id", CANDIDATE_ID);
+        var checks = evaluationChecks(json.readValue(codes, List.class));
+        boolean logic = !Boolean.FALSE.equals(checks.remove("analysis_supported"));
+        body.put("checks", checks);
+        body.put("analysis_logic_review", EvaluationWireFixtures.logicReview(logic));
+        body.put("decision", decision);
+        body.put(
+                "failure_codes",
+                ((List<String>) json.readValue(codes, List.class))
+                        .stream()
+                                .filter(
+                                        code ->
+                                                !List.of(
+                                                                "UNSUPPORTED_CAUSE_ANALYSIS",
+                                                                "STATE_STRATEGY_MISMATCH")
+                                                        .contains(code))
+                                .toList());
+        body.put("revision_instruction", json.readTree(revision));
+        body.put(
+                "goal_observation_review",
+                java.util.Map.of(
+                        "analysis_id",
+                        ANALYSIS_ID,
+                        "activity_review",
+                        EvaluationWireFixtures.activityReview(json.createObjectNode(), true)));
+        var observation = new java.util.LinkedHashMap<String, Object>();
+        observation.put("micro_goal_id", MG_EMOTION);
+        observation.put("criterion_reference", "test-evidence:" + MG_EMOTION + ":0");
+        observation.put("verdict", "SUPPORTED");
+        observation.put("reason_code", "ABSENCE_CONFIRMED");
+        observation.put("evidence_quote", null);
+        observation.put("explanation", "감정 표현이 없다.");
+        body.put("observation_reviews", java.util.List.of(observation));
+        var request = json.createObjectNode().put("analysis_id", ANALYSIS_ID.toString());
+        request.putObject("current_goal_assessment")
+                .put("micro_goal_id", MG_EMOTION.toString())
+                .put("proposed_learning_state", "PARTIAL_UNDERSTANDING");
+        request.putObject("activity_assessment")
+                .put("proposed_decision", "IN_PROGRESS")
+                .putArray("basis");
+        var task =
+                request.putObject("observation_tasks")
+                        .putObject("o0")
+                        .put("status", "NOT_EXPRESSED");
+        task.putObject("reference")
+                .put("micro_goal_id", MG_EMOTION.toString())
+                .put("criterion_reference", "test-evidence:" + MG_EMOTION + ":0");
+        request.putObject("learner_turn").put("canonical_utterance", "친구가 울고 있어");
+        return EvaluationWireFixtures.forRequest(json.writeValueAsString(body), request);
     }
 }

@@ -73,6 +73,7 @@ AND criticalFailureCount == 0
 | `PROVIDER_RESPONSE_ERROR` | 제공자 응답 본문을 해석할 수 없음 | 예 |
 | `EMPTY_OUTPUT` | LLM 생성 결과가 비어 있음 | 예 |
 | `INVALID_OUTPUT_FORMAT` | 생성 결과가 느링고 출력 계약과 맞지 않음 | 예 |
+| `INDETERMINATE_OUTPUT` | 출력 계약은 유효하지만 모델이 관찰 판단을 보류함 | 예 |
 | `UNKNOWN` | OpenAI SDK 계열이지만 세부 유형을 분류할 수 없는 오류 | 아니요 |
 
 재시도 가능 여부는 `AiFailureType`이 정하며 `AiFailure.retryable()`은 실패 유형의 값을 따른다. 이 표는 `AiFailureTypeTest`가 enum과 대조한다.

@@ -207,7 +207,12 @@ class RoleplaySupportApplicationTest {
                         candidate,
                         observations(false));
         for (var request : List.of(generation.request(), evaluation.request())) {
-            var section = json.readTree(request.userPrompt()).path("analysis_result");
+            var message = json.readTree(request.userPrompt());
+            var section =
+                    message.path(
+                            message.has("interpretation_strategy")
+                                    ? "interpretation_strategy"
+                                    : "analysis_result");
             assertThat(section.path("next_strategy").path("recommended_support_level").asString())
                     .isEqualTo("S1");
             assertThat(
@@ -347,6 +352,23 @@ class RoleplaySupportApplicationTest {
                                                 request.traceContext().analysisId(),
                                                 approved,
                                                 true));
+                    }
+                    if (output instanceof EvaluationResult) {
+                        var wire =
+                                new java.util.LinkedHashMap<String, Object>(
+                                        json.readValue(json.writeValueAsString(output), Map.class));
+                        wire.remove("retry_target");
+                        wire.remove("safe_to_send");
+                        wire.remove("critical_failure_count");
+                        wire.put(
+                                "checks",
+                                RoleplayFixtures.evaluationChecks(
+                                        ((EvaluationResult) output).failureCodes()));
+                        output =
+                                json.readValue(
+                                        EvaluationWireFixtures.forRequest(
+                                                json.writeValueAsString(wire), body),
+                                        Map.class);
                     }
                     var metadata =
                             new AiCallMetadata(

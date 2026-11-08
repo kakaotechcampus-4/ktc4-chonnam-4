@@ -16,6 +16,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel.ResponseFormat;
 import org.springframework.ai.openai.OpenAiChatOptions;
 
 public final class SpringAiLlmProvider implements LlmProvider {
@@ -130,6 +131,15 @@ public final class SpringAiLlmProvider implements LlmProvider {
         }
         if (reasoningEffort != null) {
             options.reasoningEffort(reasoningEffort);
+        }
+        if (request.responseJsonSchema() != null) {
+            var format =
+                    ResponseFormat.builder()
+                            .type(ResponseFormat.Type.JSON_SCHEMA)
+                            .jsonSchema(request.responseJsonSchema())
+                            .strict(true)
+                            .build();
+            options.responseFormat(format);
         }
         return options.build();
     }

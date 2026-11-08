@@ -41,10 +41,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 @IntegrationTest
-@Import(RoleplayHttpTestConfiguration.class)
+@Import({
+    RoleplayHttpTestConfiguration.class,
+    RoleplayHttpIntegrationTest.DiagnosticTestConfiguration.class
+})
 @TestPropertySource(
         properties = {
             "roleplay.http.enabled=true",
+            "neuringo.ai.call-log=true",
             "roleplay.text.enabled=true",
             "roleplay.text.maximum-characters=64",
             "roleplay.progress.maximum-turn-count=77",
@@ -72,6 +76,21 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
         })
 class RoleplayHttpIntegrationTest {
     static final Path UPLOADS = directory();
+    static final Path RAW_DIAGNOSTICS = directory();
+
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)
+    static class DiagnosticTestConfiguration {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        com.neuringo.neuringobe.ai.application.port.AiDiagnostics httpDiagnostics() {
+            return new com.neuringo.neuringobe.ai.infrastructure.diagnostics.FileAiDiagnostics(
+                    RAW_DIAGNOSTICS,
+                    java.time.Duration.ofMinutes(15),
+                    1000,
+                    20L * 1024 * 1024,
+                    1024 * 1024);
+        }
+    }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -92,9 +111,11 @@ class RoleplayHttpIntegrationTest {
 
     @AfterAll
     static void cleanup() throws Exception {
-        try (var paths = Files.walk(UPLOADS)) {
-            for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
-                Files.deleteIfExists(path);
+        for (var root : List.of(UPLOADS, RAW_DIAGNOSTICS)) {
+            try (var paths = Files.walk(root)) {
+                for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                    Files.deleteIfExists(path);
+            }
         }
     }
 
@@ -128,6 +149,49 @@ class RoleplayHttpIntegrationTest {
                         .andExpect(jsonPath("$.data.messages[0].speech.available").value(false))
                         .andExpect(jsonPath("$.data.checkpointVersion").value(1))
                         .andReturn();
+        String requestTrace = result.getResponse().getHeader("X-Trace-Id");
+        assertThat(state.llmRequests)
+                .isNotEmpty()
+                .allSatisfy(
+                        r ->
+                                assertThat(r.traceContext().requestId().toString())
+                                        .isEqualTo(requestTrace));
+        var rawFile = RAW_DIAGNOSTICS.resolve(requestTrace).resolve("diagnostics.jsonl");
+        assertThat(Files.readString(rawFile))
+                .contains("MODEL_REQUEST", "MODEL_RESPONSE", "VALIDATION", "HTTP_RESULT");
+        var timing = timingEvents(requestTrace);
+        assertThat(
+                        timing.stream()
+                                .filter(e -> e.path("event").asString().equals("STAGE"))
+                                .map(e -> e.path("stage").asString())
+                                .toList())
+                .contains(
+                        "WORKER_QUEUE",
+                        "WORKER_EXECUTION",
+                        "CONTEXT_PREPARATION",
+                        "STT",
+                        "INPUT_PROCESSING",
+                        "LLM_CALL",
+                        "OUTPUT_VALIDATION",
+                        "TTS",
+                        "RESULT_COMMIT");
+        assertThat(timing)
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("request_id").asString()).isEqualTo(requestTrace);
+                            assertThat(e.path("llm_calls").asInt())
+                                    .isEqualTo(state.llmRequests.size());
+                            assertThat(e.path("in_progress_at_response").asInt()).isZero();
+                        });
+        var finalEvent = Files.readAllLines(rawFile).getLast();
+        assertThat(
+                        new tools.jackson.databind.json.JsonMapper()
+                                .readTree(finalEvent)
+                                .path("data")
+                                .path("result")
+                                .asString())
+                .isEqualTo("DELIVERED");
         assertThat(result.getResponse().getContentAsString())
                 .doesNotContain(
                         "합성 원문",
@@ -185,7 +249,7 @@ class RoleplayHttpIntegrationTest {
         assertThat(state.llmRequests)
                 .extracting(LlmRequest::responseSchemaVersion)
                 .containsExactly(
-                        "analysis-result/v2", "candidate-response/v1", "evaluation-result/v2");
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v5");
         var json = tools.jackson.databind.json.JsonMapper.builder().build();
         var expected = json.readTree(json.writeValueAsString(state.contextObservations));
         for (var call : List.of(state.llmRequests.get(0), state.llmRequests.get(2))) {
@@ -196,12 +260,7 @@ class RoleplayHttpIntegrationTest {
             assertThat(call.userPrompt()).doesNotContain("합성 원문 비공개 입력");
         }
         var reviewPayload = json.readTree(state.llmRequests.get(2).userPrompt());
-        assertThat(
-                        reviewPayload
-                                .path("analysis_result")
-                                .path("goal_observation")
-                                .path("analysis_id")
-                                .asString())
+        assertThat(reviewPayload.path("analysis_id").asString())
                 .isEqualTo(state.llmRequests.getFirst().traceContext().analysisId().toString());
         assertThat(state.goalDecisions).hasValue(1);
     }
@@ -576,17 +635,37 @@ class RoleplayHttpIntegrationTest {
                 .andExpect(status().isOk());
         retention.completeNormallyAndDelete(f.session(), f.child(), f.activity());
         state.calls.clear();
-        mvc.perform(
-                        request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
-                                .session(session)
-                                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.replayed").value(true))
-                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
-                .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"));
+        var replay =
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.replayed").value(true))
+                        .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                        .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"))
+                        .andReturn();
+        assertThat(timingEvents(replay.getResponse().getHeader("X-Trace-Id")))
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("replayed").asBoolean()).isTrue();
+                            assertThat(e.path("llm_calls").asInt()).isZero();
+                        });
         assertThat(state.calls).isEmpty();
         assertThat(count(f)).isEqualTo(1);
         assertEmptySpool();
+    }
+
+    private static List<tools.jackson.databind.JsonNode> timingEvents(String requestId)
+            throws Exception {
+        var mapper = new tools.jackson.databind.json.JsonMapper();
+        return Files.readAllLines(RAW_DIAGNOSTICS.resolve(requestId).resolve("diagnostics.jsonl"))
+                .stream()
+                .map(mapper::readTree)
+                .filter(e -> e.path("event").asString().equals("TIMING"))
+                .map(e -> e.path("data"))
+                .toList();
     }
 
     @Test

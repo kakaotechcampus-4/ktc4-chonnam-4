@@ -1,5 +1,8 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
+import static com.neuringo.neuringobe.ai.application.observation.RoleplayTiming.Stage.*;
+
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -48,22 +51,43 @@ public final class RoleplayTurnRunner {
         Objects.requireNonNull(pipeline);
         Objects.requireNonNull(onTimeout);
         Future<T> task = null;
+        var timing = RoleplayTiming.submission();
         try {
             deadline.requireActive();
-            task = workers.submit(() -> deadline.withinBudget(() -> pipeline.apply(deadline)));
+            task =
+                    workers.submit(
+                            () -> {
+                                try (var scope = timing.start()) {
+                                    try {
+                                        return deadline.withinBudget(
+                                                () -> pipeline.apply(deadline));
+                                    } catch (RuntimeException | Error failure) {
+                                        if (failure instanceof RoleplayTurnDeadline.Expired)
+                                            timing.timedOut();
+                                        scope.failed();
+                                        throw failure;
+                                    }
+                                }
+                            });
             T result = task.get(deadline.remainingNanos(), TimeUnit.NANOSECONDS);
             deadline.requireActive();
             return result;
         } catch (TimeoutException | RoleplayTurnDeadline.Expired timeout) {
+            timing.timedOut();
             timeout(deadline, task);
             return onTimeout.get();
+        } catch (java.util.concurrent.RejectedExecutionException rejected) {
+            timing.rejected();
+            throw rejected;
         } catch (InterruptedException interrupted) {
+            timing.cancelled();
             deadline.cancel();
             if (task != null) task.cancel(true);
             Thread.currentThread().interrupt();
             throw new CancellationException("Roleplay turn caller interrupted");
         } catch (ExecutionException failed) {
             if (failed.getCause() instanceof RoleplayTurnDeadline.Expired) {
+                timing.timedOut();
                 timeout(deadline, task);
                 return onTimeout.get();
             }

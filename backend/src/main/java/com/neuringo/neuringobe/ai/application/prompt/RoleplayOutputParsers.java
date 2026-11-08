@@ -278,61 +278,93 @@ final class RoleplayOutputParsers {
                 result.mascotHint());
     }
 
-    static LlmOutputParser<EvaluationResult> evaluation(
-            ObjectMapper objectMapper, UUID expectedCandidateId, UUID expectedAnalysisId) {
-        LlmOutputParser<EvaluationResult> delegate =
-                new JacksonLlmOutputParser<>(objectMapper, EvaluationResult.class);
+    static LlmOutputParser<EvaluationResult> nativeEvaluation(
+            ObjectMapper objectMapper,
+            UUID expectedCandidateId,
+            UUID expectedAnalysisId,
+            ScopedAnalysisContext context,
+            EvaluationOutputSchema schema) {
+        var delegate = new JacksonLlmOutputParser<>(objectMapper, EvaluationOutput.class);
         return content -> {
-            String repaired = stripCodeFence(content);
-            repaired =
-                    withMiscopiedIdFixed(repaired, "candidate_id", expectedCandidateId, Set.of());
-            if (expectedAnalysisId != null) {
+            try {
+                String repaired =
+                        withMiscopiedIdFixed(
+                                stripCodeFence(content),
+                                "candidate_id",
+                                expectedCandidateId,
+                                Set.of());
                 repaired =
                         withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
-            }
-            EvaluationResult result = delegate.parse(repaired);
-            check(
-                    result.candidateId().equals(expectedCandidateId),
-                    "candidate_id does not match the request");
-            check(
-                    RoleplayCodes.FAILURE_CODES.containsAll(result.failureCodes()),
-                    "unknown failure code");
-            if (result.decision() == EvaluationDecision.PASS) {
+                schema.validate(repaired);
+                var output = delegate.parse(repaired);
                 check(
-                        Boolean.TRUE.equals(result.safeToSend())
-                                && result.criticalFailureCount() == 0
-                                && result.failureCodes().isEmpty(),
-                        "PASS must be safe with no failure codes");
-            } else {
-                RetryTarget expectedTarget = MODEL_DECISIONS.get(result.decision());
-                check(expectedTarget != null, "decision is reserved for the orchestrator");
-                check(result.retryTarget() == expectedTarget, "retry_target does not fit decision");
-                check(!Boolean.TRUE.equals(result.safeToSend()), "only PASS can be safe to send");
-                check(!result.failureCodes().isEmpty(), "a failed evaluation needs failure codes");
+                        output.candidateId().equals(expectedCandidateId),
+                        "candidate_id does not match the request");
+                check(output.analysisId().equals(expectedAnalysisId), "다른 분석에 대한 목표 관찰 검수입니다.");
+                boolean priority =
+                        output.decision() == EvaluationDecision.SAFETY_ESCALATION
+                                || output.decision() == EvaluationDecision.CONFIRM_INPUT;
+                var approvals =
+                        priority
+                                ? new ScopedAnalysisContext.Approvals(false, false, false, false)
+                                : context.validate(objectMapper.readTree(repaired));
+                return validateEvaluation(
+                        output.toResult(approvals), expectedCandidateId, expectedAnalysisId);
+            } catch (InvalidLlmOutputException
+                    | com.neuringo.neuringobe.ai.application.structured
+                                    .IndeterminateLlmOutputException
+                            failure) {
+                throw failure;
+            } catch (RuntimeException failure) {
+                throw new InvalidLlmOutputException(
+                        "evaluation output does not match schema", failure);
             }
-            long critical =
-                    result.failureCodes().stream()
-                            .filter(RoleplayCodes.CRITICAL_FAILURE_CODES::contains)
-                            .count();
-            check(
-                    result.criticalFailureCount() >= critical,
-                    "critical_failure_count is lower than the critical failure codes");
-            var review = result.goalObservationReview();
-            check(review != null, "목표 관찰 검수가 필요합니다.");
-            check(expectedAnalysisId.equals(review.analysisId()), "다른 분석에 대한 목표 관찰 검수입니다.");
-            if (result.decision() == EvaluationDecision.PASS) {
-                check(review.supportsAnalysis(), "목표 관찰과 활동 목표 판정이 모두 승인되어야 합니다.");
-            } else if (!review.supportsAnalysis()) {
-                check(
-                        Set.of(
-                                        EvaluationDecision.REANALYZE,
-                                        EvaluationDecision.CONFIRM_INPUT,
-                                        EvaluationDecision.SAFETY_ESCALATION)
-                                .contains(result.decision()),
-                        "근거 없는 분석은 후보만 재생성할 수 없습니다.");
-            }
-            return result;
         };
+    }
+
+    private static EvaluationResult validateEvaluation(
+            EvaluationResult result, UUID expectedCandidateId, UUID expectedAnalysisId) {
+        check(
+                result.candidateId().equals(expectedCandidateId),
+                "candidate_id does not match the request");
+        check(
+                RoleplayCodes.FAILURE_CODES.containsAll(result.failureCodes()),
+                "unknown failure code");
+        if (result.decision() == EvaluationDecision.PASS) {
+            check(
+                    Boolean.TRUE.equals(result.safeToSend())
+                            && result.criticalFailureCount() == 0
+                            && result.failureCodes().isEmpty(),
+                    "PASS must be safe with no failure codes");
+        } else {
+            RetryTarget expectedTarget = MODEL_DECISIONS.get(result.decision());
+            check(expectedTarget != null, "decision is reserved for the orchestrator");
+            check(result.retryTarget() == expectedTarget, "retry_target does not fit decision");
+            check(!Boolean.TRUE.equals(result.safeToSend()), "only PASS can be safe to send");
+            check(!result.failureCodes().isEmpty(), "a failed evaluation needs failure codes");
+        }
+        long critical =
+                result.failureCodes().stream()
+                        .filter(RoleplayCodes.CRITICAL_FAILURE_CODES::contains)
+                        .count();
+        check(
+                result.criticalFailureCount() >= critical,
+                "critical_failure_count is lower than the critical failure codes");
+        var review = result.goalObservationReview();
+        check(review != null, "목표 관찰 검수가 필요합니다.");
+        check(expectedAnalysisId.equals(review.analysisId()), "다른 분석에 대한 목표 관찰 검수입니다.");
+        if (result.decision() == EvaluationDecision.PASS) {
+            check(review.supportsAnalysis(), "목표 관찰과 활동 목표 판정이 모두 승인되어야 합니다.");
+        } else if (!review.supportsAnalysis()) {
+            check(
+                    Set.of(
+                                    EvaluationDecision.REANALYZE,
+                                    EvaluationDecision.CONFIRM_INPUT,
+                                    EvaluationDecision.SAFETY_ESCALATION)
+                            .contains(result.decision()),
+                    "근거 없는 분석은 후보만 재생성할 수 없습니다.");
+        }
+        return result;
     }
 
     private static void checkAnalysisObservation(

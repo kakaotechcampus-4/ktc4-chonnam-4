@@ -120,6 +120,10 @@ final class ObservedTurnSteps implements RetryableRoleplayTurnSteps {
         if (result instanceof AiCallResult.Success<EvaluationResult> success) {
             evaluations.add(success.data());
         }
+        if (result instanceof AiCallResult.Failure<?> failure
+                && failure.failure().type() == AiFailureType.INDETERMINATE_OUTPUT) {
+            indeterminateEvaluations++;
+        }
         observeFormat(
                 result,
                 mark,
@@ -136,6 +140,12 @@ final class ObservedTurnSteps implements RetryableRoleplayTurnSteps {
                                                 (input).scenario()))
                                 .parser());
         return result;
+    }
+
+    private int indeterminateEvaluations;
+
+    int indeterminateEvaluations() {
+        return indeterminateEvaluations;
     }
 
     List<FormatFailure> formatFailures() {
