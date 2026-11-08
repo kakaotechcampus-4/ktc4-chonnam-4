@@ -42,6 +42,7 @@ public class RoleplayVoiceController {
                         audio.getInputStream(),
                         audio.getContentType(),
                         deadline);
+        RoleplayRequestObservationFilter.recordResult(request, response);
         return response(response);
     }
 

@@ -5,6 +5,7 @@ import com.neuringo.neuringobe.common.ApiResponse;
 import com.neuringo.neuringobe.roleplay.config.RoleplayHttpProperties;
 import com.neuringo.neuringobe.roleplay.dto.*;
 import com.neuringo.neuringobe.roleplay.service.RoleplayTextInputService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
 import java.util.UUID;
@@ -33,9 +34,11 @@ public class RoleplayTextController {
             @PathVariable UUID sessionId,
             @RequestHeader("Idempotency-Key") UUID key,
             @Valid @RequestBody RoleplayTextInputRequest input,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         var deadline = RoleplayTurnDeadline.start(budget);
-        return RoleplayVoiceController.response(
-                service.submit(authentication, sessionId, key, input.text(), deadline));
+        var result = service.submit(authentication, sessionId, key, input.text(), deadline);
+        RoleplayRequestObservationFilter.recordResult(request, result);
+        return RoleplayVoiceController.response(result);
     }
 }

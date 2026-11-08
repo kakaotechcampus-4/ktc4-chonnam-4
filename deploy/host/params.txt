@@ -23,6 +23,14 @@ AI_API_KEY?=ai/api-key
 AI_MODEL?=ai/model
 AI_TIMEOUT?=ai/timeout
 AI_MAX_RETRIES?=ai/max-retries
+AI_REASONING_EFFORT?=ai/reasoning-effort
+AI_MAX_OUTPUT_TOKENS?=ai/max-output-tokens
+NEURINGO_AI_CALL_LOG?=ai/call-log
+NEURINGO_AI_DIAGNOSTICS_ENABLED?=ai/diagnostics/enabled
+NEURINGO_AI_DIAGNOSTICS_WINDOW?=ai/diagnostics/window
+NEURINGO_AI_DIAGNOSTICS_MAX_REQUESTS?=ai/diagnostics/max-requests
+NEURINGO_AI_DIAGNOSTICS_MAX_BYTES?=ai/diagnostics/max-bytes
+NEURINGO_AI_DIAGNOSTICS_MAX_EVENT_BYTES?=ai/diagnostics/max-event-bytes
 
 # 음성 인식(STT)·음성 합성(TTS). LLM 과 따로 켠다. 없으면 기본값(끔)으로 뜬다.
 # 켰는데(STT_PROVIDER·TTS_PROVIDER) 키나 목소리 ID 가 없으면 앱이 시작되지 않는다 → 배포는 직전 설정으로 되돌린다.

@@ -310,7 +310,11 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
-    LlmProvider httpLlm(State state, ObjectMapper mapper) {
+    LlmProvider httpLlm(
+            State state,
+            ObjectMapper mapper,
+            java.util.Optional<com.neuringo.neuringobe.ai.application.port.AiDiagnostics>
+                    diagnostics) {
         LlmProvider provider =
                 request -> {
                     state.calls.add(request.operation().name());
@@ -449,7 +453,9 @@ public class RoleplayHttpTestConfiguration {
                                     null),
                             llmMetadata(request));
                 };
-        return provider;
+        return new com.neuringo.neuringobe.ai.infrastructure.diagnostics.DiagnosticLlmProvider(
+                provider,
+                diagnostics.orElse(com.neuringo.neuringobe.ai.application.port.AiDiagnostics.NONE));
     }
 
     private static AiCallMetadata llmMetadata(LlmRequest request) {

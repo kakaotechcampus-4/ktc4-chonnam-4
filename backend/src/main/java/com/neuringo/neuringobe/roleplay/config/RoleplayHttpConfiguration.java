@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.roleplay.config;
 
+import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.port.SpeechToTextProvider;
 import com.neuringo.neuringobe.ai.application.port.TextToSpeechProvider;
@@ -19,6 +20,7 @@ import com.neuringo.neuringobe.roleplay.service.RoleplayRetentionGate;
 import com.neuringo.neuringobe.roleplay.service.RoleplayUnidentifiedUploadService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayVoiceInputService;
 import jakarta.servlet.MultipartConfigElement;
+import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -128,13 +130,15 @@ public class RoleplayHttpConfiguration {
             RoleplayInputProcessor inputProcessor,
             LlmProvider llm,
             JsonMapper mapper,
-            RoleplayInputProperties inputProperties) {
+            RoleplayInputProperties inputProperties,
+            @Value("${neuringo.ai.call-log:false}") boolean callLog,
+            Optional<AiDiagnostics> diagnostics) {
         return new RoleplaySpeechTurnPipeline(
                 stt,
                 tts,
                 inputProcessor,
                 new RoleplayPromptFactory(mapper, null),
-                new StructuredLlmExecutor(llm),
+                new StructuredLlmExecutor(llm, callLog, diagnostics.orElse(AiDiagnostics.NONE)),
                 inputProperties.sttConfidenceThreshold());
     }
 

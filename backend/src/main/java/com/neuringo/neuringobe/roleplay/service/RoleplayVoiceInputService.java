@@ -5,6 +5,7 @@ import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointedTurnE
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnOutcomeResolver;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnResult;
+import com.neuringo.neuringobe.common.TraceIds;
 import com.neuringo.neuringobe.roleplay.application.RoleplayAudioInspector;
 import com.neuringo.neuringobe.roleplay.application.RoleplayScopedVoiceTurnExecutor;
 import com.neuringo.neuringobe.roleplay.application.RoleplayTurnResponseMapper;
@@ -146,7 +147,7 @@ public final class RoleplayVoiceInputService {
             Objects.requireNonNull(idempotencyKey);
             var scope = scopeLookup.get();
             deadline.requireActive();
-            UUID requestId = UUID.randomUUID(), turnId = UUID.randomUUID();
+            UUID requestId = UUID.fromString(TraceIds.newTraceId()), turnId = UUID.randomUUID();
             RoleplayAudioResource audio;
             try {
                 audio =

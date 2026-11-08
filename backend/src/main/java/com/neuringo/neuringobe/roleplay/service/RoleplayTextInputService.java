@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.roleplay.service;
 
 import com.neuringo.neuringobe.ai.application.roleplay.*;
+import com.neuringo.neuringobe.common.TraceIds;
 import com.neuringo.neuringobe.roleplay.application.*;
 import com.neuringo.neuringobe.roleplay.dto.RoleplayTurnResponse;
 import java.util.UUID;
@@ -59,7 +60,7 @@ public final class RoleplayTextInputService {
             return responses.map(
                     turns.execute(
                             scope,
-                            UUID.randomUUID(),
+                            UUID.fromString(TraceIds.newTraceId()),
                             UUID.randomUUID(),
                             idempotencyKey,
                             text,

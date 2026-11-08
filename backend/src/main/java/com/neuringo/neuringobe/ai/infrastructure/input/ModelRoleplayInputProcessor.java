@@ -25,7 +25,32 @@ public final class ModelRoleplayInputProcessor implements RoleplayInputProcessor
             JsonMapper mapper,
             Function<UUID, String> learnerName,
             String prompt) {
-        this.executor = new StructuredLlmExecutor(provider);
+        this(provider, mapper, learnerName, prompt, false);
+    }
+
+    public ModelRoleplayInputProcessor(
+            LlmProvider provider,
+            JsonMapper mapper,
+            Function<UUID, String> learnerName,
+            String prompt,
+            boolean observations) {
+        this(
+                provider,
+                mapper,
+                learnerName,
+                prompt,
+                observations,
+                com.neuringo.neuringobe.ai.application.port.AiDiagnostics.NONE);
+    }
+
+    public ModelRoleplayInputProcessor(
+            LlmProvider provider,
+            JsonMapper mapper,
+            Function<UUID, String> learnerName,
+            String prompt,
+            boolean observations,
+            com.neuringo.neuringobe.ai.application.port.AiDiagnostics diagnostics) {
+        this.executor = new StructuredLlmExecutor(provider, observations, diagnostics);
         this.mapper = Objects.requireNonNull(mapper);
         this.parser = new JacksonLlmOutputParser<>(mapper, Judgment.class);
         this.learnerName = Objects.requireNonNull(learnerName);

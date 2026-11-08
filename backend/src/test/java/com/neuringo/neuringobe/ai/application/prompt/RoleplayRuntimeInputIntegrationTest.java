@@ -73,7 +73,8 @@ class RoleplayRuntimeInputIntegrationTest {
         RoleplayInputProcessor runtimeInput(
                 LlmProvider provider, JsonMapper mapper, RoleplayLearnerPrivacyService privacy) {
             return new RoleplayInputProcessorConfiguration()
-                    .roleplayInputProcessor(provider, mapper, privacy);
+                    .roleplayInputProcessor(
+                            provider, mapper, privacy, false, java.util.Optional.empty());
         }
     }
 

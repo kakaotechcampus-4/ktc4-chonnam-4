@@ -36,10 +36,14 @@ public final class CallLoggingLlmProvider implements LlmProvider {
 
     private static void line(LlmRequest request, String outcome, AiCallMetadata meta) {
         log.info(
-                "LLM_CALL operation={} outcome={} model={} attempt={} finish={} in={} out={} ms={}",
+                "LLM_CALL request={} turn={} operation={} outcome={} model={} prompt={} schema={} attempt={} finish={} in={} out={} ms={}",
+                request.traceContext().requestId(),
+                request.traceContext().turnId(),
                 request.operation(),
                 outcome,
                 meta.model(),
+                request.promptVersion(),
+                request.responseSchemaVersion(),
                 meta.attemptNo(),
                 meta.finishReason(),
                 meta.inputTokens(),
