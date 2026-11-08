@@ -13,6 +13,9 @@ import java.util.UUID;
  * @param quiz 최초 결합 활동의 퀴즈 결과. 역할극 단독 활동은 null
  * @param metrics 서버가 계산한 지표(분자·분모 포함)
  * @param narrative AI 초안의 관찰·효과적인 지원·어려운 지점 항목과 근거 ID
+ * @param activityType 활동 유형(최초 결합·역할극). 리포트 목록 표의 유형 칸
+ * @param childName 아동 표시 이름. 학급 리포트 목록에서 누구의 리포트인지 보인다
+ * @param goalTitle 활동의 학습 목표 제목. 목표가 없는 활동은 null
  */
 public record LearningReportResponse(
         UUID recordId,
@@ -24,4 +27,7 @@ public record LearningReportResponse(
         ReportSnapshot.Roleplay roleplay,
         ReportSnapshot.Difficulty difficultyDecision,
         ReportSnapshot.Metrics metrics,
-        ReportNarrative narrative) {}
+        ReportNarrative narrative,
+        String activityType,
+        String childName,
+        String goalTitle) {}
