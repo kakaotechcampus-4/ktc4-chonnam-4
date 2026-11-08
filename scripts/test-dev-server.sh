@@ -265,9 +265,19 @@ plan_script() {
   ' .github/workflows/dev-server.yml
 }
 mkdir -p "$tmp/plan-bin"
+# 기본은 실패한다. FAKE_* 를 주면 그 API 만 답한다(24시간 모드 파일·PR·합친 커밋의 부모·라벨·파일 목록).
 cat >"$tmp/plan-bin/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "gh $*" >>"$PLAN_GH_CALLS"
+case "$*" in
+  *"/contents/infra/live/dev/always-on.json"*) [ -n "${FAKE_ALWAYS_ON:-}" ] && printf '%s\n' "$FAKE_ALWAYS_ON" && exit 0 ;;
+  *"/contents/frontend/Dockerfile"*) [ -n "${FAKE_PR_JSON:-}" ] && exit 0 ;;
+  *"/labels --jq"*) [ -n "${FAKE_LABELS+x}" ] && printf '%s' "$FAKE_LABELS" && exit 0 ;;
+  *"-X POST"*"/labels"*) exit 0 ;;
+  *"/pulls/"*"/files"*) [ -n "${FAKE_FILES:-}" ] && printf '%s\n' "$FAKE_FILES" && exit 0 ;;
+  *"/pulls/"*) [ -n "${FAKE_PR_JSON:-}" ] && printf '%s\n' "$FAKE_PR_JSON" && exit 0 ;;
+  *"/commits/"*) [ -n "${FAKE_PARENTS:-}" ] && printf '%s\n' "$FAKE_PARENTS" && exit 0 ;;
+esac
 exit 1
 EOF
 chmod +x "$tmp/plan-bin/gh"
@@ -297,6 +307,40 @@ check "버튼 실행: 오류에 AWS_ACCOUNT_ID 가 없다고 쓴다" has "$out" 
 
 decide EVENT=workflow_dispatch ACTION="상태 보기" AWS_ACCOUNT_ID=000000000000
 check "버튼 실행: 저장소 변수가 있으면 할 일을 정한다" file_has "$tmp/plan-out" "task=상태 보기"
+
+# 24시간 모드(develop 의 infra/live/dev/always-on.json): PR 을 열어도 저절로 올리지 않고(테스트 주소는 develop),
+# push 는 이 PR 이 자리를 잡고 있을 때만 다시 올린다.
+check "24시간 모드 파일이 Terraform 변수 이름 그대로다" file_has infra/live/dev/always-on.json '"always_on_until"'
+ON='{ "always_on_until": "2999-12-31T23:59:00+09:00" }'
+OFF='{ "always_on_until": "2000-01-01T00:00:00+09:00" }'
+opened=(EVENT=pull_request PR_ACTION=opened PR=101 HEAD_REPO=kakaotechcampus-4/ktc4-chonnam-4 AWS_ACCOUNT_ID=000000000000
+  HAS_PREVIEW=false HAS_NO_PREVIEW=false DRAFT=false BASE_REF=develop AUTHOR_TYPE=User FAKE_LABELS= FAKE_FILES=backend/src/A.java)
+decide "${opened[@]}" FAKE_ALWAYS_ON="$ON"
+check "24시간 모드: PR 을 열어도 실패 없이 건너뛴다" same "$code" 0
+check "24시간 모드: 할 일 없음(task=none)" file_has "$tmp/plan-out" "task=none"
+# 끝 시각은 KST 로 쓴다(러너에는 시간대 자료가 있다. Git Bash 는 없어 UTC 로 찍혀 시각 자체는 보지 않는다).
+check "24시간 모드: 요약에 까닭과 보는 법(preview 라벨)을 쓴다" bash -c "grep -qE '24시간 모드\(12/31 [0-9:]{5} KST 까지\)' '$tmp/plan-summary' && grep -qF 'preview 라벨' '$tmp/plan-summary'"
+check "24시간 모드: preview 라벨을 붙이지 않는다" bash -c "! grep -q 'POST' '$tmp/plan-gh'"
+check "24시간 모드: develop 의 파일을 읽는다" file_has "$tmp/plan-gh" "always-on.json?ref=develop"
+decide "${opened[@]}" FAKE_ALWAYS_ON="$OFF"
+check "24시간 모드가 끝났으면 전처럼 미리보기로 간다(가짜 gh 라 PR 읽기에서 멈춤)" has "$out" "PR #101 을 읽지 못했다"
+decide "${opened[@]}"
+check "24시간 모드 파일을 읽지 못하면 전처럼 간다" has "$out" "PR #101 을 읽지 못했다"
+if command -v jq >/dev/null 2>&1; then
+  MERGE=1111111111111111111111111111111111111111
+  HEAD=2222222222222222222222222222222222222222
+  pushed=(EVENT=pull_request PR_ACTION=synchronize PR=101 HEAD_REPO=kakaotechcampus-4/ktc4-chonnam-4 AWS_ACCOUNT_ID=000000000000
+    HAS_PREVIEW=true HAS_NO_PREVIEW=false MERGE_SHA=$MERGE FAKE_LABELS=preview
+    FAKE_PR_JSON="{\"base\":{\"ref\":\"develop\"},\"head\":{\"sha\":\"$HEAD\"},\"title\":\"t\",\"user\":{\"login\":\"someone\"}}"
+    FAKE_PARENTS="3333333333333333333333333333333333333333 $HEAD")
+  decide "${pushed[@]}" FAKE_ALWAYS_ON="$ON"
+  check "24시간 모드의 push: 다시 올리기로 정한다" file_has "$tmp/plan-out" "task=PR 미리보기 다시 올리기"
+  check "24시간 모드의 push: 이 PR 의 자리일 때만(own_slot_only)" file_has "$tmp/plan-out" "own_slot_only=true"
+  decide "${pushed[@]}" FAKE_ALWAYS_ON="$OFF"
+  check "24시간 모드가 아니면 push 는 전처럼(자리가 비었어도)" file_has "$tmp/plan-out" "own_slot_only=false"
+else
+  echo "  - jq 가 없어 push 판정 검사는 건너뛴다(CI 에서 돈다)"
+fi
 
 if [ "$failures" -gt 0 ]; then
   echo "edge-toggle.sh · server-power.sh · Dev server 판정 자체 검사 실패: $failures 건" >&2

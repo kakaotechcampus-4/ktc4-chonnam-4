@@ -6,6 +6,7 @@
 # - 출력(SSM → Actions 로그, 공개)에 비밀값·계정 ID·앱 로그·버킷 이름·테스트 주소가 나오지 않는다
 # - 원본 비밀 헤더: 값이 있으면 화면 설정 조각·compose.origin.yml 을 붙이고 상태 확인도 그 헤더로 / 없으면 끈다 / .env 에 넣지 않는다
 # - status.sh: 사람이 앱을 쓴 마지막 시각(STATUS_LAST_USE)은 상태 확인·403 을 세지 않는다
+# - 떠 있어야 할 develop(wanted)·미룸(DEFER)·자기 자리(OWN_SLOT_ONLY)·catch-up.sh: 건너뛴 develop 을 자리가 비고 아무도 안 쓸 때 이어 띄운다
 #   bash scripts/test-host-deploy.sh   (verify.sh workflows 에 포함)
 set -euo pipefail
 
@@ -139,7 +140,9 @@ case "$1 $2" in
     echo "2026-10-08T05:01:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"POST /api/v1/roleplay/turns HTTP/1.1\" 200 12"
     echo "2026-10-08T05:03:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"GET /api/v1/csrf HTTP/1.1\" 200 40"
     echo "2026-10-08T05:04:00.000000001Z 10.0.0.9 - - [08/Oct/2026] \"GET /api/v1/children HTTP/1.1\" 403 0"
-    echo "2026-10-08T05:06:07.123456789Z 10.0.0.9 - - [08/Oct/2026] \"GET / HTTP/1.1\" 200 500" ;;
+    echo "2026-10-08T05:06:07.123456789Z 10.0.0.9 - - [08/Oct/2026] \"GET / HTTP/1.1\" 200 500"
+    # FAKE_LAST_USE=<시각> 이면 그때 사람이 API 를 썼다(이어 띄우기가 쓰는 사람을 끊지 않는지 본다)
+    [ -z "${FAKE_LAST_USE:-}" ] || echo "$FAKE_LAST_USE 10.0.0.9 - - [08/Nov/2026] \"GET /api/v1/children HTTP/1.1\" 200 12" ;;
   "run -d") echo restore-container-id ;;
   "ps -aq") [ "${FAKE_STALE:-0}" = 1 ] && echo stale-restore-id; exit 0 ;;
   "rm -f") echo "${*: -1}" >>"$FAKE/restore_removed" ;;
@@ -737,6 +740,122 @@ bundle_rejects "MODE 가 develop·preview 가 아니면 만들지 않는다" MOD
 bundle_rejects "PR 번호가 숫자가 아니면 만들지 않는다" PREVIEW_PR="41'"
 bundle_rejects "아이디 모양이 틀리면 만들지 않는다" PREVIEW_BY="a b"
 bundle_rejects "END_ONLY_PR 이 숫자가 아니면 만들지 않는다" END_ONLY_PR="41'"
+bundle_rejects "DEFER 가 0·1 이 아니면 만들지 않는다" DEFER="1'"
+bundle_rejects "OWN_SLOT_ONLY 가 0·1 이 아니면 만들지 않는다" OWN_SLOT_ONLY=yes
+IMAGE="$REPO:$SHA" WEB_IMAGE="$REPO:web-$SHA" RELEASE=$SHA DEFER=1 OWN_SLOT_ONLY=1 bash scripts/release-bundle.sh >"$remote"
+check "묶음 스크립트가 미룸·자기 자리 값을 deploy.sh 에 넘긴다" bash -c "grep -qF \"DEFER='1' OWN_SLOT_ONLY='1'\" '$remote'"
+check "묶음 정리가 떠 있어야 할 develop 묶음(wanted)은 지우지 않는다" bash -c "grep -qF 'state/dev.wanted' '$remote'"
+
+# ── 떠 있어야 할 develop(wanted) · 미룸(DEFER) · 자기 자리(OWN_SLOT_ONLY) · 이어 띄우기(catch-up.sh) ──
+# 묶음은 서버처럼 releases/<커밋> 에 둔다(release-bundle.sh 가 푸는 자리). wanted 의 DIR 이 그 폴더를 가리킨다.
+from_bundle() { # 커밋 [환경=값...]
+  local sha=$1
+  shift
+  mkdir -p "$tmp/home/releases/$sha"
+  cp -r deploy "$tmp/home/releases/$sha/"
+  code=0
+  out=$(env PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" NEURINGO_HOME="$tmp/home" IMAGE="$REPO:$sha" WEB_IMAGE="$REPO:web-$sha" \
+    RELEASE="$sha" HEALTH_TIMEOUT=0 HEALTH_INTERVAL=0 BACKUP_BUCKET="$BUCKET" "$@" \
+    bash "$tmp/home/releases/$sha/deploy/host/deploy.sh" 2>&1) || code=$?
+}
+catch_up() { # [환경=값...] — Lambda 처럼 wanted 가 가리키는 묶음의 catch-up.sh 를 부른다(없으면 이 체크아웃의 것)
+  local dir script=deploy/host/catch-up.sh
+  dir=$(sed -n 's/^DIR=//p' "$tmp/home/state/dev.wanted" 2>/dev/null | tail -n 1) || dir=""
+  [ -z "$dir" ] || [ ! -f "$dir/deploy/host/catch-up.sh" ] || script="$dir/deploy/host/catch-up.sh"
+  code=0
+  out=$(env PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" NEURINGO_HOME="$tmp/home" HEALTH_TIMEOUT=0 HEALTH_INTERVAL=0 "$@" \
+    bash "$script" 2>&1) || code=$?
+}
+wanted_has() { file_has "$tmp/home/state/dev.wanted" "$1"; }
+wanted_lacks() { file_lacks "$tmp/home/state/dev.wanted" "$1"; }
+now_use=$(date -u +%Y-%m-%dT%H:%M:%S.000000001Z)
+
+new_case
+export FAKE_GOOD_TAGS="aaaaaaa bbbbbbb 4141414 cccccc1"
+catch_up
+check "이어 띄우기: wanted 가 없으면 할 일 없음" has "$out" "CATCHUP_RESULT=none"
+from_bundle aaaaaaa
+check "develop 배포가 성공한다(묶음)" same "$code" 0
+check "wanted 에 커밋·묶음 폴더를 적는다" bash -c "grep -q '^RELEASE=aaaaaaa$' '$tmp/home/state/dev.wanted' && grep -q '^DIR=.*/releases/aaaaaaa$' '$tmp/home/state/dev.wanted'"
+check "바꾸기 시작했고(TRIED) 성공했다(DONE)" bash -c "grep -q '^TRIED=1$' '$tmp/home/state/dev.wanted' && grep -q '^DONE=1$' '$tmp/home/state/dev.wanted'"
+catch_up
+check "이어 띄우기: 이미 떠 있으면 그대로" has "$out" "CATCHUP_RESULT=up_to_date"
+check "이어 띄우기는 늘 0 으로 끝난다(결과는 CATCHUP_RESULT)" same "$code" 0
+
+from_bundle bbbbbbb DEFER=1
+check "미룸(DEFER): 바꾸지 않고 75 로 끝낸다" same "$code" 75
+check "미룸: 결과 줄" has "$out" "DEPLOY_RESULT=deferred"
+check "미룸: 지금 것은 그대로다" file_has "$tmp/fake/running" "$REPO:aaaaaaa"
+check "미룸: wanted 를 새 커밋으로 적는다(아직 바꾸지 않음 — TRIED 없음)" bash -c "grep -q '^RELEASE=bbbbbbb$' '$tmp/home/state/dev.wanted' && ! grep -q '^TRIED=' '$tmp/home/state/dev.wanted'"
+catch_up FAKE_LAST_USE="$now_use"
+check "이어 띄우기: 5분 안에 쓴 사람이 있으면 기다린다" has "$out" "CATCHUP_RESULT=busy"
+check "그때 지금 것은 그대로다(쓰는 사람을 끊지 않는다)" file_has "$tmp/fake/running" "$REPO:aaaaaaa"
+catch_up
+check "이어 띄우기: 아무도 안 쓰면 밀린 develop 을 띄운다" has "$out" "CATCHUP_RESULT=ok"
+check "그 커밋을 알려 준다" has "$out" "CATCHUP_RELEASE=bbbbbbb"
+check "밀린 develop 이 떠 있다" file_has "$tmp/fake/running" "$REPO:bbbbbbb"
+check "develop 으로 기록한다(이어 띄우기)" bash -c "grep -q '^RELEASE=bbbbbbb$' '$tmp/home/state/dev.release' && grep -q '^MODE=develop$' '$tmp/home/state/dev.release'"
+check "wanted 에 성공(DONE)을 남긴다" wanted_has "DONE=1"
+check "배포 출력은 서버 로그에만 남긴다" file_has "$tmp/home/logs/catch-up-dev.log" "DEPLOY_RESULT=ok"
+check "이어 띄우기 출력에 비밀값·계정 ID 가 없다" no_leak
+catch_up
+check "한 번 띄우면 다시 띄우지 않는다" has "$out" "CATCHUP_RESULT=up_to_date"
+
+preview 4141414 41 alice-kim
+from_bundle cccccc1
+check "미리보기 중 develop 배포는 건너뛰지만(75)" same "$code" 75
+check "wanted 에는 그 develop 을 적는다(이어 띄울 것)" bash -c "grep -q '^RELEASE=cccccc1$' '$tmp/home/state/dev.wanted' && ! grep -q '^TRIED=' '$tmp/home/state/dev.wanted'"
+catch_up
+check "이어 띄우기: 미리보기 자리가 남아 있으면 기다린다" has "$out" "CATCHUP_RESULT=preview"
+check "그때 미리보기는 그대로다(이어 띄우기)" file_has "$tmp/fake/running" "$REPO:4141414"
+sed -i 's/^UNTIL=.*/UNTIL=1000/' "$tmp/home/state/preview.lease"
+catch_up
+check "이어 띄우기: 자리 시간이 지나면 밀린 develop 으로 돌아간다" has "$out" "CATCHUP_RESULT=ok"
+check "그때 밀린 develop 이 떠 있다" file_has "$tmp/fake/running" "$REPO:cccccc1"
+check "그때 미리보기 자리·기준점을 정리한다" bash -c "[ ! -f '$tmp/home/state/preview.lease' ] && [ ! -f '$tmp/home/state/dev.base.env' ]"
+
+preview 4141414 41 alice-kim
+sed -i 's/^UNTIL=.*/UNTIL=1000/' "$tmp/home/state/preview.lease"
+catch_up
+check "밀린 것이 없어도 자리 시간이 지난 미리보기는 develop 으로 돌린다" has "$out" "CATCHUP_RESULT=ok"
+check "그때 떠 있어야 할 develop 이 떠 있다" file_has "$tmp/fake/running" "$REPO:cccccc1"
+
+from_bundle ddddddd
+check "실패하는 develop 배포는 되돌린다(2)" same "$code" 2
+check "wanted 에 바꾸다 실패한 흔적(TRIED, DONE 없음)" bash -c "grep -q '^TRIED=1$' '$tmp/home/state/dev.wanted' && ! grep -q '^DONE=' '$tmp/home/state/dev.wanted'"
+catch_up
+check "이어 띄우기: 실패한 커밋을 되풀이해 띄우지 않는다" has "$out" "CATCHUP_RESULT=failed_before"
+check "그때 지금 것은 그대로다(실패한 커밋)" file_has "$tmp/fake/running" "$REPO:cccccc1"
+
+from_bundle eeeeeee DEFER=1
+catch_up
+check "이어 띄우기가 실패하면 알린다(Lambda 가 오류로 끝내 메일)" has "$out" "CATCHUP_RESULT=failed"
+check "실패 까닭(배포 결과)을 넘긴다" has "$out" "CATCHUP_DEPLOY_RESULT=rolled_back"
+catch_up
+check "한 번 실패한 이어 띄우기는 다시 하지 않는다" has "$out" "CATCHUP_RESULT=failed_before"
+
+printf 'RELEASE=fffffff\nIMAGE=%s:fffffff\nWEB_IMAGE=%s:web-fffffff\nDIR=/etc\n' "$REPO" "$REPO" >"$tmp/home/state/dev.wanted"
+code=0
+out=$(env PATH="$tmp/bin:$PATH" FAKE="$tmp/fake" NEURINGO_HOME="$tmp/home" bash deploy/host/catch-up.sh 2>&1) || code=$?
+check "wanted 의 묶음 폴더가 releases 밖이면 아무것도 하지 않는다" has "$out" "CATCHUP_RESULT=none"
+
+# 24시간 모드의 push(OWN_SLOT_ONLY): 이 PR 이 자리를 잡고 있을 때만 다시 올린다.
+new_case
+export FAKE_GOOD_TAGS="aaaaaaa 4141414 4141415 4545454"
+deploy aaaaaaa
+OWN_SLOT_ONLY=1 preview 4141414 41 alice-kim
+check "자기 자리: 자리가 비었으면 push 로 새로 잡지 않는다(75)" same "$code" 75
+check "자기 자리: 결과 줄" has "$out" "DEPLOY_RESULT=not_own_slot"
+check "자기 자리: develop 은 그대로다" file_has "$tmp/fake/running" "$REPO:aaaaaaa"
+preview 4141414 41 alice-kim
+OWN_SLOT_ONLY=1 preview 4141415 41 alice-kim
+check "자기 자리: 이 PR 이 자리를 잡고 있으면 다시 올린다" same "$code" 0
+check "자기 자리: 새 커밋이 떠 있다" file_has "$tmp/fake/running" "$REPO:4141415"
+OWN_SLOT_ONLY=1 preview 4545454 45 bob
+check "자기 자리: 다른 PR 은 자리 있음(76)" same "$code" 76
+sed -i 's/^UNTIL=.*/UNTIL=1000/' "$tmp/home/state/preview.lease"
+OWN_SLOT_ONLY=1 preview 4141415 41 alice-kim
+check "자기 자리: 자리 시간이 지나면 push 로 연장하지 않는다" same "$code" 75
 
 if [ "$failures" -gt 0 ]; then
   echo "서버 배포 자체 검사 실패: $failures 건" >&2

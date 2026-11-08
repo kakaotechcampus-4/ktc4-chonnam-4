@@ -5,10 +5,13 @@ name: Dev server
 #     PR 열기 · draft 를 Ready for review 로 · 다시 열기   PR 미리보기 올리기(preview 라벨을 붙인 것과 같고, 라벨도 붙여 둔다).
 #                           건너뜀: draft · no-preview 라벨 · 문서(docs/·*.md)만 바꾼 PR · 봇이 연 PR · develop 으로 가지 않는 PR.
 #                           다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀(자리가 비면 push 하거나 preview 라벨을 떼었다 붙인다)
+#                           24시간 모드(infra/live/dev/always-on.json 의 시각 전)에는 저절로 올리지 않는다 — 테스트 주소는
+#                           늘 develop 을 보여 준다(머지된 것 = 떠 있는 것). 보려면 preview 라벨을 붙인다
 #   PR 에서 — 라벨로 바꾸기
 #     preview 라벨 붙이기   PR 미리보기 올리기: (꺼져 있으면 켜기부터) 이 PR 을 develop 에 합친 코드로 화면·API 를 띄운다.
-#                           미리보기 전용 DB 는 매번 새로. 자리 1시간(한 번에 PR 하나)
+#                           미리보기 전용 DB 는 매번 새로. 자리 1시간(한 번에 PR 하나). 자리가 끝나면 아래 "이어 띄우기"가 develop 으로 돌린다
 #     preview 라벨이 있는 PR 에 push   다시 올리기(서버가 켜져 있고 자리가 이 PR 것이거나 비었을 때만. 아니면 조용히 건너뜀)
+#                           24시간 모드에는 이 PR 이 자리를 잡고 있을 때만(자리가 비었으면 건너뜀 — 다시 보려면 라벨을 떼었다 붙인다)
 #     preview 라벨 떼기·PR 닫기·머지   미리보기 끝내기(이 PR 의 미리보기가 떠 있을 때만): develop 최신으로 되돌린다
 #     no-preview 라벨       이 PR 은 저절로 띄우지 않는다. PR 을 열 때 붙여 두거나, 나중에 붙이면 미리보기를 끝내고 preview 라벨을 뗀다
 #     dev-off 라벨 붙이기   끄기(아래와 같다). 라벨은 바로 떼어 둔다
@@ -16,6 +19,8 @@ name: Dev server
 #     상태 보기 · 켜기 · 미리보기 끝내기 · 끄기
 #   저절로 — AWS 안에서 10분마다(EventBridge → Lambda, infra/modules/idle-off. GitHub 예약은 몇 시간씩 밀려서 쓰지 않는다)
 #     안 쓰면 끄기          서버가 켜져 있고, 미리보기 자리가 비었고, 30분 동안 테스트 주소 요청·배포·GitHub 작업이 없으면 끈다(끄기와 같은 순서)
+#     이어 띄우기           develop 배포가 미리보기 자리·쓰는 사람 때문에 건너뛰어졌거나 자리가 끝난 미리보기가 남아 있으면, 자리가 비고
+#                           5분 동안 아무도 안 쓸 때 develop 최신으로 맞춘다(deploy/host/catch-up.sh). 24시간 모드에도 한다
 #
 # PR 에서 돌 때는 그 PR 을 develop 에 합친 커밋의 워크플로·스크립트로 돈다. 그래서 파이프라인을 바꾼 PR 도 머지 전에
 # 자기 버전으로 시험된다(2026-10-07 결정 — PR 실행에도 배포 역할을 준다. 포크 PR 은 GitHub 이 권한을 주지 않는다,
@@ -77,6 +82,7 @@ jobs:
       end_preview: ${{ steps.what.outputs.end_preview }}
       end_only_pr: ${{ steps.what.outputs.end_only_pr }}
       quiet: ${{ steps.what.outputs.quiet }}
+      own_slot_only: ${{ steps.what.outputs.own_slot_only }}
 
     steps:
       - name: Decide what to do
@@ -104,7 +110,17 @@ jobs:
           skip() { printf '## Dev server — 할 일 없음\n\n%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; out task none; exit 0; }
           [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}(\[bot\])?$ ]] || fail "누른 사람 아이디 모양이 틀렸다."
           develop_sha() { gh api "repos/$REPO/commits/develop" --jq .sha; }
-          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha="" auto=false
+          # 24시간 모드(develop 의 infra/live/dev/always-on.json 시각 전)면 끝 시각(KST)을, 아니면 빈 값을 낸다.
+          # 그 동안 테스트 주소는 develop 을 보여 준다: PR 을 열어도 저절로 올리지 않고, push 는 이 PR 이 자리를 잡고 있을 때만 다시 올린다.
+          # 파일을 읽지 못하거나 모양이 틀리면 24시간 모드가 아닌 것으로 본다(전처럼 동작).
+          always_on() {
+            local raw until end
+            raw=$(gh api "repos/$REPO/contents/infra/live/dev/always-on.json?ref=develop" -H "Accept: application/vnd.github.raw+json" 2>/dev/null) || return 0
+            until=$(sed -n 's/.*"always_on_until"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$raw" | head -n 1)
+            { [ -n "$until" ] && end=$(date -d "$until" +%s 2>/dev/null) && [ "$(date +%s)" -lt "$end" ]; } || return 0
+            TZ=Asia/Seoul date -d "@$end" '+%m/%d %H:%M'
+          }
+          power_on=false release=false power_off=false mode=develop end_preview=false end_only_pr="" quiet=false sha="" auto=false own_slot_only=false
           steps=()
 
           # 버튼(workflow_dispatch)으로 할 일을 정해 부르면 그것을 따른다.
@@ -144,7 +160,11 @@ jobs:
               if [ -n "$files" ] && ! grep -qvE '^docs/|\.md$' <<<"$files"; then
                 skip "문서(docs/·*.md)만 바꾼 PR 이라 저절로 띄우지 않는다(보려면 preview 라벨)."
               fi
+              on=$(always_on)
+              [ -z "$on" ] || skip "24시간 모드(${on} KST 까지)라 PR 을 열어도 저절로 띄우지 않는다. 테스트 주소는 develop(머지된 것)을 보여 준다. 이 PR 을 보려면 preview 라벨을 붙인다(자리 1시간이 끝나면 develop 으로 저절로 돌아간다)."
             fi
+            # 24시간 모드의 push: 이 PR 이 자리를 잡고 있을 때만 다시 올린다(자리가 빈 공유 주소를 push 로 가져가지 않게).
+            if [ "$PR_ACTION" = synchronize ] && [ -n "$(always_on)" ]; then own_slot_only=true; fi
           else
             task=$ACTION
           fi
@@ -191,6 +211,7 @@ jobs:
                 # push 할 때마다 서버를 켜지는 않는다. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다.
                 quiet=true
                 steps=("서버가 켜져 있을 때만(꺼져 있으면 건너뜀)")
+                [ "$own_slot_only" != true ] || steps+=("24시간 모드 — 이 PR 이 자리를 잡고 있을 때만(자리가 비었으면 건너뜀)")
               fi
               steps+=("자리 확인(다른 PR 이 쓰는 중이면 빌드 전에 멈춤 — 저절로 돈 실행은 건너뜀)" \
                 "PR #$PR 을 develop 에 합친 코드 \`${sha:0:7}\` 의 워크플로·스크립트로 화면·백엔드 이미지 빌드(AWS 권한 없는 곳에서)" \
@@ -220,6 +241,7 @@ jobs:
           out end_preview "$end_preview"
           out end_only_pr "$end_only_pr"
           out quiet "$quiet"
+          out own_slot_only "$own_slot_only"
           {
             echo "## Dev server — $task"
             echo
@@ -363,6 +385,7 @@ jobs:
       end_preview: ${{ needs.plan.outputs.end_preview == 'true' }}
       end_only_pr: ${{ needs.plan.outputs.end_only_pr }}
       quiet: ${{ needs.plan.outputs.quiet == 'true' }}
+      own_slot_only: ${{ needs.plan.outputs.own_slot_only == 'true' }}
       # 대문을 막 열었으면 퍼질 때까지(최대 5분) 기다리며 확인한다.
       edge_wait: ${{ needs.power_on.outputs.was_off == 'true' && 300 || 60 }}
       # PR 을 열거나 push 해서 저절로 돈 미리보기(quiet)는 테스트 주소를 쓰는 중이면 15분까지 기다리고 그래도 쓰면 미룬다.

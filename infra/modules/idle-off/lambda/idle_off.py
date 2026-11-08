@@ -1,4 +1,4 @@
-"""Dev server 안 쓰면 끄기. EventBridge 가 10분마다 부른다(infra/modules/idle-off).
+"""Dev server 안 쓰면 끄기 · 밀린 develop 이어 띄우기. EventBridge 가 10분마다 부른다(infra/modules/idle-off).
 
 GitHub Actions 예약(schedule)은 이 레포에서 몇 시간씩 밀리거나 건너뛰어서(2026-10-11 실측: 20분마다가 1시간 동안 0번)
 끄는 판단을 AWS 안으로 옮겼다. 끄는 순서는 dev-server.yml 의 끄기와 같다:
@@ -14,6 +14,10 @@ GitHub Actions 예약(schedule)은 이 레포에서 몇 시간씩 밀리거나 �
 
 24시간 모드(ALWAYS_ON_UNTIL, Terraform 변수 always_on_until): 그 시각까지는 안 쓰여도 끄지 않는다. 서버를 다시 켜지도 않는다
 (Dev server → 끄기를 누른 사람이 이긴다. AWS 점검으로 꺼지면 상태 검사 경보가 알린다).
+밀린 develop 이어 띄우기(모드와 상관없이, 서버가 켜져 있으면 매번): 서버의 state/<환경>.wanted 에 적힌 묶음의 catch-up.sh 를
+부른다. develop 배포가 미리보기 자리·쓰는 사람 때문에 건너뛰어졌거나 시간이 지난 미리보기가 남아 있으면, 자리가 비고 5분 동안
+아무도 안 쓸 때 develop 으로 맞춘다(판단은 deploy/host/catch-up.sh 머리말). 띄웠으면 이번에는 끄기를 판단하지 않는다(방금 썼다).
+띄우다 실패하면 오류로 끝내 Lambda 오류 경보가 메일로 알린다(같은 커밋을 되풀이해 띄우지는 않는다).
 모드와 상관없이 매번 대문을 서버에 맞춘다(고정 IP 가 없어서):
   - 서버가 켜져 있고 대문이 열려 있는데 원본이 옛 주소 → 지금 주소로 고친다(AWS 점검·콘솔로 다시 켜져 주소가 바뀐 때).
     대문이 닫혀 있으면 열지 않는다(Dev server 켜기·끄기가 다루는 중이거나 누가 일부러 닫았다).
@@ -33,6 +37,14 @@ LOCK_SECONDS = 240
 LOCK_SCRIPT = (
     "mkdir -p /opt/neuringo/state && "
     f"flock -w {LOCK_SECONDS} /opt/neuringo/state/deploy.lock true && echo LOCK_FREE=1"
+)
+CATCH_UP_SECONDS = 600  # 이미지 받기·배포 전 백업·상태 확인(120초)까지. Lambda 제한 시간(900초) 안에 끝나게
+# 서버의 wanted 기록이 가리키는 develop 묶음의 catch-up.sh. 기록이 없거나 모양이 틀리면 할 일 없음.
+CATCH_UP_SCRIPT = (
+    'w=/opt/neuringo/state/{env}.wanted; d=$(sed -n "s/^DIR=//p" "$w" 2>/dev/null | tail -n 1); '
+    'case "$d" in /opt/neuringo/releases/*..*|"") echo CATCHUP_RESULT=none; exit 0 ;; /opt/neuringo/releases/*) ;; '
+    '*) echo CATCHUP_RESULT=none; exit 0 ;; esac; '
+    'f="$d/deploy/host/catch-up.sh"; if [ -f "$f" ]; then NEURINGO_ENV={env} bash "$f"; else echo CATCHUP_RESULT=none; fi'
 )
 # scripts/edge-toggle.mjs 와 같은 원본 이름·주소 모양
 ORIGIN_IDS = ("app", "api")
@@ -110,6 +122,17 @@ def run_shell(ssm, instance_id, script, timeout, sleep, poll=3):
         if got.get("Status") in DONE:
             return got["Status"], got.get("StandardOutputContent", "")
     return "TimedOut", ""
+
+
+def catch_up(ssm, instance_id, env, sleep):
+    """밀린 develop 을 이어 띄운다(서버의 catch-up.sh). (결과, 커밋 앞 7자리, 배포 결과). 서버에 묻지 못하면 결과는 빈 문자열."""
+    if not re.fullmatch(r"dev|prod", env):
+        raise RuntimeError("NEURINGO_ENV 는 dev 또는 prod")
+    command_status, out = run_shell(ssm, instance_id, CATCH_UP_SCRIPT.format(env=env), CATCH_UP_SECONDS, sleep, poll=5)
+    values = parse_kv(out)
+    if command_status != "Success":
+        return "", values.get("CATCHUP_RELEASE", ""), command_status
+    return values.get("CATCHUP_RESULT", ""), values.get("CATCHUP_RELEASE", ""), values.get("CATCHUP_DEPLOY_RESULT", "")
 
 
 def last_ci_command(ssm, instance_id, since):
@@ -245,6 +268,7 @@ def handler(event, context, aws=None, sleep=time.sleep, clock=None):
     distribution_id = os.environ["DISTRIBUTION_ID"]
     idle_minutes = int(os.environ.get("IDLE_MINUTES", "30"))
     always_on_until = parse_time(os.environ.get("ALWAYS_ON_UNTIL", ""))
+    env = os.environ.get("NEURINGO_ENV", "dev")
     ec2, ssm, cloudfront = aws["ec2"], aws["ssm"], aws["cloudfront"]
 
     def done(result, reason, **extra):
@@ -256,6 +280,20 @@ def handler(event, context, aws=None, sleep=time.sleep, clock=None):
     extra = {"edge": edge} if edge else {}
     if state != "running":
         return done("skip", f"서버가 켜져 있지 않다({state})", **extra)
+
+    caught, release, deploy_result = catch_up(ssm, instance_id, env, sleep)
+    if caught == "ok":
+        return done("caught_up", f"밀린 develop {release} 을 이어 띄웠다", **extra)
+    if caught == "failed":
+        log(result="error", reason=f"밀린 develop {release} 을 이어 띄우다 실패했다", deploy=deploy_result)
+        raise RuntimeError(
+            f"밀린 develop {release} 을 이어 띄우다 실패했다({deploy_result}). 서버의 /opt/neuringo/logs/catch-up-{env}.log 를 본다"
+        )
+    if caught:
+        extra["catch_up"] = caught
+    else:
+        log(result="warn", reason="밀린 develop 확인을 하지 못했다", ssm=deploy_result)
+
     if always_on_until and now < always_on_until:
         return done("keep", f"24시간 모드 — {kst_day(always_on_until)} (KST) 까지 끄지 않는다", **extra)
 

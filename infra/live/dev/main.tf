@@ -55,10 +55,17 @@ variable "alert_emails" {
 }
 
 variable "always_on_until" {
-  description = "24시간 모드 끝 시각(RFC 3339). 그때까지 안 쓰면 끄기가 서버를 끄지 않는다. 빈 값이면 30분 안 쓰면 끈다. 팀이 정한다"
+  description = "24시간 모드 끝 시각(RFC 3339)을 이번 실행만 바꿀 때(-var). 보통은 비워 두고 always-on.json 의 값을 쓴다"
   type        = string
-  # 2026-10-25 팀 결정: 사용자 테스트·시연 기간에 서버를 켜 둔다. 운영진 제공 기간(~11/20) 끝까지. 비용 약 1.6 USD/일
-  default = "2026-11-20T23:59:00+09:00"
+  default     = null
+}
+
+# 24시간 모드 끝 시각: 그때까지 안 쓰면 끄기가 서버를 끄지 않고, PR 을 열어도 미리보기를 저절로 올리지 않는다(테스트 주소는 develop).
+# 빈 값이면 30분 안 쓰면 끄고 PR 을 열면 미리보기를 올린다. 값은 always-on.json 한 곳에 둔다 — dev-server.yml 도 develop 의
+# 그 파일을 읽는다(*.tfvars 는 공개 파일 검사가 막아서 JSON 으로 둔다). 2026-10-25 팀 결정: 사용자 테스트·시연 기간에
+# 운영진 제공 기간(~11/20) 끝까지 켜 둔다(약 1.6 USD/일).
+locals {
+  always_on_until = var.always_on_until != null ? var.always_on_until : jsondecode(file("${path.module}/always-on.json")).always_on_until
 }
 
 variable "origin_secret_version" {
@@ -149,7 +156,7 @@ module "idle_off" {
   instance_id     = data.aws_instance.app.id
   distribution_id = module.edge.distribution_id
   alert_topic_arn = module.observability.alert_topic_arn
-  always_on_until = var.always_on_until
+  always_on_until = local.always_on_until
 }
 
 module "cost" {
