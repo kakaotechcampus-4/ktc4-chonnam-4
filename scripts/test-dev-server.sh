@@ -330,7 +330,7 @@ if command -v jq >/dev/null 2>&1; then
   MERGE=1111111111111111111111111111111111111111
   HEAD=2222222222222222222222222222222222222222
   pushed=(EVENT=pull_request PR_ACTION=synchronize PR=101 HEAD_REPO=kakaotechcampus-4/ktc4-chonnam-4 AWS_ACCOUNT_ID=000000000000
-    HAS_PREVIEW=true HAS_NO_PREVIEW=false MERGE_SHA=$MERGE FAKE_LABELS=preview
+    HAS_PREVIEW=true HAS_NO_PREVIEW=false "MERGE_SHA=$MERGE" FAKE_LABELS=preview
     FAKE_PR_JSON="{\"base\":{\"ref\":\"develop\"},\"head\":{\"sha\":\"$HEAD\"},\"title\":\"t\",\"user\":{\"login\":\"someone\"}}"
     FAKE_PARENTS="3333333333333333333333333333333333333333 $HEAD")
   decide "${pushed[@]}" FAKE_ALWAYS_ON="$ON"
