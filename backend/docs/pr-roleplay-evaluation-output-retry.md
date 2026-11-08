@@ -40,7 +40,8 @@
 
 [Dev 서버 관측 실행 절차](roleplay-dev-observation-runbook-2026-11-08.md)에 따라
 설정 적용 → 배포 SHA 확인 → 팀 테스트 계정의 실제 텍스트 입력 → Network의 X-Trace-Id → 원문 파일/로그 → 저장 재조회 순서로 확인한다.
-fork push/PR은 팀 AWS 서버에 자동 배포되지 않는다. 팀 develop CI·리뷰·머지·배포 결과를 확인해야 한다.
+push 대상은 공식 저장소(upstream)의 `refactor/evaluation-output-retry`이며 같은 저장소의 `develop`을 대상으로 PR을 준비한다.
+refactor 브랜치 push만으로 팀 AWS develop 서버에 배포되지 않는다. 팀 develop CI·리뷰·머지·배포 결과를 확인해야 한다.
 
 로컬 `.env.local`은 서버에 복사하지 않는다. 실제 서버 모델·low·timeout·재시도·호출 로그 설정은 Parameter Store에서 확인한다.
 `.env.local`·점 없는 `env.local`·build/eval 결과는 Git 추적에서 제외한다. 실행기와 테스트 소스만 공유한다.

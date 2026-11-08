@@ -1,7 +1,7 @@
 # 팀 AWS Dev 서버 실제 입력 관측 계획
 
 작성일: 2026-11-08
-상태: 승인된 관측 구현·최종 로컬 검사 완료. push·PR·배포·실제 서버 입력 관측은 미수행.
+상태: 승인된 관측 구현·최종 로컬 검사 완료. 공식 저장소 refactor 브랜치 push 승인 완료. PR·배포·실제 서버 입력 관측은 미수행.
 
 ## 오늘의 완료 기준
 
@@ -35,7 +35,7 @@ push는 서버 관측 전에 수행한다. 서버에서 나타난 문제를 수�
 4. 원격 develop과의 차이·충돌을 확인하고 필요한 동기화 후 최종 build/형식 검사와 관련 가드를 완료한다.
    전체 검사는 최종 변경본에서 한 번 수행하고 새 수정/실패가 없으면 반복하지 않는다.
 5. 목적별 커밋과 PR 본문을 준비해 변경 파일·검증 결과·미해결 사항을 검토 가능하게 만든다.
-6. 사용자에게 정확한 push 대상과 커밋을 제시하고 최종 승인을 받은 후 fork의 refactor 브랜치에 push한다.
+6. 사용자에게 정확한 push 대상과 커밋을 제시하고 최종 승인을 받은 후 공식 저장소(upstream)의 refactor 브랜치에 push한다.
 7. 팀 develop 대상 PR의 CI·검토를 거쳐 배포 경로를 진행한다.
 
 커밋 목적 예시:
@@ -49,17 +49,17 @@ push는 서버 관측 전에 수행한다. 서버에서 나타난 문제를 수�
 backend/env.local, .env.local, 키·사용자 데이터와 무차별적인 실험 산출물은 커밋 대상으로 일괄 추가하지 않는다.
 기존 작업·측정 결과는 보존한다.
 
-## fork push와 실제 배포 경로
+## 공식 저장소 refactor push와 실제 배포 경로
 
-fork refactor push만으로 팀 서버가 바뀌지는 않는다.
+공식 저장소 refactor push만으로 팀 develop 서버가 바뀌지는 않는다.
 
 기본 경로:
 
-fork refactor push → 팀 develop 대상 PR → CI/리뷰 → 승인된 merge → Deploy 성공 확인 → 서버 관측
+upstream refactor push → 같은 저장소 develop 대상 PR → CI/리뷰 → 승인된 merge → Deploy 성공 확인 → 서버 관측
 
 머지 전 서버 검증을 원하면 팀 저장소 내부 브랜치의 PR 미리보기가 대안이다.
 현재 워크플로는 fork PR을 거절하므로, 팀 저장소에 브랜치를 올릴 권한과 팀 서버 사용 조율이 필요하다.
-사용자의 fork push 승인을 팀 저장소 push·merge 승인으로 확장하지 않는다.
+사용자가 공식 저장소 refactor 브랜치 push를 명시적으로 지시했다. develop 직접 push·merge·배포 승인은 별도다.
 다른 PR이 미리보기 자리를 쓰고 있거나 서버가 꺼져 있으면 배포가 건너뛰어질 수 있으므로 Actions Summary를 확인한다.
 배포 후 이미지/커밋과 화면의 X-Neuringo-Release를 대조한다. 화면 헤더만으로 백엔드 이미지 일치를 단독 입증하지 않는다.
 
@@ -138,7 +138,7 @@ fork refactor push → 팀 develop 대상 PR → CI/리뷰 → 승인된 merge �
 - 공식 develop `d6f7e06` 동기화 후 최종 build 성공: 2,855개 중 2,849개 통과, opt-in 제외 6개, 실패 0개.
 - DEBUG 예외 메시지 노출 회귀를 검사에서 발견해 고정 코드로 수정했다. 배포 스크립트·마이그레이션 가드는 Linux에서 통과했다.
 - 검수 계약·평가 실행기·Dev 요청 관측을 목적별 로컬 커밋으로 나누고 [PR 본문](pr-roleplay-evaluation-output-retry.md)을 준비했다.
-- 다음 단계는 fork push 별도 승인이다. 서버 관측의 실제 실행 절차는 [runbook](roleplay-dev-observation-runbook-2026-11-08.md)을 따른다.
+- 사용자의 대상 정정에 따라 공식 저장소 refactor 브랜치 push를 진행한다. 서버 관측의 실제 실행 절차는 [runbook](roleplay-dev-observation-runbook-2026-11-08.md)을 따른다.
 - 후속 승인으로 큐·문맥·입력·AI·검증·STT/TTS·저장 구간의 시간 관측을 추가했다.
   포함/자체 시간·반복 호출·응답 시 미완료·응답 후 종료를 구분하고 원문 진단 없이도 시간 로그를 남긴다.
   최종 추가 변경본 전체 build 성공: 총 2,865개, 통과 2,859개, 선택 실행 제외 6개, 실패 0개(2분 57초).
