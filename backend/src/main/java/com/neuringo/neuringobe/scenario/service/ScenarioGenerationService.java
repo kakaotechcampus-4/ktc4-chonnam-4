@@ -7,17 +7,15 @@ import com.neuringo.neuringobe.ai.application.model.LlmCompletion;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioGenerationInput;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioPromptFactory;
+import com.neuringo.neuringobe.ai.application.prompt.ScenarioTeacherConditions;
 import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.output.GeneratedScenario;
 import com.neuringo.neuringobe.common.ApiException;
-import com.neuringo.neuringobe.goal.dto.LearningGoalResponse;
 import com.neuringo.neuringobe.scenario.dto.ScenarioGenerationContext;
 import com.neuringo.neuringobe.scenario.dto.ScenarioPreparationInput;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,8 +33,6 @@ public class ScenarioGenerationService {
     /** 한 요청에서 출력 계약 위반으로 다시 만드는 최대 횟수(첫 시도 포함). */
     static final int MAX_ATTEMPTS = 3;
 
-    private static final Pattern WHITESPACE =
-            Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
     private final ObjectProvider<LlmProvider> providers;
     private final ScenarioPromptFactory prompts;
     private final JsonMapper json;
@@ -154,7 +150,31 @@ public class ScenarioGenerationService {
                         attempt);
                 throw generationFailed(HttpStatus.BAD_GATEWAY);
             }
-            validateConditions(goal, scenario);
+            // 강사 조건(등장인물·피할 표현)을 어긴 출력도 형식 실패처럼 실패 코드를 붙여 다시 만든다. 예전에는 바로 502 였다.
+            var violation = ScenarioTeacherConditions.violation(teacherInput, scenario);
+            if (violation.isPresent()) {
+                String code = violation.get();
+                log.info(
+                        "event=scenario_generation_invalid_output activityId={} reviewId={} attempt={} reason={}",
+                        context.snapshot().activityId(),
+                        context.snapshot().reviewId(),
+                        attempt,
+                        code);
+                if (attempt >= MAX_ATTEMPTS) {
+                    log.info(
+                            "event=scenario_generation_failed activityId={} reviewId={} failure={} elapsedMs={} attempts={} inputTokens={} outputTokens={}",
+                            context.snapshot().activityId(),
+                            context.snapshot().reviewId(),
+                            code,
+                            elapsedMs,
+                            attempt,
+                            inputTokens,
+                            outputTokens);
+                    throw conditionFailed(code);
+                }
+                if (!failureCodes.contains(code)) failureCodes.add(code);
+                continue;
+            }
             log.info(
                     "event=scenario_generation_completed activityId={} reviewId={} reason={} elapsedMs={} attempts={} inputTokens={} outputTokens={}",
                     context.snapshot().activityId(),
@@ -196,6 +216,16 @@ public class ScenarioGenerationService {
                 status, "SCENARIO_GENERATION_FAILED", "시나리오를 생성하지 못했습니다. 다시 시도해 주세요.");
     }
 
+    /** 다시 만들어도 강사 조건을 지키지 못했다. 코드는 API 명세의 SCENARIO_GENERATION_INVALID_OUTPUT 그대로다. */
+    private static ApiException conditionFailed(String code) {
+        return new ApiException(
+                HttpStatus.BAD_GATEWAY,
+                "SCENARIO_GENERATION_INVALID_OUTPUT",
+                ScenarioTeacherConditions.CHARACTER_ROLE_MISMATCH.equals(code)
+                        ? "요청한 등장인물 구성을 충족하지 못했습니다."
+                        : "금지 표현이 포함된 시나리오입니다.");
+    }
+
     @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
     public void validateStored(ScenarioPreparationInput input, GeneratedScenario scenario) {
         var goal = input.learningGoal();
@@ -226,61 +256,13 @@ public class ScenarioGenerationService {
             prompts.generation(trace, new AiAttemptContext(0, 1, 0), 1, conditions)
                     .parser()
                     .parse(json.writeValueAsString(scenario));
-            validateConditions(goal, scenario);
+            if (ScenarioTeacherConditions.violation(conditions.teacherInput(), scenario)
+                    .isPresent()) throw new IllegalStateException("teacher condition");
         } catch (RuntimeException invalidContent) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "SCENARIO_CANDIDATE_INVALID",
                     "후보가 현재 조건이나 콘텐츠 규칙을 충족하지 못합니다.");
         }
-    }
-
-    private void validateConditions(LearningGoalResponse goal, GeneratedScenario scenario) {
-        var expectedRoles =
-                goal.characters().stream()
-                        .map(c -> normalize((String) c.get("role")))
-                        .sorted()
-                        .toList();
-        var actualRoles =
-                scenario.characters().stream()
-                        .filter(c -> !"LEARNER".equals(c.id()))
-                        .map(c -> normalize(c.role()))
-                        .sorted()
-                        .toList();
-        if (!expectedRoles.isEmpty() && !expectedRoles.equals(actualRoles))
-            throw new ApiException(
-                    HttpStatus.BAD_GATEWAY,
-                    "SCENARIO_GENERATION_INVALID_OUTPUT",
-                    "요청한 등장인물 구성을 충족하지 못했습니다.");
-        var texts = new ArrayList<>(List.of(scenario.title(), scenario.summary()));
-        scenario.characters().forEach(c -> texts.add(c.role()));
-        texts.addAll(scenario.scenarioFacts());
-        texts.addAll(scenario.startingQuestions().values());
-        scenario.microGoals()
-                .forEach(
-                        g -> {
-                            texts.add(g.description());
-                            texts.addAll(g.requiredEvidence());
-                            texts.add(g.achievementExample());
-                        });
-        if (texts.stream()
-                .map(ScenarioGenerationService::compact)
-                .anyMatch(
-                        text ->
-                                goal.forbiddenExpressions().stream()
-                                        .map(ScenarioGenerationService::compact)
-                                        .anyMatch(text::contains)))
-            throw new ApiException(
-                    HttpStatus.BAD_GATEWAY,
-                    "SCENARIO_GENERATION_INVALID_OUTPUT",
-                    "금지 표현이 포함된 시나리오입니다.");
-    }
-
-    private static String normalize(String text) {
-        return WHITESPACE.matcher(text).replaceAll(" ").trim();
-    }
-
-    private static String compact(String text) {
-        return WHITESPACE.matcher(text).replaceAll("").toLowerCase(Locale.ROOT);
     }
 }
