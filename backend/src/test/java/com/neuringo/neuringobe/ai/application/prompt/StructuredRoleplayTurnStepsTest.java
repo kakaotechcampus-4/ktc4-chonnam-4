@@ -278,9 +278,29 @@ class StructuredRoleplayTurnStepsTest {
         var retry = provider.requests.get(2);
         assertThat(first.traceContext().candidateId())
                 .isEqualTo(retry.traceContext().candidateId());
-        assertThat(first.userPrompt()).isEqualTo(retry.userPrompt());
+        var retriedBody = (tools.jackson.databind.node.ObjectNode) body(retry).deepCopy();
+        assertThat(retriedBody.path("output_retry").path("error_code").asString())
+                .isEqualTo("INVALID_STRUCTURE");
+        retriedBody.remove("output_retry");
+        assertThat(retriedBody).isEqualTo(body(first));
         assertThat(body(retry).has("retry")).isFalse();
         assertThat(body(retry).get("previous_failed_candidate_ids").size()).isZero();
+    }
+
+    @Test
+    void generationOutputFeedbackDoesNotLeakIntoANewCandidate() {
+        provider.malformedOnce = AiOperation.RESPONSE_GENERATION;
+        provider.decisions.add(EvaluationDecision.REGENERATE);
+        provider.decisions.add(EvaluationDecision.PASS);
+        assertThat(executor.execute(RoleplayFixtures.TURN_ID, steps))
+                .isInstanceOf(RoleplayTurnResult.Ready.class);
+        var generations =
+                provider.requests.stream()
+                        .filter(r -> r.operation() == AiOperation.RESPONSE_GENERATION)
+                        .toList();
+        assertThat(generations).hasSize(3);
+        assertThat(body(generations.get(1)).has("output_retry")).isTrue();
+        assertThat(body(generations.get(2)).has("output_retry")).isFalse();
     }
 
     @ParameterizedTest

@@ -131,7 +131,7 @@ class ObservationCombinationSchemaTest {
                                 .path("o0")
                                 .has("anyOf"))
                 .isTrue();
-        assertThat(EvaluationOutputSchema.VERSION).isEqualTo("evaluation-output/v5");
+        assertThat(EvaluationOutputSchema.VERSION).isEqualTo("evaluation-output/v6");
     }
 
     private ScopedAnalysisContext context(GoalObservationOutput.Status status) {

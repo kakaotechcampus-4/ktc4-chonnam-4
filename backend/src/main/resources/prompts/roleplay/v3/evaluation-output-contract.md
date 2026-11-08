@@ -82,3 +82,12 @@ current_goal_assessment는 현재 질문 초점, interpretation_strategy.next_st
 일반 경로에서는 검수 객체가 필수이며, 현재 관찰이 없으면 observation_reviews는 빈 객체다.
 retry가 있으면 error_code와 correction은 이전 평가 출력의 서버 검증 오류다. 실제 근거로 다시 독립 검수한다.
 retry_target, safe_to_send, critical_failure_count는 서버가 결정하므로 출력하지 않는다.
+
+
+## 직접성 거절 근거
+
+필수 필드 answer_directness_violation은 보통 null이다. 일반 검수에서 ANSWER_TOO_DIRECT를 기록하면 다음 객체와 checks.difficulty_appropriate=false를 함께 쓴다.
+- reason: 해당 목표의 S0~S2 직접 정답 제공이면 TARGET_ANSWER_BEFORE_S3, 마스코트의 정답 제공이면 MASCOT_ANSWER_REVEAL.
+- speaker_role: 전자는 DIALOGUE, 후자는 HINT.
+- quote: 해당 후보 text 또는 mascot_hint의 정확한 연속 구절. 설명·분석·이전 대사에서 가져오지 않는다.
+character_response_contract.target_answer_allowed=true이면 TARGET_ANSWER_BEFORE_S3는 허용되지 않는다. 마스코트 힌트가 없으면 MASCOT_ANSWER_REVEAL도 허용되지 않는다. 다른 목표나 행동 주체의 문제를 이 사유로 대신 기록하지 않는다. 해당 문제의 검사·실패 코드로 판단한다. ANSWER_TOO_DIRECT가 없으면 이 필드는 null이다. 안전·입력 확인 우선 경로에서는 직접성 거절 검수를 생략하고 null로 둘 수 있다. 검사 통과를 위해 실패를 숨기거나 PASS로 바꾸지 않는다.

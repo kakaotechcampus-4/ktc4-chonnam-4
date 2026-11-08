@@ -249,7 +249,7 @@ class RoleplayHttpIntegrationTest {
         assertThat(state.llmRequests)
                 .extracting(LlmRequest::responseSchemaVersion)
                 .containsExactly(
-                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v5");
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v6");
         var json = tools.jackson.databind.json.JsonMapper.builder().build();
         var expected = json.readTree(json.writeValueAsString(state.contextObservations));
         for (var call : List.of(state.llmRequests.get(0), state.llmRequests.get(2))) {

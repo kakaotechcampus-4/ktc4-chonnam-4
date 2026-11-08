@@ -189,6 +189,7 @@ final class RoleplayFixtures {
         body.put("checks", checks);
         body.put("analysis_logic_review", EvaluationWireFixtures.logicReview(logic));
         body.put("decision", decision);
+        body.put("answer_directness_violation", null);
         body.put(
                 "failure_codes",
                 ((List<String>) json.readValue(codes, List.class))
