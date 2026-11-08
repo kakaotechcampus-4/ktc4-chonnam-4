@@ -138,8 +138,9 @@ final class ScriptedLlmProvider implements LlmProvider {
                 + " \"scenario_level\": \""
                 + level
                 + "\", \"ai_role\": \"NARRATOR\","
-                + " \"characters\": [{\"id\": \"LEARNER\", \"role\": \"학습자\"},"
-                + " {\"id\": \"FRIEND\", \"role\": \"친구\"}],"
+                + " \"characters\": [{\"id\": \"LEARNER\", \"role\": \"학습자\"}"
+                + characters(message)
+                + "],"
                 + " \"scenario_facts\": ["
                 + factJson
                 + "],"
@@ -151,6 +152,34 @@ final class ScriptedLlmProvider implements LlmProvider {
                 + " \"starting_questions\": {\"S0\": \"무슨 일이 있었을까?\","
                 + " \"S1\": \"친구가 울고 있어. 무슨 일이 있었을까?\","
                 + " \"S2\": \"친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?\"}}";
+    }
+
+    /**
+     * 강사가 적은 등장인물을 id·role 그대로 돌려준다(서버 검사 CHARACTER_ROLE_MISMATCH 를 통과하는 출력). 없으면 친구 한 명. id 가 없거나
+     * 형식이 아니면 OTHER_n 을 붙인다.
+     */
+    private static String characters(JsonNode message) {
+        JsonNode input = message.get("teacher_input").get("characters");
+        if (input == null || !input.isArray() || input.isEmpty())
+            return ", {\"id\": \"FRIEND\", \"role\": \"친구\"}";
+        StringBuilder json = new StringBuilder();
+        int index = 0;
+        for (JsonNode character : input) {
+            index++;
+            JsonNode idNode = character.get("id");
+            String id =
+                    idNode != null && idNode.asString().matches("[A-Z][A-Z0-9_]*")
+                            ? idNode.asString()
+                            : "OTHER_" + index;
+            String role =
+                    character.get("role").asString().replace("\\", "\\\\").replace("\"", "\\\"");
+            json.append(", {\"id\": \"")
+                    .append(id)
+                    .append("\", \"role\": \"")
+                    .append(role)
+                    .append("\"}");
+        }
+        return json.toString();
     }
 
     private static String analysis(JsonNode message) {

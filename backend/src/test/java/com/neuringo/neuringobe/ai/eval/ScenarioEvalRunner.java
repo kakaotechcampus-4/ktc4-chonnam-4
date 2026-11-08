@@ -8,12 +8,14 @@ import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.PreparedPrompt;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioGenerationInput;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioPromptFactory;
+import com.neuringo.neuringobe.ai.application.prompt.ScenarioTeacherConditions;
 import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.output.GeneratedScenario;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -84,7 +86,18 @@ final class ScenarioEvalRunner {
             }
             String content = ((AiCallResult.Success<LlmCompletion>) result).data().content();
             try {
-                scenario = prompt.parser().parse(content);
+                GeneratedScenario parsed = prompt.parser().parse(content);
+                // 서버(ScenarioGenerationService)와 같이 강사 조건(등장인물 role·피할 표현)을 어긴 출력도 실패 코드를 붙여 다시
+                // 만든다.
+                Optional<String> violation =
+                        ScenarioTeacherConditions.violation(input.teacherInput(), parsed);
+                if (violation.isPresent()) {
+                    failures.add(
+                            new ScenarioRecord.FormatFailure(
+                                    attempt, violation.get() + ": teacher condition", content));
+                } else {
+                    scenario = parsed;
+                }
             } catch (InvalidLlmOutputException exception) {
                 failures.add(new ScenarioRecord.FormatFailure(attempt, reason(exception), content));
             }

@@ -141,6 +141,48 @@
       },
       "difficulty": {"scenario_level": "L1"},
       "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"]], "goals_mention_any": [["묻", "물어", "질문"], ["위로", "괜찮"], ["함께", "같이"]]}
+    },
+    {
+      "id": "L1_NAMED_CHARACTER",
+      "purpose": "강사가 등장인물 칸에 관계 없이 이름만 적음(저장 때 id 는 OTHER). 출력 role 이 '민수' 그대로여야 서버 검사(CHARACTER_ROLE_MISMATCH)를 통과한다. 첫 대사·사실에서 이름으로 부르는지도 본다",
+      "teacher_input": {
+        "learning_goal": "친구의 감정을 알아차리기",
+        "category": "EMOTION_RECOGNITION",
+        "situation_type": "놀이터",
+        "characters": [{"id": "OTHER", "role": "민수"}],
+        "required_elements": [],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L1"},
+      "expect": {"mentions_any": [["놀이터", "미끄럼틀", "그네", "모래"]]}
+    },
+    {
+      "id": "L2_NAMED_ROLE",
+      "purpose": "관계(FRIEND)를 고르고 역할 설명에 이름을 붙임. role '넘어진 친구 지우' 를 줄이거나('친구') 바꾸지 않아야 한다",
+      "teacher_input": {
+        "learning_goal": "친구가 속상한 이유를 이해하기",
+        "category": "EMPATHY_EXPRESSION",
+        "situation_type": "운동장",
+        "characters": [{"id": "FRIEND", "role": "넘어진 친구 지우"}],
+        "required_elements": ["무릎에 흙이 묻음"],
+        "forbidden_expressions": ["바보"]
+      },
+      "difficulty": {"scenario_level": "L2"},
+      "expect": {"mentions_any": [["흙"]]}
+    },
+    {
+      "id": "L3_TWO_NAMED",
+      "purpose": "이름 둘(관계 FRIEND 하나, 관계 없음 하나). 두 role 이 모두 그대로 나와야 하고 ai_role 은 그중 하나다",
+      "teacher_input": {
+        "learning_goal": "두 친구의 다른 마음을 이해하고 해결 방법 찾기",
+        "category": "SITUATION_COPING",
+        "situation_type": "교실",
+        "characters": [{"id": "FRIEND", "role": "하은"}, {"id": "OTHER", "role": "민준"}],
+        "required_elements": ["색연필을 같이 쓰기로 함"],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L3"},
+      "expect": {"mentions_any": [["색연필"]]}
     }
   ]
 }

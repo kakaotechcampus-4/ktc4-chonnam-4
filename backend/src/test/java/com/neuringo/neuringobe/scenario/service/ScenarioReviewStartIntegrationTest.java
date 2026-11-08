@@ -1580,6 +1580,37 @@ class ScenarioReviewStartIntegrationTest {
                 "SCENARIO_GENERATION_INVALID_OUTPUT",
                 () -> preparation.prepare(ctx.activity(), UUID.randomUUID(), auth(ctx)));
         assertThat(draftCount()).isEqualTo(drafts);
+        // 강사 조건 위반도 형식 실패처럼 한 요청 안에서 최대 횟수까지 다시 만든 뒤에 실패한다.
+        verify(llm, times(ScenarioGenerationService.MAX_ATTEMPTS)).complete(any());
+    }
+
+    @Test
+    void namedCharacterMismatchIsRegeneratedWithFailureCodeInSameRequest() {
+        // 강사가 등장인물 칸에 이름을 적은 경우. 모델이 이름을 "넘어진 친구" 같은 관계로 바꾸면 서버가 거부하고, 실패 코드를 붙여 다시 만든다.
+        var ctx = context(null);
+        jdbc.update(
+                "UPDATE learning_goal SET characters_json = '[{\"id\":\"FRIEND\",\"role\":\"민수\"}]' WHERE goal_id = ?",
+                ctx.goal());
+        long drafts = draftCount();
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(llm.complete(any()))
+                .thenAnswer(
+                        inv -> {
+                            LlmRequest request = inv.getArgument(0);
+                            assertThat(request.userPrompt()).contains("민수");
+                            if (calls.incrementAndGet() == 1) {
+                                assertThat(request.userPrompt()).doesNotContain("failure_codes");
+                                return completion(request, generatedJson());
+                            }
+                            assertThat(request.currentAttempt()).isEqualTo(2);
+                            assertThat(request.userPrompt())
+                                    .contains("failure_codes", "CHARACTER_ROLE_MISMATCH");
+                            return completion(request, generatedJson().replace("넘어진 친구", "민수"));
+                        });
+        var review = preparation.prepare(ctx.activity(), UUID.randomUUID(), auth(ctx));
+        assertThat(review.candidate()).isNotNull();
+        assertThat(draftCount()).isEqualTo(drafts + 1);
+        verify(llm, times(2)).complete(any());
     }
 
     @Test
