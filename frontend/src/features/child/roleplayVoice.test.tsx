@@ -183,6 +183,33 @@ describe("역할극 말로 답하기", () => {
 
     expect(await screen.findByText(/마이크를 쓸 수 없어/)).toBeInTheDocument()
     expect(await screen.findByRole("textbox", { name: "답 적기" })).toBeInTheDocument()
+    // 권한 거부는 다시 묻지 않는다.
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it("블루투스 이어폰 전환처럼 마이크가 처음 한 번 안 열리면 잠깐 뒤 다시 열어 녹음을 이어 간다", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    getUserMedia.mockRejectedValueOnce(new DOMException("Could not start audio source", "NotReadableError"))
+    const { user } = await openRoleplay()
+
+    await speak(user, "다리가 아플 것 같아")
+
+    expect(await screen.findByText(ROLEPLAY_SCRIPT[0])).toBeInTheDocument()
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/마이크를 찾지 못했어/)).not.toBeInTheDocument()
+  })
+
+  it("다시 열어도 안 되면 처리 옵션 없이 한 번 더 열어 보고, 그래도 안 되면 깡총이가 알려 준다", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    getUserMedia.mockRejectedValue(new DOMException("Could not start audio source", "NotReadableError"))
+    const { user } = await openRoleplay()
+
+    await user.click(screen.getByRole("button", { name: "말로 답하기" }))
+
+    expect(await screen.findByText(/마이크를 찾지 못했어/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(getUserMedia).toHaveBeenCalledTimes(3)
+    expect(getUserMedia.mock.calls[2][0]).toEqual({ audio: true })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("NotReadableError"))
   })
 
   it("녹음을 지원하지 않는 브라우저에서는 마이크 버튼을 누를 수 없다", async () => {
