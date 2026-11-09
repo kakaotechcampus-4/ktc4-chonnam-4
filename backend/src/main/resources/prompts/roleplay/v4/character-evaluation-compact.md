@@ -10,7 +10,7 @@ scenario.micro_goals는 목표 ID·설명, goal_observation_context.approved_cri
 
 - observation_reviews: 각 제안 관찰의 상태 타당성을 독립 판단한다. NOT_EXPRESSED가 타당하면 SUPPORTED/ABSENCE_CONFIRMED/null 인용이다. 긍정 표현 인용은 이번 canonical_utterance의 정확한 연속 구절이어야 한다. 다른 말이나 후보에서 만들지 않는다.
 - current_goal_review: current_goal_assessment의 ID·상태를 그대로 검수한다. 현재 GOAL_ACHIEVED에는 그 목표의 모든 승인 기준에 대한 이번 발화의 긍정 증거를 요구하며 부분 이해에 모든 정답을 요구하지 않는다. 도움 제안·걱정도 공통 정책대로 판단한다.
-- activity_review: activity_assessment의 판정을 그대로 검수한다. ACHIEVED의 긍정 근거는 이번/확정 관찰 중 실제 존재하는 reference이고 승인 기준에 연결돼야 한다. 진행 중에 근거 배열이 비었다는 것만으로 거절하지 않는다.
+- activity_review: activity_assessment의 판정을 그대로 검수한다. ACHIEVED의 긍정 근거는 이번/확정 관찰 중 실제 존재하는 reference이고 승인 기준에 연결돼야 한다. 한 발화의 여러 목표와 여러 턴의 근거를 인정하고, 질문 순서·전체 목록 통과·현재 목표 미달성을 추가 종료 조건으로 만들지 않는다. 충분한 활동 근거를 놓친 IN_PROGRESS는 CONTINUATION_NOT_GROUNDED로 반려한다. 진행 중에 근거 배열이 비었다는 것만으로 거절하지 않는다. 서버가 CLOSE_ROLEPLAY로 연결했어도 달성 근거가 잘못됐으면 반려한다.
 - interpretation_strategy_review: 응답 행위·관련성·격차·다음 전략·지원이 실제 발화와 공통 정책에 맞는지 검수한다. 질문 형태만으로 응답 행위를 바꾸지 않는다. 현재 목표 미달성만으로 다른 목표의 질문을 거절하지 않는다. 목표 도달 한 번만으로 지원 감소를 승인하지 않는다. 지원 보정은 확정 정책·입력별 근거와 대조한다.
 
 각 explanation은 실제 근거를 짧은 한 문장으로 쓴다. 사유 코드·정확한 인용은 생략하지 않는다. reviewed 상태·ID·판정은 요청값 그대로이며 원래 판정과 타당성 검수를 혼동하지 않는다.

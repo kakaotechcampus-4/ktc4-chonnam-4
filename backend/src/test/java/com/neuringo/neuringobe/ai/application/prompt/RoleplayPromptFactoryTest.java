@@ -79,7 +79,7 @@ class RoleplayPromptFactoryTest {
 
         LlmRequest request = prompt.request();
         assertThat(request.operation()).isEqualTo(AiOperation.CAUSE_ANALYSIS);
-        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v5");
+        assertThat(request.promptVersion()).isEqualTo("roleplay-cause-analysis/v6");
         assertThat(request.responseSchemaVersion()).isEqualTo("analysis-result/v2");
         assertThat(request.policyVersion()).isEqualTo("SUPPORT-MVP-001");
         assertThat(request.systemPrompt()).contains("원인 판단 단계");

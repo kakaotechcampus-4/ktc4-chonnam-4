@@ -105,7 +105,9 @@ public class RoleplayCompletionService {
                                     maximumLearningTurnReached(command, plan, deadline);
                             boolean safetyLimitReached =
                                     RoleplayStoredTurnSafetyLimit.reached(command.turnNumber());
-                            if ((maximumTurnReached || safetyLimitReached)
+                            if ((plan.proposal().decision() == Decision.ACHIEVED
+                                            || maximumTurnReached
+                                            || safetyLimitReached)
                                     && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
                                             || !"CLOSING".equals(command.responseType()))) {
                                 status.setRollbackOnly();

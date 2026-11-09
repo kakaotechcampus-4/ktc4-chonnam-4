@@ -738,7 +738,8 @@ class RoleplayContextSourceIntegrationTest {
                                 com.neuringo.neuringobe.roleplay.application
                                         .RoleplayInputGoalAssessment.Outcome.IN_PROGRESS,
                                 com.neuringo.neuringobe.roleplay.application
-                                        .RoleplayInputGoalAssessment.SupportDecision.MAINTAINED,
+                                        .RoleplayInputGoalAssessment.SupportDecision.valueOf(
+                                        achieved ? "CLOSING" : "MAINTAINED"),
                                 Set.of()));
         assertThat(turnCount(f)).isZero();
         assertThat(observationCount(f)).isZero();
@@ -2391,6 +2392,10 @@ class RoleplayContextSourceIntegrationTest {
 
     private Change change(
             Fixture f, Snapshot snapshot, boolean achieved, UUID nextFocus, String nextSupport) {
+        if (achieved) {
+            nextFocus = snapshot.state().currentMicroGoalId();
+            nextSupport = snapshot.state().currentSupportLevel();
+        }
         UUID turn = UUID.randomUUID(),
                 candidateId = UUID.randomUUID(),
                 analysisId = UUID.randomUUID();
@@ -2426,7 +2431,10 @@ class RoleplayContextSourceIntegrationTest {
                         "PARTIAL_UNDERSTANDING",
                         new AnalysisResult.PrimaryGap("MISSING_EMOTION", null),
                         new AnalysisResult.NextStrategy(
-                                "PROBE_EVENT", nextFocus, null, nextSupport),
+                                achieved ? "CLOSE_ROLEPLAY" : "PROBE_EVENT",
+                                nextFocus,
+                                null,
+                                nextSupport),
                         0.9,
                         extension);
         var evaluation =
@@ -2447,8 +2455,8 @@ class RoleplayContextSourceIntegrationTest {
                                 candidateId,
                                 turn,
                                 "synthetic approved response?",
-                                "GUIDING_QUESTION",
-                                "PROBE_EVENT",
+                                achieved ? "CLOSING" : "GUIDING_QUESTION",
+                                achieved ? "CLOSE_ROLEPLAY" : "PROBE_EVENT",
                                 nextFocus,
                                 nextSupport,
                                 List.of()),

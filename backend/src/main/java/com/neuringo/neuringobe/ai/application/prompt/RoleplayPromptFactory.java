@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class RoleplayPromptFactory {
 
-    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v5";
+    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v6";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
 
@@ -43,14 +43,14 @@ public final class RoleplayPromptFactory {
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v13";
+            "roleplay-response-evaluation-character/v14";
 
     public static final String COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION =
-            "roleplay-cause-analysis-character/v1";
+            "roleplay-cause-analysis-character/v2";
     public static final String COMPACT_CHARACTER_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation-character/v7";
     public static final String COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v14";
+            "roleplay-response-evaluation-character/v15";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -203,7 +203,8 @@ public final class RoleplayPromptFactory {
                         microGoalIds(input),
                         observations,
                         trace.analysisId(),
-                        input.state());
+                        input.state(),
+                        true);
         if (compact)
             return new PreparedPrompt<>(
                     request.withResponseJsonSchema(output.schema()),

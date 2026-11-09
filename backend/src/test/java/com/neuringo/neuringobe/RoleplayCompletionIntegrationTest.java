@@ -86,6 +86,18 @@ class RoleplayCompletionIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"GUIDING_QUESTION", "CLOSING"})
+    void achievementWithoutMatchingClosingStrategyCannotCommit(String responseType) {
+        var f = fixture(ActivityType.ROLEPLAY);
+        var command =
+                command(f, UUID.randomUUID(), "a".repeat(64), 1, responseType, "PROBE_EMOTION");
+        assertThat(complete(command, true, RoleplayTurnDeadline.start()))
+                .isInstanceOf(RoleplayCheckpointStore.Conflict.class);
+        assertUnchanged(f);
+        assertThat(observationCount(f, "roleplay_goal_assessment")).isZero();
+    }
+
+    @ParameterizedTest
     @EnumSource(
             value = GoalObservationOutput.Status.class,
             names = {"NOT_EXPRESSED", "MISUNDERSTOOD", "CONTRADICTORY"})
