@@ -69,8 +69,8 @@ UNSUPPORTED_CAUSE_ANALYSIS·STATE_STRATEGY_MISMATCH는 분석 검수 결과에�
 
 ## 버전과 적용 범위
 
-- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v11. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v12.
-- 제공자 검수 출력 스키마: evaluation-output/v8, 요청별 동적 스키마
+- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v13. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v14.
+- 제공자 검수 출력 스키마: evaluation-output/v9, 요청별 동적 스키마
 - 내부 목표 검수 계약: 기존 evaluation-result/v2 유지
 - 내부 EvaluationResult·공개 API·DB·분석/생성 출력 계약은 유지한다.
 - 정상 경로는 분석→생성→평가 3회이며 별도 검수 호출은 추가하지 않는다.
@@ -232,3 +232,11 @@ REANALYZE의 거절 영역·사유·수정 경로는 내부 AnalysisReviewIssue�
 v8은 `character_interaction_review`를 추가한다. 캐릭터 일반 경로는 `{mode, quote}`가 필수이고 안내자·안전/입력 확인 우선 경로는 null이다. 실제 후보 인용과 분류·거절 검사의 정합성을 서버에서 확인한다. 캐릭터 요청의 native 실패 코드에는 MISSING_QUESTION이 없으며, 이를 반환한 검수는 같은 후보의 검수 재시도로 이어진다. 질문 없는 단서 부족·답변 불가 대사의 유효한 거절은 유지한다. 공개/저장용 EvaluationResult는 바뀌지 않는다.
 
 질문 필수 여부·교사식 문답 금지는 서버 계약으로 전달하며 재생성 지시는 그 범위 안의 자료다. 검수의 자연어 분류 정확도나 실제 속도 개선은 로컬 계약 검사만으로 보장되지 않는다. [상세 변경·검증](roleplay-character-interaction-contract-2026-11-09.md)을 참고한다.
+
+## 2026-11-09 S0 거절 근거·서버 필수 조건
+
+v9의 target_cue_violation은 정상·안전/입력 확인 우선·비학습 단서 경로에서 null이다. 일반 캐릭터 학습 전략의 ANALYSIS_RESPONSE_MISMATCH 거절 때만 reason/quote를 받는다. 목표 ID는 서버의 적용 전략에서 재사용하고 출력에 반복하지 않는다. NO_TARGET_CUE는 후보 전체, 다른 사유는 실제 후보의 해당 구절을 인용해야 하며 실패 코드·검사 false와 일치해야 한다.
+
+캐릭터 모델용 revision_instruction은 keep/change/avoid만 받으며 required를 출력하면 거절한다. 수신 스키마 검증 이후 서버가 required를 복원해 기존 내부/공개/저장용 RevisionInstruction 형태와 GenerationRetry를 유지한다. 안내자 모델의 기존 네 배열 계약은 유지한다. 모델 원문에 없는 required가 내부 수정 조건에 나타나는 것은 서버 복원 결과다.
+
+[S0 경량 설계](roleplay-s0-cue-review-design-2026-11-09.md)와 [구현·검증 결과](roleplay-s0-cue-contract-results-2026-11-09.md)를 참고한다. 스키마의 근거 정합성이 실제 단서의 교육적 의미를 보장하지는 않는다.

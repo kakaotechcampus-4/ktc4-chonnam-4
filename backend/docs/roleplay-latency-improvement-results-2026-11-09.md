@@ -19,10 +19,10 @@
 | 단계 | 기본 캐릭터 prompt | 모델 출력 schema |
 |---|---|---|
 | 분석 | roleplay-cause-analysis-character/v1 | character-analysis-output/v1 |
-| 생성 | roleplay-response-generation-character/v5 | character-candidate-output/v1 |
-| 검수 | roleplay-response-evaluation-character/v12 | evaluation-output/v8 |
+| 생성 | roleplay-response-generation-character/v7 | character-candidate-output/v1 |
+| 검수 | roleplay-response-evaluation-character/v14 | evaluation-output/v9 |
 
-이 표는 캐릭터 질문·상호작용 계약 보완까지 반영한 현재 기본값이다. 기존 크기 비교와 실제 단건의 당시 버전은 해당 절·별도 비교 보고서를 따른다. 후속 보완의 전체 검사(2,910개 중 2,904 통과·실패 0·조건부 제외 6개)와 한계는 [상호작용 계약 보완](roleplay-character-interaction-contract-2026-11-09.md)에 기록했다.
+이 표는 [S0 거절 근거·서버 필수 조건](roleplay-s0-cue-contract-results-2026-11-09.md)까지 반영한 현재 기본값이다. 기존 크기 비교와 실제 단건의 당시 버전은 해당 절·별도 비교 보고서를 따른다. 후속 보완의 전체 검사(2,910개 중 2,904 통과·실패 0·조건부 제외 6개)와 한계는 [상호작용 계약 보완](roleplay-character-interaction-contract-2026-11-09.md)에 기록했다.
 
 내부 analysis-result/v2·candidate-response/v1·evaluation-result/v2와 외부 HTTP·DB 구조는 유지한다. 프론트엔드 후속 변경은 없다. 모델 원문은 이제 간결한 wire이므로 분석 원문의 o키는 같은 요청 MODEL_REQUEST의 analysis_observation_tasks와 approved_criteria를 함께 보아야 한다.
 
