@@ -18,6 +18,7 @@ function SpeechBubble({
   character,
   mood,
   characterAlign = "bottom",
+  action,
   children,
   className,
 }: {
@@ -26,6 +27,8 @@ function SpeechBubble({
   mood?: CharacterMood
   /** 캐릭터를 말풍선 아래(기본) 또는 위(이름 옆)에 맞춘다. 말풍선 꼬리 모서리도 같은 쪽으로 둔다. */
   characterAlign?: "top" | "bottom"
+  /** 역할극 캐릭터의 행동 지문(괄호 없이). 대사 위에 작은 글씨로 보여 준다. */
+  action?: string | null
   children: React.ReactNode
   className?: string
 }) {
@@ -45,7 +48,8 @@ function SpeechBubble({
         <span className="text-sm font-semibold text-[var(--child-text-muted)]">
           {SPEAKER_NAMES[character]}
         </span>
-        <p className="font-child-display text-lg font-bold">{children}</p>
+        {action ? <span className="text-base text-[var(--child-text-muted)] italic">{action}</span> : null}
+        {children ? <p className="font-child-display text-lg font-bold">{children}</p> : null}
       </div>
     </div>
   )

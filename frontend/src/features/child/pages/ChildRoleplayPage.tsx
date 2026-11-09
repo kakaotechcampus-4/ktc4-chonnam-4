@@ -14,6 +14,7 @@ import {
 } from "../components/roleplay/RoleplayComposer"
 import type { VoiceRecorderError } from "../lib/voiceRecorder"
 import { playSpeech, stopSpeech } from "../lib/speechPlayer"
+import { splitStageDirection } from "../lib/stageDirection"
 import { RabbitHintBubble } from "../components/roleplay/RabbitHintBubble"
 import { ErrorState, LoadErrorDialog, LoadingState, StateDialog } from "../components/state"
 import { SessionLostDialog } from "../components/state/LoadErrorDialog"
@@ -66,17 +67,21 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
       </div>
     )
   }
+  // 캐릭터 대사의 괄호 지문은 괄호 없이 대사 위 작은 글씨로 보여 준다.
+  const { action, speech } = splitStageDirection(message.text)
   if (!message.audioUrl) {
     return (
-      <SpeechBubble character="turtle" className={COLUMN}>
-        {message.text}
+      <SpeechBubble character="turtle" className={COLUMN} action={action}>
+        {speech}
       </SpeechBubble>
     )
   }
   const audioUrl = message.audioUrl
   return (
     <div className={`${COLUMN} flex items-end gap-2`}>
-      <SpeechBubble character="turtle">{message.text}</SpeechBubble>
+      <SpeechBubble character="turtle" action={action}>
+        {speech}
+      </SpeechBubble>
       <button
         type="button"
         onClick={() => void playSpeech(audioUrl)}
