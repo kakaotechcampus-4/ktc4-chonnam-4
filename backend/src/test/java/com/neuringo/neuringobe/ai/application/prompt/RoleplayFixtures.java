@@ -192,6 +192,7 @@ final class RoleplayFixtures {
         body.put("answer_directness_violation", null);
         body.putIfAbsent("goal_progress_violation", null);
         body.put("character_interaction_review", null);
+        body.put("target_cue_violation", null);
         body.put(
                 "failure_codes",
                 ((List<String>) json.readValue(codes, List.class))

@@ -43,6 +43,11 @@
       "id": "C",
       "text": "나 발표하기 싫어서 일부러 멈췄어.",
       "expected": "REGENERATE_PROHIBITED_INFERENCE"
+    },
+    {
+      "id": "D",
+      "text": "응.",
+      "expected": "REGENERATE_NO_TARGET_CUE"
     }
   ]
 }

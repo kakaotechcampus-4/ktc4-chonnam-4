@@ -77,8 +77,8 @@ public final class CharacterInteractionDiagnostic {
                                     observations)));
         }
         samples = List.copyOf(prepared);
-        if (!samples.stream().map(Sample::id).toList().equals(List.of("A", "B", "C")))
-            throw new IllegalStateException("고정된 세 후보만 허용합니다.");
+        if (!samples.stream().map(Sample::id).toList().equals(List.of("A", "B", "C", "D")))
+            throw new IllegalStateException("고정된 네 후보만 허용합니다.");
     }
 
     List<Sample> samples() {
@@ -150,7 +150,7 @@ public final class CharacterInteractionDiagnostic {
         }
         return new Report(
                 calls.get(),
-                entries.size() == 3 && entries.stream().allMatch(Entry::expectedMatch),
+                entries.size() == 4 && entries.stream().allMatch(Entry::expectedMatch),
                 List.copyOf(entries),
                 stopped);
     }
@@ -169,6 +169,12 @@ public final class CharacterInteractionDiagnostic {
         for (String key :
                 List.of("current_goal_review", "activity_review", "interpretation_strategy_review"))
             if (!node.path(key).path("verdict").asString().equals("SUPPORTED")) return false;
+        if (sample.id().equals("D"))
+            return result.failureCodes().contains("ANALYSIS_RESPONSE_MISMATCH")
+                    && node.path("target_cue_violation")
+                            .path("reason")
+                            .asString()
+                            .equals("NO_TARGET_CUE");
         return sample.id().equals("B")
                 ? result.failureCodes().contains("CHARACTER_BREAK")
                         && node.path("character_interaction_review")
@@ -214,10 +220,15 @@ public final class CharacterInteractionDiagnostic {
             int physicalCalls, boolean allExpected, List<Entry> cases, String stoppedReason) {}
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 0) throw new IllegalArgumentException("고정된 세 후보만 허용합니다.");
+        boolean prepareOnly = args.length == 1 && args[0].equals("--prepare-only");
+        if (args.length != 0 && !prepareOnly)
+            throw new IllegalArgumentException("고정된 네 후보와 --prepare-only만 허용합니다.");
         String model = RoleplayEvalMain.requireEnv("AI_MODEL");
         var diagnostic = new CharacterInteractionDiagnostic();
-        var output = RoleplayEvalMain.diagnosticOutput("character-interaction", model);
+        var output =
+                RoleplayEvalMain.diagnosticOutput(
+                        prepareOnly ? "character-interaction-prepared" : "character-interaction",
+                        model);
         for (var sample : diagnostic.samples()) {
             var dir = Files.createDirectory(output.resolve(sample.id()));
             Files.writeString(
@@ -238,7 +249,7 @@ public final class CharacterInteractionDiagnostic {
                                 "timeout",
                                 RoleplayEvalMain.env("AI_TIMEOUT", "10s"),
                                 "maximum_calls",
-                                3,
+                                4,
                                 "shared_budget_ms",
                                 60000,
                                 "sdk_max_retries",
@@ -248,7 +259,13 @@ public final class CharacterInteractionDiagnostic {
                                 "generation_calls",
                                 0,
                                 "git_commit",
-                                String.valueOf(RoleplayEvalMain.gitCommit()))));
+                                String.valueOf(RoleplayEvalMain.gitCommit()),
+                                "prepare_only",
+                                prepareOnly)));
+        if (prepareOnly) {
+            System.out.printf("모델 호출 없이 요청 준비 완료: %s%n", output.toAbsolutePath());
+            return;
+        }
         try (var context = RoleplayEvalMain.openAiContext(model)) {
             var report =
                     diagnostic.run(

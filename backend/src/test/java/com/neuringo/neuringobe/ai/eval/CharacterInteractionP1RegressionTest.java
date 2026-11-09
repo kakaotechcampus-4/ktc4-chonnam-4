@@ -256,6 +256,101 @@ class CharacterInteractionP1RegressionTest {
                 .isEqualTo(1);
     }
 
+    @Test
+    void successKeepsCueEvidenceNullAndDoesNotRepeatTargetId() {
+        var prepared = evaluation(candidate("응… (손을 만지작거리며 작게 숨을 내쉰다)"));
+        var body = accepted(prepared.request());
+        assertThat(body.path("target_cue_violation").isNull()).isTrue();
+        var schema = JSON.readTree(prepared.request().responseJsonSchema());
+        var fields = new ArrayList<String>();
+        schema.path("properties")
+                .path("target_cue_violation")
+                .path("properties")
+                .propertyNames()
+                .forEach(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("reason", "quote");
+        assertThat(prepared.parser().parse(body.toString()).canDeliver()).isTrue();
+        assertThat(
+                        JSON.readTree(prepared.request().userPrompt())
+                                .path("character_response_contract")
+                                .path("cue_policy")
+                                .asString())
+                .isEqualTo("S0_OBSERVABLE_CUE_V1");
+    }
+
+    @Test
+    void serverRestoresRequiredOnlyAfterRejectingModelOwnedRequired() {
+        var prepared = evaluation(candidate("응."));
+        var body = rejected(prepared.request());
+        var revisionSchema =
+                JSON.readTree(prepared.request().responseJsonSchema())
+                        .path("properties")
+                        .path("revision_instruction");
+        assertThat(revisionSchema.path("properties").has("required")).isFalse();
+        var result = prepared.parser().parse(body.toString());
+        assertThat(result.canDeliver()).isFalse();
+        assertThat(result.revisionInstruction().required())
+                .hasSize(3)
+                .anyMatch(s -> s.contains("목표·지원"));
+        assertThat(body.path("revision_instruction").has("required")).isFalse();
+        assertThat(JSON.writeValueAsString(result))
+                .contains("required")
+                .doesNotContain("target_cue_violation");
+        ((ObjectNode) body.path("revision_instruction"))
+                .putArray("required")
+                .add("current_goal_review");
+        assertThatThrownBy(() -> prepared.parser().parse(body.toString()))
+                .isInstanceOfSatisfying(
+                        InvalidLlmOutputException.class,
+                        e ->
+                                assertThat(EvaluationRetry.from(e))
+                                        .isEqualTo(EvaluationRetry.SERVER_REQUIRED_CONFLICT));
+    }
+
+    @Test
+    void cueRejectionRequiresTheActualFullCandidateForAnAbsenceClaim() {
+        var prepared = evaluation(candidate("응."));
+        for (String quote : List.of("응", "없는 대사", input.learnerTurn().canonicalUtterance(), " ")) {
+            var body = rejected(prepared.request());
+            ((ObjectNode) body.path("target_cue_violation")).put("quote", quote);
+            assertThatThrownBy(() -> prepared.parser().parse(body.toString()))
+                    .isInstanceOfSatisfying(
+                            InvalidLlmOutputException.class,
+                            e ->
+                                    assertThat(EvaluationRetry.from(e))
+                                            .isEqualTo(EvaluationRetry.TARGET_CUE_CONFLICT));
+        }
+        var missing = rejected(prepared.request());
+        missing.putNull("target_cue_violation");
+        assertThatThrownBy(() -> prepared.parser().parse(missing.toString()))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        var extra = rejected(prepared.request());
+        ((ObjectNode) extra.path("target_cue_violation"))
+                .put("target_micro_goal_id", UUID.randomUUID().toString());
+        assertThatThrownBy(() -> prepared.parser().parse(extra.toString()))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
+    @Test
+    void cueReasonAndCheckCannotContradictPassOrDisappearBehindAnotherFailure() {
+        var prepared = evaluation(candidate("응."));
+        var passWithRejection = accepted(prepared.request());
+        passWithRejection
+                .putObject("target_cue_violation")
+                .put("reason", "NO_TARGET_CUE")
+                .put("quote", "응.");
+        assertThatThrownBy(() -> prepared.parser().parse(passWithRejection.toString()))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        var noCode = rejected(prepared.request());
+        noCode.putArray("failure_codes").add("NOT_ANSWERABLE");
+        assertThatThrownBy(() -> prepared.parser().parse(noCode.toString()))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        var unknown = rejected(prepared.request());
+        ((ObjectNode) unknown.path("target_cue_violation")).put("reason", "NEEDS_EMOTION_WORD");
+        assertThatThrownBy(() -> prepared.parser().parse(unknown.toString()))
+                .isInstanceOf(InvalidLlmOutputException.class);
+    }
+
     private AnalysisResult analysis() {
         return prompts.causeAnalysis(
                         trace(analysisId, null), attempts, 1, input, null, observations)
@@ -322,12 +417,13 @@ class CharacterInteractionP1RegressionTest {
                 .put("analysis_response_consistent", false)
                 .put("answerable", false);
         revision(body);
-        return body;
+        return EvaluationWireFixtures.characterContract(body, JSON.readTree(request.userPrompt()));
     }
 
     private static void revision(ObjectNode body) {
         var revision = body.putObject("revision_instruction");
-        for (String key : List.of("keep", "change", "avoid", "required")) revision.putArray(key);
+        for (String key : List.of("keep", "change", "avoid")) revision.putArray(key);
+        if (body.path("character_interaction_review").isNull()) revision.putArray("required");
         revision.withArray("change").add("해당 목표의 행동 단서를 보완한다.");
     }
 

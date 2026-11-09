@@ -18,7 +18,7 @@ class CharacterInteractionDiagnosticTest {
 
     @Test
     void usesCurrentCompactPolicyAndSameAnalysisWithoutSendingExpectations() {
-        assertThat(diagnostic.samples()).hasSize(3);
+        assertThat(diagnostic.samples()).hasSize(4);
         assertThat(
                         diagnostic.samples().stream()
                                 .map(s -> s.prepared().request().traceContext().analysisId())
@@ -54,11 +54,11 @@ class CharacterInteractionDiagnosticTest {
                         request -> success(request, output(request, true).toString()),
                         RoleplayTurnDeadline.start(),
                         ignored -> {});
-        assertThat(report.physicalCalls()).isEqualTo(3);
+        assertThat(report.physicalCalls()).isEqualTo(4);
         assertThat(report.allExpected()).isTrue();
         assertThat(report.stoppedReason()).isNull();
         assertThat(report.cases().stream().map(e -> e.evaluation().canDeliver()))
-                .containsExactly(true, false, false);
+                .containsExactly(true, false, false, false);
     }
 
     @Test
@@ -68,10 +68,10 @@ class CharacterInteractionDiagnosticTest {
                         request -> success(request, output(request, false).toString()),
                         RoleplayTurnDeadline.start(),
                         ignored -> {});
-        assertThat(report.physicalCalls()).isEqualTo(3);
+        assertThat(report.physicalCalls()).isEqualTo(4);
         assertThat(report.allExpected()).isFalse();
         assertThat(report.cases().stream().map(CharacterInteractionDiagnostic.Entry::expectedMatch))
-                .containsExactly(true, false, false);
+                .containsExactly(true, false, false, false);
     }
 
     @ParameterizedTest
@@ -156,12 +156,16 @@ class CharacterInteractionDiagnosticTest {
                 ((ObjectNode) body.path("checks")).put("conversation_coherent", false);
                 ((ObjectNode) body.path("character_interaction_review"))
                         .put("mode", "LEARNER_QUIZ");
+            } else if (text.equals("응.")) {
+                body.withArray("failure_codes").add("ANALYSIS_RESPONSE_MISMATCH");
+                ((ObjectNode) body.path("checks")).put("analysis_response_consistent", false);
             } else {
                 body.withArray("failure_codes").add("SCENARIO_CONTRADICTION");
                 ((ObjectNode) body.path("checks")).put("scenario_consistent", false);
             }
         }
-        return body;
+        return com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                .characterContract(body, EvalReport.JSON.readTree(request.userPrompt()));
     }
 
     private static AiCallMetadata metadata(LlmRequest request) {

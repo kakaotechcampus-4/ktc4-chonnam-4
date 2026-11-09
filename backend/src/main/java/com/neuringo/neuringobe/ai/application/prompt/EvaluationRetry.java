@@ -4,6 +4,10 @@ import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputExcepti
 
 /** 모델 원문이나 예외 내용을 다시 보내지 않고 서버가 확인한 수정 조건만 전달한다. */
 public enum EvaluationRetry {
+    TARGET_CUE_CONFLICT(
+            "ANALYSIS_RESPONSE_MISMATCH로 거절할 때만 target_cue_violation의 짧은 사유와 실제 text 인용을 쓴다. NO_TARGET_CUE는 후보 전체를 인용한다. 목표 ID는 서버가 이미 고정했으므로 출력하지 않는다. 해당 검사 false·실패 코드·근거를 일치시키고 S0의 소리·행동 단서에 감정 이름이나 질문을 강요하지 않는다. 통과하려고 PASS로 바꾸지 않는다."),
+    SERVER_REQUIRED_CONFLICT(
+            "캐릭터 revision_instruction에는 keep/change/avoid만 출력한다. required는 서버가 구성하므로 출력하지 않는다. 검수 필드명이나 내부 작업 지시를 후보 수정 조건으로 사용하지 않는다."),
     CHARACTER_QUESTION_CONFLICT(
             "캐릭터 계약은 question_required=false다. 질문 부재만으로 거절하지 않는다. 목표 단서가 부족하면 ANALYSIS_RESPONSE_MISMATCH, 반응을 잇기 어려우면 NOT_ANSWERABLE로 실제 대사를 검수한다. 소리·행동도 단서가 될 수 있으며 정답을 묻는 문답으로 고치라고 지시하지 않는다. 통과하려고 PASS로 바꾸지 않는다."),
     CHARACTER_INTERACTION_CONFLICT(
@@ -61,6 +65,8 @@ public enum EvaluationRetry {
     private static EvaluationRetry knownReason(String reason) {
         if (reason == null) return null;
         return switch (reason) {
+            case TargetCueViolation.CONFLICT -> TARGET_CUE_CONFLICT;
+            case EvaluationOutputSchema.REQUIRED_CONFLICT -> SERVER_REQUIRED_CONFLICT;
             case CharacterInteractionReview.QUESTION_CONFLICT -> CHARACTER_QUESTION_CONFLICT;
             case CharacterInteractionReview.CONFLICT -> CHARACTER_INTERACTION_CONFLICT;
             case GoalProgressViolation.CONFLICT -> GOAL_PROGRESS_CONFLICT;

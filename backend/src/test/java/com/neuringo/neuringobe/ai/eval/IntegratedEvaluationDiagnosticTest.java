@@ -42,7 +42,7 @@ class IntegratedEvaluationDiagnosticTest {
                     .isEqualTo(
                             com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory
                                     .CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v8");
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v9");
             assertThat(request.userPrompt())
                     .doesNotContain("expected_verdict", "case_id", "expected_status");
         }
@@ -282,7 +282,8 @@ class IntegratedEvaluationDiagnosticTest {
                                     java.util.List.of())));
             codes.add("GOAL_SKIPPED");
         }
-        return body;
+        return com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                .characterContract(body, EvalReport.JSON.readTree(request.userPrompt()));
     }
 
     private AiCallMetadata metadata(LlmRequest request) {

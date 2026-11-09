@@ -13,7 +13,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** 요청의 바인딩과 같은 스키마를 제공자 제약과 수신 검증에 사용한다. */
 final class EvaluationOutputSchema {
-    static final String VERSION = "evaluation-output/v8";
+    static final String VERSION = "evaluation-output/v9";
+    static final String REQUIRED_CONFLICT = "캐릭터 재생성의 필수 조건은 서버가 구성합니다.";
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final String jsonSchema;
     private final Schema validator;
@@ -22,6 +23,7 @@ final class EvaluationOutputSchema {
     private final CandidateResponse candidate;
     private final AnalysisResult analysis;
     private final Schema progressValidator;
+    private final Schema cueValidator;
 
     EvaluationOutputSchema(ScopedAnalysisContext context, UUID candidateId) {
         this(context, candidateId, null, null);
@@ -64,7 +66,15 @@ final class EvaluationOutputSchema {
         if (contract != null) {
             ((ObjectNode) properties.path("failure_codes").path("items"))
                     .set("enum", JSON.valueToTree(allowedFailureCodes()));
+            var revision = (ObjectNode) properties.path("revision_instruction");
+            ((ObjectNode) revision.path("properties")).remove("required");
+            revision.set("required", JSON.valueToTree(List.of("keep", "change", "avoid")));
         }
+        var cue = JSON.valueToTree(TargetCueViolation.schema(analysis, contract));
+        properties.set("target_cue_violation", cue);
+        cueValidator =
+                SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
+                        .getSchema(cue.toString());
         properties.set(
                 "character_interaction_review",
                 JSON.valueToTree(CharacterInteractionReview.schema(contract)));
@@ -98,6 +108,12 @@ final class EvaluationOutputSchema {
                     throw new InvalidLlmOutputException(
                             CharacterInteractionReview.QUESTION_CONFLICT, null);
         }
+        if (contract != null && node != null && node.path("revision_instruction").has("required"))
+            throw new InvalidLlmOutputException(REQUIRED_CONFLICT, null);
+        if (node != null
+                && node.has("target_cue_violation")
+                && !cueValidator.validate(node.path("target_cue_violation")).isEmpty())
+            throw new InvalidLlmOutputException(TargetCueViolation.CONFLICT, null);
         if (node != null
                 && node.has("answer_directness_violation")
                 && !directnessValidator
@@ -120,9 +136,26 @@ final class EvaluationOutputSchema {
     }
 
     void requireValidDirectness(EvaluationOutput output) {
+        TargetCueViolation.requireValid(output, analysis, contract, candidate);
         CharacterInteractionReview.requireValid(output, contract, candidate);
         AnswerDirectnessViolation.requireValid(output, contract, candidate);
         if (contract != null) GoalProgressViolation.requireValid(output, analysis, candidate);
+    }
+
+    String restoreServerRequirements(String validatedContent) {
+        if (contract == null) return validatedContent;
+        var body = JSON.readTree(validatedContent);
+        if (body.path("revision_instruction").isObject()) {
+            ((ObjectNode) body.path("revision_instruction"))
+                    .set(
+                            "required",
+                            JSON.valueToTree(
+                                    List.of(
+                                            "캐릭터의 1인칭 역할과 도움을 주고받는 주체를 유지한다.",
+                                            "서버가 적용한 목표·지원 수준을 유지한다.",
+                                            "승인된 사실을 지키고 교사식 정답 맞히기를 하지 않는다.")));
+        }
+        return body.toString();
     }
 
     static List<String> modelFailureCodes() {

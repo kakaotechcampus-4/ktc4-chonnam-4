@@ -117,7 +117,35 @@ public final class EvaluationWireFixtures {
         return JSON.writeValueAsString(body);
     }
 
+    public static tools.jackson.databind.node.ObjectNode characterContract(
+            tools.jackson.databind.node.ObjectNode body, JsonNode request) {
+        Map<String, Object> wire = JSON.convertValue(body, Map.class);
+        addCharacterReview(wire, request);
+        return (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(wire);
+    }
+
     private static void addCharacterReview(Map<String, Object> body, JsonNode request) {
+        body.putIfAbsent("target_cue_violation", null);
+        if (request.has("character_response_contract")) {
+            if (body.get("revision_instruction") instanceof Map<?, ?> revision)
+                ((Map<String, Object>) revision).remove("required");
+            String strategy =
+                    analysisForRequest(request).path("next_strategy").path("type").asString();
+            var codes = (List<String>) body.get("failure_codes");
+            var checks = (Map<String, Object>) body.get("checks");
+            if (TargetCueViolation.learningStrategy(strategy)
+                    && (codes.contains("ANALYSIS_RESPONSE_MISMATCH")
+                            || Boolean.FALSE.equals(checks.get("analysis_response_consistent")))
+                    && body.get("target_cue_violation") == null)
+                body.put(
+                        "target_cue_violation",
+                        Map.of(
+                                "reason",
+                                "NO_TARGET_CUE",
+                                "quote",
+                                request.path("candidate_response").path("text").asString()));
+        }
+
         if (body.get("character_interaction_review") != null) return;
         if (!request.has("character_response_contract")) {
             body.put("character_interaction_review", null);

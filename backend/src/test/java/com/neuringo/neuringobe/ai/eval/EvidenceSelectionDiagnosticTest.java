@@ -332,7 +332,8 @@ class EvidenceSelectionDiagnosticTest {
         body.putObject("character_interaction_review")
                 .put("mode", "CHARACTER_REACTION")
                 .put("quote", input.path("candidate_response").path("text").asString());
-        return body;
+        return com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                .characterContract(body, EvalReport.JSON.readTree(request.userPrompt()));
     }
 
     private AiCallMetadata metadata(LlmRequest request) {

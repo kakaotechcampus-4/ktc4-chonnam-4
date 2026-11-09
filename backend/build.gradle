@@ -225,10 +225,10 @@ tasks.register('negativeEvaluationDiagnostic', JavaExec) {
     loadEnvLocal(it)
 }
 
-// 현재 축소 계약으로 고정한 정상·오류 후보만 검수한다. 분석·생성은 호출하지 않는다.
+// 현재 축소 계약으로 네 후보만 검수한다. --prepare-only는 요청만 준비한다.
 tasks.register('characterInteractionDiagnostic', JavaExec) {
     group = 'verification'
-    description = '현재 축소 검수에서 정상 반응·교사식 문답·금지 추론을 최대 세 번 비교한다'
+    description = '현재 축소 검수에서 정상·문답·추론·무단서 후보를 최대 네 번 비교한다'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.neuringo.neuringobe.ai.eval.CharacterInteractionDiagnostic'
     workingDir = projectDir

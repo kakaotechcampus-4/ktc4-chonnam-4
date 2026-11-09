@@ -293,7 +293,7 @@ final class RoleplayOutputParsers {
                 repaired =
                         withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
                 schema.validate(repaired);
-                var output = delegate.parse(repaired);
+                var output = delegate.parse(schema.restoreServerRequirements(repaired));
                 schema.requireValidDirectness(output);
                 check(
                         output.candidateId().equals(expectedCandidateId),

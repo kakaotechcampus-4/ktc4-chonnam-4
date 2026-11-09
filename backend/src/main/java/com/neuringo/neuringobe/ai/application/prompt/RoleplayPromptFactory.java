@@ -36,21 +36,21 @@ public final class RoleplayPromptFactory {
 
     /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
     public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v4";
+            "roleplay-response-generation-character/v6";
 
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
             "roleplay-response-evaluation/v9";
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v11";
+            "roleplay-response-evaluation-character/v13";
 
     public static final String COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION =
             "roleplay-cause-analysis-character/v1";
     public static final String COMPACT_CHARACTER_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v5";
+            "roleplay-response-generation-character/v7";
     public static final String COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v12";
+            "roleplay-response-evaluation-character/v14";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -84,7 +84,13 @@ public final class RoleplayPromptFactory {
             ObjectMapper objectMapper, String policyVersion, boolean compactCharacterOutput) {
         this.compactCharacterOutput = compactCharacterOutput;
         String policy = PromptTemplates.load("roleplay/v4/character-learning-policy.md");
-        String interaction = PromptTemplates.load("roleplay/v4/character-interaction-review.md");
+        String cuePolicy = PromptTemplates.load("roleplay/v4/character-s0-cue-policy.md");
+        String interaction =
+                PromptTemplates.load("roleplay/v4/character-interaction-review.md")
+                        + "\n\n"
+                        + cuePolicy
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v4/character-cue-contract.md");
         compactAnalysisPrompt =
                 policy
                         + "\n\n"
@@ -92,7 +98,9 @@ public final class RoleplayPromptFactory {
                         + "\n\n"
                         + PromptTemplates.load("roleplay/v3/reanalysis.md");
         compactGenerationPrompt =
-                PromptTemplates.load("roleplay/v4/character-generation-compact.md");
+                PromptTemplates.load("roleplay/v4/character-generation-compact.md")
+                        + "\n\n"
+                        + cuePolicy;
         compactEvaluationPrompt =
                 policy
                         + "\n\n"
@@ -108,7 +116,9 @@ public final class RoleplayPromptFactory {
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
         this.characterResponseGenerationSystemPrompt =
-                PromptTemplates.load("roleplay/v1/response-generation-character.md");
+                PromptTemplates.load("roleplay/v1/response-generation-character.md")
+                        + "\n\n"
+                        + cuePolicy;
         this.responseEvaluationSystemPrompt =
                 PromptTemplates.load("roleplay/v2/response-evaluation.md")
                         + "\n\n"

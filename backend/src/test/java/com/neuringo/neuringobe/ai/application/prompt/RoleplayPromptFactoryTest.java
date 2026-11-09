@@ -41,7 +41,7 @@ class RoleplayPromptFactoryTest {
                                     RoleplayObservationTestPlans.inputForScenario(input.scenario()),
                                     EvaluationRetry.INVALID_STRUCTURE)
                             .request();
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v8");
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v9");
             assertThat(request.responseJsonSchema())
                     .contains("additionalProperties", "failure_codes");
             assertThat(request.promptVersion())
