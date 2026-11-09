@@ -328,7 +328,12 @@ class EvidenceSelectionDiagnosticTest {
         body.putArray("failure_codes");
         body.putNull("revision_instruction");
         body.putNull("answer_directness_violation");
-        return body;
+        body.putNull("goal_progress_violation");
+        body.putObject("character_interaction_review")
+                .put("mode", "CHARACTER_REACTION")
+                .put("quote", input.path("candidate_response").path("text").asString());
+        return com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                .characterContract(body, EvalReport.JSON.readTree(request.userPrompt()));
     }
 
     private AiCallMetadata metadata(LlmRequest request) {

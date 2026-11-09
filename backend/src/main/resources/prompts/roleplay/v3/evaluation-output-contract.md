@@ -36,7 +36,7 @@ NOT_EXPRESSED 거절에는 STATUS_MISMATCH와 실제 표현의 인용이 필요�
 reviewed_micro_goal_id와 reviewed_learning_state는 current_goal_assessment의 대상과 상태 그대로다.
 이번 질문 초점의 상태가 이번 발화와 해당 목표의 required_evidence에 맞는지만 검수한다.
 현재 목표의 GOAL_ACHIEVED에 다른 목표나 활동 전체의 달성을 요구하지 않는다.
-현재 목표의 모든 required_evidence가 이번 발화의 긍정 관찰에 있는지 검수한다. 근거 개수만으로 자동 승인하지 않는다.
+GOAL_ACHIEVED를 제안한 경우 현재 목표의 required_evidence가 긍정 관찰로 뒷받침되는지 검수한다. 부분 이해에는 목표의 모든 증거를 요구하지 않는다. 캐릭터 공통 정책의 걱정·도움 제안도 함께 판단한다. 근거 개수만으로 자동 승인하지 않는다.
 SUPPORTED는 LOGIC_GROUNDED, 거절은 LEARNING_STATE_MISMATCH, 판단보류는 INSUFFICIENT_CONTEXT다.
 
 3. activity_review
@@ -91,3 +91,7 @@ retry_target, safe_to_send, critical_failure_count는 서버가 결정하므로 
 - speaker_role: 전자는 DIALOGUE, 후자는 HINT.
 - quote: 해당 후보 text 또는 mascot_hint의 정확한 연속 구절. 설명·분석·이전 대사에서 가져오지 않는다.
 character_response_contract.target_answer_allowed=true이면 TARGET_ANSWER_BEFORE_S3는 허용되지 않는다. 마스코트 힌트가 없으면 MASCOT_ANSWER_REVEAL도 허용되지 않는다. 다른 목표나 행동 주체의 문제를 이 사유로 대신 기록하지 않는다. 해당 문제의 검사·실패 코드로 판단한다. ANSWER_TOO_DIRECT가 없으면 이 필드는 null이다. 안전·입력 확인 우선 경로에서는 직접성 거절 검수를 생략하고 null로 둘 수 있다. 검사 통과를 위해 실패를 숨기거나 PASS로 바꾸지 않는다.
+
+## 목표 진행 거절 근거
+
+goal_progress_violation은 보통 null이다. 캐릭터 일반 경로에서 GOAL_SKIPPED를 쓰면 goal_aligned=false와 실제 위반을 함께 기록한다. reason은 UNSUPPORTED_ACHIEVEMENT_CLAIM(근거 없는 달성 주장) 또는 PREMATURE_CLOSING(부당한 마무리)이다. claim_source는 ANALYSIS 또는 CANDIDATE다. 분석의 실제 달성/마무리 판단을 검수하면 quote=null, 후보 발언의 주장을 검수하면 quote에 후보 text의 정확한 연속 구절을 쓴다. 분석의 PARTIAL_UNDERSTANDING·IN_PROGRESS·질문 초점 변경은 달성 주장 자체가 아니다. GOAL_SKIPPED가 없거나 안전/입력 확인 우선 경로이면 null로 둘 수 있다. 다른 오류를 이 코드로 대신 거절하지 않는다.

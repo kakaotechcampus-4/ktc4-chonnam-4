@@ -143,7 +143,8 @@ class NegativeEvaluationDiagnosticTest {
                                     "required",
                                     List.of())));
         }
-        return body;
+        return com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                .characterContract(body, EvalReport.JSON.readTree(request.userPrompt()));
     }
 
     private static AiCallMetadata metadata(LlmRequest r) {

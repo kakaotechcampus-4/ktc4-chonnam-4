@@ -57,11 +57,11 @@ class RoleplayGoalObservationPromptTest {
         var ready = new RoleplayTurnResult.Ready(analysis, candidate(analysis), evaluation);
 
         assertThat(analysisPrompt.request().promptVersion())
-                .isEqualTo("roleplay-cause-analysis/v4");
+                .isEqualTo("roleplay-cause-analysis/v5");
         assertThat(analysisPrompt.request().responseSchemaVersion())
                 .isEqualTo(GoalObservationOutput.ANALYSIS_VERSION);
         assertThat(evaluationPrompt.request().responseSchemaVersion())
-                .isEqualTo("evaluation-output/v6");
+                .isEqualTo("evaluation-output/v9");
         var body = json.readTree(evaluationPrompt.request().userPrompt());
         assertThat(body.path("analysis_id").asString()).isEqualTo(ANALYSIS_ID.toString());
         assertThat(body.path("goal_observation_context").path("approved_criteria")).hasSize(3);
@@ -723,7 +723,7 @@ class RoleplayGoalObservationPromptTest {
         assertThat(provider.requests)
                 .extracting(LlmRequest::responseSchemaVersion)
                 .containsExactly(
-                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v6");
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v9");
         var ready = (RoleplayTurnResult.Ready) result;
         var command =
                 RoleplayCheckpointCommand.fromApproved(

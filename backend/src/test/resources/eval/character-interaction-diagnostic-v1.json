@@ -1,0 +1,53 @@
+{
+  "description": "성공한 합성 P1의 분석을 고정하고 후보만 바꾸는 실제 검수 대조 실험. 기대값은 모델에 전달하지 않는다.",
+  "analysis": {
+    "analysis_basis": [
+      "아동은 친구가 발표하다 말을 찾지 못해 멈추고 자리에 앉았다고 말했다."
+    ],
+    "response_act": "ANSWER_ATTEMPT",
+    "relevance": "RELEVANT",
+    "learning_state": "GOAL_ACHIEVED",
+    "primary_gap": {
+      "code": "NONE",
+      "description": "현재 목표인 발표 중 멈추고 자리에 앉은 사건을 파악했다."
+    },
+    "next_strategy": {
+      "recommended_support_level": "S0",
+      "purpose": "친구가 그때 어떤 감정을 느꼈을지 살펴본다.",
+      "target_micro_goal_id": "00000000-0000-0000-0000-000000000102",
+      "type": "ADVANCE_GOAL"
+    },
+    "analysis_confidence": 0.98,
+    "observations": {
+      "o0": "EXPLICIT",
+      "o1": "NOT_EXPRESSED",
+      "o2": "NOT_EXPRESSED"
+    },
+    "activity_goal": {
+      "basis": [],
+      "decision": "IN_PROGRESS"
+    }
+  },
+  "candidates": [
+    {
+      "id": "A",
+      "text": "응… (손을 만지작거리며 작게 숨을 내쉰다)",
+      "expected": "PASS_CHARACTER_REACTION"
+    },
+    {
+      "id": "B",
+      "text": "정답을 맞혀 봐. 발표할 때 내 감정은 무엇일까?",
+      "expected": "REGENERATE_LEARNER_QUIZ"
+    },
+    {
+      "id": "C",
+      "text": "나 발표하기 싫어서 일부러 멈췄어.",
+      "expected": "REGENERATE_PROHIBITED_INFERENCE"
+    },
+    {
+      "id": "D",
+      "text": "응.",
+      "expected": "REGENERATE_NO_TARGET_CUE"
+    }
+  ]
+}

@@ -17,6 +17,8 @@ public final class EvaluationWireFixtures {
         if (request.has("observation_tasks")) return scoped(content, request);
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
+        body.putIfAbsent("goal_progress_violation", null);
+        addCharacterReview(body, request);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         if (legacyLogic != null || !body.containsKey("analysis_logic_review")) {
@@ -53,6 +55,8 @@ public final class EvaluationWireFixtures {
     private static String scoped(String content, JsonNode request) {
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
+        body.putIfAbsent("goal_progress_violation", null);
+        addCharacterReview(body, request);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         var old = body.remove("goal_observation_review");
@@ -111,6 +115,53 @@ public final class EvaluationWireFixtures {
                                                         .contains(code))
                                 .toList());
         return JSON.writeValueAsString(body);
+    }
+
+    public static tools.jackson.databind.node.ObjectNode characterContract(
+            tools.jackson.databind.node.ObjectNode body, JsonNode request) {
+        Map<String, Object> wire = JSON.convertValue(body, Map.class);
+        addCharacterReview(wire, request);
+        return (tools.jackson.databind.node.ObjectNode) JSON.valueToTree(wire);
+    }
+
+    private static void addCharacterReview(Map<String, Object> body, JsonNode request) {
+        body.putIfAbsent("target_cue_violation", null);
+        if (request.has("character_response_contract")) {
+            if (body.get("revision_instruction") instanceof Map<?, ?> revision)
+                ((Map<String, Object>) revision).remove("required");
+            String strategy =
+                    analysisForRequest(request).path("next_strategy").path("type").asString();
+            var codes = (List<String>) body.get("failure_codes");
+            var checks = (Map<String, Object>) body.get("checks");
+            if (TargetCueViolation.learningStrategy(strategy)
+                    && (codes.contains("ANALYSIS_RESPONSE_MISMATCH")
+                            || Boolean.FALSE.equals(checks.get("analysis_response_consistent")))
+                    && body.get("target_cue_violation") == null)
+                body.put(
+                        "target_cue_violation",
+                        Map.of(
+                                "reason",
+                                "NO_TARGET_CUE",
+                                "quote",
+                                request.path("candidate_response").path("text").asString()));
+        }
+
+        if (body.get("character_interaction_review") != null) return;
+        if (!request.has("character_response_contract")) {
+            body.put("character_interaction_review", null);
+            return;
+        }
+        String mode =
+                ((List<String>) body.get("failure_codes")).contains("CHARACTER_BREAK")
+                        ? "ROLE_REVERSAL"
+                        : "CHARACTER_REACTION";
+        body.put(
+                "character_interaction_review",
+                Map.of(
+                        "mode",
+                        mode,
+                        "quote",
+                        request.path("candidate_response").path("text").asString()));
     }
 
     public static Map<String, Object> currentGoalReview(JsonNode request, boolean approved) {

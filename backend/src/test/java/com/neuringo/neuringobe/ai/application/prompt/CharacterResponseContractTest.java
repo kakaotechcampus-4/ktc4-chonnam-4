@@ -147,8 +147,7 @@ class CharacterResponseContractTest {
     @Test
     void s3DoesNotOverrideOtherFailuresReanalysisOrSafetyPriority() {
         var prepared = evaluation("S3", null);
-        for (String code :
-                new String[] {"ANALYSIS_RESPONSE_MISMATCH", "GOAL_SKIPPED", "UNSAFE_EXPRESSION"})
+        for (String code : new String[] {"ANALYSIS_RESPONSE_MISMATCH", "UNSAFE_EXPRESSION"})
             assertThat(
                             prepared.parser()
                                     .parse(wire(prepared, "REGENERATE", "[\"" + code + "\"]"))
