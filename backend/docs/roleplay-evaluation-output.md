@@ -4,7 +4,7 @@
 모델은 검수 판단과 근거 코드를 반환하고, 서버는 처리 경로와 전달 조건을 결정한다.
 
 현재 운영 스키마는 v5다. 관찰별 원본 status에 따라 verdict·reason_code·evidence_quote의 허용 조합을 네이티브 스키마에 표현한다.
-프롬프트는 v7, 내부 evaluation-result/v2는 유지한다. 인용의 실제 출처와 설명·참조 검증도 유지한다.
+현재 프롬프트·제공자 스키마 버전은 아래 계약 절을 따르며, 내부 evaluation-result/v2는 유지한다. 인용의 실제 출처와 설명·참조 검증도 유지한다.
 관련 검사 340개가 통과했고, gpt-6-luna/low 반례 재평가 두 건 모두 의도한 이유로 유효하게 거절됐다.
 잘못된 감정 관찰은 NO_MATCHING_EXPRESSION/null로 REANALYZE, 금지 의도 후보는 REGENERATE로 수용됐다.
 이는 두 고정 반례의 단발 결과이며 일반적인 성공률·전체 서비스 검증을 뜻하지 않는다.
@@ -69,8 +69,8 @@ UNSUPPORTED_CAUSE_ANALYSIS·STATE_STRATEGY_MISMATCH는 분석 검수 결과에�
 
 ## 버전과 적용 범위
 
-- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v9. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v10.
-- 제공자 검수 출력 스키마: evaluation-output/v7, 요청별 동적 스키마
+- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v11. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v12.
+- 제공자 검수 출력 스키마: evaluation-output/v8, 요청별 동적 스키마
 - 내부 목표 검수 계약: 기존 evaluation-result/v2 유지
 - 내부 EvaluationResult·공개 API·DB·분석/생성 출력 계약은 유지한다.
 - 정상 경로는 분석→생성→평가 3회이며 별도 검수 호출은 추가하지 않는다.
@@ -225,4 +225,10 @@ REANALYZE의 거절 영역·사유·수정 경로는 내부 AnalysisReviewIssue�
 
 서버와 roleplayEval 기본값은 간결 캐릭터 경로다. 기존 2인자 RoleplayPromptFactory 생성자는 과거 진단 재생과 비교용 형태이며 서버 설정은 3인자로 간결 경로를 명시한다. roleplayEval은 --output-mode legacy|compact로 비교하고 실행 메타데이터에 모드와 실제 프롬프트 버전을 기록한다. .env.local의 모델 선택은 유지한다.
 
-[설계](roleplay-latency-improvement-design-2026-11-09.md)와 [검증 결과·크기 비교·실측 안내](roleplay-latency-improvement-results-2026-11-09.md)를 참고한다. 실제 제공자의 새 계약 수용·의미 품질·지연은 아직 측정하지 않았다.
+[설계](roleplay-latency-improvement-design-2026-11-09.md)와 [검증 결과·크기 비교·실측 안내](roleplay-latency-improvement-results-2026-11-09.md)를 참고한다. 당시 실제 P1 비교 결과는 [단건 비교](roleplay-latency-live-comparison-2026-11-09.md)에 기록했다. 아래 v8 보완 이후의 실제 모델 검증은 아직 수행하지 않았다.
+
+## 2026-11-09 캐릭터 질문·상호작용 계약
+
+v8은 `character_interaction_review`를 추가한다. 캐릭터 일반 경로는 `{mode, quote}`가 필수이고 안내자·안전/입력 확인 우선 경로는 null이다. 실제 후보 인용과 분류·거절 검사의 정합성을 서버에서 확인한다. 캐릭터 요청의 native 실패 코드에는 MISSING_QUESTION이 없으며, 이를 반환한 검수는 같은 후보의 검수 재시도로 이어진다. 질문 없는 단서 부족·답변 불가 대사의 유효한 거절은 유지한다. 공개/저장용 EvaluationResult는 바뀌지 않는다.
+
+질문 필수 여부·교사식 문답 금지는 서버 계약으로 전달하며 재생성 지시는 그 범위 안의 자료다. 검수의 자연어 분류 정확도나 실제 속도 개선은 로컬 계약 검사만으로 보장되지 않는다. [상세 변경·검증](roleplay-character-interaction-contract-2026-11-09.md)을 참고한다.
