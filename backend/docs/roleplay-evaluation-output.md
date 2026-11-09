@@ -4,7 +4,7 @@
 모델은 검수 판단과 근거 코드를 반환하고, 서버는 처리 경로와 전달 조건을 결정한다.
 
 현재 운영 스키마는 v5다. 관찰별 원본 status에 따라 verdict·reason_code·evidence_quote의 허용 조합을 네이티브 스키마에 표현한다.
-프롬프트는 v7, 내부 evaluation-result/v2는 유지한다. 인용의 실제 출처와 설명·참조 검증도 유지한다.
+현재 프롬프트·제공자 스키마 버전은 아래 계약 절을 따르며, 내부 evaluation-result/v2는 유지한다. 인용의 실제 출처와 설명·참조 검증도 유지한다.
 관련 검사 340개가 통과했고, gpt-6-luna/low 반례 재평가 두 건 모두 의도한 이유로 유효하게 거절됐다.
 잘못된 감정 관찰은 NO_MATCHING_EXPRESSION/null로 REANALYZE, 금지 의도 후보는 REGENERATE로 수용됐다.
 이는 두 고정 반례의 단발 결과이며 일반적인 성공률·전체 서비스 검증을 뜻하지 않는다.
@@ -69,11 +69,13 @@ UNSUPPORTED_CAUSE_ANALYSIS·STATE_STRATEGY_MISMATCH는 분석 검수 결과에�
 
 ## 버전과 적용 범위
 
-- 안내자·캐릭터 평가 프롬프트: roleplay-response-evaluation/v8, roleplay-response-evaluation-character/v8
-- 제공자 출력 스키마: evaluation-output/v6, 요청별 동적 스키마
+- 안내자·기존 형태 캐릭터 평가 프롬프트: roleplay-response-evaluation/v9, roleplay-response-evaluation-character/v13. 기본 서버의 간결 캐릭터 경로는 roleplay-response-evaluation-character/v14.
+- 제공자 검수 출력 스키마: evaluation-output/v9, 요청별 동적 스키마
 - 내부 목표 검수 계약: 기존 evaluation-result/v2 유지
 - 내부 EvaluationResult·공개 API·DB·분석/생성 출력 계약은 유지한다.
 - 정상 경로는 분석→생성→평가 3회이며 별도 검수 호출은 추가하지 않는다.
+
+기본 캐릭터 분석/생성은 모델 전용 character-analysis-output/v1·character-candidate-output/v1을 사용한다. 서버가 내부 analysis-result/v2·candidate-response/v1으로 복원해 기존 검증을 수행한다. 안내자 경로와 과거 진단용 기존 출력 형태는 유지한다.
 
 ScopedAnalysisContext는 분석 입력을 범위별로 구성하고 키와 원본 관찰을 같은 요청에 묶는다.
 EvaluationOutputSchema는 그 바인딩과 후보 ID로 스키마를 만들며 제공자 제약과 수신 검증에 동일하게 사용한다.
@@ -213,3 +215,28 @@ A는 4.384초, 입력/출력 6,279/329토큰이다. 관찰 분류의 단건 일�
 분석 v4, 캐릭터 생성 v2, 평가 v8이다. 내부 evaluation-result/v2·candidate-response/v1·HTTP·DB 구조는 유지한다. 새 유형 제약은 캐릭터 역할극에 적용한다. 정답 제공 이력은 전달 확정된 ANSWER_REVEAL에만 반영하며 과거 이력을 소급 변경하지 않는다.
 
 설계: [S3 검수 정합성](roleplay-s3-review-consistency-design-2026-11-09.md). 정보량 조사: [입력·출력 크기](roleplay-payload-size-review-2026-11-09.md). 실제 모델의 의미 정확성·시간 개선은 아직 재측정하지 않았다.
+
+
+## 2026-11-09 목표 진행 사유·재분석 전달·간결 출력
+
+v7의 goal_progress_violation은 보통 null이며, 캐릭터 일반 경로에서 GOAL_SKIPPED일 때 실제 달성 주장 또는 부당한 마무리의 출처를 받는다. 분석에 달성/마무리 판단이 없거나 후보 인용이 존재하지 않으면 검수를 재시도한다. 단순 목표 초점 변경을 선행 목표 미달성이라는 이유로 거절하지 않는다. 자연어 인용의 의미 판단은 여전히 독립 검수 대상이다.
+
+REANALYZE의 거절 영역·사유·수정 경로는 내부 AnalysisReviewIssue로 보존하고 retry.review_issues에 연결한다. 공개/저장용 EvaluationResult JSON은 변경하지 않는다. 설명은 짧은 비신뢰 검수 자료이며 실행할 지시로 취급하지 않는다.
+
+서버와 roleplayEval 기본값은 간결 캐릭터 경로다. 기존 2인자 RoleplayPromptFactory 생성자는 과거 진단 재생과 비교용 형태이며 서버 설정은 3인자로 간결 경로를 명시한다. roleplayEval은 --output-mode legacy|compact로 비교하고 실행 메타데이터에 모드와 실제 프롬프트 버전을 기록한다. .env.local의 모델 선택은 유지한다.
+
+[설계](roleplay-latency-improvement-design-2026-11-09.md)와 [검증 결과·크기 비교·실측 안내](roleplay-latency-improvement-results-2026-11-09.md)를 참고한다. 당시 실제 P1 비교 결과는 [단건 비교](roleplay-latency-live-comparison-2026-11-09.md)에 기록했다. 아래 v8 보완 이후의 실제 모델 검증은 아직 수행하지 않았다.
+
+## 2026-11-09 캐릭터 질문·상호작용 계약
+
+v8은 `character_interaction_review`를 추가한다. 캐릭터 일반 경로는 `{mode, quote}`가 필수이고 안내자·안전/입력 확인 우선 경로는 null이다. 실제 후보 인용과 분류·거절 검사의 정합성을 서버에서 확인한다. 캐릭터 요청의 native 실패 코드에는 MISSING_QUESTION이 없으며, 이를 반환한 검수는 같은 후보의 검수 재시도로 이어진다. 질문 없는 단서 부족·답변 불가 대사의 유효한 거절은 유지한다. 공개/저장용 EvaluationResult는 바뀌지 않는다.
+
+질문 필수 여부·교사식 문답 금지는 서버 계약으로 전달하며 재생성 지시는 그 범위 안의 자료다. 검수의 자연어 분류 정확도나 실제 속도 개선은 로컬 계약 검사만으로 보장되지 않는다. [상세 변경·검증](roleplay-character-interaction-contract-2026-11-09.md)을 참고한다.
+
+## 2026-11-09 S0 거절 근거·서버 필수 조건
+
+v9의 target_cue_violation은 정상·안전/입력 확인 우선·비학습 단서 경로에서 null이다. 일반 캐릭터 학습 전략의 ANALYSIS_RESPONSE_MISMATCH 거절 때만 reason/quote를 받는다. 목표 ID는 서버의 적용 전략에서 재사용하고 출력에 반복하지 않는다. NO_TARGET_CUE는 후보 전체, 다른 사유는 실제 후보의 해당 구절을 인용해야 하며 실패 코드·검사 false와 일치해야 한다.
+
+캐릭터 모델용 revision_instruction은 keep/change/avoid만 받으며 required를 출력하면 거절한다. 수신 스키마 검증 이후 서버가 required를 복원해 기존 내부/공개/저장용 RevisionInstruction 형태와 GenerationRetry를 유지한다. 안내자 모델의 기존 네 배열 계약은 유지한다. 모델 원문에 없는 required가 내부 수정 조건에 나타나는 것은 서버 복원 결과다.
+
+[S0 경량 설계](roleplay-s0-cue-review-design-2026-11-09.md)와 [구현·검증 결과](roleplay-s0-cue-contract-results-2026-11-09.md)를 참고한다. 스키마의 근거 정합성이 실제 단서의 교육적 의미를 보장하지는 않는다.

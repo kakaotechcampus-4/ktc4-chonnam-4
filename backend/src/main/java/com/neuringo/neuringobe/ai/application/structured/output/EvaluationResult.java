@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.ai.application.structured.output;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Objects;
@@ -13,8 +14,29 @@ public record EvaluationResult(
         @JsonProperty("critical_failure_count") Integer criticalFailureCount,
         @JsonProperty("failure_codes") List<String> failureCodes,
         @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
-        @JsonProperty("goal_observation_review")
-                GoalObservationOutput.Review goalObservationReview) {
+        @JsonProperty("goal_observation_review") GoalObservationOutput.Review goalObservationReview,
+        @JsonIgnore List<AnalysisReviewIssue> analysisReviewIssues) {
+
+    public EvaluationResult(
+            UUID candidateId,
+            Boolean safeToSend,
+            EvaluationDecision decision,
+            RetryTarget retryTarget,
+            Integer criticalFailureCount,
+            List<String> failureCodes,
+            RevisionInstruction revisionInstruction,
+            GoalObservationOutput.Review goalObservationReview) {
+        this(
+                candidateId,
+                safeToSend,
+                decision,
+                retryTarget,
+                criticalFailureCount,
+                failureCodes,
+                revisionInstruction,
+                goalObservationReview,
+                List.of());
+    }
 
     public EvaluationResult(
             UUID candidateId,
@@ -42,6 +64,8 @@ public record EvaluationResult(
         Objects.requireNonNull(criticalFailureCount, "criticalFailureCount must not be null");
         Objects.requireNonNull(failureCodes, "failureCodes must not be null");
         failureCodes = List.copyOf(failureCodes);
+        analysisReviewIssues =
+                analysisReviewIssues == null ? List.of() : List.copyOf(analysisReviewIssues);
         if (criticalFailureCount < 0) {
             throw new IllegalArgumentException("criticalFailureCount must not be negative");
         }

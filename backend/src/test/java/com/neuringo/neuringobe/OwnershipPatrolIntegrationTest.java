@@ -69,6 +69,7 @@ class OwnershipPatrolIntegrationTest {
                     Map.entry("PATCH /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("DELETE /api/v1/classrooms/{classId}", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
+                    Map.entry("GET /api/v1/classrooms/{classId}/activities", "CLASSROOM_NOT_FOUND"),
                     Map.entry("POST /api/v1/classrooms/{classId}/children", "CLASSROOM_NOT_FOUND"),
                     Map.entry("GET /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
                     Map.entry("PATCH /api/v1/children/{childId}", "CHILD_NOT_FOUND"),
@@ -254,6 +255,10 @@ class OwnershipPatrolIntegrationTest {
                         "/api/v1/children/%s/access-codes",
                         Owned::childId,
                         null),
+                get(
+                        "GET /api/v1/classrooms/{classId}/activities",
+                        "/api/v1/classrooms/%s/activities",
+                        Owned::classId),
                 get(
                         "GET /api/v1/children/{childId}/activities",
                         "/api/v1/children/%s/activities",

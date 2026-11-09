@@ -14,7 +14,6 @@ import {
   outlineButtonClass,
   primaryButtonClass,
   tabBaseClass,
-  tabDisabledClass,
   tabIdleClass,
   tabSelectedClass,
   tableClass,
@@ -24,8 +23,15 @@ import {
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
+import { ClassroomActivityTable } from '../components/ClassroomActivityTable'
+import { ClassroomReportList } from '../components/report/ClassroomReportList'
+import { useClassroomActivities } from '../hooks/classroomQueries'
+import { completionByType, countByStatus } from '../lib/activitySummary'
+import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
 
-type DetailTab = 'overview' | 'children'
+type DetailTab = 'overview' | 'children' | 'activities' | 'reports'
+
+const TABS: DetailTab[] = ['overview', 'children', 'activities', 'reports']
 
 const CHILD_STATUS_LABELS: Record<ChildStatus, string> = {
   ACTIVE: '참여중',
@@ -33,26 +39,21 @@ const CHILD_STATUS_LABELS: Record<ChildStatus, string> = {
   REMOVED: '제외됨',
 }
 
-// 시안(T-CLS-03~06)의 탭 중 배정 활동·리포트는 아직 화면이 없어 비활성으로 보인다.
-const PENDING_TABS = ['배정 활동', '리포트']
-
-// 시안 개요의 통계 중 아직 서버가 주지 않는 값. 활동 데이터가 학급 단위로 모이면 "—" 대신 채운다.
-const PENDING_STATS = ['진행중', '완료', '복구 필요']
-
 // 헤더의 작은 버튼(디자인 시스템 Compact 32px)
 const compactButtonClass = 'h-8 px-3.5'
 
 /**
- * 학급 상세 (시안 T-CLS-03 개요 탭 + 아동 목록 탭).
+ * 학급 상세 (시안 T-CLS-03~06: 개요·아동 목록·배정 활동·리포트 탭).
  * 탭은 주소의 ?tab= 으로 관리해, 개요의 "아동 등록" 버튼이 아동 목록 탭으로 바로 넘어가게 한다.
  * 개요 배치는 시안을 따른다: 위에 통계 4칸, 아래 두 칸(왼쪽 최근 학습 요약 1.3 : 오른쪽 활동 현황·바로 하기 1).
- * 통계는 아동 수만 실제 값이고, 최근 학습·활동 현황은 학급 단위 활동 데이터가 생긴 뒤 채운다.
+ * 진행 중·완료·복구 필요와 유형별 완료 수는 학급 활동 목록(API-ACT-05)으로 센다. 복구 필요는 일시 중지와 복구 필요 상태다.
  * 학급 삭제는 아동 여러 명의 기록이 함께 사라져, 학급 이름을 입력해야 실행된다(ADR 2026-10-04 D4).
  */
 function ClassroomDetailPage() {
   const { classId } = useParams<{ classId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab: DetailTab = searchParams.get('tab') === 'children' ? 'children' : 'overview'
+  const requested = searchParams.get('tab')
+  const tab: DetailTab = TABS.includes(requested as DetailTab) ? (requested as DetailTab) : 'overview'
   const [displayName, setDisplayName] = useState('')
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const navigate = useNavigate()
@@ -79,6 +80,14 @@ function ClassroomDetailPage() {
     queryFn: () => listChildren(classId!),
     enabled: !!classId,
   })
+
+  const activitiesQuery = useClassroomActivities(classId)
+  const activityCounts = activitiesQuery.data ? countByStatus(activitiesQuery.data) : null
+  const stats = [
+    { label: '진행 중', value: activityCounts?.inProgress },
+    { label: '완료', value: activityCounts?.completed },
+    { label: '복구 필요', value: activityCounts?.needsAttention },
+  ]
 
   const createChildMutation = useMutation({
     mutationFn: (name: string) => createChild(classId!, name),
@@ -164,18 +173,27 @@ function ClassroomDetailPage() {
             아동 목록
             {children && <span className="ml-1 font-normal text-[var(--instructor-text-muted)]">{children.length}</span>}
           </button>
-          {PENDING_TABS.map((label) => (
-            <span
-              key={label}
-              role="tab"
-              aria-disabled="true"
-              aria-selected={false}
-              title="준비 중인 화면입니다"
-              className={cn(tabBaseClass, tabDisabledClass)}
-            >
-              {label}
-            </span>
-          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'activities'}
+            onClick={() => selectTab('activities')}
+            className={cn(tabBaseClass, tab === 'activities' ? tabSelectedClass : tabIdleClass)}
+          >
+            배정 활동
+            {activitiesQuery.data && (
+              <span className="ml-1 font-normal text-[var(--instructor-text-muted)]">{activitiesQuery.data.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'reports'}
+            onClick={() => selectTab('reports')}
+            className={cn(tabBaseClass, tab === 'reports' ? tabSelectedClass : tabIdleClass)}
+          >
+            리포트
+          </button>
         </div>
       }
     >
@@ -208,10 +226,10 @@ function ClassroomDetailPage() {
               <dt className="text-xs text-[var(--instructor-text-subtle)]">아동 수</dt>
               <dd className="text-2xl font-semibold">{children ? children.length : '—'}</dd>
             </div>
-            {PENDING_STATS.map((label) => (
+            {stats.map(({ label, value }) => (
               <div key={label} className={cn(cardClass, 'flex flex-1 flex-col gap-2 p-5')}>
                 <dt className="text-xs text-[var(--instructor-text-subtle)]">{label}</dt>
-                <dd className="text-2xl font-semibold text-[var(--instructor-text-disabled)]">—</dd>
+                <dd className="text-2xl font-semibold">{value ?? '—'}</dd>
               </div>
             ))}
           </dl>
@@ -229,7 +247,22 @@ function ClassroomDetailPage() {
                 <h2 id="activity-stats-heading" className="text-sm font-semibold">
                   활동 현황
                 </h2>
-                <p className="text-sm text-[var(--instructor-text-subtle)]">유형별 완료 현황은 준비 중이에요.</p>
+                {activitiesQuery.isError ? (
+                  <Notice tone="error">{describeError(activitiesQuery.error, '활동을 불러오지 못했습니다.')}</Notice>
+                ) : activitiesQuery.data?.length === 0 ? (
+                  <p className="text-sm text-[var(--instructor-text-subtle)]">아직 배정한 활동이 없어요.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2 text-sm">
+                    {completionByType(activitiesQuery.data ?? []).map((row) => (
+                      <li key={row.activityType} className="flex items-center justify-between gap-3">
+                        <span>{ACTIVITY_TYPE_LABELS[row.activityType]}</span>
+                        <span className="text-[var(--instructor-text-muted)]">
+                          완료 {row.completed}/{row.total}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
 
               <section aria-labelledby="quick-heading" className={cn(cardClass, 'flex flex-1 flex-col gap-3 p-5')}>
@@ -252,6 +285,22 @@ function ClassroomDetailPage() {
               </section>
             </div>
           </div>
+        </section>
+      ) : tab === 'activities' ? (
+        <section role="tabpanel" aria-label="배정 활동" className="flex flex-col gap-4">
+          {activitiesQuery.isLoading ? (
+            <p className="text-sm text-[var(--instructor-text-muted)]">불러오는 중...</p>
+          ) : activitiesQuery.isError ? (
+            <Notice tone="error">{describeError(activitiesQuery.error, '활동을 불러오지 못했습니다.')}</Notice>
+          ) : activitiesQuery.data?.length === 0 ? (
+            <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정한 활동이 없습니다.</p>
+          ) : (
+            <ClassroomActivityTable classId={classId!} activities={activitiesQuery.data ?? []} />
+          )}
+        </section>
+      ) : tab === 'reports' ? (
+        <section role="tabpanel" aria-label="리포트" className="flex flex-col gap-4">
+          <ClassroomReportList classId={classId!} />
         </section>
       ) : (
         <section role="tabpanel" aria-label="아동 목록" className="flex flex-col gap-4">

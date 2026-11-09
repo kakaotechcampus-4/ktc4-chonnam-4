@@ -395,6 +395,53 @@ class ActivityAssignmentIntegrationTest {
         }
     }
 
+    @Test
+    void classroomListShowsEveryChildsActivitiesWithNamesAndGoalTitles() {
+        UUID classId = fixtures.createClassroom("학급 활동 목록");
+        UUID first = fixtures.createChild(classId, "첫째 아동");
+        UUID second = fixtures.createChild(classId, "둘째 아동");
+        UUID elsewhere = fixtures.createChild(fixtures.createClassroom("다른 학급"), "다른 반 아동");
+        assertThat(assign(first, "첫째 목표", UUID.randomUUID())).hasStatus(HttpStatus.CREATED);
+        assertThat(assign(second, "둘째 목표", UUID.randomUUID())).hasStatus(HttpStatus.CREATED);
+        assertThat(assign(elsewhere, "다른 반 목표", UUID.randomUUID())).hasStatus(HttpStatus.CREATED);
+
+        var listed = fixtures.get("/api/v1/classrooms/{id}/activities", classId);
+        assertThat(listed).hasStatusOk();
+        String body = TestFixtures.body(listed);
+        // 최근 배정 순이다.
+        assertThat(JsonPath.<List<String>>read(body, "$.data[*].childName"))
+                .containsExactly("둘째 아동", "첫째 아동");
+        assertThat(JsonPath.<List<String>>read(body, "$.data[*].goalTitle"))
+                .containsExactly("둘째 목표", "첫째 목표");
+        assertThat(JsonPath.<List<String>>read(body, "$.data[*].activityType"))
+                .containsOnly("FIRST_COMBINED");
+        assertThat(JsonPath.<List<String>>read(body, "$.data[*].status"))
+                .containsOnly("NOT_STARTED");
+
+        var paged = fixtures.get("/api/v1/classrooms/{id}/activities?page=1&size=1", classId);
+        assertThat(JsonPath.<List<String>>read(TestFixtures.body(paged), "$.data[*].childName"))
+                .containsExactly("첫째 아동");
+
+        UUID emptyClass = fixtures.createClassroom("아동 없는 학급");
+        assertThat(
+                        JsonPath.<List<Object>>read(
+                                TestFixtures.body(
+                                        fixtures.get(
+                                                "/api/v1/classrooms/{id}/activities", emptyClass)),
+                                "$.data"))
+                .isEmpty();
+
+        assertError(
+                fixtures.get("/api/v1/classrooms/{id}/activities?size=0", classId),
+                HttpStatus.BAD_REQUEST,
+                "INVALID_REQUEST");
+        assertError(
+                fixtures.get(
+                        fixtures.signUpInstructor(), "/api/v1/classrooms/{id}/activities", classId),
+                HttpStatus.NOT_FOUND,
+                "CLASSROOM_NOT_FOUND");
+    }
+
     private MvcTestResult assign(UUID child, String goalTitle, UUID key) {
         return fixtures.postJsonWithKey(
                 instructor,

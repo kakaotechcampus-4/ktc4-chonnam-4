@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.ai.application.prompt;
 
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
+import com.neuringo.neuringobe.ai.application.structured.output.AnalysisReviewIssue;
 import java.util.List;
 
 /**
@@ -15,13 +16,23 @@ public record AnalysisRetry(
         List<String> failureCodes,
         List<String> focus,
         List<String> doNotAssume,
-        AnalysisResult failedAnalysis) {
+        AnalysisResult failedAnalysis,
+        List<AnalysisReviewIssue> reviewIssues) {
+
+    public AnalysisRetry(
+            List<String> failureCodes,
+            List<String> focus,
+            List<String> doNotAssume,
+            AnalysisResult failedAnalysis) {
+        this(failureCodes, focus, doNotAssume, failedAnalysis, List.of());
+    }
 
     public AnalysisRetry(List<String> failureCodes, List<String> focus, List<String> doNotAssume) {
         this(failureCodes, focus, doNotAssume, null);
     }
 
     public AnalysisRetry {
+        reviewIssues = reviewIssues == null ? List.of() : List.copyOf(reviewIssues);
         failureCodes = failureCodes == null ? List.of() : List.copyOf(failureCodes);
         focus = focus == null ? List.of() : List.copyOf(focus);
         doNotAssume = doNotAssume == null ? List.of() : List.copyOf(doNotAssume);

@@ -28,6 +28,18 @@ class RoleplayEvalRunnerTest {
     private static final RegressionSet SET = RegressionSet.load(RegressionSet.DEFAULT_RESOURCE);
 
     @Test
+    void compactOutputIsDefaultAndInvalidOutputProfilesAreRejectedBeforeCallingAProvider() {
+        assertThat(RoleplayEvalMain.compactOutput(java.util.Map.of())).isTrue();
+        assertThat(RoleplayEvalMain.compactOutput(java.util.Map.of("output-mode", "legacy")))
+                .isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () ->
+                                RoleplayEvalMain.compactOutput(
+                                        java.util.Map.of("output-mode", "invented")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void oldReportsWithoutIndeterminateCountsRemainReadable() {
         var records = runner(Set.of()).run(1, c -> c.id().equals("P1"), ignored -> {});
         var record =

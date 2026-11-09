@@ -48,6 +48,24 @@ final class RoleplayOutputParsers {
             GoalObservationInput observationInput,
             UUID expectedAnalysisId,
             RoleplayTurnInput.State state) {
+        return analysis(
+                objectMapper,
+                expectedTurnId,
+                microGoalIds,
+                observationInput,
+                expectedAnalysisId,
+                state,
+                false);
+    }
+
+    static LlmOutputParser<AnalysisResult> analysis(
+            ObjectMapper objectMapper,
+            UUID expectedTurnId,
+            Set<UUID> microGoalIds,
+            GoalObservationInput observationInput,
+            UUID expectedAnalysisId,
+            RoleplayTurnInput.State state,
+            boolean closeAchievedActivity) {
         LlmOutputParser<AnalysisResult> delegate =
                 new JacksonLlmOutputParser<>(objectMapper, AnalysisResult.class);
         Set<String> knownTurnIds = new HashSet<>();
@@ -92,6 +110,7 @@ final class RoleplayOutputParsers {
             checkAnalysisObservation(
                     result.goalObservation(), observationInput, expectedTurnId, expectedAnalysisId);
             try {
+                if (closeAchievedActivity) result = RoleplayActivityCompletion.apply(state, result);
                 RoleplaySupportDecisionRules.requireValidModelAnalysis(
                         state, observationInput, result);
                 result = RoleplaySupportApplication.apply(state, observationInput, result);
@@ -293,7 +312,7 @@ final class RoleplayOutputParsers {
                 repaired =
                         withMiscopiedIdFixed(repaired, "analysis_id", expectedAnalysisId, Set.of());
                 schema.validate(repaired);
-                var output = delegate.parse(repaired);
+                var output = delegate.parse(schema.restoreServerRequirements(repaired));
                 schema.requireValidDirectness(output);
                 check(
                         output.candidateId().equals(expectedCandidateId),

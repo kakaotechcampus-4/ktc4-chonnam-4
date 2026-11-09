@@ -227,6 +227,14 @@ export interface ActivityData {
   rewardIssuedAt: ISODateTime | null;
 }
 
+/** 학급 활동 목록의 한 줄. ActivityData 에 아동 이름과 목표 제목을 더한다. 준비 상태(nextAction)는 없다 */
+export interface ClassroomActivityData extends ActivityData {
+  /** 아동 표시 이름 */
+  childName: string;
+  /** 학습 목표 제목. 독립 퀴즈는 null */
+  goalTitle: string | null;
+}
+
 export interface HintSpec {
   /** 등록된 힌트 종류, 고정 enum 아님 */
   type: string;
@@ -652,6 +660,12 @@ export interface LearningReportData {
   difficultyDecision: ReportDifficultyDecision;
   metrics: ReportMetrics;
   narrative: ReportNarrative | null;
+  /** 활동 유형. 리포트 목록 표의 유형 칸 */
+  activityType: ActivityType;
+  /** 아동 표시 이름. 학급 리포트 목록에서 누구의 리포트인지 보인다 */
+  childName: string;
+  /** 활동의 학습 목표 제목. 목표가 없는 활동은 null */
+  goalTitle: string | null;
 }
 
 export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND';

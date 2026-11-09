@@ -81,6 +81,10 @@ public final class ScopedAnalysisContext {
         throw new IllegalArgumentException("검수할 현재 목표가 승인 목록에 없습니다.");
     }
 
+    AnalysisResult reviewedAnalysis() {
+        return analysis;
+    }
+
     public JsonNode input() {
         return payload.deepCopy();
     }

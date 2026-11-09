@@ -966,6 +966,74 @@
       }
     },
     {
+      "name": "다른 강사 학급의 활동 목록은 없는 학급과 같은 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{otherClassId}/activities" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/classrooms/{otherClassId}/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "없는 학급의 활동 목록은 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/classrooms/{unknownClassId}/activities" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {unknownClassId}",
+            "path": "/api/v1/classrooms/{unknownClassId}/activities",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "다른 강사 학급의 리포트 목록은 404 CLASSROOM_NOT_FOUND",
+      "request": { "method": "GET", "path": "/api/v1/learning-records?classId={otherClassId}" },
+      "response": {
+        "status": 404,
+        "body": {
+          "error": {
+            "status": 404,
+            "code": "CLASSROOM_NOT_FOUND",
+            "message": "학급을 찾을 수 없습니다: {otherClassId}",
+            "path": "/api/v1/learning-records",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
+      "name": "childId 와 classId 를 함께 보낸 리포트 목록은 400 INVALID_REQUEST",
+      "request": { "method": "GET", "path": "/api/v1/learning-records?childId={childId}&classId={classId}" },
+      "response": {
+        "status": 400,
+        "body": {
+          "error": {
+            "status": 400,
+            "code": "INVALID_REQUEST",
+            "message": "<string>",
+            "path": "/api/v1/learning-records",
+            "traceId": "<uuid>",
+            "fieldErrors": []
+          }
+        }
+      }
+    },
+    {
       "name": "childId 없는 리포트 목록은 400 INVALID_REQUEST",
       "request": {
         "method": "GET",

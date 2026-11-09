@@ -95,6 +95,28 @@ describe("시나리오 검토", () => {
     expect(sent[2].key).toBe(sent[1].key)
   })
 
+  it("다른 후보를 만들지 못하면 위쪽 버튼을 숨기고, [이전 후보로 돌아가기]로 직전 후보와 버튼을 되찾는다", async () => {
+    serve([scenarioReview(), () => apiError(422, "SCENARIO_GENERATION_FAILED", "만들지 못했습니다.", PATH)])
+    const { user } = renderReview()
+
+    await user.click(await screen.findByRole("button", { name: "다른 후보" }))
+    expect(await screen.findByRole("button", { name: "이전 후보로 돌아가기" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "승인으로 이동" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "다른 후보" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "이전 후보로 돌아가기" }))
+    expect(await screen.findByRole("heading", { name: "그림을 망친 친구 위로하기" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "승인으로 이동" })).toBeInTheDocument()
+  })
+
+  it("처음 불러오기가 실패하면 돌아갈 후보가 없으니 [이전 후보로 돌아가기]를 보이지 않는다", async () => {
+    serve([() => HttpResponse.error()])
+    renderReview()
+
+    expect(await screen.findByRole("button", { name: "다시 시도" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "이전 후보로 돌아가기" })).not.toBeInTheDocument()
+  })
+
   it("고친 칸만 edits 로 실어 승인하고, 확인 화면에는 고친 내용이 보인다", async () => {
     const sent = serve([scenarioReview()])
     const { user } = renderReview()

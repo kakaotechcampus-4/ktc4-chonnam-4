@@ -225,6 +225,17 @@ tasks.register('negativeEvaluationDiagnostic', JavaExec) {
     loadEnvLocal(it)
 }
 
+// 현재 축소 계약으로 네 후보만 검수한다. --prepare-only는 요청만 준비한다.
+tasks.register('characterInteractionDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '현재 축소 검수에서 정상·문답·추론·무단서 후보를 최대 네 번 비교한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.CharacterInteractionDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
 // 시나리오 생성 품질 평가(docs/scenario-generation.md). 예: ./gradlew scenarioEval --args="--provider openai --repeats 3"
 tasks.register('scenarioEval', JavaExec) {
     group = 'verification'

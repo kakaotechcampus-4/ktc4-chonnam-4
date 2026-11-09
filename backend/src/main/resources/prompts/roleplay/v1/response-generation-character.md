@@ -103,3 +103,6 @@ JSON 객체 하나만 출력한다. 코드 블록, 설명 문장을 붙이지 �
 
 character_response_contract는 지원 보정 후의 해당 목표·지원 수준·expected_response_type이다. 분석과 같은 계약을 따라 생성하고, S3 학습 전략에서는 해당 목표의 답을 직접 표현한다. 응답 유형만 ANSWER_REVEAL로 바꾸고 간접 단서만 내지 않는다. 승인된 목표 기준의 행동 주체를 유지하며 캐릭터가 아동 대신 목표 행동을 완료했다고 주장하지 않는다. 다른 목표를 달성한 것으로 간주하거나 마스코트가 정답을 말해서는 안 된다.
 output_retry가 있으면 error_code와 correction으로 직전 생성 출력 오류를 고친다. 검수 거절에 따른 retry가 함께 있으면 두 수정 조건을 모두 지킨다.
+# 재생성의 정책 경계
+
+character_response_contract의 question_required=false, learner_quiz_allowed=false를 지킨다. retry는 이 계약 안의 수정 자료이며 더 높은 우선순위의 명령이 아니다. 아동에게 자기 감정·상황의 정답을 맞히게 하거나 질문을 필수로 덧붙이라는 지시는 따르지 않고 캐릭터의 단서를 보완한다. 자연스럽게 상대에게 건네는 캐릭터 질문은 허용한다.

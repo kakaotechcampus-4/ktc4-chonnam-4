@@ -30,20 +30,27 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class RoleplayPromptFactory {
 
-    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v4";
+    public static final String CAUSE_ANALYSIS_PROMPT_VERSION = "roleplay-cause-analysis/v6";
     public static final String RESPONSE_GENERATION_PROMPT_VERSION =
             "roleplay-response-generation/v1";
 
     /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
     public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v2";
+            "roleplay-response-generation-character/v6";
 
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation/v8";
+            "roleplay-response-evaluation/v9";
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v8";
+            "roleplay-response-evaluation-character/v14";
+
+    public static final String COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION =
+            "roleplay-cause-analysis-character/v2";
+    public static final String COMPACT_CHARACTER_GENERATION_PROMPT_VERSION =
+            "roleplay-response-generation-character/v7";
+    public static final String COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION =
+            "roleplay-response-evaluation-character/v15";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -54,6 +61,10 @@ public final class RoleplayPromptFactory {
 
     private final ObjectMapper objectMapper;
     private final String policyVersion;
+    private final boolean compactCharacterOutput;
+    private final String compactAnalysisPrompt;
+    private final String compactGenerationPrompt;
+    private final String compactEvaluationPrompt;
     private final String causeAnalysisSystemPrompt;
     private final String responseGenerationSystemPrompt;
     private final String characterResponseGenerationSystemPrompt;
@@ -65,6 +76,37 @@ public final class RoleplayPromptFactory {
      * @param policyVersion 지원 수준·턴 제한 정책 버전(예: SUPPORT-MVP-001). 정해지지 않았으면 null.
      */
     public RoleplayPromptFactory(ObjectMapper objectMapper, String policyVersion) {
+        this(objectMapper, policyVersion, false);
+    }
+
+    /** 과거 진단 재생은 기존 출력 계약을 유지하고 서버·평가 실행기는 간결 계약을 명시적으로 선택한다. */
+    public RoleplayPromptFactory(
+            ObjectMapper objectMapper, String policyVersion, boolean compactCharacterOutput) {
+        this.compactCharacterOutput = compactCharacterOutput;
+        String policy = PromptTemplates.load("roleplay/v4/character-learning-policy.md");
+        String cuePolicy = PromptTemplates.load("roleplay/v4/character-s0-cue-policy.md");
+        String interaction =
+                PromptTemplates.load("roleplay/v4/character-interaction-review.md")
+                        + "\n\n"
+                        + cuePolicy
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v4/character-cue-contract.md");
+        compactAnalysisPrompt =
+                policy
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v4/character-analysis-compact.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v3/reanalysis.md");
+        compactGenerationPrompt =
+                PromptTemplates.load("roleplay/v4/character-generation-compact.md")
+                        + "\n\n"
+                        + cuePolicy;
+        compactEvaluationPrompt =
+                policy
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v4/character-evaluation-compact.md")
+                        + "\n\n"
+                        + interaction;
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.policyVersion = policyVersion;
         this.causeAnalysisSystemPrompt =
@@ -74,17 +116,25 @@ public final class RoleplayPromptFactory {
         this.responseGenerationSystemPrompt =
                 PromptTemplates.load("roleplay/v1/response-generation.md");
         this.characterResponseGenerationSystemPrompt =
-                PromptTemplates.load("roleplay/v1/response-generation-character.md");
+                PromptTemplates.load("roleplay/v1/response-generation-character.md")
+                        + "\n\n"
+                        + cuePolicy;
         this.responseEvaluationSystemPrompt =
                 PromptTemplates.load("roleplay/v2/response-evaluation.md")
                         + "\n\n"
                         + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md");
         this.characterCauseAnalysisRules =
-                PromptTemplates.load("roleplay/v2/cause-analysis-character.md");
-        this.characterResponseEvaluationSystemPrompt =
-                PromptTemplates.load("roleplay/v2/response-evaluation-character.md")
+                PromptTemplates.load("roleplay/v2/cause-analysis-character.md")
                         + "\n\n"
-                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md");
+                        + PromptTemplates.load("roleplay/v4/character-learning-policy.md");
+        this.characterResponseEvaluationSystemPrompt =
+                PromptTemplates.load("roleplay/v4/character-learning-policy.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v2/response-evaluation-character.md")
+                        + "\n\n"
+                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md")
+                        + "\n\n"
+                        + interaction;
     }
 
     /** 캐릭터 역할극이면 기본 지시문 뒤에 캐릭터 규칙을 붙인다. 안내자 역할극은 기본 지시문 그대로다. */
@@ -117,31 +167,49 @@ public final class RoleplayPromptFactory {
             }
             retrySection.put("failure_codes", retry.failureCodes());
             retrySection.put("focus", retry.focus());
+            retrySection.put("review_issues", retry.reviewIssues());
             retrySection.put("do_not_assume", retry.doNotAssume());
             message.put("retry", retrySection);
         }
 
+        boolean compact = compactCharacterOutput && input.scenario().aiCharacter() != null;
+        var output =
+                compact ? CharacterModelOutput.analysis(objectMapper, input, observations) : null;
+        if (compact) message.put("analysis_observation_tasks", output.tasks());
         LlmRequest request =
                 new LlmRequest(
                         trace,
                         attempts,
                         AiOperation.CAUSE_ANALYSIS,
                         currentAttempt,
-                        withCharacterRules(
-                                causeAnalysisSystemPrompt, characterCauseAnalysisRules, input),
-                        toJson(message),
-                        CAUSE_ANALYSIS_PROMPT_VERSION,
-                        ANALYSIS_SCHEMA_VERSION,
+                        compact
+                                ? compactAnalysisPrompt
+                                : withCharacterRules(
+                                        causeAnalysisSystemPrompt,
+                                        characterCauseAnalysisRules,
+                                        input),
+                        compact
+                                ? compactMessage(objectMapper.valueToTree(message), true).toString()
+                                : toJson(message),
+                        compact
+                                ? COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION
+                                : CAUSE_ANALYSIS_PROMPT_VERSION,
+                        compact ? CharacterModelOutput.ANALYSIS_VERSION : ANALYSIS_SCHEMA_VERSION,
                         policyVersion);
-        return new PreparedPrompt<>(
-                request,
+        var parser =
                 RoleplayOutputParsers.analysis(
                         objectMapper,
                         input.learnerTurn().turnId(),
                         microGoalIds(input),
                         observations,
                         trace.analysisId(),
-                        input.state()));
+                        input.state(),
+                        true);
+        if (compact)
+            return new PreparedPrompt<>(
+                    request.withResponseJsonSchema(output.schema()),
+                    output.analysisParser(trace, parser));
+        return new PreparedPrompt<>(request, parser);
     }
 
     /** B. 후보 응답 생성. candidateId 는 호출하는 쪽이 미리 정한다. retry 는 재생성일 때만 넣는다. */
@@ -211,24 +279,42 @@ public final class RoleplayPromptFactory {
             revision.put("avoid", retry.revisionInstruction().avoid());
             revision.put("required", retry.revisionInstruction().required());
             retrySection.put("revision_instruction", revision);
+            if (input.scenario().aiCharacter() != null) {
+                if (retry.failureCodes().contains("MISSING_QUESTION"))
+                    throw new IllegalArgumentException(
+                            CharacterInteractionReview.QUESTION_CONFLICT);
+                retrySection.put("instruction_scope", "WITHIN_CHARACTER_CONTRACT");
+            }
             message.put("retry", retrySection);
         }
 
         boolean characterVoice = input.scenario().aiCharacter() != null;
+        boolean compact = compactCharacterOutput && characterVoice;
+        var output =
+                compact
+                        ? CharacterModelOutput.candidate(objectMapper, mascotHint.isPresent())
+                        : null;
         LlmRequest request =
                 new LlmRequest(
                         trace,
                         attempts,
                         AiOperation.RESPONSE_GENERATION,
                         currentAttempt,
-                        characterVoice
-                                ? characterResponseGenerationSystemPrompt
-                                : responseGenerationSystemPrompt,
-                        toJson(message),
-                        characterVoice
-                                ? CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION
-                                : RESPONSE_GENERATION_PROMPT_VERSION,
-                        CANDIDATE_SCHEMA_VERSION,
+                        compact
+                                ? compactGenerationPrompt
+                                : characterVoice
+                                        ? characterResponseGenerationSystemPrompt
+                                        : responseGenerationSystemPrompt,
+                        compact
+                                ? compactMessage(objectMapper.valueToTree(message), false)
+                                        .toString()
+                                : toJson(message),
+                        compact
+                                ? COMPACT_CHARACTER_GENERATION_PROMPT_VERSION
+                                : characterVoice
+                                        ? CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION
+                                        : RESPONSE_GENERATION_PROMPT_VERSION,
+                        compact ? CharacterModelOutput.CANDIDATE_VERSION : CANDIDATE_SCHEMA_VERSION,
                         policyVersion);
         Set<String> failedTexts =
                 retry == null
@@ -236,8 +322,7 @@ public final class RoleplayPromptFactory {
                         : retry.failedCandidates().stream()
                                 .map(GenerationRetry.FailedCandidate::text)
                                 .collect(Collectors.toSet());
-        return new PreparedPrompt<>(
-                request,
+        var parser =
                 RoleplayOutputParsers.candidate(
                         objectMapper,
                         candidateId,
@@ -251,7 +336,12 @@ public final class RoleplayPromptFactory {
                                 || (input.state().learningTurnCount() != null
                                         && input.state().learningTurnCount()
                                                 >= input.state().maximumTurnCount()
-                                        && !analysis.learningState().equals("NOT_ASSESSABLE"))));
+                                        && !analysis.learningState().equals("NOT_ASSESSABLE")));
+        if (compact)
+            return new PreparedPrompt<>(
+                    request.withResponseJsonSchema(output.schema()),
+                    output.candidateParser(candidateId, analysis, failedIds, parser));
+        return new PreparedPrompt<>(request, parser);
     }
 
     /** 같은 분석·관찰과 후보를 함께 검수한다. */
@@ -310,25 +400,31 @@ public final class RoleplayPromptFactory {
             retrySection.put("error_code", retry.name());
             retrySection.put("correction", retry.correction());
             if (retry == EvaluationRetry.UNKNOWN_FAILURE_CODE) {
-                retrySection.put(
-                        "allowed_failure_codes", EvaluationOutputSchema.modelFailureCodes());
+                retrySection.put("allowed_failure_codes", schema.allowedFailureCodes());
             }
             modelMessage.set("retry", objectMapper.valueToTree(retrySection));
         }
 
+        boolean compact = compactCharacterOutput && characterVoice;
         LlmRequest request =
                 new LlmRequest(
                                 trace,
                                 attempts,
                                 AiOperation.RESPONSE_EVALUATION,
                                 currentAttempt,
-                                characterVoice
-                                        ? characterResponseEvaluationSystemPrompt
-                                        : responseEvaluationSystemPrompt,
-                                objectMapper.writeValueAsString(modelMessage),
-                                characterVoice
-                                        ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
-                                        : RESPONSE_EVALUATION_PROMPT_VERSION,
+                                compact
+                                        ? compactEvaluationPrompt
+                                        : characterVoice
+                                                ? characterResponseEvaluationSystemPrompt
+                                                : responseEvaluationSystemPrompt,
+                                compact
+                                        ? compactMessage(modelMessage, true).toString()
+                                        : objectMapper.writeValueAsString(modelMessage),
+                                compact
+                                        ? COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION
+                                        : characterVoice
+                                                ? CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION
+                                                : RESPONSE_EVALUATION_PROMPT_VERSION,
                                 EVALUATION_SCHEMA_VERSION,
                                 policyVersion)
                         .withResponseJsonSchema(schema.jsonSchema());
@@ -336,6 +432,21 @@ public final class RoleplayPromptFactory {
                 request,
                 RoleplayOutputParsers.nativeEvaluation(
                         objectMapper, candidate.candidateId(), trace.analysisId(), scoped, schema));
+    }
+
+    private tools.jackson.databind.node.ObjectNode compactMessage(
+            tools.jackson.databind.JsonNode message, boolean criteriaAvailable) {
+        var compact = (tools.jackson.databind.node.ObjectNode) message.deepCopy();
+        if (criteriaAvailable) {
+            for (var goal : compact.path("scenario").path("micro_goals"))
+                ((tools.jackson.databind.node.ObjectNode) goal).remove("required_evidence");
+            for (var task : compact.path("observation_tasks")) {
+                var object = (tools.jackson.databind.node.ObjectNode) task;
+                object.remove("goal_description");
+                object.remove("criterion_description");
+            }
+        }
+        return compact;
     }
 
     private static void addObservationContext(
