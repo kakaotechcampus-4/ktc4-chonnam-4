@@ -1,6 +1,6 @@
 # S0 거절 근거와 서버 필수 조건 구현 결과
 
-기준: 56bc6b1, 브랜치 refactor/roleplay-latency. 사용자가 S0 기준 설명과 속도 비용 검토 후 승인한 경량 설계를 구현했다. 추가 실제 AI 호출·push·배포는 하지 않았다.
+기준: 56bc6b1, 브랜치 refactor/roleplay-latency. 사용자가 S0 기준 설명과 속도 비용 검토 후 승인한 경량 설계를 구현했다. 구현·로컬 검증 후 별도 승인으로 아래 네 후보를 실제 검수했다. 승인 범위를 넘는 추가 호출·push·배포는 하지 않았다.
 
 ## 변경된 처리
 
@@ -50,7 +50,7 @@
 
 characterInteractionDiagnostic은 A 행동 단서, B 교사식 문답, C 금지 추론에 D 단순 맞장구 `응.`을 추가했다. 별도 실제 호출 승인 후에만 최대 네 번의 검수·공유 60초·자동 재시도 없이 실행한다. 정상 승인과 정확한 이유의 거절을 함께 읽는다. 과거 세 후보 보고서는 당시 결과 그대로 보존한다.
 
-현재 실행한 것은 아래 준비 모드뿐이다. 제공자 컨텍스트를 열기 전에 종료하며 모델을 호출하지 않는다.
+실제 호출 전 아래 준비 모드를 확인했다. 이 모드는 제공자 컨텍스트를 열기 전에 종료하며 모델을 호출하지 않는다.
 
 ```text
 characterInteractionDiagnostic --args="--prepare-only"
@@ -58,6 +58,29 @@ characterInteractionDiagnostic --args="--prepare-only"
 
 준비 결과는 로컬 build/eval/character-interaction-prepared-gpt-6-luna-13494267618431995317/에 있다. source.json의 prepare_only=true와 네 요청을 확인할 수 있으며 실측 result.json은 없다. build/reports/s0-cue-validation/size-comparison.json에 문자 수 비교를 보존했다. 이 경로들은 Git에 포함하지 않는다.
 
-실제 실행 명령은 인자 없는 characterInteractionDiagnostic이다. --prepare-only를 빼면 실제 API를 호출하므로 이번 작업에서는 실행하지 않았다. 실제 Dev의 도와줄까 실패 맥락과 전체 HTTP 지연 검증도 아직 남아 있다.
+실제 실행 명령은 인자 없는 characterInteractionDiagnostic이다. 이후 별도 승인으로 아래 실측을 수행했다. 실제 Dev의 도와줄까 실패 맥락과 전체 HTTP 지연 검증도 아직 남아 있다.
+
+## 승인 후 실제 네 후보 검수
+
+코드 4662238-dirty, gpt-6-luna·추론 low·timeout 30초, 검수 character/v14·출력 v9로 실행했다. dirty는 기존 사용자 문서 변경이다. 분석과 후보는 고정한 합성 P1 자료이며 분석·생성 호출은 각각 0번이다. 검수는 후보당 1회, 총 4회이며 SDK 재시도와 오케스트레이터 재검수는 없다.
+
+| 후보 | 실제 판단 | 주요 근거 | 검수 시간 | 입력 / 출력 토큰 |
+|---|---|---|---:|---:|
+| A: 응… (손을 만지작거리며 작게 숨을 내쉰다) | PASS | CHARACTER_REACTION, target_cue_violation=null | 8.071초 | 7,858 / 854 |
+| B: 정답을 맞혀 봐. 발표할 때 내 감정은 무엇일까? | REGENERATE | LEARNER_QUIZ, CHARACTER_BREAK | 12.313초 | 7,856 / 1,285 |
+| C: 나 발표하기 싫어서 일부러 멈췄어. | REGENERATE | SCENARIO_CONTRADICTION, 시나리오 검사 false | 11.309초 | 7,845 / 1,204 |
+| D: 응. | REGENERATE | ANALYSIS_RESPONSE_MISMATCH, NO_TARGET_CUE | 9.032초 | 7,843 / 1,031 |
+
+네 출력 모두 서버가 유효하게 해석했고 all_expected=true다. 형식·근거 검증·제공자 오류나 기한 초과 없이 끝났다. 분석의 관찰·현재 목표·활동·해석/전략은 모두 승인했다. B·C·D의 목표 단서 거절은 실제 전체 후보를 인용했고 코드·검사 false와 일치했다. C에는 REINFORCES_INCORRECT_ANSWER도 함께 있었으며 D는 difficulty_appropriate=false도 반환했다. 모든 개별 검사 항목의 일반적 의미 정확도를 입증한 결과는 아니다.
+
+B·C·D의 모델 원문 revision_instruction은 keep/change/avoid만 포함했다. 서버가 required 세 조건을 복원한 내부 결과도 확인했다. 이번 진단은 후속 재생성까지 수행하지 않았으므로 수정된 후보가 이 조건을 따르는지까지 확인한 것은 아니다.
+
+검수 네 번의 시간 합계는 40.725초, 입력 토큰 합계 31,402, 출력 합계 4,374였다. 서로 다른 후보의 검수 합계이므로 역할극 한 턴의 지연으로 사용하지 않는다. 금액은 단가를 지정하지 않아 계산하지 않았다.
+
+이전 v12 단건에서 A는 11.236초에 단서 부족으로 거절됐고 이번 v14에서는 8.071초에 승인됐다. B는 이전 9.627초에서 이번 12.313초로 늘었고 C는 11.565초에서 11.309초로 관측됐다. 코드·지침·출력·실행 시점이 다르고 각 1회이므로 필드 추가의 시간 효과나 일반적인 개선율로 해석하지 않는다. A 입력 토큰은 이전 7,376→이번 7,858로 늘었다. 입력 증가와 출력·재시도 변화는 함께 측정해야 한다.
+
+이번에는 승인한 행동 단서의 수용과 세 오류의 구분을 확인했다. 같은 후보 반복에서 판단이 안정적인지, 새로운 후보·다른 맥락에서도 구분하는지, 전체 턴 지연이 줄었는지는 후속 검증이다. 다음 실제 호출은 별도 승인 후 정상 P1의 분석→생성→검수 전체 경로를 확인하는 범위로 진행한다.
+
+원자료: 로컬 backend/build/eval/character-interaction-gpt-6-luna-3973314934174088935/. source.json과 전체 result.json, A~D의 request.json·schema.json·system-prompt.md·result.json에 보존했다. 원문·키·로컬 환경 설정을 Git에 추가하지 않았다.
 
 설계: [승인한 경량 설계](roleplay-s0-cue-review-design-2026-11-09.md). 이전 실제 결과: [고정 후보 검수](roleplay-character-negative-check-2026-11-09.md).
