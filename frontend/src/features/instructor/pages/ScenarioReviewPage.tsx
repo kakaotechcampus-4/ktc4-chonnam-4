@@ -216,8 +216,11 @@ function ScenarioReviewPage() {
     })
   }
 
+  // 본문이 후보 대신 오류·안내를 보이는 동안에는 후보 기준 버튼을 숨긴다.
+  const bodyShowsNotice = prepare.isError || isBodyError(lastError)
+
   const actions =
-    scenario && view === 'review' && !confirm.isSuccess ? (
+    scenario && view === 'review' && !confirm.isSuccess && !bodyShowsNotice ? (
       <>
         <button type="button" disabled={pending} onClick={() => setCancelOpen(true)} className={dangerOutlineButtonClass}>
           검토 그만하기
@@ -355,6 +358,12 @@ function ScenarioReviewPage() {
               className={cn(outlineButtonClass, 'ml-3')}
             >
               다시 시도
+            </button>
+          )}
+          {/* 다른 후보만 실패했으면 직전 후보는 그대로 있으니 돌아가 볼 수 있다. 그사이 검토가 바뀌었으면 승인할 때 새로 불러오기로 안내된다. */}
+          {prepare.variables?.action === 'NEXT' && review && (
+            <button type="button" onClick={() => prepare.reset()} className={cn(outlineButtonClass, 'ml-3')}>
+              이전 후보로 돌아가기
             </button>
           )}
         </Notice>
