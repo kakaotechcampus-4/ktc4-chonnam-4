@@ -22,7 +22,6 @@ const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
   { label: '활동 관리', icon: 'assignment', to: '/activities', exact: true },
   { label: '리포트', icon: 'insert_chart', to: '/reports' },
   { label: '추천·다음목표', icon: 'flag', to: '/recommendations' },
-  { label: '알림', icon: 'notifications' },
   { label: '설정', icon: 'settings', to: '/account' },
 ]
 

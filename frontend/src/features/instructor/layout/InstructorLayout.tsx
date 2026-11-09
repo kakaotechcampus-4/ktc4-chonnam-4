@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
  * 헤더 높이 55px 는 와이어프레임 T-HOME-01·T-CLS-01 을, 여백은 디자인 시스템 Space(4px 단위)를 따른다.
  *
  * actions: 헤더 오른쪽 버튼 자리, subheader: 헤더 바로 아래 흰 띠(탭 등) 자리.
- * headerTools: 시안 헤더 맨 오른쪽의 알림·프로필 자리(각 26px). 둘 다 아직 기능이 없어 알림은 비활성 버튼, 프로필은 꾸밈 원이다.
+ * headerTools: 시안 헤더 맨 오른쪽의 프로필 자리(26px). 아직 기능이 없어 꾸밈 원이다. 시안의 알림 버튼은 알림 기능을 빼기로 해 두지 않는다.
  *   활동 만들기 시안처럼 단계 표시만 있는 화면은 false 로 끈다.
  * fill: 본문 카드를 화면 아래까지 늘이는 화면(활동 만들기·학급 생성 시안)에서 켠다. 본문의 바로 아래 자식이 남은 높이를 채운다.
  */
@@ -119,18 +119,7 @@ function InstructorLayout({
             <div className="flex items-center gap-4">
               {actions && <div className="flex items-center gap-2">{actions}</div>}
               {headerTools && (
-                <div className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    disabled
-                    aria-label="알림 (준비 중)"
-                    title="준비 중인 기능입니다"
-                    className={cn("relative flex size-[26px] items-center justify-center rounded-full border border-[var(--instructor-border-strong)] text-[var(--instructor-icon-subtle)] disabled:cursor-not-allowed", hitAreaClass)}
-                  >
-                    <MaterialIcon name="notifications" className="size-4" />
-                  </button>
-                  <span aria-hidden className="size-[26px] rounded-full bg-[var(--instructor-avatar)]" />
-                </div>
+                <span aria-hidden className="size-[26px] rounded-full bg-[var(--instructor-avatar)]" />
               )}
             </div>
           )}
