@@ -461,6 +461,7 @@ export interface RoleplayStartData {
   activityStatus: ActivityStatus;
   lastDeliveredTurnId: UUID | null;
   checkpointVersion: number;
+  characterName: string | null;
   delivery: {
     messages: Array<{
       messageId: UUID;

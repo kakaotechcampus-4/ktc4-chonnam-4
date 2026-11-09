@@ -11,7 +11,7 @@ import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from
 
 const speech = { available: false, url: null }
 
-const startBody = (messages: unknown[]) =>
+const startBody = (messages: unknown[], characterName: string | null = "민수") =>
   envelope({
     sessionId: "82000000-0000-4000-8000-000000000001",
     activityId: CHILD_ACTIVITY_ID,
@@ -21,6 +21,7 @@ const startBody = (messages: unknown[]) =>
     activityStatus: "IN_PROGRESS",
     lastDeliveredTurnId: null,
     checkpointVersion: 0,
+    characterName,
     delivery: { messages },
   })
 
@@ -63,5 +64,38 @@ describe("역할극 장면 소개와 지문", () => {
     expect(screen.queryByText(/\(종이를 들고\)/)).not.toBeInTheDocument()
     // 소개가 첫 대사보다 먼저(위에) 나온다.
     expect(intro.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("캐릭터 말풍선 이름표는 상대 이름이고, 이름이 없으면 거북이 안내자다", async () => {
+    const question = {
+      messageId: "83000000-0000-4000-8000-000000000001",
+      speakerRole: "DIALOGUE",
+      purpose: "QUESTION",
+      text: "나 그림 그리고 있었어.",
+      speech,
+    }
+    server.use(
+      http.post("*/api/v1/activities/:activityId/roleplay-sessions", () =>
+        HttpResponse.json(startBody([question]), { status: 201 })
+      )
+    )
+    enterAsChild()
+    seedChildActivity({ quizFinished: true })
+    const first = renderRoutes(router.routes, `/child/roleplay/${CHILD_ACTIVITY_ID}`)
+
+    await screen.findByText("나 그림 그리고 있었어.")
+    expect(screen.getByText("민수")).toBeInTheDocument()
+    expect(screen.queryByText("거북이 안내자")).not.toBeInTheDocument()
+    first.unmount()
+
+    server.use(
+      http.post("*/api/v1/activities/:activityId/roleplay-sessions", () =>
+        HttpResponse.json(startBody([question], null), { status: 201 })
+      )
+    )
+    renderRoutes(router.routes, `/child/roleplay/${CHILD_ACTIVITY_ID}`)
+
+    await screen.findByText("나 그림 그리고 있었어.")
+    expect(screen.getByText("거북이 안내자")).toBeInTheDocument()
   })
 })

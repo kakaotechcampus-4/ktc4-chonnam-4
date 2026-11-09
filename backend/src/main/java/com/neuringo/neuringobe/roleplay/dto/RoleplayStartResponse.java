@@ -15,6 +15,8 @@ public record RoleplayStartResponse(
         ActivityStatus activityStatus,
         UUID lastDeliveredTurnId,
         long checkpointVersion,
+        /** AI 가 연기하는 상대의 이름(예: 지우). 말풍선 이름표에 쓴다. 상대 인물이 없는 시나리오면 null. */
+        String characterName,
         Delivery delivery) {
 
     public record Delivery(List<Message> messages) {

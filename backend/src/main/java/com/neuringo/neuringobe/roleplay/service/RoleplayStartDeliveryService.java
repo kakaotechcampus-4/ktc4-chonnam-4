@@ -35,6 +35,11 @@ public class RoleplayStartDeliveryService {
     @Transactional(propagation = Propagation.MANDATORY)
     public RoleplayStartResponse require(RoleplaySessionState state) {
         List<RoleplayStartResponse.Message> messages = List.of();
+        String characterName =
+                scenarios
+                        .findAiCharacterRole(state.scenarioId(), state.scenarioVersion())
+                        .flatMap(RoleplaySceneIntro::name)
+                        .orElse(null);
         if ("IN_PROGRESS".equals(state.status())
                 && state.activityStatus() == ActivityStatus.IN_PROGRESS) {
             if (state.lastTurnNumber() == 0) {
@@ -66,11 +71,12 @@ public class RoleplayStartDeliveryService {
                 }
                 var question = message(messageId, "QUESTION", text);
                 messages =
-                        scenarios
-                                .findAiCharacterRole(state.scenarioId(), state.scenarioVersion())
-                                .flatMap(RoleplaySceneIntro::text)
-                                .map(intro -> List.of(sceneIntro(messageId, intro), question))
-                                .orElseGet(() -> List.of(question));
+                        characterName == null
+                                ? List.of(question)
+                                : List.of(
+                                        sceneIntro(
+                                                messageId, RoleplaySceneIntro.text(characterName)),
+                                        question);
             } else {
                 // 상태 변경으로 세션 버전이 증가해도 마지막 확정 턴은 그대로 복원한다.
                 var saved =
@@ -92,6 +98,7 @@ public class RoleplayStartDeliveryService {
                 state.activityStatus(),
                 state.lastTurnId(),
                 state.checkpointVersion(),
+                characterName,
                 new RoleplayStartResponse.Delivery(messages));
     }
 

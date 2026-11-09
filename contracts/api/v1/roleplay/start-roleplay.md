@@ -66,6 +66,7 @@
     "activityStatus": "IN_PROGRESS",
     "lastDeliveredTurnId": null,
     "checkpointVersion": 0,
+    "characterName": "민수",
     "delivery": {
       "messages": [
         {
@@ -89,6 +90,7 @@
 | `activityStatus` | 저장된 활동 상태. 세션 상태와 함께 다음 행동 판단 |
 | `lastDeliveredTurnId` | 마지막 확정 학습 턴 ID, 아직 없으면 null |
 | `checkpointVersion` | 현재 세션 버전. 마지막 턴 이후 상태 변경으로도 증가할 수 있음 |
+| `characterName` | 캐릭터(DIALOGUE) 말풍선 이름표로 쓸 상대 이름. 장면 소개와 같은 규칙으로 이름표의 마지막 낱말("넘어진 친구 지우" → "지우"). 상대 인물이 없는 시나리오면 null. 시작·복원 모두 온다 |
 | `delivery.messages` | 재개 검사 통과 후 [장면 소개,] 첫 질문 또는 마지막 확정 응답. 완료 상태는 빈 배열 |
 | `messageId` | 재전송·복원 시 중복 표시를 막을 안정된 식별자 |
 | `speakerRole` | 캐릭터 대사 DIALOGUE, 깡총이 장면 소개 HINT |
@@ -137,6 +139,7 @@ export interface RoleplayStartData {
   activityStatus: ActivityStatus;
   lastDeliveredTurnId: UUID | null;
   checkpointVersion: number;
+  characterName: string | null;
   delivery: {
     messages: Array<{
       messageId: UUID;

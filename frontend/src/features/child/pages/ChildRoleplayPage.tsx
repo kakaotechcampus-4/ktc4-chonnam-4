@@ -46,7 +46,7 @@ type ThreadMessage = {
 // 깡총이가 화면 끝까지 닿도록 레이아웃을 wide로 쓰고, 나머지 대화·입력은 기존 본문 폭(688px)에 맞춘다.
 const COLUMN = "mx-auto w-full max-w-[43rem]"
 
-function ThreadBubble({ message }: { message: ThreadMessage }) {
+function ThreadBubble({ message, characterName }: { message: ThreadMessage; characterName: string | null }) {
   // 깡총이(힌트·도움)는 Figma C-RP-02처럼 화면 오른쪽 끝에서 튀어나온다. 역할극에서만 이렇게 보여 준다.
   if (message.speaker === "rabbit") return <RabbitHintBubble>{message.text}</RabbitHintBubble>
 
@@ -71,7 +71,7 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
   const { action, speech } = splitStageDirection(message.text)
   if (!message.audioUrl) {
     return (
-      <SpeechBubble character="turtle" className={COLUMN} action={action}>
+      <SpeechBubble character="turtle" className={COLUMN} name={characterName} action={action}>
         {speech}
       </SpeechBubble>
     )
@@ -79,7 +79,7 @@ function ThreadBubble({ message }: { message: ThreadMessage }) {
   const audioUrl = message.audioUrl
   return (
     <div className={`${COLUMN} flex items-end gap-2`}>
-      <SpeechBubble character="turtle" action={action}>
+      <SpeechBubble character="turtle" name={characterName} action={action}>
         {speech}
       </SpeechBubble>
       <button
@@ -326,10 +326,10 @@ function ChildRoleplayPage() {
         <div className="flex flex-1 flex-col gap-4 break-keep">
           <div className="flex flex-1 flex-col gap-4" aria-live="polite">
             {thread.map((message) => (
-              <ThreadBubble key={message.id} message={message} />
+              <ThreadBubble key={message.id} message={message} characterName={session.characterName} />
             ))}
             {turnMutation.isPending ? (
-              <SpeechBubble character="turtle" className={COLUMN}>
+              <SpeechBubble character="turtle" className={COLUMN} name={session.characterName}>
                 생각하고 있어요…
               </SpeechBubble>
             ) : null}

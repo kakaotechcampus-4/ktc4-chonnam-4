@@ -17,11 +17,14 @@ final class RoleplaySceneIntro {
 
     private RoleplaySceneIntro() {}
 
-    /** 이름표가 없으면(안내자 시나리오 등) 소개하지 않는다. */
-    static Optional<String> text(String role) {
+    /** 아동에게 부를 상대 이름. 말풍선 이름표와 소개가 같은 이름을 쓴다. 이름표가 없으면(안내자 시나리오 등) 비어 있다. */
+    static Optional<String> name(String role) {
         if (role == null || role.isBlank()) return Optional.empty();
-        String name = callName(role);
-        return Optional.of("저기 " + name + " 보이지? " + name + " 말을 잘 듣고 이야기를 나눠 보자.");
+        return Optional.of(callName(role));
+    }
+
+    static String text(String name) {
+        return "저기 " + name + " 보이지? " + name + " 말을 잘 듣고 이야기를 나눠 보자.";
     }
 
     /** 첫 질문 메시지에 묶어 복원·재전송 때도 같은 ID 를 돌려준다. */

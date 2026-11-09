@@ -9,7 +9,7 @@ class RoleplaySceneIntroTest {
 
     @Test
     void introducesTheCharacterByItsName() {
-        assertThat(RoleplaySceneIntro.text("민수")).contains("저기 민수 보이지? 민수 말을 잘 듣고 이야기를 나눠 보자.");
+        assertThat(RoleplaySceneIntro.text("민수")).isEqualTo("저기 민수 보이지? 민수 말을 잘 듣고 이야기를 나눠 보자.");
     }
 
     @Test
@@ -26,9 +26,10 @@ class RoleplaySceneIntroTest {
     }
 
     @Test
-    void skipsIntroWithoutCharacterRole() {
-        assertThat(RoleplaySceneIntro.text(null)).isEmpty();
-        assertThat(RoleplaySceneIntro.text("  ")).isEmpty();
+    void namesTheCharacterOnlyWhenTheScenarioHasOne() {
+        assertThat(RoleplaySceneIntro.name("넘어진 친구 지우")).contains("지우");
+        assertThat(RoleplaySceneIntro.name(null)).isEmpty();
+        assertThat(RoleplaySceneIntro.name("  ")).isEmpty();
     }
 
     @Test
