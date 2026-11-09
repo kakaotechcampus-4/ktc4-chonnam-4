@@ -327,7 +327,9 @@ public class RoleplayHttpTestConfiguration {
                     var turnState = mapper.readTree(request.userPrompt()).path("state");
                     int maximum = turnState.path("maximum_turn_count").asInt();
                     boolean maximumReached =
-                            maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
+                            state.activityGoalAchieved
+                                    || (maximum > 0
+                                            && turnState.path("turn_count").asInt() >= maximum);
                     String json =
                             switch (request.operation()) {
                                 case INPUT_VALIDATION -> state.inputJudgment;

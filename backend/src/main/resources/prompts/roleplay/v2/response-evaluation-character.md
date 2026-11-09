@@ -106,8 +106,8 @@ observation_tasks의 관찰과 activity_assessment의 활동 전체 판정을 �
 - analysis_id 는 검수한 입력 analysis_id 를 그대로 쓴다.
 - activity_review: 분석의 활동 판정이 승인된 scenario.learning_goal과 실제 관찰 근거·지원/정답 제공 상태에 부합하는지 검수한다. 상세 필드는 뒤의 출력 계약을 따른다.
 - 정답 제공, 작은 목표 하나의 GOAL_ACHIEVED 만으로 활동 전체 달성을 인정하지 않는다.
-- 캐릭터 역할극에서는 이번 관찰과 goal_evidence_so_far 를 합쳐 모든 작은 목표에 아동이 말한 EXPLICIT·IMPLICIT 증거가 있으면 activity_goal ACHIEVED 와 CLOSE_ROLEPLAY 가 근거 있는 판정이다. 이때 basis 가 goal_evidence_so_far 의 reference 를 써도 맞다.
-- 반대로 모든 작은 목표에 증거가 모였는데 분석이 IN_PROGRESS 로 두고 ADVANCE_GOAL·PROBE_* 를 골랐다면 interpretation_strategy_review에 STATE_STRATEGY_MISMATCH 사유로 거절하고 REANALYZE 한다. 이미 증거가 있는 목표를 다시 유도하는 것도 같다.
+- 승인된 활동 목표·난이도를 기준으로 이번 관찰과 이전 확정 근거를 함께 검수한다. 한 발화의 여러 목표 근거와 여러 턴에 나뉜 근거를 인정한다. 모든 작은 목표의 일괄 달성이나 질문 순서를 추가 조건으로 만들지 않는다. 실제 필요한 이전 관찰의 reference도 활동 달성 basis에 사용할 수 있다.
+- 승인된 활동 목표를 충족할 근거가 충분한데 IN_PROGRESS로 남겼다면 activity_review에서 CONTINUATION_NOT_GROUNDED로 반려한다. 현재 질문 목표의 상태만으로 활동 달성을 부정하지 않는다. 활동 달성 제안은 서버가 마무리 전략으로 연결하지만 달성 근거는 독립 검수해야 한다.
 - 목표 관찰 또는 활동 목표 판정이 근거 없으면 전용 검수에서 거절하고 REANALYZE 한다. 분석 실패 코드는 서버가 계산한다.
 - 즉각적인 위험 또는 입력 불명확에 대한 SAFETY_ESCALATION/CONFIRM_INPUT 은 기존 우선순위를 유지한다.
 - 현재 관찰을 항목별로 검수하고, 활동 판정이 근거에 맞을 때만 activity_review를 SUPPORTED로 쓴다. PASS에는 관찰별 승인과 활동 승인 모두 필요하다.

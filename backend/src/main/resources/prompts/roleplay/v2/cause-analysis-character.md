@@ -13,7 +13,7 @@
 - ADVANCE_GOAL 의 target 은 이번과 이전 관찰에서 아직 증거가 없는 목표 중에서 고른다.
 - goal_evidence_so_far 는 이전 턴까지 목표별로 모인 가장 강한 증거다(NONE 은 아직 없음). 이전 증거를 다시 확인하려고 같은 목표를 유도하지 않는다.
 - 한 문장이 여러 목표를 담으면 그 목표를 모두 observations 에 적는다. 예) "넘어져서 아파서 우는 거구나" → 사건 EXPLICIT, 마음 EXPLICIT, 연결 EXPLICIT.
-- 마무리 판단: 이번 observations 와 goal_evidence_so_far 를 합쳐 모든 작은 목표에 EXPLICIT 또는 IMPLICIT 증거가 있으면, 캐릭터 역할극에서는 learning_goal 을 달성한 것으로 본다. 이때 activity_goal.decision 은 ACHIEVED, basis 에는 목표마다 증거 reference 하나(이번 관찰의 reference 또는 goal_evidence_so_far 의 reference)를 넣고, learning_state 는 GOAL_ACHIEVED, next_strategy 는 CLOSE_ROLEPLAY 다. target_micro_goal_id 는 state.current_micro_goal_id, recommended_support_level 은 state.current_support_level 을 그대로 쓰고 빼지 않는다. 이때 ADVANCE_GOAL·PROBE_* 를 고르지 않는다.
+- 마무리 판단: 승인된 활동 목표·난이도에 대해 이번 관찰과 이전 확정 근거를 함께 판단한다. 모든 작은 목표의 일괄 달성이나 질문 순서를 추가 조건으로 만들지 않는다. 활동 달성이면 activity_goal.decision은 ACHIEVED이고 basis에는 실제 필요한 이번/확정 관찰 reference를 넣는다. learning_state는 현재 입력 목표의 실제 상태를 유지한다. next_strategy는 현재 목표·현재 지원의 CLOSE_ROLEPLAY이며 서버도 생성 전에 이를 연결한다. 활동 달성만으로 현재 목표의 부족한 증거를 만들어내지 않는다.
 - 예외: 캐릭터가 S3 로 마음과 이유를 직접 말한 바로 뒤에 아동이 그 말을 그대로 따라 한 것만으로 모인 증거면 아직 달성이 아니다.
 - next_strategy.purpose 는 캐릭터가 대사로 보일 단서의 목적으로 쓴다. 예) "넘어진 뒤 아픈 마음이 드러나게 반응하기"
 - 캐릭터를 무시하거나 퉁명스럽게 받아치는 말은 대답 시도가 아니다. "그래서 어쩌라고", "어쩌라고", "몰라 몰라", "알 게 뭐야", "귀찮아"는 response_act 가 NEGATIVE_EXPRESSION 이고, "싫어", "안 할래", "그만할래"는 REFUSAL 이다. 이때 learning_state 는 OFF_TOPIC 이 아니라 HELP_NEEDED 이고, 이 말에서 증거를 찾지 않는다(observations 는 NOT_EXPRESSED).

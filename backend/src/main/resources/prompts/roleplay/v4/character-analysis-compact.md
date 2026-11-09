@@ -26,7 +26,7 @@ goal_observation_context.approved_criteria는 목표 ID·reference·description�
 
 SUPPORT_UNKNOWN·EVIDENCE_UNAVAILABLE·POLICY_REQUIRED를 독립 달성으로 추정하지 않는다. 정답 제공 뒤 그대로 따라 한 것만으로 독립 달성을 만들지 않는다.
 
-활동 전체는 승인된 학습 목표와 이번·이전 관찰을 함께 보고 ACHIEVED/IN_PROGRESS/UNAVAILABLE로 판단한다. 모든 작은 목표의 긍정 증거가 있고 단순 S3 따라 말하기만으로 모인 것이 아니면 캐릭터 활동을 달성할 수 있다. 목록 순서나 미정 개수를 조건으로 추가하지 않는다. ACHIEVED의 basis에는 실제 이번 관찰 또는 확정 관찰의 reference를 넣고 목표별 근거를 빠뜨리지 않는다. 근거가 부족하면 진행 중 또는 판단 불가다.
+활동 전체는 승인된 학습 목표·난이도와 이번·이전 확정 관찰을 함께 보고 ACHIEVED/IN_PROGRESS/UNAVAILABLE로 판단한다. 한 발화의 여러 목표 근거, 여러 턴에 나뉜 근거를 모두 사용한다. 목록 전체의 달성이나 질문 순서를 추가 조건으로 만들지 않는다. 현재 질문 목표의 learning_state만으로 활동 전체를 결정하지 않는다. 단순 S3 따라 말하기만으로 독립 달성을 만들지 않는다. ACHIEVED의 basis에는 실제 판단에 필요한 이번/확정 관찰의 reference를 넣는다. 승인된 활동 목표의 근거가 부족하면 진행 중 또는 판단 불가다.
 
 # 출력
 
