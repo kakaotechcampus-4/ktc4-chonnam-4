@@ -219,8 +219,9 @@ class RoleplayStoredProgressIntegrationTest {
         verifyNoInteractions(policy);
     }
 
+    // 학급은 재사용 범위가 아니어서(팀 결정, PR #90 리뷰) 아동의 학급이 바뀌어도 막지 않는다.
     @ParameterizedTest
-    @ValueSource(strings = {"paused", "class", "hash", "support", "version", "missingGoal"})
+    @ValueSource(strings = {"paused", "hash", "support", "version", "missingGoal"})
     void rejectsInvalidStoredScopeBeforeCallingThePolicy(String invalid) {
         var f = fixture();
         switch (invalid) {
@@ -232,11 +233,6 @@ class RoleplayStoredProgressIntegrationTest {
                     jdbc.update(
                             "update activity set status='PAUSED' where activity_id=?",
                             f.key().activityId());
-            case "class" ->
-                    jdbc.update(
-                            "update child set class_id=? where child_id=?",
-                            anotherClass(),
-                            f.key().childId());
             case "hash" ->
                     jdbc.update(
                             "update learning_goal set content_hash=? where goal_id=?",

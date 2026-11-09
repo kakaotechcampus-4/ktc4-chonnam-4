@@ -1,30 +1,40 @@
-import { useLocation, useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import homeBackgroundUrl from "@/assets/child/home-background.svg"
 import { ChildLayout } from "../layout/ChildLayout"
 import { HotAirBalloon, type BalloonColor, type BalloonPassenger } from "../components/HotAirBalloon"
 import { SpeechBubble } from "../components/SpeechBubble"
 import { NextActivityDialog } from "../components/NextActivityDialog"
-import { ErrorState, LoadingState, StateDialog } from "../components/state"
-import { getMyActivities, myActivitiesQueryKey, type ChildActivityStatus } from "../api"
+import { ActivityPager } from "../components/ActivityPager"
+import { LoadErrorDialog, LoadingState } from "../components/state"
+import { isActivityInProgress, type ChildActivityStatus } from "../api"
+import { useMyActivities } from "../hooks/useMyActivities"
 import { useChildSessionStore } from "../store/childSessionStore"
 
+// 배경 시안의 열기구 자리가 3개라 한 쪽에 3개씩 띄우고, 더 많으면 쪽을 나눈다.
+const BALLOONS_PER_PAGE = 3
 const BALLOON_COLOR_ORDER: BalloonColor[] = ["pink", "yellow", "purple"]
+// 원본 시안처럼 열기구를 화면 폭의 약 27% 크기로 둔다. 갤럭시 탭(1138×712)에서 세로가 넘치지 않도록 최대 크기를 화면 높이에도 맞춘다.
+const BALLOON_SLOT = "w-[27%] min-w-40 max-w-[min(16rem,34svh)]"
 // 원본 시안처럼 가운데 열기구가 가장 높이 뜨도록 높이를 번갈아 준다. 한 줄로 쌓이는 모바일에서는 주지 않는다.
 const BALLOON_OFFSETS = ["sm:mt-12", "sm:mt-0", "sm:mt-16"]
 // 완료한 순서대로 번갈아 태운다.
 const PASSENGER_ORDER: BalloonPassenger[] = ["turtle", "rabbit"]
 
+const IN_PROGRESS_BADGE = {
+  label: "진행 중",
+  className: "bg-[var(--child-warning-bg)] text-[var(--child-warning-fg)]",
+}
+
+// Figma 시안의 상태 표시는 3가지다. 일시 중단·복구 필요는 아이에게 "진행 중"으로 보인다.
 const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: string }> = {
   NOT_STARTED: {
     label: "안 했어요",
     className: "bg-[var(--child-surface-muted)] text-[var(--child-text-muted)]",
   },
-  IN_PROGRESS: {
-    label: "진행 중",
-    className: "bg-[var(--child-warning-bg)] text-[var(--child-warning-fg)]",
-  },
+  IN_PROGRESS: IN_PROGRESS_BADGE,
+  PAUSED: IN_PROGRESS_BADGE,
+  RECOVERY_NEEDED: IN_PROGRESS_BADGE,
   COMPLETED: {
     label: "완료!",
     className: "bg-[var(--child-success-bg)] text-[var(--child-success-fg)]",
@@ -39,13 +49,10 @@ const STATUS_BADGES: Record<ChildActivityStatus, { label: string; className: str
 function ChildActivitiesPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const childId = useChildSessionStore((state) => state.childId)
+  const [searchParams, setSearchParams] = useSearchParams()
   const childName = useChildSessionStore((state) => state.childName) ?? ""
 
-  const activitiesQuery = useQuery({
-    queryKey: myActivitiesQueryKey(childId),
-    queryFn: getMyActivities,
-  })
+  const activitiesQuery = useMyActivities()
 
   const activities = activitiesQuery.data ?? []
   const isLoading = activitiesQuery.isPending || (activitiesQuery.isError && activitiesQuery.isFetching)
@@ -56,7 +63,7 @@ function ChildActivitiesPage() {
     (location.state as { completedActivityId?: string } | null)?.completedActivityId
   )
   const nextActivity = cameFromCompletion && activitiesQuery.isSuccess
-    ? activities.find((item) => item.status === "IN_PROGRESS") ??
+    ? activities.find((item) => isActivityInProgress(item.status)) ??
       activities.find((item) => item.status === "NOT_STARTED") ??
       null
     : null
@@ -69,7 +76,19 @@ function ChildActivitiesPage() {
     .filter((item) => item.status === "COMPLETED")
     .sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""))
     .map((item) => item.activityId)
-  const balloons = activities.map((activity, index) => {
+
+  // 지금 쪽은 주소(?page=2)에 둔다. 활동에 들어갔다가 뒤로 오면 보던 쪽으로 돌아온다.
+  // 활동이 줄어 그 쪽이 없어지면 마지막 쪽을 보여 준다.
+  const pageCount = Math.max(1, Math.ceil(activities.length / BALLOONS_PER_PAGE))
+  const requestedPage = Number.parseInt(searchParams.get("page") ?? "1", 10)
+  const page = Math.min(Math.max(Number.isNaN(requestedPage) ? 1 : requestedPage, 1), pageCount)
+  const changePage = (next: number) =>
+    setSearchParams(next === 1 ? {} : { page: String(next) }, { replace: true, state: location.state })
+
+  // 쪽마다 같은 자리(분홍·노랑·보라, 가운데가 가장 높음)에 띄운다. 마지막 쪽이 덜 차도 자리는 그대로다.
+  const pageActivities = activities.slice((page - 1) * BALLOONS_PER_PAGE, page * BALLOONS_PER_PAGE)
+  const emptySlots = activities.length > BALLOONS_PER_PAGE ? BALLOONS_PER_PAGE - pageActivities.length : 0
+  const balloons = pageActivities.map((activity, index) => {
     const isCompleted = activity.status === "COMPLETED"
     const completedIndex = completionOrder.indexOf(activity.activityId)
     const passenger = isCompleted
@@ -119,7 +138,7 @@ function ChildActivitiesPage() {
               {balloons.map(({ activity, isCompleted, passenger, color, offset }) => {
                 const badge = STATUS_BADGES[activity.status]
                 return (
-                  <li key={activity.activityId} className={cn("w-[27%] min-w-40 max-w-[min(16rem,34svh)]", offset)}>
+                  <li key={activity.activityId} className={cn(BALLOON_SLOT, offset)}>
                     <button
                       type="button"
                       disabled={isCompleted}
@@ -148,7 +167,33 @@ function ChildActivitiesPage() {
                   </li>
                 )
               })}
+              {/* 마지막 쪽이 덜 차도 빈자리를 보이지 않는 열기구로 채운다. 줄 폭·높이가 1쪽과 같아야 열기구가 같은 자리에 뜬다.
+                  한 줄로 쌓이는 좁은 화면에서는 필요 없다. */}
+              {Array.from({ length: emptySlots }, (_, index) => {
+                const slot = pageActivities.length + index
+                return (
+                  <li
+                    key={`empty-${slot}`}
+                    aria-hidden
+                    className={cn(BALLOON_SLOT, BALLOON_OFFSETS[slot], "invisible hidden flex-col items-center gap-2 sm:flex")}
+                  >
+                    <HotAirBalloon color={BALLOON_COLOR_ORDER[slot]} />
+                    <span className="flex w-full flex-col items-center gap-1 px-3 py-2">
+                      <span className="text-lg font-bold">&nbsp;</span>
+                      <span className="px-3 py-0.5 text-sm font-semibold">&nbsp;</span>
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
+            {pageCount > 1 ? (
+              // 잔디 한가운데에 띄운다. 열기구 아래 이름표 때문에 목록 아래에 이어 붙이면 화면이 넘친다.
+              // 배경은 cover·아래 정렬이라 잔디 높이가 max(16.75svh, 10.55vw)다. 화면 맨 아래에 그 높이의 띠를 깔고 가운데에 둔다.
+              // 열기구가 한 줄로 쌓이는 좁은 화면에서는 목록 아래에 이어 붙인다.
+              <div className="flex justify-center sm:absolute sm:inset-x-0 sm:bottom-0 sm:h-[max(16.75svh,10.55vw)] sm:items-center">
+                <ActivityPager page={page} pageCount={pageCount} onChange={changePage} />
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -162,9 +207,12 @@ function ChildActivitiesPage() {
         }}
       />
 
-      <StateDialog open={showError}>
-        <ErrorState message="활동을 불러오지 못했어요" onRetry={() => activitiesQuery.refetch()} />
-      </StateDialog>
+      <LoadErrorDialog
+        open={showError}
+        error={activitiesQuery.error}
+        message="활동을 불러오지 못했어요"
+        onRetry={() => activitiesQuery.refetch()}
+      />
     </ChildLayout>
   )
 }

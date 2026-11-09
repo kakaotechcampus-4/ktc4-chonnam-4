@@ -24,14 +24,31 @@ import tools.jackson.databind.ObjectMapper;
 /** 외부 통신 없이 음성 요청을 검증하는 테스트용 제공자다. */
 @TestConfiguration(proxyBeanMethods = false)
 public class RoleplayHttpTestConfiguration {
+    @Bean
+    public RoleplayAudioInspector roleplayAudioInspector() {
+        return (file, format, deadline) -> deadline.requireActive();
+    }
+
     public static class State {
+        public String inputJudgment =
+                "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
+        public String transcriptionText = "합성 원문 비공개 입력";
         public final List<String> calls = new CopyOnWriteArrayList<>();
         public final List<LlmRequest> llmRequests = new CopyOnWriteArrayList<>();
         private final Map<AiOperation, Queue<AiFailureType>> llmFailures =
                 new ConcurrentHashMap<>();
         private final Queue<String> candidateTexts = new ConcurrentLinkedQueue<>();
         private final Queue<String> evaluations = new ConcurrentLinkedQueue<>();
-        public boolean unavailable, unsafe, lowConfidence, blockStt;
+        public boolean unavailable, unsafe, lowConfidence, blockStt, blockInput;
+        public boolean noSpeech, unknownConfidence, invalidInput, inspectionUnavailable;
+        public boolean inspectionTooLong;
+        public String inputFailure;
+        public RoleplayInputProcessor.Assessment inputAssessment =
+                new RoleplayInputProcessor.Assessment(0.93, true, true, false);
+        public int sttFailuresRemaining;
+        public Double sttConfidence;
+        public com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput.InputQuality
+                lastInputQuality;
         public boolean activityGoalAchieved, goalDecisionUnavailable, goalCalledInTransaction;
         public boolean useServerGoalEvaluator, changeContextAfterSpeech;
         public GoalObservationInput contextObservations;
@@ -61,6 +78,9 @@ public class RoleplayHttpTestConfiguration {
         }
 
         public void reset() {
+            inputJudgment =
+                    "{\"decision\":\"ANALYZABLE\",\"meaningPreserved\":true,\"privacyClear\":true,\"confidence\":0.93}";
+            transcriptionText = "합성 원문 비공개 입력";
             calls.clear();
             llmRequests.clear();
             llmFailures.clear();
@@ -69,7 +89,18 @@ public class RoleplayHttpTestConfiguration {
             unavailable = false;
             unsafe = false;
             lowConfidence = false;
+            noSpeech = false;
+            inspectionUnavailable = false;
+            inspectionTooLong = false;
+            unknownConfidence = false;
+            invalidInput = false;
+            inputFailure = null;
+            inputAssessment = new RoleplayInputProcessor.Assessment(0.93, true, true, false);
+            sttFailuresRemaining = 0;
+            sttConfidence = null;
+            lastInputQuality = null;
             blockStt = false;
+            blockInput = false;
             activityGoalAchieved = false;
             goalDecisionUnavailable = false;
             goalCalledInTransaction = false;
@@ -97,6 +128,7 @@ public class RoleplayHttpTestConfiguration {
             State state, ServerRoleplayActivityGoalEvaluator server) {
         return (command, approved, deadline) -> {
             state.goalDecisions.incrementAndGet();
+            state.lastInputQuality = command.inputQuality();
             state.goalCalledInTransaction =
                     org.springframework.transaction.support.TransactionSynchronizationManager
                             .isActualTransactionActive();
@@ -185,9 +217,27 @@ public class RoleplayHttpTestConfiguration {
     RoleplayInputProcessor httpInput(State state) {
         return text -> {
             state.calls.add("INPUT");
+            if ("EXCEPTION".equals(state.inputFailure))
+                throw new IllegalStateException("synthetic-private-input-and-provider-detail");
+            if ("NULL".equals(state.inputFailure)) return null;
+            if ("UNAVAILABLE".equals(state.inputFailure))
+                return new RoleplayInputProcessor.Unavailable();
+            if (state.blockInput) {
+                state.entered.countDown();
+                try {
+                    if (!state.release.await(5, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Synthetic input release timed out");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Synthetic input interrupted");
+                }
+            }
             return state.unsafe
                     ? new RoleplayInputProcessor.Unsafe()
-                    : new RoleplayInputProcessor.Accepted("친구가 울고 있어");
+                    : state.invalidInput
+                            ? new RoleplayInputProcessor.Invalid()
+                            : new RoleplayInputProcessor.Accepted(
+                                    "친구가 울고 있어", state.inputAssessment);
         };
     }
 
@@ -215,7 +265,7 @@ public class RoleplayHttpTestConfiguration {
             }
             return success(
                     new SpeechTranscription(
-                            "synthetic raw private input",
+                            state.transcriptionText,
                             state.lowConfidence ? 0.39 : 0.9,
                             "test-vendor",
                             "test-model",
@@ -260,133 +310,155 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
-    LlmProvider httpLlm(State state, ObjectMapper mapper) {
-        return request -> {
-            state.calls.add(request.operation().name());
-            state.llmRequests.add(request);
-            Queue<AiFailureType> failures = state.llmFailures.get(request.operation());
-            AiFailureType failure = failures == null ? null : failures.poll();
-            if (failure != null)
-                return new AiCallResult.Failure<>(
-                        new AiFailure(failure, null), llmMetadata(request));
-            var turnState = mapper.readTree(request.userPrompt()).path("state");
-            int maximum = turnState.path("maximum_turn_count").asInt();
-            boolean maximumReached = maximum > 0 && turnState.path("turn_count").asInt() >= maximum;
-            String json =
-                    switch (request.operation()) {
-                        case CAUSE_ANALYSIS ->
-                                RoleplayFixtures.analysisJson(
-                                        maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",
-                                        RoleplayFixtures.MG_EMOTION,
-                                        "S1");
-                        case RESPONSE_GENERATION -> {
-                            String text = state.candidateTexts.poll();
-                            String candidate =
-                                    RoleplayFixtures.candidateJson(
-                                            text == null
-                                                    ? (maximumReached
-                                                            ? "함께해 줘서 고마워."
-                                                            : "친구는 어떤 기분일까?")
-                                                    : text,
-                                            maximumReached ? "CLOSING" : "GUIDING_QUESTION");
-                            if (maximumReached)
-                                candidate = candidate.replace("PROBE_EMOTION", "CLOSE_ROLEPLAY");
-                            yield candidate.replace(
-                                    "\"previous_failed_candidate_ids\":[]",
-                                    "\"previous_failed_candidate_ids\":"
-                                            + mapper.readTree(request.userPrompt())
-                                                    .get("previous_failed_candidate_ids"));
+    LlmProvider httpLlm(
+            State state,
+            ObjectMapper mapper,
+            java.util.Optional<com.neuringo.neuringobe.ai.application.port.AiDiagnostics>
+                    diagnostics) {
+        LlmProvider provider =
+                request -> {
+                    state.calls.add(request.operation().name());
+                    state.llmRequests.add(request);
+                    Queue<AiFailureType> failures = state.llmFailures.get(request.operation());
+                    AiFailureType failure = failures == null ? null : failures.poll();
+                    if (failure != null)
+                        return new AiCallResult.Failure<>(
+                                new AiFailure(failure, null), llmMetadata(request));
+                    var turnState = mapper.readTree(request.userPrompt()).path("state");
+                    int maximum = turnState.path("maximum_turn_count").asInt();
+                    boolean maximumReached =
+                            state.activityGoalAchieved
+                                    || (maximum > 0
+                                            && turnState.path("turn_count").asInt() >= maximum);
+                    String json =
+                            switch (request.operation()) {
+                                case INPUT_VALIDATION -> state.inputJudgment;
+                                case CAUSE_ANALYSIS ->
+                                        RoleplayFixtures.analysisJson(
+                                                maximumReached ? "CLOSE_ROLEPLAY" : "PROBE_EMOTION",
+                                                RoleplayFixtures.MG_EMOTION,
+                                                "S1");
+                                case RESPONSE_GENERATION -> {
+                                    String text = state.candidateTexts.poll();
+                                    String candidate =
+                                            RoleplayFixtures.candidateJson(
+                                                    text == null
+                                                            ? (maximumReached
+                                                                    ? "함께해 줘서 고마워."
+                                                                    : "친구는 어떤 기분일까?")
+                                                            : text,
+                                                    maximumReached
+                                                            ? "CLOSING"
+                                                            : "GUIDING_QUESTION");
+                                    if (maximumReached)
+                                        candidate =
+                                                candidate.replace(
+                                                        "PROBE_EMOTION", "CLOSE_ROLEPLAY");
+                                    yield candidate.replace(
+                                            "\"previous_failed_candidate_ids\":[]",
+                                            "\"previous_failed_candidate_ids\":"
+                                                    + mapper.readTree(request.userPrompt())
+                                                            .get("previous_failed_candidate_ids"));
+                                }
+                                case RESPONSE_EVALUATION -> {
+                                    String evaluation = state.evaluations.poll();
+                                    yield evaluation == null
+                                            ? RoleplayFixtures.evaluationJson(
+                                                    "PASS", null, true, 0, "[]", "null")
+                                            : evaluation;
+                                }
+                                default -> throw new AssertionError("Unexpected operation");
+                            };
+                    if (request.operation() == AiOperation.CAUSE_ANALYSIS
+                            && state.activityGoalAchieved) {
+                        var body =
+                                mapper.readValue(
+                                        json,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {});
+                        var old =
+                                mapper.readValue(
+                                        mapper.writeValueAsString(body.get("goal_observation")),
+                                        GoalObservationOutput.Analysis.class);
+                        var approved =
+                                old.observations().stream()
+                                        .map(
+                                                o ->
+                                                        new GoalObservationOutput.Observation(
+                                                                o.reference(),
+                                                                GoalObservationOutput.Status
+                                                                        .EXPLICIT))
+                                        .toList();
+                        var basis = new java.util.ArrayList<GoalObservationOutput.Reference>();
+                        approved.forEach(o -> basis.add(o.reference()));
+                        var supplied =
+                                mapper.readValue(
+                                        mapper.readTree(request.userPrompt())
+                                                .get("goal_observation_context")
+                                                .toString(),
+                                        GoalObservationInput.class);
+                        supplied.confirmedObservations().forEach(o -> basis.add(o.reference()));
+                        body.put(
+                                "goal_observation",
+                                new GoalObservationOutput.Analysis(
+                                        old.schemaVersion(),
+                                        old.analysisId(),
+                                        approved,
+                                        new GoalObservationOutput.Assessment(
+                                                GoalObservationOutput.ActivityDecision.ACHIEVED,
+                                                basis)));
+                        json = mapper.writeValueAsString(body);
+                    }
+                    json =
+                            json.replace(
+                                    RoleplayFixtures.TURN_ID.toString(),
+                                    request.traceContext().turnId().toString());
+                    if (request.traceContext().candidateId() != null)
+                        json =
+                                json.replace(
+                                        RoleplayFixtures.CANDIDATE_ID.toString(),
+                                        request.traceContext().candidateId().toString());
+                    if (request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                        json =
+                                EvaluationWireFixtures.forRequest(
+                                        json, mapper.readTree(request.userPrompt()));
+                    }
+                    if ((request.operation() == AiOperation.CAUSE_ANALYSIS
+                                    && state.omitObservationAnalysis)
+                            || (request.operation() == AiOperation.RESPONSE_EVALUATION
+                                    && (state.omitObservationReview
+                                            || state.unsupportedObservationReview))) {
+                        var changed =
+                                mapper.readValue(
+                                        json,
+                                        new tools.jackson.core.type.TypeReference<
+                                                java.util.Map<String, Object>>() {});
+                        if (request.operation() == AiOperation.CAUSE_ANALYSIS)
+                            changed.remove("goal_observation");
+                        else if (state.omitObservationReview) changed.remove("analysis_id");
+                        else {
+                            changed.put(
+                                    "observation_reviews",
+                                    EvaluationWireFixtures.scopedReviews(
+                                            mapper.readTree(request.userPrompt()), false));
                         }
-                        case RESPONSE_EVALUATION -> {
-                            String evaluation = state.evaluations.poll();
-                            yield evaluation == null
-                                    ? RoleplayFixtures.evaluationJson(
-                                            "PASS", null, true, 0, "[]", "null")
-                                    : evaluation;
-                        }
-                        default -> throw new AssertionError("Unexpected operation");
-                    };
-            if (request.operation() == AiOperation.CAUSE_ANALYSIS && state.activityGoalAchieved) {
-                var body =
-                        mapper.readValue(
-                                json,
-                                new tools.jackson.core.type.TypeReference<
-                                        java.util.Map<String, Object>>() {});
-                var old =
-                        mapper.readValue(
-                                mapper.writeValueAsString(body.get("goal_observation")),
-                                GoalObservationOutput.Analysis.class);
-                var approved =
-                        old.observations().stream()
-                                .map(
-                                        o ->
-                                                new GoalObservationOutput.Observation(
-                                                        o.reference(),
-                                                        GoalObservationOutput.Status.EXPLICIT))
-                                .toList();
-                var basis = new java.util.ArrayList<GoalObservationOutput.Reference>();
-                approved.forEach(o -> basis.add(o.reference()));
-                var supplied =
-                        mapper.readValue(
-                                mapper.readTree(request.userPrompt())
-                                        .get("goal_observation_context")
-                                        .toString(),
-                                GoalObservationInput.class);
-                supplied.confirmedObservations().forEach(o -> basis.add(o.reference()));
-                body.put(
-                        "goal_observation",
-                        new GoalObservationOutput.Analysis(
-                                old.schemaVersion(),
-                                old.analysisId(),
-                                approved,
-                                new GoalObservationOutput.Assessment(
-                                        GoalObservationOutput.ActivityDecision.ACHIEVED, basis)));
-                json = mapper.writeValueAsString(body);
-            }
-            json =
-                    json.replace(
-                            RoleplayFixtures.TURN_ID.toString(),
-                            request.traceContext().turnId().toString());
-            if (request.traceContext().candidateId() != null)
-                json =
-                        json.replace(
-                                RoleplayFixtures.CANDIDATE_ID.toString(),
-                                request.traceContext().candidateId().toString());
-            if ((request.operation() == AiOperation.CAUSE_ANALYSIS && state.omitObservationAnalysis)
-                    || (request.operation() == AiOperation.RESPONSE_EVALUATION
-                            && (state.omitObservationReview
-                                    || state.unsupportedObservationReview))) {
-                var changed =
-                        mapper.readValue(
-                                json,
-                                new tools.jackson.core.type.TypeReference<
-                                        java.util.Map<String, Object>>() {});
-                if (request.operation() == AiOperation.CAUSE_ANALYSIS)
-                    changed.remove("goal_observation");
-                else if (state.omitObservationReview) changed.remove("goal_observation_review");
-                else {
-                    var review =
-                            mapper.readValue(
-                                    mapper.writeValueAsString(
-                                            changed.get("goal_observation_review")),
-                                    new tools.jackson.core.type.TypeReference<
-                                            java.util.Map<String, Object>>() {});
-                    review.put("observations_supported", false);
-                    changed.put("goal_observation_review", review);
-                }
-                json = mapper.writeValueAsString(changed);
-            }
-            return new AiCallResult.Success<>(
-                    new LlmCompletion(
-                            RoleplayFixtures.bindAnalysis(
-                                    json, request.traceContext().analysisId()),
-                            "test-vendor",
-                            "test-model",
-                            "stop",
-                            null,
-                            null),
-                    llmMetadata(request));
-        };
+                        json = mapper.writeValueAsString(changed);
+                    }
+                    json = CharacterWireFixtures.forRequest(json, request);
+                    return new AiCallResult.Success<>(
+                            new LlmCompletion(
+                                    RoleplayFixtures.bindAnalysis(
+                                            json, request.traceContext().analysisId()),
+                                    "test-vendor",
+                                    "test-model",
+                                    "stop",
+                                    null,
+                                    null),
+                            llmMetadata(request));
+                };
+        return new com.neuringo.neuringobe.ai.infrastructure.diagnostics.DiagnosticLlmProvider(
+                provider,
+                diagnostics.orElse(com.neuringo.neuringobe.ai.application.port.AiDiagnostics.NONE));
     }
 
     private static AiCallMetadata llmMetadata(LlmRequest request) {
@@ -406,6 +478,10 @@ public class RoleplayHttpTestConfiguration {
     }
 
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "test.roleplay.speech-delivery.enabled",
+            havingValue = "true",
+            matchIfMissing = true)
     RoleplaySpeechDelivery httpSpeech(State state) {
         return (id, speech) -> {
             state.calls.add("PUBLISH");

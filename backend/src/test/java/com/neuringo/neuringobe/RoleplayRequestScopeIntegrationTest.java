@@ -116,7 +116,11 @@ class RoleplayRequestScopeIntegrationTest {
     @ValueSource(strings = {"PAUSED", "COMPLETED"})
     void closedSessionStillLoadsForConfirmedReplayButDoesNotAllowNewTurn(String status) {
         var f = fixture();
-        jdbc.update("update roleplay_session set status=? where session_id=?", status, f.session);
+        jdbc.update(
+                "update roleplay_session set status=?, completion_kind=? where session_id=?",
+                status,
+                status.equals("COMPLETED") ? "NORMAL" : null,
+                f.session);
         assertThat(scopes.load(f.child, f.activity, f.session).acceptsNewTurn()).isFalse();
     }
 

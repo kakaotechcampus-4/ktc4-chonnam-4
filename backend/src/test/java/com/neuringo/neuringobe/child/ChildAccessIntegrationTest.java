@@ -14,6 +14,7 @@ import com.neuringo.neuringobe.TestcontainersConfiguration;
 import com.neuringo.neuringobe.child.domain.Child;
 import com.neuringo.neuringobe.child.domain.ChildStatus;
 import com.neuringo.neuringobe.child.repository.ChildRepository;
+import com.neuringo.neuringobe.child.security.ChildEntryAttemptProperties;
 import com.neuringo.neuringobe.child.service.AccessCodeCryptography;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
 import com.neuringo.neuringobe.classroom.domain.Classroom;
@@ -37,6 +38,7 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -53,6 +55,7 @@ class ChildAccessIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private AccessCodeCryptography cryptography;
     @Autowired private ChildAccessCodeService accessCodes;
+    @Autowired private ChildEntryAttemptProperties attemptLimit;
 
     private UUID childId;
 
@@ -216,6 +219,80 @@ class ChildAccessIntegrationTest {
             assertThat(first.get(15, TimeUnit.SECONDS))
                     .isNotEqualTo(second.get(15, TimeUnit.SECONDS));
         }
+    }
+
+    @Test
+    void blocksOnlyTheClientThatKeepsTypingWrongCodes() throws Exception {
+        String valid = issue(UUID.randomUUID());
+        String wrong = unusedCode();
+        String guesser = "198.51.100.10";
+        for (int i = 0; i < attemptLimit.maxFailures(); i++) {
+            enterFrom(guesser, wrong)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_CODE"));
+        }
+
+        MvcResult blocked =
+                enterFrom(guesser, wrong)
+                        .andExpect(status().isTooManyRequests())
+                        .andExpect(jsonPath("$.error.code").value("ACCESS_CODE_ATTEMPTS_EXCEEDED"))
+                        .andExpect(jsonPath("$.error.path").value("/api/v1/child-access-sessions"))
+                        .andReturn();
+        long retryAfter = Long.parseLong(blocked.getResponse().getHeader("Retry-After"));
+        assertThat(retryAfter)
+                .isBetween(
+                        attemptLimit.blockFor().toSeconds() - 30,
+                        attemptLimit.blockFor().toSeconds());
+
+        // 막힌 IP 는 맞는 코드도 받지 않는다(맞을 때까지 계속 찍어 보는 것을 막는다). 다른 IP 는 그대로 들어온다.
+        enterFrom(guesser, valid).andExpect(status().isTooManyRequests());
+        enterFrom("198.51.100.11", valid)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.childId").value(childId.toString()));
+    }
+
+    @Test
+    void doesNotCountCorrectEntriesOrMalformedCodesFromOneSchoolAddress() throws Exception {
+        String valid = issue(UUID.randomUUID());
+        String school = "198.51.100.20";
+        for (int i = 0; i < attemptLimit.maxFailures() + 5; i++) {
+            enterFrom(school, valid).andExpect(status().isCreated());
+            enterFrom(school, "12a4").andExpect(status().isUnprocessableContent());
+        }
+
+        enterFrom(school, unusedCode())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_CODE"));
+    }
+
+    private ResultActions enterFrom(String client, String code) throws Exception {
+        return mvc.perform(
+                post("/api/v1/child-access-sessions")
+                        .with(csrf())
+                        .with(
+                                request -> {
+                                    request.setRemoteAddr(client);
+                                    return request;
+                                })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accessCode\":\"" + code + "\"}"));
+    }
+
+    /** 지금 어느 아동에게도 발급되어 있지 않은 4자리 코드. 다른 테스트가 만든 코드와도 겹치지 않는다. */
+    private String unusedCode() {
+        for (int n = 0; n < 10_000; n++) {
+            String code = String.format("%04d", n);
+            Integer active =
+                    jdbc.queryForObject(
+                            "select count(*) from child_access_code "
+                                    + "where code_digest = ? and active = true",
+                            Integer.class,
+                            cryptography.digest(code));
+            if (active != null && active == 0) {
+                return code;
+            }
+        }
+        throw new IllegalStateException("비어 있는 입장 코드가 없습니다.");
     }
 
     private String issue(UUID key) throws Exception {

@@ -1,19 +1,27 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 import type { UserEvent } from "@testing-library/user-event"
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { http, HttpResponse } from "msw"
 import { router } from "@/router"
-import { apiError, childAccessCodes } from "@/test/msw/handlers"
+import {
+  apiError,
+  childAccessCodes,
+  envelope,
+  ROLEPLAY_OPENING,
+  ROLEPLAY_SCRIPT,
+  storedRoleplaySession,
+} from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
-import { enterAsChild, renderRoutes } from "@/test/render"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
 import * as api from "./api"
+import { CAMERA_MODEL_VERSION } from "./camera/faceExpressionModel"
 
 // S2-YOON-01 아동 화면 오류·로딩·재입력 점검, S3-YOON-01 상태 규칙 통일 확인 (VS-003·006·010).
-// 입장은 실제 API(API-IAM-08)라 MSW 가짜 서버의 응답을 바꿔 실패시킨다. 나머지 아동 API는 아직 화면 쪽 mock(api.ts)이라
-// 항상 성공하므로 mock 함수를 감싸 일부러 실패시키거나 응답을 붙잡아 두고, 화면이 오류 모달·로딩 표시·재입력을 제대로 보여 주는지 본다.
-// - 기술 오류는 오답이 아니므로 같은 요청을 그대로 다시 보낸다(퀴즈 VS-006, 역할극 턴 VS-011, 완료·스탬프 VS-013).
+// 아동 화면은 모두 실제 API(contracts/api/v1)를 부르고, 테스트는 MSW 가짜 서버(test/msw/handlers.ts)로 대신한다.
+// 일부러 실패시키거나 응답을 붙잡아 두려면 server.use 로 그 요청 하나만 바꾼다.
+// - 기술 오류는 오답이 아니므로 같은 요청(같은 본문·같은 Idempotency-Key)을 그대로 다시 보낸다(퀴즈 VS-006, 역할극 턴 VS-011).
 // - 응답을 기다리는 동안에는 버튼을 막아 같은 요청이 두 번 가지 않게 한다.
-// 실제 API가 붙으면 mock 대신 MSW 핸들러로 같은 상황을 만든다. 의도적으로 동작을 바꾸면 이 테스트도 같이 고치세요.
+// 의도적으로 동작을 바꾸면 이 테스트도 같이 고치세요.
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>()
@@ -21,23 +29,23 @@ vi.mock("./api", async (importOriginal) => {
     ...actual,
     verifyAccessCode: vi.fn(actual.verifyAccessCode),
     getMyActivities: vi.fn(actual.getMyActivities),
-    getQuizQuestions: vi.fn(actual.getQuizQuestions),
-    submitQuizAnswer: vi.fn(actual.submitQuizAnswer),
-    getRoleplayScenario: vi.fn(actual.getRoleplayScenario),
-    sendRoleplayTurn: vi.fn(actual.sendRoleplayTurn),
-    // 실제 mock은 활동을 완료로 바꿔 다음 테스트에 남으므로, 상태를 바꾸지 않는 응답으로 대신한다.
-    completeActivity: vi.fn(async ({ activityId }: { activityId: string }) => ({ activityId, stampGranted: true })),
   }
 })
 
-const QUIZ_ACTIVITY = "mock-activity-1"
+const QUIZ_ACTIVITY = CHILD_ACTIVITY_ID
+const INDEPENDENT_QUIZ = "40000000-0000-4000-8000-000000000007"
 const ENTRY_URL = "*/api/v1/child-access-sessions"
+const QUIZ_ITEMS_URL = "*/api/v1/activities/:activityId/quiz-items"
+const ATTEMPT_URL = "*/api/v1/activity-quiz-items/:activityQuizId/attempt"
+const STATUS_URL = "*/api/v1/activities/:activityId/status"
+const START_URL = "*/api/v1/activities/:activityId/roleplay-sessions"
+const TEXT_INPUT_URL = "*/api/v1/roleplay-sessions/:sessionId/text-inputs"
 const VALID_CODE = childAccessCodes.valid
 const GREETING = "안녕, 김하늘!"
-const networkError = () => new TypeError("Failed to fetch")
+const speech = { available: false, url: null }
 
 /** 응답을 붙잡아 두었다가 원할 때 풀어 주는 약속. 로딩 중 화면을 보려고 쓴다. */
-function deferred<T>() {
+function deferred<T = void>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((res) => {
     resolve = res
@@ -45,9 +53,35 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-function openChildPage(path: string) {
+type SentRequest = { method: string; path: string; key: string | null; body: string }
+
+/** 가짜 서버에 간 요청을 모은다(CSRF 조회 제외). 본문·Idempotency-Key 로 "같은 요청을 다시 보냈는지" 본다. */
+let sent: SentRequest[] = []
+const sentTo = (pattern: RegExp) => sent.filter((request) => pattern.test(request.path))
+
+function openChildPage(path: string, seed: Parameters<typeof seedChildActivity>[0] = {}) {
   enterAsChild()
+  seedChildActivity(seed)
   return renderRoutes(router.routes, path)
+}
+
+/** 역할극은 서버처럼 퀴즈를 마쳐야 시작된다. */
+function openRoleplay() {
+  return openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`, { quizFinished: true })
+}
+
+/** 마지막 1문항만 남은 독립 퀴즈(친구 감정 10문항). 마지막 문항은 이미지 채움 문항이고 정답은 "기쁨"이다. */
+function openLastIndependentQuestion() {
+  enterAsChild()
+  seedChildActivity({ activityId: INDEPENDENT_QUIZ, activityType: "OTHER_EMOTION_QUIZ", quizFinished: 9 })
+  return renderRoutes(router.routes, `/child/quiz/${INDEPENDENT_QUIZ}`)
+}
+
+async function finishLastIndependentQuestion(user: UserEvent) {
+  await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+  await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+  await user.click(await screen.findByRole("button", { name: "다 풀었어요" }))
+  await user.click(await screen.findByRole("button", { name: "스탬프 받으러 가기" }))
 }
 
 async function pressCode(user: UserEvent, code: string) {
@@ -61,11 +95,11 @@ async function openTextComposer(user: UserEvent) {
   return screen.getByRole("textbox", { name: "답 적기" })
 }
 
-/** 역할극 두 턴을 보내 마무리 화면까지 간다(mock 대본은 두 번째 턴에서 끝난다). */
+/** 가짜 서버 대본은 두 번째 답에서 목표를 달성해 활동을 완료한다. 마무리 화면까지 간다. */
 async function finishRoleplay(user: UserEvent) {
   const input = await openTextComposer(user)
   await user.type(input, "아플 것 같아{Enter}")
-  await screen.findByText(/친구 눈썹이 아래로/)
+  await screen.findByText(ROLEPLAY_SCRIPT[0])
   await user.type(input, "속상할 것 같아{Enter}")
   await user.click(await screen.findByRole("button", { name: "이야기 마무리하기" }))
 }
@@ -77,29 +111,43 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  sent = []
+  server.events.on("request:start", async ({ request }) => {
+    const path = new URL(request.url).pathname
+    if (path.endsWith("/csrf")) return
+    sent.push({
+      method: request.method,
+      path,
+      key: request.headers.get("Idempotency-Key"),
+      body: await request.clone().text(),
+    })
+  })
+})
+
+afterEach(() => {
+  server.events.removeAllListeners("request:start")
 })
 
 describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다", () => {
   it("퀴즈 답 제출이 실패하면 같은 답을 다시 보내고 판정을 이어 간다", async () => {
-    vi.mocked(api.submitQuizAnswer).mockRejectedValueOnce(networkError())
+    server.use(http.put(ATTEMPT_URL, () => HttpResponse.error(), { once: true }))
     const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`)
 
-    await user.click(await screen.findByRole("radio", { name: /슬퍼요/ }))
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
     await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
 
     const dialog = await screen.findByRole("dialog")
     await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api.submitQuizAnswer).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(api.submitQuizAnswer).mock.calls[1][0]).toEqual(vi.mocked(api.submitQuizAnswer).mock.calls[0][0])
-    // 기술 오류는 오답으로 치지 않으므로 힌트 없이 첫 시도로 판정된다.
-    expect(vi.mocked(api.submitQuizAnswer).mock.calls[1][0].attempt).toBe(1)
+    expect(await screen.findByText("네 마음을 알려줘서 고마워!")).toBeInTheDocument()
+    const puts = sent.filter((request) => request.method === "PUT")
+    expect(puts).toHaveLength(2)
+    expect(puts[1].body).toBe(puts[0].body)
   })
 
-  it("역할극 대화가 실패하면 같은 요청 ID로 다시 보내고, 아이 답은 한 번만 보인다", async () => {
-    vi.mocked(api.sendRoleplayTurn).mockRejectedValueOnce(networkError())
-    const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+  it("역할극 대화가 실패하면 같은 요청 키로 다시 보내고, 아이 답은 한 번만 보인다", async () => {
+    server.use(http.post(TEXT_INPUT_URL, () => HttpResponse.error(), { once: true }))
+    const { user } = openRoleplay()
 
     const input = await openTextComposer(user)
     await user.type(input, "아플 것 같아{Enter}")
@@ -107,38 +155,79 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
     const dialog = await screen.findByRole("dialog")
     await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
 
-    expect(await screen.findByText(/친구 눈썹이 아래로/)).toBeInTheDocument()
-    const [first, retry] = vi.mocked(api.sendRoleplayTurn).mock.calls.map(([input]) => input)
-    expect(retry.requestId).toBe(first.requestId)
-    expect(retry.text).toBe("아플 것 같아")
+    expect(await screen.findByText(ROLEPLAY_SCRIPT[0])).toBeInTheDocument()
+    const [first, retry] = sentTo(/\/text-inputs$/)
+    expect(retry.key).toBe(first.key)
+    expect(JSON.parse(retry.body)).toEqual({ text: "아플 것 같아" })
     expect(screen.getAllByText("“아플 것 같아”")).toHaveLength(1)
   })
 
-  it("활동 완료가 실패하면 같은 요청 ID로 다시 보내 스탬프가 한 번만 지급되게 한다", async () => {
-    vi.mocked(api.completeActivity).mockRejectedValueOnce(networkError())
-    const { user, router: memoryRouter } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+  it("완료 확인이 실패하면 같은 키로 다시 보내 턴은 한 번만 저장되고 마무리로 이어 간다", async () => {
+    const { user } = openRoleplay()
+    const input = await openTextComposer(user)
+    await user.type(input, "아플 것 같아{Enter}")
+    await screen.findByText(ROLEPLAY_SCRIPT[0])
+
+    server.use(http.get(STATUS_URL, () => HttpResponse.error(), { once: true }))
+    await user.type(input, "속상할 것 같아{Enter}")
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
+
+    expect(await screen.findByRole("button", { name: "이야기 마무리하기" })).toBeInTheDocument()
+    const answers = sentTo(/\/text-inputs$/)
+    expect(answers[2].key).toBe(answers[1].key)
+    expect(storedRoleplaySession(QUIZ_ACTIVITY)?.turns).toHaveLength(2)
+  })
+
+  it("역할극을 마치면 서버가 완료한 활동의 스탬프 화면으로 간다", async () => {
+    const { user, router: memoryRouter } = openRoleplay()
 
     await finishRoleplay(user)
     await user.click(await screen.findByRole("button", { name: "다음으로" }))
 
+    expect(await screen.findByText("스탬프를 받았어요!")).toBeInTheDocument()
+    expect(memoryRouter.state.location.pathname).toBe(`/child/done/${QUIZ_ACTIVITY}`)
+    // 완료는 서버가 정했다. 화면은 완료를 요청하지 않고 상태만 읽었다.
+    expect(sent.filter((request) => request.method !== "GET").map((request) => request.path)).not.toContainEqual(
+      expect.stringMatching(/complet/),
+    )
+  })
+
+  it("독립 퀴즈 완료 확인이 실패하면 다시 확인해 스탬프 화면으로 간다", async () => {
+    server.use(http.get(STATUS_URL, () => HttpResponse.error(), { once: true }))
+    const { user, router: memoryRouter } = openLastIndependentQuestion()
+
+    await finishLastIndependentQuestion(user)
     const dialog = await screen.findByRole("dialog")
     await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
 
     expect(await screen.findByText("스탬프를 받았어요!")).toBeInTheDocument()
-    expect(memoryRouter.state.location.pathname).toBe(`/child/done/${QUIZ_ACTIVITY}`)
-    const [first, retry] = vi.mocked(api.completeActivity).mock.calls.map(([input]) => input)
-    expect(retry.requestId).toBe(first.requestId)
+    expect(memoryRouter.state.location.pathname).toBe(`/child/done/${INDEPENDENT_QUIZ}`)
   })
 
   it.each([
-    ["인사", "/child/hello", api.getMyActivities, "활동을 불러오지 못했어요", "시작할래요!"],
-    ["활동 소개", `/child/activities/${QUIZ_ACTIVITY}`, api.getMyActivities, "활동을 불러오지 못했어요", "친구 마음 알아보기"],
-    ["내 활동", "/child/activities", api.getMyActivities, "활동을 불러오지 못했어요", "친구 마음 알아보기"],
-    ["표정 퀴즈", `/child/quiz/${QUIZ_ACTIVITY}`, api.getQuizQuestions, "퀴즈를 불러오지 못했어요", "1/3 문항"],
-    ["역할극", `/child/roleplay/${QUIZ_ACTIVITY}`, api.getRoleplayScenario, "역할극을 불러오지 못했어요", "놀이터에서"],
-  ] as const)("%s 을 불러오지 못하면 모달이 뜨고, 다시 하면 화면이 정상으로 돌아온다", async (_name, path, load, message, ready) => {
-    vi.mocked(load).mockRejectedValueOnce(networkError())
+    ["인사", "/child/hello", "활동을 불러오지 못했어요", "시작할래요!"],
+    ["활동 소개", `/child/activities/${QUIZ_ACTIVITY}`, "활동을 불러오지 못했어요", "친구 마음 알아보기"],
+    ["내 활동", "/child/activities", "활동을 불러오지 못했어요", "친구 마음 알아보기"],
+  ] as const)("%s 을 불러오지 못하면 모달이 뜨고, 다시 하면 화면이 정상으로 돌아온다", async (_name, path, message, ready) => {
+    vi.mocked(api.getMyActivities).mockRejectedValueOnce(new api.ChildApiError(0, api.NETWORK_ERROR, "끊김"))
     const { user } = openChildPage(path)
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText(/불러오지 못했어요|연결이 잠깐 끊겼어요/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: /다시/ }))
+
+    expect(await screen.findByText(ready)).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    void message
+  })
+
+  it.each([
+    ["표정 퀴즈", `/child/quiz/${QUIZ_ACTIVITY}`, () => server.use(http.get(QUIZ_ITEMS_URL, () => apiError(500, "INTERNAL_ERROR", "오류", "/"), { once: true })), "퀴즈를 불러오지 못했어요", "1/3 문항", false],
+    ["역할극", `/child/roleplay/${QUIZ_ACTIVITY}`, () => server.use(http.post(START_URL, () => apiError(500, "INTERNAL_ERROR", "오류", "/"), { once: true })), "역할극을 불러오지 못했어요", ROLEPLAY_OPENING, true],
+  ] as const)("%s 을 불러오지 못하면 모달이 뜨고, 다시 하면 화면이 정상으로 돌아온다", async (_name, path, fail, message, ready, quizFinished) => {
+    fail()
+    const { user } = openChildPage(path, { quizFinished })
 
     const dialog = await screen.findByRole("dialog")
     expect(within(dialog).getByText(message)).toBeInTheDocument()
@@ -146,6 +235,68 @@ describe("오류가 나면 모달로 알리고 같은 요청을 다시 보낸다
 
     expect(await screen.findByText(ready)).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("역할극을 다시 불러와도 같은 시작 키를 써서 세션은 하나만 생긴다", async () => {
+    server.use(http.post(START_URL, () => HttpResponse.error(), { once: true }))
+    const { user } = openRoleplay()
+
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "다시 시도하기" }))
+
+    expect(await screen.findByText(ROLEPLAY_OPENING)).toBeInTheDocument()
+    const [first, retry] = sentTo(/\/roleplay-sessions$/)
+    expect(retry.key).toBe(first.key)
+  })
+})
+
+describe("답·힌트·대화를 보내다 세션이 끝나면(401) 다시 하기 대신 다시 입장하게 한다", () => {
+  // 명세 공통 규칙 "아동401은 재입장 안내". 다시 하기로 같은 요청을 보내도 계속 401이라 아이가 빠져나갈 수 없었다(S8 회귀 점검 D1·D2).
+  const sessionLost = ({ request }: { request: Request }) =>
+    apiError(401, "AUTHENTICATION_REQUIRED", "인증이 필요합니다.", new URL(request.url).pathname)
+  const HINT_URL = "*/api/v1/activity-quiz-items/:activityQuizId/hints"
+
+  async function expectReentry(user: UserEvent, path: RegExp) {
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("다시 들어와 줘")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "다시 하기" })).not.toBeInTheDocument()
+    const before = sentTo(path).length
+    await user.click(within(dialog).getByRole("button", { name: "코드 입력하기" }))
+
+    expect(await screen.findByText("입장 코드를 입력해줘!")).toBeInTheDocument()
+    // 같은 요청을 다시 보내지 않는다.
+    expect(sentTo(path)).toHaveLength(before)
+  }
+
+  it("퀴즈 답을 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.put(ATTEMPT_URL, sessionLost))
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`)
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/attempt$/)
+  })
+
+  it("틀린 뒤 힌트를 받다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(HINT_URL, sessionLost))
+    // 두 번째 문항(친구 감정 상황, 정답 슬픔)에서 일부러 틀려 힌트를 받게 한다.
+    const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`, { quizFinished: 1 })
+
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
+    await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
+
+    await expectReentry(user, /\/hints$/)
+  })
+
+  it("역할극 대화를 보내다 401이면 코드를 다시 넣게 한다", async () => {
+    server.use(http.post(TEXT_INPUT_URL, sessionLost))
+    const { user } = openRoleplay()
+
+    const input = await openTextComposer(user)
+    await user.type(input, "아플 것 같아{Enter}")
+
+    await expectReentry(user, /\/text-inputs$/)
   })
 })
 
@@ -214,6 +365,44 @@ describe("코드 입력 화면은 만료·연결 끊김·서버 오류를 틀린
 
     expect(await screen.findByText(GREETING)).toBeInTheDocument()
   })
+
+  // 서버 앞 nginx 가 막으면 본문이 HTML 이고 Retry-After 가 없을 수 있다. 백엔드가 막으면 공통 오류 JSON 과 Retry-After 가 온다.
+  it.each([
+    ["nginx 가 막은 429(HTML, 대기 시간 없음)", () => new HttpResponse("<html>429 Too Many Requests</html>", { status: 429, headers: { "Content-Type": "text/html" } }), "1분", 60_000],
+    ["서버가 막은 429(JSON, Retry-After 3초)", () => HttpResponse.json({ error: { code: "TOO_MANY_REQUESTS", message: "요청이 너무 많습니다." } }, { status: 429, headers: { "Retry-After": "3" } }), "3초", 3_000],
+  ])("%s 는 쉬어 가기 모달로 알리고, 기다리는 동안 다시 보내지 않다가 시간이 지나면 같은 코드로 입장한다", async (_name, failure, waitText, waitMs) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.post(ENTRY_URL, failure, { once: true }))
+      const { user } = renderRoutes(router.routes, "/child")
+
+      await pressCode(user, VALID_CODE)
+      await user.click(screen.getByRole("button", { name: "입장하기" }))
+
+      const dialog = await screen.findByRole("dialog")
+      expect(within(dialog).getByText("조금 쉬었다가 다시 해 보자")).toBeInTheDocument()
+      expect(within(dialog).getByText(`${waitText} 뒤에 다시 할 수 있어요.`)).toBeInTheDocument()
+      // 틀린 코드나 일반 오류로 보여 주지 않고, 입력한 코드도 비우지 않는다.
+      expect(screen.queryByText("잠깐 문제가 있었어요")).not.toBeInTheDocument()
+      expect(screen.queryByText("코드가 맞지 않아요. 다시 눌러볼까?")).not.toBeInTheDocument()
+      expect(screen.getByRole("group", { hidden: true })).toHaveAttribute("aria-label", "입력한 숫자 4개")
+
+      // 기다리는 동안에는 다시 하기가 막혀 있고, 키보드 Enter 로도 다시 보내지 않는다.
+      const retry = within(dialog).getByRole("button", { name: "다시 하기" })
+      expect(retry).toBeDisabled()
+      await user.keyboard("{Enter}")
+      expect(sentTo(/child-access-sessions$/)).toHaveLength(1)
+
+      act(() => vi.advanceTimersByTime(waitMs))
+      expect(await within(dialog).findByText("이제 다시 해도 괜찮아요.")).toBeInTheDocument()
+      await user.click(within(dialog).getByRole("button", { name: "다시 하기" }))
+
+      expect(await screen.findByText(GREETING)).toBeInTheDocument()
+      expect(vi.mocked(api.verifyAccessCode).mock.calls.map(([code]) => code)).toEqual([VALID_CODE, VALID_CODE])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는다", () => {
@@ -242,45 +431,125 @@ describe("응답을 기다리는 동안 로딩을 보여 주고 버튼을 막는
   })
 
   it("퀴즈 판정을 기다리는 동안 보기와 확인 버튼을 막는다", async () => {
-    const pending = deferred<api.QuizAnswerResult>()
-    vi.mocked(api.submitQuizAnswer).mockReturnValueOnce(pending.promise)
+    const pending = deferred()
+    server.use(
+      http.put(
+        ATTEMPT_URL,
+        async () => {
+          await pending.promise
+          return HttpResponse.json(
+            envelope({
+              attemptId: crypto.randomUUID(),
+              activityQuizId: crypto.randomUUID(),
+              firstResponse: "기쁨",
+              firstResponseCorrect: false,
+              expressionMatchResult: "NOT_ANALYZABLE",
+              cameraModelVersion: CAMERA_MODEL_VERSION,
+              usedHintTypes: [],
+              finalResponse: "기쁨",
+              resolvedAfterHint: false,
+              itemCorrect: false,
+              excludedFromScoring: true,
+              status: "FINALIZED",
+              respondedAt: new Date().toISOString(),
+            }),
+            { status: 201 },
+          )
+        },
+        { once: true },
+      ),
+    )
     const { user } = openChildPage(`/child/quiz/${QUIZ_ACTIVITY}`)
 
-    await user.click(await screen.findByRole("radio", { name: /슬퍼요/ }))
+    await user.click(await screen.findByRole("radio", { name: /기쁨/ }))
     await user.click(screen.getByRole("button", { name: "이 표정으로 확인할래요" }))
 
-    expect(screen.getByRole("button", { name: "확인하고 있어요…" })).toBeDisabled()
+    expect(await screen.findByRole("button", { name: "확인하고 있어요…" })).toBeDisabled()
     for (const choice of screen.getAllByRole("radio")) expect(choice).toBeDisabled()
-    pending.resolve({ result: "CORRECT" })
-    expect(await screen.findByText("맞아! 잘 찾았어")).toBeInTheDocument()
+    pending.resolve()
+    expect(await screen.findByText("네 마음을 알려줘서 고마워!")).toBeInTheDocument()
   })
 
   it("역할극 응답을 기다리는 동안 '생각하고 있어요'를 보여 주고 보내기를 막는다", async () => {
-    const pending = deferred<api.RoleplayTurnResult>()
-    vi.mocked(api.sendRoleplayTurn).mockReturnValueOnce(pending.promise)
-    const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+    const pending = deferred()
+    server.use(
+      http.post(
+        TEXT_INPUT_URL,
+        async () => {
+          await pending.promise
+          return HttpResponse.json(
+            envelope({
+              status: "DELIVERED",
+              action: "NONE",
+              messages: [{ speakerRole: "DIALOGUE", text: "그랬구나", speech }],
+              acceptedInput: "아플 것 같아",
+              checkpointVersion: 1,
+              replayed: false,
+            }),
+          )
+        },
+        { once: true },
+      ),
+    )
+    const { user } = openRoleplay()
 
     const input = await openTextComposer(user)
     await user.type(input, "아플 것 같아{Enter}")
 
     expect(await screen.findByText("생각하고 있어요…")).toBeInTheDocument()
     expect(input).toBeDisabled()
-    pending.resolve({ status: "DELIVERED", reply: { speaker: "turtle", text: "그랬구나" }, isFinished: false })
+    pending.resolve()
     expect(await screen.findByText("그랬구나")).toBeInTheDocument()
     expect(screen.queryByText("생각하고 있어요…")).not.toBeInTheDocument()
   })
 
-  it("활동 완료를 처리하는 동안 '스탬프를 준비하고 있어요'를 보여 주고 버튼을 막는다", async () => {
-    const pending = deferred<api.ActivityCompletion>()
-    vi.mocked(api.completeActivity).mockReturnValueOnce(pending.promise)
-    const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+  it("독립 퀴즈 완료를 확인하는 동안 '스탬프를 준비하고 있어요'를 보여 주고 버튼을 막는다", async () => {
+    const pending = deferred()
+    server.use(
+      http.get(
+        STATUS_URL,
+        async () => {
+          await pending.promise
+          return HttpResponse.json(envelope({ status: "COMPLETED" }))
+        },
+        { once: true },
+      ),
+    )
+    const { user } = openLastIndependentQuestion()
 
-    await finishRoleplay(user)
-    await user.click(await screen.findByRole("button", { name: "다음으로" }))
+    await finishLastIndependentQuestion(user)
 
-    expect(screen.getByRole("button", { name: "스탬프를 준비하고 있어요…" })).toBeDisabled()
-    pending.resolve({ activityId: QUIZ_ACTIVITY, stampGranted: true })
+    expect(await screen.findByRole("button", { name: "스탬프를 준비하고 있어요…" })).toBeDisabled()
+    pending.resolve()
     expect(await screen.findByText("스탬프를 받았어요!")).toBeInTheDocument()
+  })
+
+  it("완료 확인을 기다리는 사이 사용 종료하면, 늦게 온 응답으로 완료 화면에 가지 않는다 (#56 FE 전달사항 4)", async () => {
+    const pending = deferred()
+    server.use(
+      http.get(
+        STATUS_URL,
+        async () => {
+          await pending.promise
+          return HttpResponse.json(envelope({ status: "COMPLETED" }))
+        },
+        { once: true },
+      ),
+    )
+    const { user, router: memoryRouter } = openLastIndependentQuestion()
+
+    await finishLastIndependentQuestion(user)
+    await user.click(screen.getByRole("button", { name: "사용 종료" }))
+    await screen.findByText("입장 코드를 입력해줘!")
+    // 완료 화면으로 갔다가 가드가 바로 돌려보내도 마지막 주소는 /child 라서, 거쳐 간 주소를 모두 모은다.
+    const visited: string[] = []
+    memoryRouter.subscribe((state) => visited.push(state.location.pathname))
+
+    pending.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(visited.filter((path) => path.startsWith("/child/done"))).toEqual([])
+    expect(memoryRouter.state.location.pathname).toBe("/child")
   })
 })
 
@@ -301,14 +570,14 @@ describe("잘못 입력하면 다시 입력할 수 있다", () => {
   })
 
   it("역할극에서 비어 있거나 공백만 있는 답은 보내지 않는다", async () => {
-    const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+    const { user } = openRoleplay()
 
     const input = await openTextComposer(user)
     expect(screen.getByRole("button", { name: "보낼래요" })).toBeDisabled()
 
     await user.type(input, "   {Enter}")
     expect(screen.getByRole("button", { name: "보낼래요" })).toBeDisabled()
-    expect(api.sendRoleplayTurn).not.toHaveBeenCalled()
+    expect(sentTo(/\/text-inputs$/)).toEqual([])
   })
 
   it("버튼을 연달아 눌러도 요청은 한 번만 간다", async () => {
@@ -321,13 +590,13 @@ describe("잘못 입력하면 다시 입력할 수 있다", () => {
   })
 
   it("역할극 '보낼래요'를 연달아 눌러도 답은 한 번만 간다", async () => {
-    const { user } = openChildPage(`/child/roleplay/${QUIZ_ACTIVITY}`)
+    const { user } = openRoleplay()
 
     const input = await openTextComposer(user)
     await user.type(input, "아플 것 같아")
     await user.dblClick(screen.getByRole("button", { name: "보낼래요" }))
 
-    await screen.findByText(/친구 눈썹이 아래로/)
-    expect(api.sendRoleplayTurn).toHaveBeenCalledTimes(1)
+    await screen.findByText(ROLEPLAY_SCRIPT[0])
+    expect(sentTo(/\/text-inputs$/)).toHaveLength(1)
   })
 })

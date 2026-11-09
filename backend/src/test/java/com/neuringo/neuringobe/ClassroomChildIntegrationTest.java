@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  *       강사의 학급은 목록에 없고, 상세·아동 목록·아동 등록은 없는 학급과 같은 404 다. 등록은 저장되지 않는다.
  *   <li>존재 여부 비노출(VS-001 "권한 밖 … ID는 존재 여부가 드러나지 않도록"): 다른 강사의 학급과 없는 학급의 오류 본문은 ID·traceId 말고 같다.
  *   <li>동명이인: 같은 학급에 이름이 같은 아동이 있어도 각자 다른 아동으로 저장되고, 이름은 입력한 그대로 남는다.
+ *   <li>이름 수정: 학급명·아동 이름을 고치면 조회에 바뀐 이름이 나오고 다른 값(ID·소속 학급)은 그대로다. 다른 강사의 학급·아동은 없는 것과 같은 404 이고
+ *       이름이 바뀌지 않는다. 고칠 때도 이름 길이 합의가 같다.
  *   <li>이름 길이 합의: 학급·아동 이름은 한글 100자까지 그대로 저장되고(DB VARCHAR(100)), 101자는 422 로 거절되어 저장되지 않는다(요청 검증
  *       {@code @Size(max = 100)}). 한쪽만 바뀌면 100자가 DB 에서 500 으로 터지거나 101자가 저장된다.
  * </ul>
@@ -171,6 +173,102 @@ class ClassroomChildIntegrationTest {
                 .extractingPath("$.data[*].displayName")
                 .asArray()
                 .containsExactly(HUNDRED_KOREAN);
+    }
+
+    @Test
+    void renamesClassroomAndKeepsItsIdentity() {
+        UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
+
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/classrooms/" + classId,
+                                Map.of("name", HUNDRED_KOREAN)))
+                .hasStatusOk()
+                .bodyJson()
+                .extractingPath("$.data.classId")
+                .isEqualTo(classId.toString());
+        assertThat(fixtures.get("/api/v1/classrooms/{classId}", classId))
+                .bodyJson()
+                .extractingPath("$.data.name")
+                .isEqualTo(HUNDRED_KOREAN);
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/classrooms/" + classId,
+                                Map.of("name", HUNDRED_ONE_KOREAN)))
+                .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/classrooms/" + classId,
+                                Map.of("name", "  ")))
+                .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+        assertThat(fixtures.get("/api/v1/classrooms/{classId}", classId))
+                .bodyJson()
+                .extractingPath("$.data.name")
+                .isEqualTo(HUNDRED_KOREAN);
+    }
+
+    @Test
+    void renamesChildAndKeepsItsClassroom() {
+        UUID classId = fixtures.createClassroom(TestFixtures.CLASSROOM_A1);
+        UUID childId = fixtures.createChild(classId, NAMESAKE);
+        UUID namesake = fixtures.createChild(classId, NAMESAKE);
+
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/children/" + childId,
+                                Map.of("displayName", "바뀐 이름")))
+                .hasStatusOk()
+                .bodyJson()
+                .extractingPath("$.data.classId")
+                .isEqualTo(classId.toString());
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/children/" + childId,
+                                Map.of("displayName", HUNDRED_ONE_KOREAN)))
+                .hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
+
+        assertThat(fixtures.get("/api/v1/children/{childId}", childId))
+                .bodyJson()
+                .extractingPath("$.data.displayName")
+                .isEqualTo("바뀐 이름");
+        assertThat(fixtures.get("/api/v1/children/{childId}", namesake))
+                .bodyJson()
+                .extractingPath("$.data.displayName")
+                .isEqualTo(NAMESAKE);
+    }
+
+    @Test
+    void doesNotRenameOtherInstructorsClassroomOrChild() {
+        TestFixtures.Instructor other = fixtures.signUpInstructor();
+        UUID theirClass = fixtures.createClassroom(other, TestFixtures.CLASSROOM_A1);
+        UUID theirChild = fixtures.createChild(other, theirClass, NAMESAKE);
+
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/classrooms/" + theirClass,
+                                Map.of("name", "가로챈 학급")))
+                .hasStatus(HttpStatus.NOT_FOUND);
+        assertThat(
+                        fixtures.patchJson(
+                                fixtures.instructor(),
+                                "/api/v1/children/" + theirChild,
+                                Map.of("displayName", "가로챈 아동")))
+                .hasStatus(HttpStatus.NOT_FOUND);
+
+        assertThat(fixtures.get(other, "/api/v1/classrooms/{classId}", theirClass))
+                .bodyJson()
+                .extractingPath("$.data.name")
+                .isEqualTo(TestFixtures.CLASSROOM_A1);
+        assertThat(fixtures.get(other, "/api/v1/children/{childId}", theirChild))
+                .bodyJson()
+                .extractingPath("$.data.displayName")
+                .isEqualTo(NAMESAKE);
     }
 
     private AbstractJsonContentAssert<?> childrenOf(UUID classId) {

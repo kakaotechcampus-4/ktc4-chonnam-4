@@ -202,23 +202,24 @@ flowchart TB
 
 ### Dev server — 머지 전 PR 미리보기·서버 켜고 끄기 (`dev-server.yml`)
 
-**기본값: PR 을 열면 미리보기가 저절로 뜬다.** 라벨은 기본값을 바꿀 때만 쓴다. 켜기·끄기·상태는 Actions → **Dev server** → Run workflow 로도 한다. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda, `infra/modules/idle-off`). 사용 설명서(스크린샷)는 팀 노션에 둔다.
+**기본값: PR 을 열면 미리보기가 저절로 뜬다.** 단 24시간 모드 동안에는 저절로 띄우지 않는다 — 테스트 주소는 늘 develop(머지된 것)을 보여 준다. 라벨은 기본값을 바꿀 때만 쓴다. 켜기·끄기·상태는 Actions → **Dev server** → Run workflow 로도 한다. 서버는 30분 동안 안 쓰면 저절로 꺼진다(AWS Lambda, `infra/modules/idle-off`). 사용 설명서(스크린샷)는 팀 노션에 둔다.
 
 | PR 에서 | 일어나는 일 |
 |---|---|
-| PR 열기 · draft 를 Ready for review 로 · 다시 열기 | **기본값** — PR 미리보기 올리기(아래 표). `preview` 라벨도 붙여 둔다. 다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀 |
+| PR 열기 · draft 를 Ready for review 로 · 다시 열기 | **기본값** — PR 미리보기 올리기(아래 표). `preview` 라벨도 붙여 둔다. 다른 PR 이 자리를 쓰는 중이면 실패가 아니라 건너뜀. **24시간 모드에는 건너뜀**(보려면 `preview` 라벨) |
 | ↳ 기본값에서 빠지는 PR | draft · `no-preview` 라벨 · 문서(`docs/`·`*.md`)만 바꾼 PR · 봇이 연 PR · develop 으로 가지 않는 PR · 포크 PR |
 | `preview` 라벨 붙이기 | 지금 올리기(이미 연 PR·빠진 PR). 다른 PR 이 자리를 쓰는 중이면 ⛔ 빨간색 |
-| `preview` 라벨이 있는 PR 에 push | 다시 올리기. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다(PR 검사가 빨개지지 않게) |
+| `preview` 라벨이 있는 PR 에 push | 다시 올리기. 서버가 꺼져 있거나 다른 PR 이 자리를 쓰면 조용히 건너뛴다(PR 검사가 빨개지지 않게). 24시간 모드에는 이 PR 이 자리를 잡고 있을 때만(자리가 비었으면 건너뜀 — 다시 보려면 라벨을 떼었다 붙인다) |
 | `preview` 라벨 떼기 · PR 닫기·머지 | 그 PR 의 미리보기가 떠 있을 때만 끝낸다(develop 최신으로) |
 | `no-preview` 라벨 | PR 을 열 때 붙여 두면 저절로 띄우지 않는다. 나중에 붙이면 미리보기를 끝내고 `preview` 라벨을 뗀다 |
 | `dev-off` 라벨 붙이기 | 지금 끄기(라벨은 바로 떼어진다) |
 
 - 워크플로가 붙이는 `preview` 라벨은 `GITHUB_TOKEN` 으로 붙여 실행을 새로 만들지 않는다(같은 PR 을 두 번 올리지 않는다). 사람이 떼면 끝내기가 돈다.
 - **안 쓰면 끄기**(AWS 안, `infra/modules/idle-off`: EventBridge 10분마다 → Lambda `idle_off.py`): 서버가 켜져 있고, 미리보기 자리가 비었고, 서버를 켠 시각(EC2 `LaunchTime`·`STATUS_BOOTED_AT`)·마지막 배포(`state/dev.release`)·화면 컨테이너의 마지막 요청(`STATUS_LAST_REQUEST`)·GitHub Actions 가 서버에 보낸 마지막 SSM 명령(미리보기 빌드 중) 중 가장 늦은 것에서 30분(`idle_minutes`, 2026-10-11 60 → 30)이 지났으면 끄기와 같은 순서(CloudFront 닫기 → 다 닫힌 것 확인 → 배포·백업 잠금 → 서버 중지)로 끈다. 닫는 사이 새 작업이 오거나 잠금이 안 비면 CloudFront 를 다시 열고 그만둔다. 서버 상태를 못 읽거나 실패하면 끄지 않고 Lambda 오류 경보가 메일로 알린다. 처음에는 GitHub 예약(`schedule`, 20분마다)으로 했으나 이 레포에서 예약이 몇 시간씩 밀려(2026-10-11 머지 뒤 1시간 동안 0번, 매일 예약도 3~5시간 늦음) AWS 로 옮겼다. 끄기 잡은 배포 기록을 만들지 않는다(`deployment: false`).
-- **24시간 모드**(`always_on_until`, `infra/live/dev`): 그 시각까지는 안 쓰여도 끄지 않는다. 2026-10-25 팀 결정으로 사용자 테스트·시연 기간에 운영진 제공 기간 끝(11/20 23:59 KST)까지 켜 둔다(비용 약 1.6 USD/일). 끝나면 다시 30분 규칙이다. Lambda 가 서버를 켜지는 않는다 — **Dev server → 끄기**를 누르면 꺼진 채로 있고, AWS 점검 등으로 꺼지면 상태 검사 경보가 알린다. 빈 값으로 바꾸고 Infra 를 apply 하면 끝난다.
+- **24시간 모드**(`always_on_until`, 값은 `infra/live/dev/always-on.json` 한 곳 — Terraform 이 `file()` 로 읽고 `dev-server.yml` 도 develop 의 그 파일을 읽는다. `*.tfvars` 는 공개 파일 검사가 막아 JSON 으로 둔다): 그 시각까지는 안 쓰여도 끄지 않고, PR 을 열어도 미리보기를 저절로 올리지 않는다(push 는 그 PR 이 자리를 잡고 있을 때만 다시 올린다). 공유 주소가 미리보기에 묶이지 않고 머지된 develop 을 보여 주게 하려는 것이다(2026-11-08). 2026-10-25 팀 결정으로 사용자 테스트·시연 기간에 운영진 제공 기간 끝(11/20 23:59 KST)까지 켜 둔다(비용 약 1.6 USD/일). 끝나면 다시 30분 규칙이다. Lambda 가 서버를 켜지는 않는다 — **Dev server → 끄기**를 누르면 꺼진 채로 있고, AWS 점검 등으로 꺼지면 상태 검사 경보가 알린다. 빈 값으로 바꾸고 Infra 를 apply 하면 끝난다.
 - **대문을 서버에 맞추기**(모드와 상관없이 10분마다): 서버가 켜져 있고 대문이 열려 있는데 원본이 옛 주소면(AWS 점검·콘솔로 다시 켜져 주소가 바뀜) 지금 주소로 고친다. 서버가 꺼져 있는데 대문이 열려 있으면 닫는다(옛 IP 로 보내지 않게). 닫힌 대문은 열지 않는다(Dev server 켜기·끄기가 다루는 중이거나 누가 일부러 닫았다).
-- **쓰는 중이면 자동 배포를 미룬다**: develop 반영·PR 을 열거나 push 해서 저절로 돈 배포는, 테스트 주소를 사람이 쓰는 중이면(마지막 API 요청이 5분 안 — `status.sh` 의 `STATUS_LAST_USE`, 상태 확인·403 은 빼고) 15분까지 기다리고 그래도 쓰이면 바꾸지 않는다(Summary "미룸", 실패 아님 — 다 쓴 뒤 Re-run). 사람이 직접 누른 배포(Deploy·Dev server Run workflow)는 기다리지 않는다(`scripts/wait-idle.sh`, `release.yml` 의 `wait_idle`). 배포 중 끊김(수십 초·아동 세션 다시 입장)을 없애는 무중단 배포(blue-green·세션 DB 저장)는 메모리(4 GiB)·팀 코드(인증) 때문에 하지 않았다.
+- **쓰는 중이면 자동 배포를 미룬다**: develop 반영·PR 을 열거나 push 해서 저절로 돈 배포는, 테스트 주소를 사람이 쓰는 중이면(마지막 API 요청이 5분 안 — `status.sh` 의 `STATUS_LAST_USE`, 상태 확인·403 은 빼고) 15분까지 기다리고 그래도 쓰이면 바꾸지 않는다(Summary "미룸", 실패 아님). develop 은 서버에 "떠 있어야 할 develop" 으로 적어 두고 아래 이어 띄우기가 맡는다(`DEFER=1`). 미리보기는 다 쓴 뒤 Re-run.
+- **밀린 develop 이어 띄우기**(AWS 안, 안 쓰면 끄기와 같은 Lambda 가 10분마다, 24시간 모드에도): `deploy.sh` 는 develop 을 부르면 바꾸든 건너뛰든 먼저 서버의 `state/dev.wanted` 에 커밋·이미지·묶음 폴더를 적는다(바꾸기 시작하면 `TRIED=1`, 성공하면 `DONE=1`). Lambda 는 그 묶음(develop 코드)의 `deploy/host/catch-up.sh` 를 SSM 으로 부르고, 이 스크립트는 미리보기 자리가 비었고 · 떠 있는 것이 그 develop 이 아니고 · 그 커밋을 바꾸다 실패한 적이 없고 · 5분 동안 아무도 안 썼고 · 다른 배포가 잠금을 쥐고 있지 않을 때 `deploy.sh`(develop)를 부른다. 그래서 미리보기 자리 때문에 건너뛴 머지, 쓰는 사람 때문에 미룬 머지, 1시간이 지나도 남아 있던 미리보기가 사람이 누르지 않아도 develop 으로 맞춰진다. 이어 띄우다 실패하면 Lambda 가 오류로 끝나 경보 메일이 가고, 같은 커밋을 되풀이해 띄우지는 않는다(배포 출력은 서버의 `logs/catch-up-dev.log`). `release-bundle.sh` 의 옛 묶음 정리는 wanted 의 묶음을 지우지 않는다. 사람이 직접 누른 배포(Deploy·Dev server Run workflow)는 기다리지 않는다(`scripts/wait-idle.sh`, `release.yml` 의 `wait_idle`). 배포 중 끊김(수십 초·아동 세션 다시 입장)을 없애는 무중단 배포(blue-green·세션 DB 저장)는 메모리(4 GiB)·팀 코드(인증) 때문에 하지 않았다.
 
 | 작업 | 안에서 일어나는 일 | 걸리는 시간(목표) |
 |---|---|---|
@@ -329,7 +330,7 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
 |---|---|---|---|---|
 | LLM(분석·후보·평가) | OpenAI 호환 API | Spring AI `spring-ai-starter-model-openai` → `SpringAiLlmProvider` | `AI_*` | 10초 |
 | STT(음성 → 글) | OpenAI `gpt-4o-mini-transcribe` | `OpenAiSpeechToTextProvider`(RestClient) | `STT_*` | 15초 |
-| TTS(글 → 음성) | 타입캐스트 `ssfm-v30` | `TypecastTextToSpeechProvider`(RestClient) | `TTS_*` | 15초 |
+| TTS(글 → 음성) | 타입캐스트 `ssfm-v30` 또는 OpenAI `gpt-4o-mini-tts`(`TTS_PROVIDER=openai`) | `TypecastTextToSpeechProvider`·`OpenAiTextToSpeechProvider`(RestClient) | `TTS_*`, 화면 전달 `ROLEPLAY_SPEECH_DELIVERY=inline` | 15초 |
 
 - 셋 다 기본은 꺼짐이다. 키가 없어도 앱은 뜨고(E2E 가 그렇게 돈다) AI 기능만 꺼진다.
 - PoC 실측: 5턴에 AI·안전 확인 호출 18번, 한 턴 약 14.8초(느릴 때 18.3초), 약 0.0095 USD(`docs/poc/2026-09-09-poc-review.md`).
@@ -424,7 +425,10 @@ SageMaker 가 막혀 있고 서버는 추가·사양 변경이 안 되는 GPU �
   - 서버는 **Dev server → 끄기**로 끈다. CloudFront 를 먼저 닫고, 다 퍼져서 꺼진 것을 다시 읽어 확인한 뒤에만 서버를 끈다. 켤 때는 서버를 켠 뒤 새 주소를 넣고 연다. 여닫기는 Terraform 밖(`edge-toggle.sh`)이라 승인 없이 몇 초다. 바꿀 때 읽은 설정의 버전(ETag)을 붙여, 그사이 다른 실행이 바꿨으면 덮어쓰지 않는다.
   - 콘솔에서 서버를 끄지 않는다. 그랬다면 Dev server 의 켜기나 끄기를 바로 돌린다. 서버가 꺼지면 상태 검사 경보가 메일로 온다(지표가 끊기면 경보로 본다).
   - 고정 IP 는 요청하지 않았다(2026-10-07 팀 결정). 사용자 테스트 기간에 서버를 계속 켜 두면 주소가 바뀌지 않는다.
-- 사용자 테스트 주소는 공개 로그·Summary 에 찍지 않는다(외부인 가입·남용). CloudFront 는 한국에서만 연다. 가입·아동 입장 코드의 요청 횟수 제한은 앱에서 한다(배재일·진미나, §11).
+- 사용자 테스트 주소는 공개 로그·Summary 에 찍지 않는다(외부인 가입·남용). CloudFront 는 한국에서만 연다. 아동 입장 코드(4자리)는 두 겹으로 늦춘다(둘 다 429 + `Retry-After`).
+  - 화면 nginx 가 `POST /api/v1/child-access-sessions` 만 접속 IP(`$viewer_ip`) 별로 분당 60번·한꺼번에 60번까지 받는다(`TOO_MANY_REQUESTS`, `Retry-After: 60`). 맞은 입장도 함께 세므로 학교 NAT 를 생각해 넉넉하게 둔다.
+  - 앱이 같은 접속 IP 의 틀린 코드만 센다. 10분 안에 30번째로 틀리면 그 IP 를 10분 막는다(`ACCESS_CODE_ATTEMPTS_EXCEEDED`, `neuringo.child-access.attempt-limit`). 앱은 nginx 가 넘긴 X-Forwarded-For 를 Tomcat 이 바꾼 `getRemoteAddr` 로 IP 를 읽는다. 서버 메모리에만 세므로 배포 때 지워진다.
+  - 두 겹 모두 `scripts/docker-smoke.sh` 가 nginx 를 거쳐 확인한다(다른 IP 는 막히지 않는지까지). 가입 요청 횟수 제한은 아직 없다(§11).
 - 비밀값은 Parameter Store SecureString 에 둔다. 서버 `.env` 는 권한 600 이고 배포마다 다시 만든다(실패하면 옛 것으로 되돌린다). 로그·Summary 에 찍지 않는다.
   - 기본 키(`aws/ssm`)라 계정 안에서 `ssm:GetParameter` 권한만 있으면 읽는다. 역할을 나눌 때 배포 역할에서 `/neuringo/*/db/*`·`child-access/*` 읽기를 뺀다. 백업 버킷도 Gate 전에 서버 역할 밖의 읽기를 막는다.
 - 복구 확인은 같은 서버의 임시 postgres(네트워크 없음)에 하고, 끝나면 컨테이너와 데이터 볼륨까지 지운다(복구한 DB 사본이 남지 않게). 서버의 실패 로그(앱 로그)는 30일만 둔다.
@@ -480,7 +484,7 @@ CI 검사는 이미 push 된 뒤에 돈다. 공개 레포라 push 한 순간 공
 | develop 보호 규칙 | 팀·운영진 | 머지 전 | PR 필수·리뷰 1명·force push 금지. 지금은 쓰기 권한이 곧 배포 권한이다(§8) |
 | GitHub secret scanning·push protection | 레포 관리자 | — | ✅ 켜져 있다(2026-10-05 확인). Dependency graph 는 꺼져 있다(dependency-review 가 경고만 하는 이유, 운영진) |
 | 서버 운영 시간 | 팀 | 1단계 apply 전 | ✅ 테스트할 때만 켠다(2026-10-07). Dev server 의 켜기·끄기를 쓴다. 사용자 테스트 기간엔 켜 두는 안(월 약 46 USD, 단체 부담)을 다시 본다 |
-| 가입·아동 입장 코드 요청 횟수 제한 | 배재일·진미나 | 사용자 테스트 전 | 주소가 알려지면 대입·남용이 된다 |
+| 가입 요청 횟수 제한 | 배재일·진미나 | 사용자 테스트 전 | 주소가 알려지면 남용이 된다. 아동 입장 코드는 ✅ nginx 요청 수 + 앱 틀린 코드 횟수(2026-11-06, §8) |
 | 프론트 API 주소 빌드 변수 | 배재일 | 1단계 전 | `VITE_API_BASE_URL`, 기본 `/api/v1` |
 | `/actuator/health` 공개 | 배재일·정민서 | 2단계 | 관리 포트를 127.0.0.1 에만 열고 health 만 연다 |
 | 모델 길(§6) | 이건우(+진미나) | 스프린트 3 | ✅ 외부 API(OpenAI 호환 LLM·OpenAI STT·타입캐스트 TTS) |

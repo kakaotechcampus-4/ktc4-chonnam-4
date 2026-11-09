@@ -16,6 +16,7 @@ build/
 # Env / secrets
 .env
 .env.*
+env.local
 *.env
 .envrc
 !.env.example

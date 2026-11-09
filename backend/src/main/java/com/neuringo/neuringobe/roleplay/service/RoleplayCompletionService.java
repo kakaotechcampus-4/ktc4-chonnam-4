@@ -5,18 +5,23 @@ import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.activity.service.ActivityCompletionService;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointCommand;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointStore;
+import com.neuringo.neuringobe.ai.application.roleplay.RoleplayStoredTurnSafetyLimit;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnDeadline;
 import com.neuringo.neuringobe.quiz.repository.QuizResultRepository;
 import com.neuringo.neuringobe.roleplay.application.RoleplayActivityGoalEvaluator.Decision;
 import com.neuringo.neuringobe.roleplay.application.RoleplayGoalObservationPlan;
 import com.neuringo.neuringobe.roleplay.config.RoleplayProgressProperties;
 import java.util.Objects;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** 서버의 활동 목표 판정에 따라 턴·관찰·완료·보상·기록·발화 삭제를 함께 확정한다. */
+/**
+ * 서버의 활동 목표 판정에 따라 턴·관찰·완료·보상·기록·발화 삭제를 함께 확정한다. 활동이 이번 턴으로 처음 완료되면 {@link
+ * RoleplayActivityCompleted} 를 발행한다. 리포트·다음 난이도·추천은 커밋 뒤 그 이벤트를 받아 따로 만든다.
+ */
 @Service
 public class RoleplayCompletionService {
     private final JpaRoleplayCheckpointStore checkpoints;
@@ -27,6 +32,7 @@ public class RoleplayCompletionService {
     private final RoleplayGoalObservationStore observations;
     private final RoleplayProgressProperties limits;
     private final TransactionTemplate transaction;
+    private final ApplicationEventPublisher events;
 
     public RoleplayCompletionService(
             JpaRoleplayCheckpointStore checkpoints,
@@ -36,7 +42,8 @@ public class RoleplayCompletionService {
             RoleplayCanonicalRetentionService retention,
             RoleplayGoalObservationStore observations,
             PlatformTransactionManager transactions,
-            RoleplayProgressProperties limits) {
+            RoleplayProgressProperties limits,
+            ApplicationEventPublisher events) {
         this.checkpoints = checkpoints;
         this.activities = activities;
         this.quizzes = quizzes;
@@ -46,6 +53,7 @@ public class RoleplayCompletionService {
         this.limits = Objects.requireNonNull(limits);
         this.transaction = new TransactionTemplate(transactions);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.events = Objects.requireNonNull(events);
     }
 
     /** 외부 호출을 마친 서버 내부 경로에서 사용한다. 화면의 완료 표시나 마무리 문장을 판정값으로 쓰지 않는다. */
@@ -93,11 +101,13 @@ public class RoleplayCompletionService {
                                 status.setRollbackOnly();
                                 return new RoleplayCheckpointStore.Conflict();
                             }
-                            // 저장소가 잠긴 세션의 다음 턴 번호를 이미 대조했다.
                             boolean maximumTurnReached =
-                                    limits.configured()
-                                            && command.turnNumber() >= limits.maximumTurnCount();
-                            if (maximumTurnReached
+                                    maximumLearningTurnReached(command, plan, deadline);
+                            boolean safetyLimitReached =
+                                    RoleplayStoredTurnSafetyLimit.reached(command.turnNumber());
+                            if ((plan.proposal().decision() == Decision.ACHIEVED
+                                            || maximumTurnReached
+                                            || safetyLimitReached)
                                     && (!"CLOSE_ROLEPLAY".equals(command.strategyUsed())
                                             || !"CLOSING".equals(command.responseType()))) {
                                 status.setRollbackOnly();
@@ -105,12 +115,31 @@ public class RoleplayCompletionService {
                             }
                             observations.save(plan);
                             if (plan.proposal().decision() == Decision.ACHIEVED
-                                    || maximumTurnReached) {
-                                completion.completeAfterRoleplay(activity);
-                                retention.completeNormallyAndDelete(
-                                        command.sessionId(),
-                                        command.childId(),
-                                        command.activityId());
+                                    || maximumTurnReached
+                                    || safetyLimitReached) {
+                                boolean firstCompletion =
+                                        completion.completeAfterRoleplay(activity);
+                                if (safetyLimitReached
+                                        && !maximumTurnReached
+                                        && plan.proposal().decision() != Decision.ACHIEVED) {
+                                    retention.completeAtStoredTurnSafetyLimitAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                } else {
+                                    retention.completeNormallyAndDelete(
+                                            command.sessionId(),
+                                            command.childId(),
+                                            command.activityId());
+                                }
+                                if (firstCompletion) {
+                                    // 리스너는 커밋 뒤(AFTER_COMMIT)에만 돈다. 롤백되면 이벤트도 사라진다.
+                                    events.publishEvent(
+                                            new RoleplayActivityCompleted(
+                                                    command.activityId(),
+                                                    command.childId(),
+                                                    command.sessionId()));
+                                }
                             }
                         }
                         deadline.requireActive();
@@ -122,5 +151,19 @@ public class RoleplayCompletionService {
             if (deadline.remainingNanos() == 0) return new RoleplayCheckpointStore.Expired();
             throw failure;
         }
+    }
+
+    private boolean maximumLearningTurnReached(
+            RoleplayCheckpointCommand command,
+            RoleplayGoalObservationPlan plan,
+            RoleplayTurnDeadline deadline) {
+        if (!limits.configured()) return false;
+        var progress = plan.proposal().inputGoalProgress();
+        // 입력 판정 계약 도입 전 내부 호출은 기존 상한을 유지한다.
+        if (progress == null) return command.turnNumber() >= limits.maximumTurnCount();
+        if (progress.learningState().equals("NOT_ASSESSABLE")) return false;
+        var learningTurn =
+                observations.nextLearningTurn(command.sessionId(), command.turnNumber(), deadline);
+        return learningTurn.isPresent() && learningTurn.getAsInt() >= limits.maximumTurnCount();
     }
 }

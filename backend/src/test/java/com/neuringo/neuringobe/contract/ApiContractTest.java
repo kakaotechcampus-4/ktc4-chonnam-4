@@ -69,6 +69,7 @@ class ApiContractTest {
         Map<String, String> values = new HashMap<>();
         values.put("classId", classId.toString());
         values.put("unknownClassId", UUID.randomUUID().toString());
+        values.put("unknownId", UUID.randomUUID().toString());
         values.put("malformedId", "not-a-uuid");
         values.put("instructorId", instructor.userId().toString());
         values.put("instructorEmail", instructor.email());
@@ -125,7 +126,7 @@ class ApiContractTest {
                                 ? request.get("rawBody").asString()
                                 : fill(JSON.writeValueAsString(request.get("body")), values);
                 builder =
-                        mvc.post()
+                        ("PATCH".equals(method) ? mvc.patch() : mvc.post())
                                 .uri(path)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(content);

@@ -26,6 +26,10 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     Page<Activity> findByChildIdAndStatusOrderByAssignedAtDesc(
             UUID childId, ActivityStatus status, Pageable pageable);
 
+    /** 학급 아동들의 활동을 한 번에 읽는다. 같은 배정 시각이면 활동 ID 순으로 페이지 경계를 고정한다. */
+    Page<Activity> findByChildIdInOrderByAssignedAtDescActivityIdAsc(
+            Collection<UUID> childIds, Pageable pageable);
+
     Optional<Activity> findByIdempotencyKey(UUID idempotencyKey);
 
     boolean existsByChildIdAndActivityType(UUID childId, ActivityType activityType);
@@ -41,15 +45,6 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Activity a where a.childId in :childIds order by a.activityId")
     List<Activity> findByChildIdInForUpdate(@Param("childIds") Collection<UUID> childIds);
-
-    /** 잠근 최초 활동의 시나리오를 한 번만 연결한다. */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(
-            value =
-                    "update activity set scenario_id = :scenarioId where activity_id = :activityId and scenario_id is null and activity_type = 'FIRST_COMBINED'",
-            nativeQuery = true)
-    int attachScenarioIfEmpty(
-            @Param("activityId") UUID activityId, @Param("scenarioId") UUID scenarioId);
 
     /** 아동 삭제(ADR 2026-10-04 D1). 배정 문항·결과를 먼저 지운 뒤 부른다. */
     @Modifying

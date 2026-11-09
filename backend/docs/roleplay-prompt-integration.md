@@ -35,6 +35,8 @@ from the calling service's agreed policy; test fixture values are not production
 
 ## Speech pipeline integration
 
+> 입력 검사기의 운영 연결은 [운영 입력 검사기](roleplay-runtime-input-processor.md)에서 보완했다. 아래의 미구현 설명은 최초 연동 당시 기록이며, 현재 탐지 범위·제공자 품질·운영 인수 한계는 보완 문서를 따른다.
+
 Speech ports/models, AiOperation's speech categories, LlmRequest's speech-operation rejection
 and SpeechModelsTest are reused from the same PR #42 commit. RoleplaySpeechTurnPipeline starts
 with an externally owned audio request and a shared deadline created before STT. Its required

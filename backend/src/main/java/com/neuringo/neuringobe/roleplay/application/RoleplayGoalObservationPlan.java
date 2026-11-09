@@ -69,6 +69,65 @@ public final class RoleplayGoalObservationPlan {
         if (!available.containsAll(proposal.decisionBasis())) {
             throw invalid("활동 목표 판정에 존재하지 않는 관찰 근거가 있습니다.");
         }
+        var progress = proposal.inputGoalProgress();
+        if (progress != null && progress.assessment() != null) {
+            var assessment = progress.assessment();
+            if (assessment.outcome() == RoleplayInputGoalAssessment.Outcome.IN_PROGRESS
+                    && progress.learningState().equals("GOAL_ACHIEVED"))
+                throw invalid("도달 판정을 진행 중 결과로 저장할 수 없습니다.");
+            var approved = context.approvedCriteria().get(progress.microGoalId());
+            var supplied = new HashSet<String>();
+            for (var basis : assessment.basis()) {
+                if (!basis.turnId().equals(context.scope().turnId())
+                        || !basis.microGoalId().equals(progress.microGoalId())
+                        || proposal.observations().stream()
+                                .noneMatch(
+                                        o ->
+                                                o.reference().equals(basis)
+                                                        && (o.status() == ObservationStatus.EXPLICIT
+                                                                || o.status()
+                                                                        == ObservationStatus
+                                                                                .IMPLICIT)))
+                    throw invalid("입력 목표의 도달 근거가 이번 발화의 긍정 관찰과 일치하지 않습니다.");
+                supplied.add(basis.criterionReference());
+            }
+            if (!assessment.basis().isEmpty()
+                    && (!progress.learningState().equals("GOAL_ACHIEVED")
+                            || !supplied.equals(approved)))
+                throw invalid("입력 목표의 도달 판정과 승인된 학습 증거가 일치하지 않습니다.");
+            if ((assessment.outcome() == RoleplayInputGoalAssessment.Outcome.NOT_ASSESSABLE)
+                    != progress.learningState().equals("NOT_ASSESSABLE"))
+                throw invalid("판정 불가 상태와 입력 목표 결과가 일치하지 않습니다.");
+        }
+        if (progress != null
+                && progress.assessment() != null
+                && progress.assessment().supportApplication() != null) {
+            var application = progress.assessment().supportApplication();
+            if (!application.targetMicroGoalId().equals(proposal.nextFocusGoalId())
+                    || application.targetMicroGoalId().equals(progress.microGoalId()))
+                throw invalid("지원 감소는 다른 목표의 시작 질문에만 적용합니다.");
+            for (var input : application.basis()) {
+                var supplied = new HashSet<String>();
+                for (var ref : input.basis()) {
+                    var basis =
+                            new EvidenceReference(
+                                    ref.turnId(), ref.microGoalId(), ref.criterionReference());
+                    if (!ref.turnId().equals(input.turnId())
+                            || !ref.microGoalId().equals(input.microGoalId())
+                            || !available.contains(basis)
+                            || !supplied.add(ref.criterionReference()))
+                        throw invalid("지원 감소 근거가 같은 입력·목표의 확정 관찰과 다릅니다.");
+                }
+                if (!supplied.equals(context.approvedCriteria().get(input.microGoalId())))
+                    throw invalid("지원 감소 근거에 목표의 필수 관찰이 누락됐습니다.");
+                if (input.turnId().equals(context.scope().turnId())
+                        && (!input.microGoalId().equals(progress.microGoalId())
+                                || progress.assessment().outcome()
+                                        != RoleplayInputGoalAssessment.Outcome
+                                                .ACHIEVED_WITHOUT_HINT))
+                    throw invalid("이번 발화는 검수된 힌트 없는 도달이어야 합니다.");
+            }
+        }
         if (proposal.decision() == Decision.ACHIEVED && proposal.decisionBasis().isEmpty()) {
             throw invalid("활동 목표 달성 판정에는 관찰 근거가 필요합니다.");
         }
@@ -214,7 +273,12 @@ public final class RoleplayGoalObservationPlan {
     }
 
     /** 입력을 받은 목표의 검수된 판정이며 다음 질문의 초점과 구분한다. */
-    public record GoalProgress(UUID microGoalId, String learningState) {
+    public record GoalProgress(
+            UUID microGoalId, String learningState, RoleplayInputGoalAssessment assessment) {
+        public GoalProgress(UUID microGoalId, String learningState) {
+            this(microGoalId, learningState, null);
+        }
+
         public GoalProgress {
             Objects.requireNonNull(microGoalId);
             if (learningState == null || !RoleplayCodes.LEARNING_STATES.contains(learningState)) {

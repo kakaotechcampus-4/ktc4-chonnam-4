@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -45,15 +46,19 @@ class RoleplaySpeechTurnPipelineTest {
             new SpeechTranscriptionRequest(
                     RoleplayFixtures.trace(null, null), 1, new byte[] {1, 2, 3}, AudioFormat.WEBM);
     private final RoleplayTurnDeadline deadline = RoleplayTurnDeadline.start();
-    private String raw = "synthetic-unfiltered-name";
+    private String raw = "합성-미정제-이름";
     private Double confidence = 0.9;
+    private double sttConfidenceThreshold = 0.40;
     private int sttFailures;
     private int ttsFailures;
     private AiFailureType failureType = AiFailureType.TIMEOUT;
     private boolean unsafe;
     private boolean invalid;
+    private String inputFailure = "NONE";
     private boolean rejectCandidate;
     private String expireAt;
+    private String candidateText = "친구는 어떤 기분일까?";
+    private String candidateType = "GUIDING_QUESTION";
 
     @Test
     void voicePipelineReturnsCanonicalInputAndAudioForTheSameApprovedCandidate() {
@@ -141,10 +146,54 @@ class RoleplaySpeechTurnPipelineTest {
                 .isEqualTo(RoleplayTurnOutcome.AssessmentEligibility.NOT_ASSESSABLE);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "0.40,0.40,false",
+        "0.40,0.41,true",
+        "0.65,0.64,false",
+        "0.65,0.65,false",
+        "0.65,0.650001,true",
+        "0,0,false",
+        "0,0.000001,true",
+        "1,1,false"
+    })
+    void configuredThresholdUsesInclusiveRejectionAndOnlyPassesHigherConfidence(
+            double threshold, double value, boolean accepted) {
+        sttConfidenceThreshold = threshold;
+        confidence = value;
+        var outcome = execute();
+        if (accepted) {
+            assertThat(outcome).isInstanceOf(RoleplayTurnOutcome.SpokenResponse.class);
+            assertThat(calls).contains("INPUT", "CAUSE_ANALYSIS", "TTS");
+        } else {
+            assertThat(outcome).isInstanceOf(RoleplayTurnOutcome.InputRetry.class);
+            assertThat(calls).containsExactly("STT");
+            assertThat(llmRequests).isEmpty();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"嗯?", "Hm.", "うん。", "Yeah?", "123"})
+    void transcriptWithoutHangulIsTreatedAsLowConfidence(String transcript) {
+        raw = transcript;
+        confidence = 0.95;
+        var result = (RoleplayTurnOutcome.Recovery) execute();
+        assertThat(calls).containsExactly("STT");
+        assertThat(result.action()).isEqualTo(RoleplayTurnOutcome.Action.REQUEST_NEW_INPUT);
+        assertThat(llmRequests).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"응.", "OK 좋아", "사과 2개요", "ㅋㅋ"})
+    void koreanTranscriptMixedWithOtherCharactersPasses(String transcript) {
+        raw = transcript;
+        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.SpokenResponse.class);
+    }
+
     @Test
     void silenceSkipsDownstreamRegardlessOfHighConfidence() {
         raw = " ";
-        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.InputNoticeUnavailable.class);
+        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.InputRetry.class);
         assertThat(calls).containsExactly("STT");
     }
 
@@ -161,7 +210,7 @@ class RoleplaySpeechTurnPipelineTest {
     @Test
     void invalidCanonicalInputNeverReachesLlm() {
         invalid = true;
-        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.InputNoticeUnavailable.class);
+        assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.InputRetry.class);
         assertThat(calls).containsExactly("STT", "INPUT");
     }
 
@@ -207,6 +256,31 @@ class RoleplaySpeechTurnPipelineTest {
     }
 
     @Test
+    void stageDirectionsInParenthesesAreShownButNotSpoken() {
+        candidateText = "(훌쩍이며) 친구는 어떤 기분일까?";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(훌쩍이며) 친구는 어떤 기분일까?");
+        assertThat(ttsRequests)
+                .singleElement()
+                .extracting(SpeechSynthesisRequest::text)
+                .isEqualTo("친구는 어떤 기분일까?");
+        assertThat(ttsRequests.getFirst().emotion())
+                .isEqualTo(com.neuringo.neuringobe.ai.application.model.SpeechEmotion.SAD);
+        assertThat(result.speech()).isNotNull();
+    }
+
+    @Test
+    void aLineWithOnlyStageDirectionsHasNoSpeech() {
+        candidateText = "(고개를 끄덕이며)";
+        candidateType = "ANSWER_REVEAL";
+        var result = (RoleplayTurnOutcome.SpokenResponse) execute();
+        assertThat(result.response().text()).isEqualTo("(고개를 끄덕이며)");
+        assertThat(ttsRequests).isEmpty();
+        assertThat(calls).doesNotContain("TTS");
+        assertThat(result.speech()).isNull();
+    }
+
+    @Test
     void candidateRejectedByEvaluatorNeverReachesTts() {
         rejectCandidate = true;
         assertThat(execute()).isInstanceOf(RoleplayTurnOutcome.Recovery.class);
@@ -223,6 +297,36 @@ class RoleplaySpeechTurnPipelineTest {
         assertThat(calls.getLast()).isEqualTo(stage);
         assertThat(result.assessmentEligibility())
                 .isEqualTo(RoleplayTurnOutcome.AssessmentEligibility.NOT_ASSESSABLE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"UNAVAILABLE", "EXCEPTION", "NULL"})
+    void inputCheckFailureBlocksAnalysisAndUsesRetryGuidance(String failure) {
+        inputFailure = failure;
+        var result = execute();
+        assertThat(result).isInstanceOf(RoleplayTurnOutcome.InputCheckRetry.class);
+        var guidance = (RoleplayTurnOutcome.InputCheckRetry) result;
+        assertThat(guidance.action()).isEqualTo(RoleplayTurnOutcome.Action.RETRY_TURN);
+        assertThat(guidance.notice().text()).isEqualTo(RoleplayNoticeCatalog.REINPUT_TEXT);
+        assertThat(guidance.assessmentEligibility())
+                .isEqualTo(RoleplayTurnOutcome.AssessmentEligibility.NOT_ASSESSABLE);
+        assertThat(calls).containsExactly("STT", "INPUT");
+        assertThat(llmRequests).isEmpty();
+        assertThat(ttsRequests).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"NONE", "UNAVAILABLE", "EXCEPTION", "NULL"})
+    void expiredInputCheckCannotTurnIntoRetryGuidanceOrAdvanceLearning(String failure) {
+        inputFailure = failure;
+        expireAt = "INPUT";
+        var result = execute();
+        assertThat(result).isInstanceOf(RoleplayTurnOutcome.Guidance.class);
+        var guidance = (RoleplayTurnOutcome.Guidance) result;
+        assertThat(guidance.action()).isEqualTo(RoleplayTurnOutcome.Action.REQUEST_NEW_INPUT);
+        assertThat(guidance.notice().kind()).isEqualTo(RoleplayNoticeCatalog.Kind.TIMEOUT);
+        assertThat(calls).containsExactly("STT", "INPUT");
+        assertThat(llmRequests).isEmpty();
     }
 
     private RoleplayTurnOutcome execute() {
@@ -260,9 +364,17 @@ class RoleplaySpeechTurnPipelineTest {
                         transcription -> {
                             calls.add("INPUT");
                             assertThat(transcription).isEqualTo(raw);
+                            if ("INPUT".equals(expireAt)) deadline.cancel();
+                            if ("EXCEPTION".equals(inputFailure))
+                                throw new IllegalStateException(raw);
+                            if ("NULL".equals(inputFailure)) return null;
+                            if ("UNAVAILABLE".equals(inputFailure))
+                                return new RoleplayInputProcessor.Unavailable();
                             if (unsafe) return new RoleplayInputProcessor.Unsafe();
                             if (invalid) return new RoleplayInputProcessor.Invalid();
-                            return new RoleplayInputProcessor.Accepted("친구가 울고 있어");
+                            return new RoleplayInputProcessor.Accepted(
+                                    "친구가 울고 있어",
+                                    new RoleplayInputProcessor.Assessment(0.93, true, true, false));
                         },
                         new RoleplayPromptFactory(mapper, null),
                         new StructuredLlmExecutor(
@@ -278,8 +390,8 @@ class RoleplaySpeechTurnPipelineTest {
                                                                 "S1");
                                                 case RESPONSE_GENERATION ->
                                                         RoleplayFixtures.candidateJson(
-                                                                        "친구는 어떤 기분일까?",
-                                                                        "GUIDING_QUESTION")
+                                                                        candidateText,
+                                                                        candidateType)
                                                                 .replace(
                                                                         RoleplayFixtures
                                                                                 .CANDIDATE_ID
@@ -323,7 +435,8 @@ class RoleplaySpeechTurnPipelineTest {
                                                     null,
                                                     null),
                                             request.operation());
-                                }));
+                                }),
+                        sttConfidenceThreshold);
         try (var workers = Executors.newSingleThreadExecutor()) {
             var responder =
                     new RoleplayTurnResponder(

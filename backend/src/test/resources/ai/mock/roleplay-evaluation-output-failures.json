@@ -1,0 +1,32 @@
+[
+  {
+    "case": "elice-p1-02-failure-1",
+    "expected_error_code": "INVALID_STRUCTURE",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": false,\n    \"analysis_response_consistent\": false,\n    \"goal_aligned\": false,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": true,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [\n    \"GOAL_SKIPPED\",\n    \"ANALYSIS_RESPONSE_MISMATCH\",\n    \"analysis_supported\": true\n  ],\n  \"critical_failure_count\": 0,\n  \"decision\": \"REANALYZE\",\n  \"retry_target\": null,\n  \"safe_to_send\": false,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": false,\n    \"activity_goal_supported\": false\n  }\n}"
+  },
+  {
+    "case": "elice-p1-02-failure-2",
+    "expected_error_code": "INVALID_RETRY_TARGET",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": false,\n    \"analysis_response_consistent\": true,\n    \"goal_aligned\": true,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": true,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [\n    \"UNSUPPORTED_CAUSE_ANALYSIS\"\n  ],\n  \"critical_failure_count\": 0,\n  \"decision\": \"REANALYZE\",\n  \"retry_target\": null,\n  \"safe_to_send\": false,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": false,\n    \"activity_goal_supported\": false\n  }\n}"
+  },
+  {
+    "case": "elice-p1-02-failure-3",
+    "expected_error_code": "INVALID_RETRY_TARGET",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": false,\n    \"analysis_response_consistent\": true,\n    \"goal_aligned\": true,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": true,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [\n    \"ANALYSIS_SUPPORTED\"\n  ],\n  \"critical_failure_count\": 0,\n  \"decision\": \"REANALYZE\",\n  \"retry_target\": null,\n  \"safe_to_send\": false,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": false,\n    \"activity_goal_supported\": false\n  }\n}"
+  },
+  {
+    "case": "elice-p1-02-failure-4",
+    "expected_error_code": "UNAPPROVED_GOAL_REVIEW",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": true,\n    \"analysis_response_consistent\": true,\n    \"goal_aligned\": true,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": true,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [],\n  \"critical_failure_count\": 0,\n  \"decision\": \"PASS\",\n  \"retry_target\": null,\n  \"safe_to_send\": true,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": false,\n    \"activity_goal_supported\": false\n  }\n}"
+  },
+  {
+    "case": "elice-p1-02-failure-5",
+    "expected_error_code": "INVALID_RETRY_TARGET",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": false,\n    \"analysis_response_consistent\": false,\n    \"goal_aligned\": true,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": true,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [\n    \"GOAL_SKIPPED\",\n    \"ANALYSIS_RESPONSE_MISMATCH\"\n  ],\n  \"critical_failure_count\": 0,\n  \"decision\": \"REANALYZE\",\n  \"retry_target\": null,\n  \"safe_to_send\": false,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": false,\n    \"activity_goal_supported\": false\n  }\n}"
+  },
+  {
+    "case": "elice-p1-02-failure-6",
+    "expected_error_code": "INVALID_RETRY_TARGET",
+    "content": "{\n  \"candidate_id\": \"${candidate_id}\",\n  \"checks\": {\n    \"format_valid\": true,\n    \"safety_valid\": true,\n    \"privacy_valid\": true,\n    \"scenario_consistent\": true,\n    \"analysis_supported\": true,\n    \"analysis_response_consistent\": true,\n    \"goal_aligned\": true,\n    \"educationally_correct\": true,\n    \"difficulty_appropriate\": true,\n    \"conversation_coherent\": false,\n    \"answerable\": true,\n    \"non_repetitive\": true\n  },\n  \"failure_codes\": [\n    \"analysis_result.goal_observation.activity_goal_supported\"\n  ],\n  \"critical_failure_count\": 0,\n  \"decision\": \"REANALYZE\",\n  \"retry_target\": null,\n  \"safe_to_send\": false,\n  \"revision_instruction\": null,\n  \"goal_observation_review\": {\n    \"schema_version\": \"evaluation-result/v2\",\n    \"analysis_id\": \"${analysis_id}\",\n    \"observations_supported\": true,\n    \"activity_goal_supported\": false\n  }\n}"
+  }
+]

@@ -1,19 +1,19 @@
 import { act, screen } from "@testing-library/react"
 import type { UserEvent } from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 import { router } from "@/router"
-import { enterAsChild, renderRoutes } from "@/test/render"
-import { childAccessCodes, fixtures } from "@/test/msw/handlers"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity } from "@/test/render"
+import { childAccessCodes, finishQuizzes, fixtures } from "@/test/msw/handlers"
 import { useChildSessionStore } from "./store/childSessionStore"
 
 // VS-003 인수 조건 검사(아동 화면 흐름). 실제 라우팅 표로 코드 입력 → 인사 → 내 활동 → 활동 소개 → 퀴즈 → 사용 종료를 따라간다.
 // - "사용 종료를 누르면 현재 브라우저의 아동 상태를 지우고 코드 입력 화면으로 돌아간다": 모든 아동 화면에서 같다.
 // - 입장하지 않았거나 사용 종료한 뒤에는 활동 화면을 주소로 열어도, 뒤로 가기로 돌아와도 코드 입력 화면으로 간다(#22 의 5번, RequireChildSession).
 // - "아동 화면에 강사용 평가 정보와 다른 아동 정보가 노출되지 않는다": 아동 화면에서 강사 화면으로 가는 길이 없다.
-// 입장·사용 종료는 실제 API(API-IAM-08·09)를 MSW 가짜 서버로 대신한다. 활동·퀴즈·역할극은 아직 화면 쪽 mock(features/child/api.ts)이다.
+// 아동 화면의 모든 요청(입장·사용 종료·활동·퀴즈·역할극)은 실제 API 를 MSW 가짜 서버로 대신한다.
 // 의도적으로 흐름을 바꾸면 이 테스트도 같이 고치세요.
 
-const ACTIVITY = "mock-activity-1"
+const ACTIVITY = CHILD_ACTIVITY_ID
 const ACTIVITY_PAGES = [
   "/child/hello",
   "/child/activities",
@@ -32,6 +32,10 @@ async function enterCode(user: UserEvent, code = childAccessCodes.valid) {
 }
 
 describe("아동 화면 흐름", () => {
+  beforeEach(() => {
+    seedChildActivity()
+  })
+
   it("코드 4자리를 넣고 입장하면 아동 세션이 생기고 인사 화면으로 replace 이동한다", async () => {
     const { user, router: memoryRouter } = renderRoutes(router.routes, "/child")
 
@@ -70,6 +74,8 @@ describe("아동 화면 흐름", () => {
   })
 
   it.each(CHILD_PAGES)("%s 에서 사용 종료하면 세션을 비우고 코드 입력 화면으로 replace 이동한다", async (path) => {
+    // 역할극은 서버처럼 퀴즈를 마쳐야 열린다(아니면 퀴즈로 돌려보낸다).
+    if (path.startsWith("/child/roleplay/")) finishQuizzes(ACTIVITY)
     enterAsChild()
     const { user, router: memoryRouter } = renderRoutes(router.routes, path)
 

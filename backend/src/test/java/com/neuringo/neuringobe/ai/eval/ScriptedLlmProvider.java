@@ -86,8 +86,17 @@ final class ScriptedLlmProvider implements LlmProvider {
                                     true));
                 }
                 content = JSON.writeValueAsString(body);
+                if (request.operation() == AiOperation.RESPONSE_EVALUATION) {
+                    content =
+                            com.neuringo.neuringobe.ai.application.prompt.EvaluationWireFixtures
+                                    .forRequest(content, message);
+                }
             }
         }
+        if (!(formatFailureOnce.contains(request.operation()) && firstTry))
+            content =
+                    com.neuringo.neuringobe.ai.application.prompt.CharacterWireFixtures.forRequest(
+                            content, request);
         int inputTokens = (request.systemPrompt().length() + request.userPrompt().length()) / 2;
         int outputTokens = content.length() / 2;
         AiCallMetadata metadata =
@@ -138,8 +147,9 @@ final class ScriptedLlmProvider implements LlmProvider {
                 + " \"scenario_level\": \""
                 + level
                 + "\", \"ai_role\": \"NARRATOR\","
-                + " \"characters\": [{\"id\": \"LEARNER\", \"role\": \"학습자\"},"
-                + " {\"id\": \"FRIEND\", \"role\": \"친구\"}],"
+                + " \"characters\": [{\"id\": \"LEARNER\", \"role\": \"학습자\"}"
+                + characters(message)
+                + "],"
                 + " \"scenario_facts\": ["
                 + factJson
                 + "],"
@@ -147,9 +157,38 @@ final class ScriptedLlmProvider implements LlmProvider {
                 + " \"micro_goals\": ["
                 + goalJson
                 + "],"
+                + " \"starting_question_goal_ids\": {\"S0\":\"MG-01\",\"S1\":\"MG-01\",\"S2\":\"MG-01\"},"
                 + " \"starting_questions\": {\"S0\": \"무슨 일이 있었을까?\","
                 + " \"S1\": \"친구가 울고 있어. 무슨 일이 있었을까?\","
                 + " \"S2\": \"친구가 넘어졌을까, 아니면 장난감을 잃어버렸을까?\"}}";
+    }
+
+    /**
+     * 강사가 적은 등장인물을 id·role 그대로 돌려준다(서버 검사 CHARACTER_ROLE_MISMATCH 를 통과하는 출력). 없으면 친구 한 명. id 가 없거나
+     * 형식이 아니면 OTHER_n 을 붙인다.
+     */
+    private static String characters(JsonNode message) {
+        JsonNode input = message.get("teacher_input").get("characters");
+        if (input == null || !input.isArray() || input.isEmpty())
+            return ", {\"id\": \"FRIEND\", \"role\": \"친구\"}";
+        StringBuilder json = new StringBuilder();
+        int index = 0;
+        for (JsonNode character : input) {
+            index++;
+            JsonNode idNode = character.get("id");
+            String id =
+                    idNode != null && idNode.asString().matches("[A-Z][A-Z0-9_]*")
+                            ? idNode.asString()
+                            : "OTHER_" + index;
+            String role =
+                    character.get("role").asString().replace("\\", "\\\\").replace("\"", "\\\"");
+            json.append(", {\"id\": \"")
+                    .append(id)
+                    .append("\", \"role\": \"")
+                    .append(role)
+                    .append("\"}");
+        }
+        return json.toString();
     }
 
     private static String analysis(JsonNode message) {
@@ -195,11 +234,28 @@ final class ScriptedLlmProvider implements LlmProvider {
     }
 
     private static String evaluation(JsonNode message) {
-        return """
-                {"candidate_id":"%s","checks":{"format_valid":true},"failure_codes":[],
-                 "critical_failure_count":0,"decision":"PASS","retry_target":null,
-                 "safe_to_send":true,"revision_instruction":null}
-                """
-                .formatted(message.get("candidate_response").get("candidate_id").asString());
+        var checks = new java.util.LinkedHashMap<String, Boolean>();
+        for (String key :
+                java.util.List.of(
+                        "format_valid",
+                        "safety_valid",
+                        "privacy_valid",
+                        "scenario_consistent",
+                        "analysis_supported",
+                        "analysis_response_consistent",
+                        "goal_aligned",
+                        "educationally_correct",
+                        "difficulty_appropriate",
+                        "conversation_coherent",
+                        "answerable",
+                        "non_repetitive")) checks.put(key, true);
+        var output = new java.util.LinkedHashMap<String, Object>();
+        output.put(
+                "candidate_id", message.path("candidate_response").path("candidate_id").asText());
+        output.put("checks", checks);
+        output.put("failure_codes", java.util.List.of());
+        output.put("decision", "PASS");
+        output.put("revision_instruction", null);
+        return JSON.writeValueAsString(output);
     }
 }

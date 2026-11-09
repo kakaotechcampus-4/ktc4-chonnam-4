@@ -12,7 +12,33 @@ public record LlmRequest(
         String promptVersion,
         String responseSchemaVersion,
         String policyVersion,
-        AiCallBudget callBudget) {
+        AiCallBudget callBudget,
+        String responseJsonSchema) {
+
+    public LlmRequest(
+            AiTraceContext traceContext,
+            AiAttemptContext attemptContext,
+            AiOperation operation,
+            int currentAttempt,
+            String systemPrompt,
+            String userPrompt,
+            String promptVersion,
+            String responseSchemaVersion,
+            String policyVersion,
+            AiCallBudget callBudget) {
+        this(
+                traceContext,
+                attemptContext,
+                operation,
+                currentAttempt,
+                systemPrompt,
+                userPrompt,
+                promptVersion,
+                responseSchemaVersion,
+                policyVersion,
+                callBudget,
+                null);
+    }
 
     public LlmRequest(
             AiTraceContext traceContext,
@@ -49,7 +75,24 @@ public record LlmRequest(
                 promptVersion,
                 responseSchemaVersion,
                 policyVersion,
-                budget);
+                budget,
+                responseJsonSchema);
+    }
+
+    public LlmRequest withResponseJsonSchema(String schema) {
+        requireText(schema, "responseJsonSchema");
+        return new LlmRequest(
+                traceContext,
+                attemptContext,
+                operation,
+                currentAttempt,
+                systemPrompt,
+                userPrompt,
+                promptVersion,
+                responseSchemaVersion,
+                policyVersion,
+                callBudget,
+                schema);
     }
 
     public LlmRequest {
@@ -71,11 +114,14 @@ public record LlmRequest(
 
     private static void validateTraceContext(AiOperation operation, AiTraceContext traceContext) {
         switch (operation) {
-            case INITIAL_DIFFICULTY_DECISION, NEXT_DIFFICULTY_DECISION ->
+            case INITIAL_DIFFICULTY_DECISION,
+                            NEXT_DIFFICULTY_DECISION,
+                            REPORT_GENERATION,
+                            REPORT_REVIEW ->
                     Objects.requireNonNull(traceContext.childId(), "childId is required");
             case SCENARIO_GENERATION ->
                     Objects.requireNonNull(traceContext.classId(), "classId is required");
-            case CAUSE_ANALYSIS -> {
+            case INPUT_VALIDATION, CAUSE_ANALYSIS -> {
                 Objects.requireNonNull(traceContext.sessionId(), "sessionId is required");
                 Objects.requireNonNull(traceContext.turnId(), "turnId is required");
             }

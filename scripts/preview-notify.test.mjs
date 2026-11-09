@@ -79,6 +79,14 @@ test("서버가 꺼져 있어 push 를 건너뛰면 그렇게 알린다", () => 
   assert.match(text, /^⏸️ \*\*PR #62 새 커밋은 올리지 않았습니다\*\* — 서버가 꺼져 있습니다/)
 })
 
+test("24시간 모드에서 자리가 빈 push 는 올리지 않고 알리지도 않는다", () => {
+  const empty = { SERVER_STATE: "running", STATUS_MODE: "develop", LEASE_ACTIVE: "0" }
+  assert.equal(compose(preview({ task: "PR 미리보기 다시 올리기", releaseResult: "", state: empty })), null)
+  assert.equal(compose(preview({ task: "PR 미리보기 다시 올리기", releaseResult: "not_own_slot", state: empty })), null)
+  const broken = compose(preview({ task: "PR 미리보기 다시 올리기", releaseResult: "", releaseJob: "failure", state: empty }))
+  assert.match(broken, /실패/, "준비 단계가 실패했으면 알린다")
+})
+
 test("테스트 주소를 쓰는 중이라 미루면 실패가 아니라 미뤘다고 알린다", () => {
   const text = compose(preview({ task: "PR 미리보기 다시 올리기", releaseResult: "busy" }))
   assert.match(text, /^⏸️ \*\*PR #65 미리보기를 미뤘습니다\*\* — 테스트 주소를 누가 쓰는 중/)

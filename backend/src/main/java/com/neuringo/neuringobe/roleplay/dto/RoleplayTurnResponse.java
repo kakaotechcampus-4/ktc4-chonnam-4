@@ -19,8 +19,19 @@ public record RoleplayTurnResponse(
         messages = List.copyOf(Objects.requireNonNull(messages));
     }
 
-    public record Message(String text, Speech speech) {
+    /** 캐릭터 대사(DIALOGUE)와 마스코트 힌트·안내(HINT)를 화면이 다른 자리에 보여 준다. */
+    public static final String DIALOGUE = "DIALOGUE";
+
+    public static final String HINT = "HINT";
+
+    public record Message(String speakerRole, String text, Speech speech) {
+        public Message(String text, Speech speech) {
+            this(DIALOGUE, text, speech);
+        }
+
         public Message {
+            if (!DIALOGUE.equals(speakerRole) && !HINT.equals(speakerRole))
+                throw new IllegalArgumentException("Unknown speaker role");
             if (text == null || text.isBlank())
                 throw new IllegalArgumentException("Delivery text required");
             Objects.requireNonNull(speech);

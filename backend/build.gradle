@@ -23,6 +23,7 @@ repositories {
 dependencies {
     implementation platform('org.springframework.ai:spring-ai-bom:2.0.1')
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+    implementation 'com.networknt:json-schema-validator:3.0.1'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -59,9 +60,9 @@ tasks.named('jacocoTestReport') {
 }
 
 // backend/.env.local 이 있으면 KEY=VALUE 를 환경변수로 넣는다(.gitignore 의 .env.* 라 커밋되지 않는다).
-// 셸에 값이 있는 환경변수가 우선한다(빈 값은 없는 것으로 본다). Spring 앱 실행(bootRun)에는 쓰이지 않는다.
+// .env.local 의 값이 셸 환경변수보다 우선한다. bootRun 과 AI 실측 실행에 적용한다.
 // 값은 출력하지 않고 읽은 이름만 출력한다. Windows 콘솔에서 깨지지 않게 로그는 영어로 쓴다.
-def loadEnvLocal = { JavaExec task ->
+def loadEnvLocal = { task ->
     def envFile = file('.env.local')
     task.doFirst {
         if (!envFile.isFile()) {
@@ -88,8 +89,6 @@ def loadEnvLocal = { JavaExec task ->
             }
             if (value.isEmpty()) {
                 skipped << "${key}(empty)"
-            } else if (System.getenv(key)?.trim()) {
-                skipped << "${key}(shell)"
             } else {
                 environment key, value
                 loaded << key
@@ -97,6 +96,10 @@ def loadEnvLocal = { JavaExec task ->
         }
         logger.lifecycle("${task.name}: .env.local loaded ${loaded}" + (skipped ? ", skipped ${skipped}" : ''))
     }
+}
+
+tasks.named('bootRun') {
+    loadEnvLocal(it)
 }
 
 // AI 품질 회귀 측정(docs/ai-quality-measurement.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
@@ -112,12 +115,188 @@ tasks.register('roleplayEval', JavaExec) {
     loadEnvLocal(it)
 }
 
+// 저장된 합성 P1 분석만 검수한다. 실 API 한 번의 진단이며 운영 경로에는 연결하지 않는다.
+tasks.register('analysisReviewDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '합성 P1의 고정 분석을 후보 대사 없이 한 번 검수한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.AnalysisReviewDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 같은 합성 입력의 관찰 대조쌍을 재시도 없이 최대 두 번 검수한다.
+tasks.register('observationPairDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '사건 관찰과 추가한 감정 관찰을 구분하는지 진단한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ObservationPairDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 기존 A/B 관찰을 발화 인용과 함께 검수하며 전체 최대 두 번만 호출한다.
+tasks.register('observationEvidenceDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '고정 관찰별 판정과 실제 발화 근거를 진단한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ObservationEvidenceDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 고정 A/B 입력을 운영 평가로 최대 두 번 검수한다. 재시도하지 않는다.
+tasks.register('integratedEvaluationDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '운영 평가에서 사건 승인과 잘못된 감정 거절을 함께 확인한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.IntegratedEvaluationDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 고정 분석의 후보 입력 유무만 비교하며 최대 두 번 호출한다.
+tasks.register('reviewIsolationDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '동일한 분석 검수에서 후보 대사의 유무를 비교한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ReviewIsolationDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 요청별 관찰 키와 목표 범위를 고정해 기존 A/B를 최대 두 번 검수한다.
+tasks.register('scopedReviewDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '검수 대상과 현재 목표·활동 목표의 범위를 고정해 비교한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ScopedReviewDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 근거 키 선택을 원본에 연결하는 진단이며 최대 두 번만 호출한다.
+tasks.register('evidenceSelectionDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '원문·참조 복사 대신 근거 키를 선택해 통합 검수한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.EvidenceSelectionDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 분석 검수 두 건이 기대값과 일치할 때만 후보를 한 번 검수한다.
+tasks.register('splitReviewDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '분석과 후보의 검수 호출을 분리해 최대 세 번 진단한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.SplitReviewDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 승인된 분석을 재사용하고 발화자·코드 정합성을 후보 두 건으로 진단한다.
+tasks.register('candidateRoleDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '후보의 발화자 바인딩과 실패 코드 정합성을 최대 두 번 검수한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.CandidateRoleDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 고정된 잘못된 분석과 후보를 각각 한 번만 평가한다.
+tasks.register('negativeEvaluationDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '현재 모델이 잘못된 분석과 후보를 구별하는지 최대 두 번 확인한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.NegativeEvaluationDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 현재 축소 계약으로 네 후보만 검수한다. --prepare-only는 요청만 준비한다.
+tasks.register('characterInteractionDiagnostic', JavaExec) {
+    group = 'verification'
+    description = '현재 축소 검수에서 정상·문답·추론·무단서 후보를 최대 네 번 비교한다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.CharacterInteractionDiagnostic'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
 // 시나리오 생성 품질 평가(docs/scenario-generation.md). 예: ./gradlew scenarioEval --args="--provider openai --repeats 3"
 tasks.register('scenarioEval', JavaExec) {
     group = 'verification'
     description = '시나리오 생성 프롬프트를 고정 강사 입력으로 반복 실행해 계약 검사 통과율·지연·비용을 잰다'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.neuringo.neuringobe.ai.eval.ScenarioEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 실제 ML API(엘리스)로 역할극 턴을 HTTP → DB → 모델까지 돌리는 통합 실측. 비용이 들어 CI 빌드에는 들어가지 않는다(ML_API_REAL 일 때만 돈다).
+// 예: ./gradlew mlApiTest -Pmlapi.model=MINI41 -Pmlapi.personas=steady,strong,unsure -Pmlapi.repeats=1
+//     결과는 build/mlapi-it/<run>/summary.md. -Pmlapi.* 는 시스템 속성으로 넘긴다(RealMlApiSettings).
+tasks.register('mlApiTest', Test) {
+    group = 'verification'
+    description = '실제 ML API 로 역할극 턴을 끝까지 돌려 연동 오류(형식 실패·잘림·시간 초과·응답 계약)를 모은다'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching '*RealMlApiRoleplayIntegrationTest' }
+    environment 'ML_API_REAL', 'true'
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    project.properties.findAll { it.key.startsWith('mlapi.') }.each { systemProperty it.key, it.value }
+    outputs.upToDateWhen { false }
+    testLogging { events 'passed', 'skipped', 'failed'; showStandardStreams = true }
+    loadEnvLocal(it)
+}
+
+// 학습 리포트 생성·평가 루프 실측(backend/docs/learning-report-loop.md). test 와 따로 돌고 CI 빌드에는 들어가지 않는다.
+// 모델별 주소·ID·단가(MODEL_{이름}_URL·_ID·_PRICE)는 .env.local 에서 읽는다.
+// 예: ./gradlew reportEval --args="--provider openai --gen haiku55 --review argon4 --repeats 2"
+tasks.register('reportEval', JavaExec) {
+    group = 'verification'
+    description = '학습 리포트 회귀 세트로 통과율·바퀴 수·평가 점수·비용과 목표 유사도를 잰다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ReportEvalMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 역할극 다회차 시뮬레이션. 합성 아동에게 역할극을 여러 번 시켜 목표별 결과·다음 난이도·추천의 흐름을 본다(LLM 없음, --report 때만 상세 시드 리포트).
+// 예: ./gradlew roleplaySim --args="--seeds 30 --sessions 8"
+tasks.register('roleplaySim', JavaExec) {
+    group = 'verification'
+    description = '합성 아동 역할극 다회차로 다음 난이도·추천 흐름을 본다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.sim.RoleplaySimMain'
+    workingDir = projectDir
+    jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+    loadEnvLocal(it)
+}
+
+// 학습 리포트 PoC 화면. 127.0.0.1:8787 에서 회귀 사례 하나를 실제 모델로 돌려 루프 과정을 보여 준다(저장·DB 없음, 개발자용).
+// 예: ./gradlew reportPoc  ->  http://127.0.0.1:8787/
+tasks.register('reportPoc', JavaExec) {
+    group = 'application'
+    description = '학습 리포트·추천·후속 난이도 PoC 화면을 로컬에서 띄운다'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.neuringo.neuringobe.ai.eval.ReportPocServer'
     workingDir = projectDir
     jvmArgs '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
     loadEnvLocal(it)

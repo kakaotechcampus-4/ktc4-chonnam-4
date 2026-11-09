@@ -4,17 +4,21 @@ import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiFailureType;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.prompt.AnalysisRetry;
+import com.neuringo.neuringobe.ai.application.prompt.EvaluationRetry;
+import com.neuringo.neuringobe.ai.application.prompt.GenerationOutputRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GenerationRetry;
 import com.neuringo.neuringobe.ai.application.prompt.GoalObservationInput;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayTurnInput;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayRetryContext.RejectedCandidate;
+import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputException;
 import com.neuringo.neuringobe.ai.application.structured.StructuredLlmExecutor;
 import com.neuringo.neuringobe.ai.application.structured.output.AnalysisResult;
 import com.neuringo.neuringobe.ai.application.structured.output.CandidateResponse;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationDecision;
 import com.neuringo.neuringobe.ai.application.structured.output.EvaluationResult;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -29,6 +33,10 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
     private final GoalObservationInput observations;
     private UUID currentAnalysisId;
     private boolean invalidAnalysisOutput;
+    private UUID evaluationCandidateId;
+    private EvaluationRetry evaluationRetry;
+    private UUID generationCandidateId;
+    private GenerationOutputRetry generationOutputRetry;
 
     public StructuredRoleplayTurnSteps(
             RoleplayPromptFactory prompts,
@@ -82,6 +90,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
     public AiCallResult<CandidateResponse> generate(
             UUID turnId, UUID candidateId, AnalysisResult analysis, RoleplayRetryContext retry) {
         requireTurn(turnId);
+        if (!candidateId.equals(generationCandidateId)) generationOutputRetry = null;
+        generationCandidateId = candidateId;
         var prepared =
                 prompts.responseGeneration(
                         stageTrace(candidateId),
@@ -90,9 +100,21 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         input,
                         analysis,
                         candidateId,
-                        generationRetry(retry));
-        return llm.execute(
-                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
+                        generationRetry(retry),
+                        generationOutputRetry);
+        var result =
+                llm.execute(
+                        prepared.request().withCallBudget(retry.callBudget()),
+                        content -> {
+                            try {
+                                return prepared.parser().parse(content);
+                            } catch (InvalidLlmOutputException failure) {
+                                generationOutputRetry = GenerationOutputRetry.from(failure);
+                                throw failure;
+                            }
+                        });
+        if (result instanceof AiCallResult.Success<?>) generationOutputRetry = null;
+        return result;
     }
 
     @Override
@@ -102,6 +124,8 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
             CandidateResponse candidate,
             RoleplayRetryContext retry) {
         requireTurn(turnId);
+        if (!candidate.candidateId().equals(evaluationCandidateId)) evaluationRetry = null;
+        evaluationCandidateId = candidate.candidateId();
         var prepared =
                 prompts.responseEvaluation(
                         stageTrace(candidate.candidateId()),
@@ -110,9 +134,27 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
                         input,
                         analysis,
                         candidate,
-                        observations);
-        return llm.execute(
-                prepared.request().withCallBudget(retry.callBudget()), prepared.parser());
+                        observations,
+                        evaluationRetry);
+        var result =
+                llm.execute(
+                        prepared.request().withCallBudget(retry.callBudget()),
+                        content -> {
+                            try {
+                                return prepared.parser().parse(content);
+                            } catch (
+                                    com.neuringo.neuringobe.ai.application.structured
+                                                    .IndeterminateLlmOutputException
+                                            failure) {
+                                evaluationRetry = EvaluationRetry.OBSERVATION_CONTEXT_INSUFFICIENT;
+                                throw failure;
+                            } catch (InvalidLlmOutputException failure) {
+                                evaluationRetry = EvaluationRetry.from(failure);
+                                throw failure;
+                            }
+                        });
+        if (result instanceof AiCallResult.Success<?>) evaluationRetry = null;
+        return result;
     }
 
     private AnalysisRetry analysisRetry(RoleplayRetryContext retry) {
@@ -137,13 +179,18 @@ public final class StructuredRoleplayTurnSteps implements RetryableRoleplayTurnS
             focus.add("필수 필드·승인 참조·분석 식별자와 허용 코드를 다시 확인한다.");
             focus.add("목표별 정답 제공 이력을 확인하고 이미 정답을 제공한 목표를 다시 유도하지 않는다.");
             focus.add("같은 목표의 지원을 낮춰 반복 유도하지 않는다.");
-            focus.add("최대 턴에 도달했으면 CLOSE_ROLEPLAY로 마무리한다.");
+            focus.add(
+                    "확인된 learning_turn_count가 상한에 도달했고 이번 입력이 판정 불가가 아니면 현재 목표·지원으로 CLOSE_ROLEPLAY를 선택한다.");
+            focus.add("저장 입력 순번 turn_count가 10 이상이면 판정 결과와 관계없이 현재 목표·지원으로 CLOSE_ROLEPLAY를 선택한다.");
+            focus.add("새 목표의 시작 지원은 서버 정책이 생성 전에 한 단계 보정하므로 이미 보정했다고 가정하지 않는다.");
             avoid.add("이전 출력이 검증을 통과했다고 가정하지 않는다.");
         }
         return new AnalysisRetry(
                 codes.stream().distinct().toList(),
                 focus.stream().distinct().toList(),
-                avoid.stream().distinct().toList());
+                avoid.stream().distinct().toList(),
+                rejectedReview ? last.analysis() : null,
+                rejectedReview ? last.evaluation().analysisReviewIssues() : List.of());
     }
 
     private GenerationRetry generationRetry(RoleplayRetryContext retry) {

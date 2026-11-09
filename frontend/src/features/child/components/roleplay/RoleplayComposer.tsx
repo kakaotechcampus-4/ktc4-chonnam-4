@@ -3,62 +3,124 @@ import { Keyboard, Mic, Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChildButton } from "../ChildButton"
 import { VoiceRecordingPanel, type RecordingEndReason } from "./VoiceRecordingPanel"
+import {
+  canRecordVoice,
+  startVoiceRecording,
+  VoiceRecorderUnavailable,
+  type VoiceRecorderError,
+  type VoiceRecording,
+} from "../../lib/voiceRecorder"
 
 const MAX_REPLY_LENGTH = 200
-
-// 녹음·STT(S6) 전이라 마이크는 개발 서버에서만 눌러 "듣고 있어요" 화면을 확인할 수 있다.
-// 사용자 테스트 주소(운영 빌드)에서는 말해도 아무 일이 없으므로 계속 막아 둔다.
-const CAN_PREVIEW_VOICE = import.meta.env.DEV
 
 export type RoleplayInputMode = "voice" | "text"
 
 /**
+ * 녹음이 끝난 결과.
+ * audio: "다 말했어요"로 끝낸 녹음. 화면이 서버(API-RPL-04)로 보낸다.
+ * timeout: 30초가 다 됨. 계약(API-RPL-04)에 따라 녹음을 버리고 자동으로 보내지 않는다.
+ * unavailable: 마이크를 열 수 없다(권한 거부·장치 없음·미지원 브라우저).
+ */
+export type VoiceResult =
+  | { type: "audio"; audio: Blob }
+  | { type: "timeout" }
+  | { type: "unavailable"; reason: VoiceRecorderError }
+
+/**
  * 역할극 답 입력 (C-RP-02 음성 모드 · C-RP-04 글자 모드, VS-010).
  * 음성이 기본이고, "글자로 답할래요"로 글자 입력으로 바꾼다. 글자 모드에서도 마이크 버튼은 유지한다.
- * 녹음·STT가 없어 운영 빌드에서는 마이크 버튼이 비활성이다. 개발 서버에서는 마이크를 누르면 30초 "듣고 있어요" 화면이 뜨고,
- * 끝나면 보낼 음성이 없으므로 글자 모드로 바꾼다. 저신뢰 3회 누적 시 글자 모드 자동 전환도 S6에서 붙인다.
+ * 마이크를 누르면 브라우저 마이크로 녹음하며 30초 "듣고 있어요" 화면이 뜬다. "다 말했어요"를 누르면 녹음한 음성을 onVoiceResult 로 넘긴다.
+ * 입력 방식(mode)은 화면이 정한다. 음성 실패가 쌓여 서버가 글자를 권하면(SUGGEST_TEXT_KEEP_VOICE) 화면이 글자 모드로 바꾼다.
  */
 function RoleplayComposer({
+  mode,
+  onModeChange,
   onSend,
-  onVoiceFinish,
+  onVoiceResult,
+  onRecordingStart,
   disabled = false,
 }: {
-  onSend: (text: string, mode: RoleplayInputMode) => void
-  /** "듣고 있어요" 화면이 끝났을 때. S6에서는 여기서 녹음한 음성을 보낸다. */
-  onVoiceFinish?: (reason: RecordingEndReason) => void
+  mode: RoleplayInputMode
+  onModeChange: (mode: RoleplayInputMode) => void
+  onSend: (text: string) => void
+  onVoiceResult: (result: VoiceResult) => void
+  /** 마이크를 열기 직전에 부른다. 캐릭터 목소리가 녹음에 섞이지 않게 재생을 멈추는 데 쓴다. */
+  onRecordingStart?: () => void
   disabled?: boolean
 }) {
-  const [mode, setMode] = useState<RoleplayInputMode>("voice")
-  const [isRecording, setIsRecording] = useState(false)
+  const [recording, setRecording] = useState<VoiceRecording | null>(null)
+  const [isPreparingMic, setIsPreparingMic] = useState(false)
   const [text, setText] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+  const recordingRef = useRef<VoiceRecording | null>(null)
+  const mountedRef = useRef(true)
   const trimmed = text.trim()
+  const canRecord = canRecordVoice()
+
+  // 화면을 떠나면 녹음을 버리고 마이크를 닫는다.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      recordingRef.current?.cancel()
+      recordingRef.current = null
+    }
+  }, [])
 
   // 글자 모드로 바꾸면 바로 입력창에 포커스해 태블릿 키보드가 뜨게 한다.
   useEffect(() => {
-    if (mode === "text" && !isRecording) inputRef.current?.focus()
-  }, [mode, isRecording])
+    if (mode === "text" && !recording) inputRef.current?.focus()
+  }, [mode, recording])
+
+  const startRecording = async () => {
+    if (isPreparingMic || recordingRef.current) return
+    onRecordingStart?.()
+    setIsPreparingMic(true)
+    try {
+      const started = await startVoiceRecording()
+      if (!mountedRef.current) {
+        started.cancel()
+        return
+      }
+      recordingRef.current = started
+      setRecording(started)
+    } catch (error) {
+      if (!mountedRef.current) return
+      const reason = error instanceof VoiceRecorderUnavailable ? error.reason : "failed"
+      onVoiceResult({ type: "unavailable", reason })
+    } finally {
+      if (mountedRef.current) setIsPreparingMic(false)
+    }
+  }
 
   const finishRecording = useCallback(
-    (reason: RecordingEndReason) => {
-      setIsRecording(false)
-      setMode("text")
-      onVoiceFinish?.(reason)
+    async (reason: RecordingEndReason) => {
+      const current = recordingRef.current
+      recordingRef.current = null
+      setRecording(null)
+      if (!current) return
+      if (reason === "timeout") {
+        current.cancel()
+        onVoiceResult({ type: "timeout" })
+        return
+      }
+      // 소리가 거의 없는 녹음도 그대로 보낸다. 무음·빈 파일 판정과 실패 횟수(3번이면 글자 권유)는 서버가 정한다.
+      onVoiceResult({ type: "audio", audio: await current.stop() })
     },
-    [onVoiceFinish]
+    [onVoiceResult]
   )
 
   const micButtonProps = {
-    disabled: !CAN_PREVIEW_VOICE || disabled,
-    onClick: () => setIsRecording(true),
+    disabled: !canRecord || disabled || isPreparingMic,
+    onClick: () => void startRecording(),
   }
 
-  if (isRecording) return <VoiceRecordingPanel onFinish={finishRecording} />
+  if (recording) return <VoiceRecordingPanel onFinish={(reason) => void finishRecording(reason)} />
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!trimmed || disabled) return
-    onSend(trimmed, "text")
+    onSend(trimmed)
     setText("")
   }
 
@@ -67,7 +129,7 @@ function RoleplayComposer({
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
         <button
           type="button"
-          onClick={() => setMode("text")}
+          onClick={() => onModeChange("text")}
           disabled={disabled}
           className="flex items-center gap-2 justify-self-end rounded-[var(--child-radius-pill)] bg-[var(--child-surface)] px-5 py-3 text-base font-semibold text-[var(--child-text)] shadow-sm outline-none focus-visible:ring-3 focus-visible:ring-[var(--child-primary)]/50 disabled:opacity-60"
         >
@@ -114,7 +176,7 @@ function RoleplayComposer({
   )
 }
 
-/** 음성 입력 버튼. 녹음·STT(S6) 전까지는 개발 서버에서만 누를 수 있다. */
+/** 음성 입력 버튼. 녹음을 지원하지 않는 브라우저(또는 http 주소)에서는 누를 수 없다. */
 function MicButton({ size, disabled, onClick }: { size: "sm" | "lg"; disabled: boolean; onClick: () => void }) {
   return (
     <button

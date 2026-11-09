@@ -10,11 +10,11 @@
         "category": "EMOTION_RECOGNITION",
         "situation_type": "PLAYGROUND",
         "characters": [{"id": "FRIEND", "role": "같은 반 친구"}],
-        "required_elements": ["친구의 표정을 보는 장면"],
+        "required_elements": ["친구의 표정을 보고 기분 말하기"],
         "forbidden_expressions": ["싸움"]
       },
       "difficulty": {"scenario_level": "L1"},
-      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"], ["표정", "얼굴", "눈물", "울"]]}
+      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"]], "goals_mention_any": [["표정", "얼굴", "겉모습", "단서"]]}
     },
     {
       "id": "L1_PRESENTATION",
@@ -32,17 +32,17 @@
     },
     {
       "id": "L1_HOME_SIBLING",
-      "purpose": "가정 상황, 등장인물이 친구가 아닌 동생",
+      "purpose": "가정 상황, 등장인물이 친구가 아닌 동생. L1 감정 인식(목표 3개)에도 질문하기 행동이 목표에 들어가는지",
       "teacher_input": {
         "learning_goal": "동생의 마음 알아차리기",
         "category": "EMOTION_RECOGNITION",
         "situation_type": "집",
         "characters": [{"id": "SIBLING", "role": "다섯 살 동생"}],
-        "required_elements": ["장난감"],
+        "required_elements": ["동생에게 기분을 묻는 질문 하기"],
         "forbidden_expressions": []
       },
       "difficulty": {"scenario_level": "L1"},
-      "expect": {"mentions_any": [["동생"], ["장난감"]]}
+      "expect": {"mentions_any": [["동생"]], "goals_mention_any": [["묻", "물어", "질문"]]}
     },
     {
       "id": "L1_MINIMAL",
@@ -80,11 +80,11 @@
         "category": "EMOTION_RECOGNITION",
         "situation_type": "급식 시간",
         "characters": [{"role": "같은 모둠 친구"}],
-        "required_elements": ["좋아하는 반찬"],
+        "required_elements": ["친구에게 왜 그런 기분인지 물어보기"],
         "forbidden_expressions": ["편식"]
       },
       "difficulty": {"scenario_level": "L2", "emotion_complexity": "SINGLE_EMOTION_WITH_CAUSE"},
-      "expect": {"mentions_any": [["급식", "반찬", "점심"]]}
+      "expect": {"mentions_any": [["급식", "반찬", "점심"]], "goals_mention_any": [["묻", "물어", "질문"]]}
     },
     {
       "id": "L2_EMPATHY",
@@ -94,11 +94,11 @@
         "category": "EMPATHY_EXPRESSION",
         "situation_type": "미술 시간",
         "characters": [{"id": "FRIEND", "role": "옆자리 친구"}],
-        "required_elements": ["그림"],
+        "required_elements": ["친구에게 위로하는 말 하기"],
         "forbidden_expressions": ["못생겼다"]
       },
       "difficulty": {"scenario_level": "L2"},
-      "expect": {"mentions_any": [["그림", "미술"]], "last_goal_mentions_any": ["말", "위로", "해 줄"]}
+      "expect": {"mentions_any": [["그림", "미술"]], "goals_mention_any": [["위로", "해 줄 말", "괜찮"]], "last_goal_mentions_any": ["말", "위로", "해 줄"]}
     },
     {
       "id": "L3_COPING",
@@ -122,11 +122,67 @@
         "category": "친구 마음에 공감하기",
         "situation_type": "학교",
         "characters": [{"id": "FRIEND", "role": "이사 가는 친구"}],
-        "required_elements": ["이사"],
+        "required_elements": ["두 가지 마음을 함께 말하기"],
         "forbidden_expressions": []
       },
       "difficulty": {"scenario_level": "L3", "emotion_complexity": "MIXED_EMOTIONS"},
-      "expect": {"mentions_any": [["이사"]], "last_goal_mentions_any": ["말", "위로", "해 줄", "공감"]}
+      "expect": {"mentions_any": [["이사"]], "goals_mention_any": [["두 가지", "섞인", "함께", "둘 다", "동시에"]], "last_goal_mentions_any": ["말", "위로", "해 줄", "공감"]}
+    },
+    {
+      "id": "L1_ALL_BEHAVIORS",
+      "purpose": "L1(목표 3개)에서 강사 화면의 필수 행동 보기 세 개를 모두 고른 경우. 행동이 마지막 목표 하나에 몰리지 않고 나뉘는지(PR #83 리뷰)",
+      "teacher_input": {
+        "learning_goal": "친구의 마음을 알아주기",
+        "category": "EMOTION_RECOGNITION",
+        "situation_type": "PLAYGROUND",
+        "characters": [{"id": "FRIEND", "role": "같은 반 친구"}],
+        "required_elements": ["감정을 확인하는 질문 1회", "위로 표현 1회", "함께 할 행동 제안"],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L1"},
+      "expect": {"mentions_any": [["놀이터", "운동장", "미끄럼틀", "그네", "모래"]], "goals_mention_any": [["묻", "물어", "질문"], ["위로", "괜찮"], ["함께", "같이"]]}
+    },
+    {
+      "id": "L1_NAMED_CHARACTER",
+      "purpose": "강사가 등장인물 칸에 관계 없이 이름만 적음(저장 때 id 는 OTHER). 출력 role 이 '민수' 그대로여야 서버 검사(CHARACTER_ROLE_MISMATCH)를 통과한다. 첫 대사·사실에서 이름으로 부르는지도 본다",
+      "teacher_input": {
+        "learning_goal": "친구의 감정을 알아차리기",
+        "category": "EMOTION_RECOGNITION",
+        "situation_type": "놀이터",
+        "characters": [{"id": "OTHER", "role": "민수"}],
+        "required_elements": [],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L1"},
+      "expect": {"mentions_any": [["놀이터", "미끄럼틀", "그네", "모래"]]}
+    },
+    {
+      "id": "L2_NAMED_ROLE",
+      "purpose": "관계(FRIEND)를 고르고 역할 설명에 이름을 붙임. role '넘어진 친구 지우' 를 줄이거나('친구') 바꾸지 않아야 한다",
+      "teacher_input": {
+        "learning_goal": "친구가 속상한 이유를 이해하기",
+        "category": "EMPATHY_EXPRESSION",
+        "situation_type": "운동장",
+        "characters": [{"id": "FRIEND", "role": "넘어진 친구 지우"}],
+        "required_elements": ["무릎에 흙이 묻음"],
+        "forbidden_expressions": ["바보"]
+      },
+      "difficulty": {"scenario_level": "L2"},
+      "expect": {"mentions_any": [["흙"]]}
+    },
+    {
+      "id": "L3_TWO_NAMED",
+      "purpose": "이름 둘(관계 FRIEND 하나, 관계 없음 하나). 두 role 이 모두 그대로 나와야 하고 ai_role 은 그중 하나다",
+      "teacher_input": {
+        "learning_goal": "두 친구의 다른 마음을 이해하고 해결 방법 찾기",
+        "category": "SITUATION_COPING",
+        "situation_type": "교실",
+        "characters": [{"id": "FRIEND", "role": "하은"}, {"id": "OTHER", "role": "민준"}],
+        "required_elements": ["색연필을 같이 쓰기로 함"],
+        "forbidden_expressions": []
+      },
+      "difficulty": {"scenario_level": "L3"},
+      "expect": {"mentions_any": [["색연필"]]}
     }
   ]
 }

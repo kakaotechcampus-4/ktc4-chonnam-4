@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.child.controller;
 
 import com.neuringo.neuringobe.child.dto.ChildAccessSessionRequest;
 import com.neuringo.neuringobe.child.dto.ChildAccessSessionResponse;
+import com.neuringo.neuringobe.child.security.ChildEntryAttemptLimiter;
 import com.neuringo.neuringobe.child.security.ChildPrincipal;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
 import com.neuringo.neuringobe.common.ApiException;
@@ -13,6 +14,7 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -31,14 +33,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/child-access-sessions")
 public class ChildAccessSessionController {
 
+    /** 틀린 코드로 세는 오류. 그 밖의 오류(형식 422·CSRF 403·서버 500)는 코드를 맞혀 본 것이 아니므로 세지 않는다. */
+    private static final Set<String> WRONG_CODE_ERRORS =
+            Set.of("INVALID_ACCESS_CODE", "ACCESS_CODE_EXPIRED");
+
     private final ChildAccessCodeService service;
     private final HttpSessionSecurityContextRepository contextRepository;
+    private final ChildEntryAttemptLimiter attempts;
 
     public ChildAccessSessionController(
             ChildAccessCodeService service,
-            HttpSessionSecurityContextRepository contextRepository) {
+            HttpSessionSecurityContextRepository contextRepository,
+            ChildEntryAttemptLimiter attempts) {
         this.service = service;
         this.contextRepository = contextRepository;
+        this.attempts = attempts;
     }
 
     @PostMapping
@@ -46,7 +55,19 @@ public class ChildAccessSessionController {
             @RequestBody @Valid ChildAccessSessionRequest request,
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
-        ChildAccessSessionResponse child = service.enter(request.accessCode());
+        // 서버에서는 nginx 가 X-Forwarded-For 로 넘긴 접속 IP 를 Tomcat 이 getRemoteAddr 로 바꿔 준다
+        // (server.forward-headers-strategy: native). 막힌 IP 는 맞는 코드도 받지 않는다.
+        String client = servletRequest.getRemoteAddr();
+        attempts.checkAllowed(client);
+        ChildAccessSessionResponse child;
+        try {
+            child = service.enter(request.accessCode());
+        } catch (ApiException ex) {
+            if (WRONG_CODE_ERRORS.contains(ex.getCode())) {
+                attempts.recordFailure(client);
+            }
+            throw ex;
+        }
         HttpSession previous = servletRequest.getSession(false);
         if (previous != null) {
             previous.invalidate();

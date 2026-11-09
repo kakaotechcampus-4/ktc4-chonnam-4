@@ -30,11 +30,21 @@ public class SensitiveReadLog {
         CHILD,
         CLASSROOM_CHILDREN,
         CHILD_ACTIVITIES,
+        /** 학급 아동 전체의 활동 목록. 대상 ID 는 학급이다. */
+        CLASSROOM_ACTIVITIES,
         CHILD_GOALS,
         GOAL,
         ACTIVITY,
         QUIZ_RESULT,
-        QUIZ_ATTEMPT
+        QUIZ_ATTEMPT,
+        LEARNING_REPORT,
+        CHILD_LEARNING_REPORTS,
+        /** 학급 아동 전체의 완료 리포트 목록. 대상 ID 는 학급이다. */
+        CLASSROOM_LEARNING_REPORTS,
+        RECOMMENDATION,
+        ROLEPLAY_DIFFICULTY,
+        /** 내 학급에서 시나리오 승인을 기다리는 활동 목록. 대상 ID 는 강사 자신이다. */
+        SCENARIO_APPROVALS
     }
 
     /** 강사 조회를 실행하고 결과를 남긴다. 막힌 조회는 남긴 뒤 같은 예외를 다시 던진다. */

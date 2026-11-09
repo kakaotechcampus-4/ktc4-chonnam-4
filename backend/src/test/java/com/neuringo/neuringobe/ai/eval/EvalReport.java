@@ -95,11 +95,12 @@ final class EvalReport {
 
         md.append("\n## 핵심 지표\n\n| 지표 | 값 |\n| --- | --- |\n");
         row(md, "전달 성공률", s.delivered().percent());
-        row(md, "첫 판단 PASS율 (재생성 없이 통과)", s.firstEvaluationPass().percent());
+        row(md, "첫 판단 PASS율 (평가 재호출 없이 통과)", s.firstEvaluationPass().percent());
         row(md, "복구 경로", s.recovery().percent());
         row(md, "턴 예산 초과", s.timedOut().percent());
         row(md, "기대값 일치율", s.expectation().percent());
         row(md, "형식 실패율 (형식 실패 / 응답 받은 호출)", s.formatFailure().percent());
+        row(md, "평가 판단보류 횟수", Integer.toString(s.indeterminateEvaluations()));
         row(md, "턴 지연 p50 / p95 / 최대", ms(s.turnLatency()));
         row(md, "턴당 LLM 호출", "%.2f".formatted(s.llmCallsPerTurn()));
         row(
@@ -160,6 +161,8 @@ final class EvalReport {
         bullets(md, s.formatFailureReasons());
         md.append("\n## 제공자 실패\n\n");
         bullets(md, s.providerFailures());
+        md.append("\n> 형식 실패에는 JSON 문법·필수 값·판단 일관성 위반이 포함된다. 판단 실패 코드는 출력 검사를 통과한 평가에서만 집계한다.\n");
+        md.append("\n> 기대값 일치율은 기록된 검사 항목 기준이다. 정상 후보가 없는 턴은 응답 길이 검사에서 제외되므로 전달 성공률과 함께 본다.\n");
         md.append(
                 "\n> 제한 시간 제안 = max(p95 × 2, 최대 × 1.5) 를 초 단위로 올림. LLM 은 단계마다 AI_TIMEOUT 하나를 쓰므로 세 단계 중 큰 값을 본다.\n");
         md.append(

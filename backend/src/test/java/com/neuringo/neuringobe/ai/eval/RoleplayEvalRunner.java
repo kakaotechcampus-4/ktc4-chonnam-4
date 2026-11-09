@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.ai.eval;
 
+import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory;
@@ -166,7 +167,14 @@ final class RoleplayEvalRunner {
         List<EvaluationResult> evaluations = observed.evaluations();
         boolean firstPass =
                 !evaluations.isEmpty()
-                        && evaluations.getFirst().decision() == EvaluationDecision.PASS;
+                        && evaluations.getFirst().decision() == EvaluationDecision.PASS
+                        && calls.stream()
+                                        .filter(
+                                                call ->
+                                                        call.operation()
+                                                                == AiOperation.RESPONSE_EVALUATION)
+                                        .count()
+                                == 1;
 
         return new TurnRecord(
                 turn.id(),
@@ -206,6 +214,7 @@ final class RoleplayEvalRunner {
                                         new TurnRecord.FormatFailureSummary(
                                                 f.operation().name(), f.reason()))
                         .toList(),
+                observed.indeterminateEvaluations(),
                 analysis == null ? null : summarize(analysis),
                 delivered == null
                         ? null

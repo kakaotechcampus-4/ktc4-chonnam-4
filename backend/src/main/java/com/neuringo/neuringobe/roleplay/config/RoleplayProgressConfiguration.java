@@ -4,5 +4,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(RoleplayProgressProperties.class)
+@EnableConfigurationProperties({
+    RoleplayProgressProperties.class,
+    RoleplaySupportAdjustmentProperties.class
+})
 public class RoleplayProgressConfiguration {}

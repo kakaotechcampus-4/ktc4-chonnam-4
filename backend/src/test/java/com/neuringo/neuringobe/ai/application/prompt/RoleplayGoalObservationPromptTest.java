@@ -26,7 +26,6 @@ import com.neuringo.neuringobe.ai.application.structured.output.GoalObservationO
 import com.neuringo.neuringobe.roleplay.application.RoleplayGoalObservationMapper;
 import com.neuringo.neuringobe.roleplay.application.RoleplayGoalObservationPlan;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,18 +57,13 @@ class RoleplayGoalObservationPromptTest {
         var ready = new RoleplayTurnResult.Ready(analysis, candidate(analysis), evaluation);
 
         assertThat(analysisPrompt.request().promptVersion())
-                .isEqualTo("roleplay-cause-analysis/v2");
+                .isEqualTo("roleplay-cause-analysis/v6");
         assertThat(analysisPrompt.request().responseSchemaVersion())
                 .isEqualTo(GoalObservationOutput.ANALYSIS_VERSION);
         assertThat(evaluationPrompt.request().responseSchemaVersion())
-                .isEqualTo(GoalObservationOutput.EVALUATION_VERSION);
+                .isEqualTo("evaluation-output/v9");
         var body = json.readTree(evaluationPrompt.request().userPrompt());
-        assertThat(
-                        body.path("analysis_result")
-                                .path("goal_observation")
-                                .path("analysis_id")
-                                .asString())
-                .isEqualTo(ANALYSIS_ID.toString());
+        assertThat(body.path("analysis_id").asString()).isEqualTo(ANALYSIS_ID.toString());
         assertThat(body.path("goal_observation_context").path("approved_criteria")).hasSize(3);
         assertThat(body.path("goal_observation_context").path("confirmed_observations")).hasSize(1);
         var contexts = body.path("goal_observation_context").path("confirmed_observation_contexts");
@@ -538,15 +532,18 @@ class RoleplayGoalObservationPromptTest {
             })
     void passRequiresMatchingExplicitObservationAndGoalReview(String changed) {
         var body = evaluationBody(ANALYSIS_ID);
-        var review = object(body.get("goal_observation_review"));
+        var review = body;
         switch (changed) {
-            case "missing" -> body.remove("goal_observation_review");
+            case "missing" -> body.remove("analysis_id");
             case "version" -> review.put("schema_version", "evaluation-result/v1");
             case "analysis" -> review.put("analysis_id", UUID.randomUUID().toString());
             case "observations" -> review.put("observations_supported", false);
-            case "activity" -> review.put("activity_goal_supported", false);
+            case "activity" ->
+                    review.put(
+                            "activity_review",
+                            EvaluationWireFixtures.activityReview(json.createObjectNode(), false));
             case "stringBoolean" -> review.put("observations_supported", "true");
-            case "missingBoolean" -> review.remove("activity_goal_supported");
+            case "missingBoolean" -> review.remove("activity_review");
             default -> throw new AssertionError();
         }
         assertThatThrownBy(
@@ -560,11 +557,13 @@ class RoleplayGoalObservationPromptTest {
     @Test
     void unsupportedObservationsReturnToAnalysisRatherThanOnlyRegeneratingText() {
         var body = evaluationBody(ANALYSIS_ID);
-        object(body.get("goal_observation_review")).put("observations_supported", false);
+        body.put(
+                "observation_reviews",
+                EvaluationWireFixtures.scopedReviews(
+                        json.readTree(evaluationPrompt(parsedAnalysis()).request().userPrompt()),
+                        false));
         body.put("decision", "REANALYZE");
-        body.put("safe_to_send", false);
-        body.put("retry_target", "CAUSE_ANALYSIS");
-        body.put("failure_codes", List.of("UNSUPPORTED_CAUSE_ANALYSIS"));
+        body.put("failure_codes", List.of());
         assertThat(
                         evaluationPrompt(parsedAnalysis())
                                 .parser()
@@ -573,7 +572,6 @@ class RoleplayGoalObservationPromptTest {
                 .isFalse();
 
         body.put("decision", "REGENERATE");
-        body.put("retry_target", "RESPONSE_GENERATION");
         body.put(
                 "revision_instruction",
                 Map.of(
@@ -609,7 +607,7 @@ class RoleplayGoalObservationPromptTest {
                                         trace(ANALYSIS_ID, null), attempts(), 1, input, null, null))
                 .isInstanceOf(NullPointerException.class);
         var legacyReview = evaluationBody(ANALYSIS_ID);
-        legacyReview.remove("goal_observation_review");
+        legacyReview.remove("analysis_id");
         assertThatThrownBy(
                         () ->
                                 evaluationPrompt(parsedAnalysis())
@@ -725,7 +723,7 @@ class RoleplayGoalObservationPromptTest {
         assertThat(provider.requests)
                 .extracting(LlmRequest::responseSchemaVersion)
                 .containsExactly(
-                        "analysis-result/v2", "candidate-response/v1", "evaluation-result/v2");
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v9");
         var ready = (RoleplayTurnResult.Ready) result;
         var command =
                 RoleplayCheckpointCommand.fromApproved(
@@ -903,24 +901,15 @@ class RoleplayGoalObservationPromptTest {
     }
 
     private Map<String, Object> evaluationBody(UUID analysisId) {
+        var request = json.readTree(evaluationPrompt(parsedAnalysis()).request().userPrompt());
         var body =
                 object(
                         json.readValue(
-                                RoleplayFixtures.evaluationJson(
-                                        "PASS", null, true, 0, "[]", "null"),
+                                EvaluationWireFixtures.forRequest(
+                                        RoleplayFixtures.evaluationOutputJson("PASS", "[]", "null"),
+                                        request),
                                 Map.class));
-        body.put(
-                "goal_observation_review",
-                new HashMap<>(
-                        Map.of(
-                                "schema_version",
-                                GoalObservationOutput.EVALUATION_VERSION,
-                                "analysis_id",
-                                analysisId.toString(),
-                                "observations_supported",
-                                true,
-                                "activity_goal_supported",
-                                true)));
+        body.put("analysis_id", analysisId.toString());
         return body;
     }
 
@@ -965,13 +954,16 @@ class RoleplayGoalObservationPromptTest {
                 var failed = evaluationBody(request.traceContext().analysisId());
                 failed.put("candidate_id", request.traceContext().candidateId());
                 failed.put("decision", "REANALYZE");
-                failed.put("safe_to_send", false);
-                failed.put("retry_target", "CAUSE_ANALYSIS");
                 failed.put("failure_codes", List.of("UNSUPPORTED_CAUSE_ANALYSIS"));
-                object(failed.get("goal_observation_review")).put("observations_supported", false);
+                object(failed.get("checks")).put("analysis_supported", false);
+                failed.put(
+                        "goal_observation_review",
+                        Map.of("observations_supported", false, "activity_goal_supported", true));
                 return new AiCallResult.Success<>(
                         new LlmCompletion(
-                                json.writeValueAsString(failed),
+                                EvaluationWireFixtures.forRequest(
+                                        json.writeValueAsString(failed),
+                                        json.readTree(request.userPrompt())),
                                 "fake",
                                 "fake",
                                 "stop",
@@ -1018,6 +1010,10 @@ class RoleplayGoalObservationPromptTest {
                                                 request.traceContext().candidateId().toString());
                         default -> throw new AssertionError();
                     };
+            if (request.operation() == AiOperation.RESPONSE_EVALUATION)
+                content =
+                        EvaluationWireFixtures.forRequest(
+                                content, json.readTree(request.userPrompt()));
             return new AiCallResult.Success<>(
                     new LlmCompletion(content, "fake", "fake", "stop", null, null), metadata);
         }

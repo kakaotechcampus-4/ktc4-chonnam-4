@@ -22,6 +22,7 @@ record RegressionSet(
         String setId, String description, Scenario scenario, Policy policy, List<Case> cases) {
 
     static final String DEFAULT_RESOURCE = "eval/roleplay-regression-v1.json";
+    static final String CHARACTER_P1_RESOURCE = "eval/roleplay-regression-character-p1-v1.json";
 
     private static final JsonMapper JSON =
             JsonMapper.builder()
@@ -69,7 +70,8 @@ record RegressionSet(
                         scenario.scenarioLevel(),
                         scenario.scenarioFacts(),
                         scenario.prohibitedInferences(),
-                        goals),
+                        goals,
+                        scenario.aiCharacter()),
                 new RoleplayTurnInput.State(
                         scenario.goal(state.currentGoal()).id(),
                         state.supportLevel(),
@@ -102,7 +104,8 @@ record RegressionSet(
             String scenarioLevel,
             List<String> scenarioFacts,
             List<String> prohibitedInferences,
-            List<Goal> microGoals) {
+            List<Goal> microGoals,
+            RoleplayTurnInput.AiCharacter aiCharacter) {
 
         Goal goal(String key) {
             return microGoals.stream()

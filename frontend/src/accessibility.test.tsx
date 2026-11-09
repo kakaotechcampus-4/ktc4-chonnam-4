@@ -1,8 +1,8 @@
 import axe from "axe-core"
 import { screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { fixtures } from "@/test/msw/handlers"
-import { enterAsChild, renderRoutes, signIn } from "@/test/render"
+import { fixtures, ROLEPLAY_OPENING } from "@/test/msw/handlers"
+import { CHILD_ACTIVITY_ID, enterAsChild, renderRoutes, seedChildActivity, signIn } from "@/test/render"
 import { router } from "./router"
 
 // 접근성 검사. 05 추적성 매트릭스 "A11Y → 아동 화면 사용성·상태 문구 검증", 07 "아동 화면의 상태·오류·로딩·접근성"을 자동으로 확인한다.
@@ -33,23 +33,29 @@ const PAGES: [string, string, Access][] = [
   ["/classrooms/new", "기본 정보", "강사"],
   [`/classrooms/${fixtures.classroomA1.classId}`, "바로 하기", "강사"],
   [`/classrooms/${fixtures.classroomA1.classId}?tab=children`, "김하늘", "강사"],
+  ["/recommendations", "김하늘", "강사"],
   ["/child", "입장 코드를 입력해줘!", "공개"],
   ["/child/hello", "오늘도 만나서 반가워", "아동"],
   ["/child/activities", "친구 마음 알아보기", "아동"],
-  ["/child/activities/mock-activity-1", "이어서 하기", "아동"],
-  ["/child/quiz/mock-activity-1", "지금 네 기분은 어때?", "아동"],
-  ["/child/roleplay/mock-activity-1", "친구가 넘어져서 울고 있어. 몸은 어떤 느낌일까?", "아동"],
+  [`/child/activities/${CHILD_ACTIVITY_ID}`, "이어서 하기", "아동"],
+  [`/child/quiz/${CHILD_ACTIVITY_ID}`, "생일에 친구가 선물을 줬어. 너는 어떤 기분이 들까?", "아동"],
+  [`/child/roleplay/${CHILD_ACTIVITY_ID}`, ROLEPLAY_OPENING, "아동"],
   ["/child/_dev/states", "상태 컴포넌트 미리보기 (개발용)", "공개"],
 ]
 
-function prepare(access: Access) {
+function prepare(access: Access, path = "") {
   if (access === "강사") signIn()
-  if (access === "아동") enterAsChild()
+  if (access === "아동") {
+    // 아동 활동 목록은 실제 API(API-ACT-02)라 가짜 서버에 진행 중인 활동을 넣어 둔다.
+    // 역할극은 서버처럼 퀴즈를 모두 확정해야 시작되므로 그 화면은 퀴즈를 마친 활동으로 둔다.
+    seedChildActivity({ quizFinished: path.startsWith("/child/roleplay/") })
+    enterAsChild()
+  }
 }
 
 describe("접근성", () => {
   it.each(PAGES)("%s 에 WCAG A·AA 위반이 없다", async (path, ready, access) => {
-    prepare(access)
+    prepare(access, path)
     const { container } = renderRoutes(router.routes, path)
     await screen.findAllByText(ready)
 

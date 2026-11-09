@@ -105,7 +105,7 @@ bash scripts/verify.sh infra
 2. 켜기: Dev server → **켜기**(또는 바로 PR 미리보기 올리기). 서버를 켜고 → 새 주소를 CloudFront 원본에 넣고 연다 → develop 최신으로 맞춘다.
 3. 콘솔에서 껐다면: 서버가 꺼질 때 경보 메일이 온다. Dev server 의 켜기나 끄기를 바로 돌린다.
 
-**24시간 모드**: `live/dev` 의 `always_on_until`(RFC 3339) 시각까지는 안 쓰면 끄기(Lambda)가 서버를 끄지 않는다. 기본값은 팀이 정한 끝(2026-11-20 23:59 KST). 끝내려면 빈 값(`""`)으로 바꾸는 PR → Infra apply. 이 동안에도 Dev server → 끄기는 된다(Lambda 는 서버를 켜지 않는다). Lambda 는 모드와 상관없이 열린 대문의 원본을 지금 서버 주소로 고치고, 꺼진 서버를 가리키는 열린 대문을 닫는다.
+**24시간 모드**: `live/dev/always-on.json` 의 `always_on_until`(RFC 3339) 시각까지는 안 쓰면 끄기(Lambda)가 서버를 끄지 않고, `dev-server.yml` 이 PR 을 열어도 미리보기를 저절로 올리지 않는다(테스트 주소는 develop). 값은 이 파일 한 곳이다(Terraform 이 `file()` 로 읽고, 워크플로는 develop 의 이 파일을 읽는다). 지금 값은 팀이 정한 끝(2026-11-20 23:59 KST). 끝내려면 빈 값(`""`)으로 바꾸는 PR → Infra apply(워크플로 쪽은 머지하면 바로 바뀐다). 이 동안에도 Dev server → 끄기는 된다(Lambda 는 서버를 켜지 않는다). Lambda 는 모드와 상관없이 열린 대문의 원본을 지금 서버 주소로 고치고, 꺼진 서버를 가리키는 열린 대문을 닫고, 밀린 develop 을 이어 띄운다(`deploy/host/catch-up.sh`, `docs/cd-architecture.md`).
 
 Terraform 은 CloudFront 의 켜짐(enabled)을 보지 않는다(`ignore_changes`). 원본 주소는 서버가 켜져 있을 때 Terraform 이 읽는 주소와 Dev server 가 넣은 주소가 같아 drift 가 나지 않는다.
 **구조**(동작·캐시·보안 헤더·나라 제한)를 바꿀 때만 이 폴더 → PR → Infra(승인)다.

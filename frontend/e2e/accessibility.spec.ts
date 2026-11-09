@@ -1,6 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright"
 import { expect, test, type Page } from "@playwright/test"
-import { enterChild, MOCK_ACTIVITY, openInApp } from "./support/child.js"
+import { enterChild, openInApp } from "./support/child.js"
 import { createClassroom, marker, signUp } from "./support/instructor.js"
 
 // 실제 브라우저 접근성 검사(axe-core). jsdom 검사(src/accessibility.test.tsx)가 못 보는 색 대비·실제 배치를 본다.
@@ -22,8 +22,8 @@ const KNOWN_VIOLATIONS: Record<string, Record<string, number>> = {
   "/child/activities": { "color-contrast": 1 },
   "/child/activities/:activityId": { "color-contrast": 2 },
   "/child/quiz/:activityId": { "color-contrast": 1 },
-  "/child/roleplay/:activityId": { "color-contrast": 1 },
-  "/child/_dev/states": { "color-contrast": 6 },
+  // 보라 글자 1곳 + 모달 미리보기 버튼마다 1곳(ChildStatePreviewPage 의 DIALOG_PREVIEWS). 미리보기를 더하면 같이 늘린다.
+  "/child/_dev/states": { "color-contrast": 7 },
 }
 
 async function checkAccessibility(page: Page, path: string) {
@@ -69,18 +69,20 @@ for (const { path, ready } of PUBLIC_PAGES) {
 }
 
 // 아동 상태는 새로고침하면 사라진다(메모리 저장). 코드로 입장한 뒤 새로고침 없이 앱 안에서 주소를 옮긴다(support/child.ts).
+// 활동 ID 는 입장할 때 서버에 배정한 활동(support/child.ts)이다.
 const CHILD_ACTIVITY_PAGES = [
-  { path: "/child/hello", name: "/child/hello", ready: "오늘도 만나서 반가워" },
-  { path: "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
-  { path: `/child/activities/${MOCK_ACTIVITY}`, name: "/child/activities/:activityId", ready: "이어서 하기" },
-  { path: `/child/quiz/${MOCK_ACTIVITY}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
-  { path: `/child/roleplay/${MOCK_ACTIVITY}`, name: "/child/roleplay/:activityId", ready: "놀이터에서" },
+  { path: () => "/child/hello", name: "/child/hello", ready: "오늘도 만나서 반가워" },
+  { path: () => "/child/activities", name: "/child/activities", ready: "친구 마음 알아보기" },
+  { path: (id: string) => `/child/activities/${id}`, name: "/child/activities/:activityId", ready: "시작하기" },
+  { path: (id: string) => `/child/quiz/${id}`, name: "/child/quiz/:activityId", ready: "1/3 문항" },
 ]
+// 역할극(/child/roleplay/:activityId)은 실제 API(API-RPL-01)라 퀴즈를 모두 마치고 승인된 시나리오가 연결돼야 열린다.
+// 이 테스트가 만드는 데이터로는 열리지 않아(퀴즈 화면으로 돌려보낸다) jsdom 검사(src/accessibility.test.tsx)만 본다.
 
 for (const { path, name, ready } of CHILD_ACTIVITY_PAGES) {
   test(`${name} 에 새 WCAG A·AA 위반이 없다`, async ({ page }) => {
-    await enterChild(page)
-    await openInApp(page, path)
+    const child = await enterChild(page)
+    await openInApp(page, path(child.activityId))
     await expect(page.getByText(ready).first()).toBeVisible()
 
     await checkAccessibility(page, name)

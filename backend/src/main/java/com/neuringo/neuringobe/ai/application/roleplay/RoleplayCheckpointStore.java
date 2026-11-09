@@ -32,8 +32,22 @@ public interface RoleplayCheckpointStore {
 
     /** 재전송 결과라면 턴 수·목표 상태·보상을 다시 반영하지 않는다. */
     record Committed(
-            UUID turnId, UUID candidateId, long version, boolean replayed, String responseText)
+            UUID turnId,
+            UUID candidateId,
+            long version,
+            boolean replayed,
+            String responseText,
+            String mascotHint)
             implements CommitResult {
+        public Committed(
+                UUID turnId,
+                UUID candidateId,
+                long version,
+                boolean replayed,
+                String responseText) {
+            this(turnId, candidateId, version, replayed, responseText, null);
+        }
+
         public Committed {
             Objects.requireNonNull(turnId);
             Objects.requireNonNull(candidateId);

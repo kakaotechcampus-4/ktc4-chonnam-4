@@ -13,13 +13,13 @@ type InstructorNavItem = {
 }
 
 const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
-  { label: '대시보드', icon: 'dashboard' },
+  { label: '대시보드', icon: 'dashboard', to: '/dashboard' },
   { label: '학급', icon: 'groups', to: '/classrooms' },
   { label: '활동 만들기', icon: 'post_add', to: '/activities/new' },
-  { label: '콘텐츠·승인', icon: 'fact_check' },
+  { label: '콘텐츠·승인', icon: 'fact_check', to: '/content' },
   { label: '활동 관리', icon: 'assignment' },
-  { label: '리포트', icon: 'insert_chart' },
-  { label: '추천·다음목표', icon: 'flag' },
+  { label: '리포트', icon: 'insert_chart', to: '/reports' },
+  { label: '추천·다음목표', icon: 'flag', to: '/recommendations' },
   { label: '알림', icon: 'notifications' },
   { label: '설정', icon: 'settings', to: '/account' },
 ]

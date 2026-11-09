@@ -1,6 +1,8 @@
 # API-IAM-06 · 강사 비밀번호 확인·즉시 탈퇴
 
-> 구현 — 2026-10-22 / develop `63e4314`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
+> 2026-11-05 S4-JIN-01 작업본 V39: 탈퇴는 본인의 학생·활동·목표·세션·계정을 영구 삭제한다. 공통 승인 시나리오·확인 조건은 보존하고 최초 승인자 및 삭제된 학급 연결은 NULL로 해제한다. 다른 강사의 배정/승인 근거/이력은 보존한다. 공통 후보 조회 API 전환은 아직 진행 중이며 이 변경은 미배포 작업본이다.
+
+> 구현 — 2026-11-04 / develop `bab136d`. 현재 코드의 HTTP 계약. 운영 배포·제품 인수 완료를 의미하지 않습니다.
 
 ## 1. Endpoint
 
@@ -154,6 +156,6 @@ curl -i -X POST "$NEURINGO_API_ORIGIN/api/v1/users/me/withdrawal" \
 ## 8. 연결 Task·미정·검증
 
 - 관련 Task ID: `S8-BAE-01`
-- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/63e43144c92449ec5670390a6b99d20d2b2580a5/backend/src/main/java/com/neuringo/neuringobe/deletion/controller/DeletionController.java)
+- 코드 근거: [현재 Controller/DTO](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/blob/bab136d86b0642fd8446b3299fe09de3e9eb4a4e/backend/src/main/java/com/neuringo/neuringobe/deletion/controller/DeletionController.java)
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md) · [변경 이력](../changelog.md)
 - 정상·빈/null·인증/역할·소유권·중복 요청·삭제/보관을 검증합니다. 동봉 검사는 문서·전송 모의 검사이며 서버·DB·AI·배포 성공을 대신하지 않습니다.

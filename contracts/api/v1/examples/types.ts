@@ -131,21 +131,35 @@ export interface ChildData {
   status: ChildStatus;
 }
 
+export interface GoalCharacter {
+  /** 아이와의 관계 종류(예: FRIEND). 영문 대문자로 시작, 대문자·숫자·밑줄, 최대30자. 비우면 OTHER, LEARNER 불가 */
+  id?: string | null;
+  /** 인물 설명(예: 넘어진 친구), 최대50자. 실제 이름 금지 */
+  role: string;
+}
+
 export interface GoalBody {
   /** 최대200자 */
   title: string;
-  /** 최대30자, 선택 */
+  /** 상황 설명 문장, 최대200자, 선택. 공백만이면 null */
   situationType?: string | null;
-  /** 목표 분류, 최대30자. 별도 enum 아님 */
+  /** 목표 분류, 최대30자. 별도 enum 아님. 공백만이면 null */
   category?: string | null;
-  /** 추가 등장인물; 누락/null은 현재 [] 정리 */
-  characters?: Record<string, unknown>[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 추가 등장인물; 누락/null은 [] */
+  characters?: GoalCharacter[] | null;
+  /** 아이가 대화에서 해 볼 행동. 빈/공백/null 원소는 조건 오류 */
   requiredElements?: string[] | null;
-  /** 빈/공백/null 원소는 조건 오류 */
+  /** 역할극에 나오면 안 되는 말. 필수 요소·등장인물 role 안에 들어 있으면 조건 오류 */
   forbiddenExpressions?: string[] | null;
   /** 접근 가능한 동일 아동의 이전 목표 */
   parentGoalId?: UUID | null;
+}
+
+export interface GoalCharacterData {
+  /** 저장된 관계 id. 비었으면 OTHER, 같은 id가 겹치면 FRIEND_2처럼 번호가 붙음 */
+  id: string;
+  /** 인물 설명 */
+  role: string;
 }
 
 export interface GoalData {
@@ -159,17 +173,17 @@ export interface GoalData {
   parentGoalId: UUID | null;
   /** 목표명 */
   title: string;
-  /** 상황 유형 */
+  /** 상황 설명 문장 */
   situationType: string | null;
   /** 목표 분류, 최대30자. 별도 enum 아님 */
   category: string | null;
-  /** 등장인물 */
-  characters: Record<string, unknown>[];
-  /** 필수 조건 */
+  /** 등장인물; 정리한 값 */
+  characters: GoalCharacterData[];
+  /** 필수 요소; 정리한 값 */
   requiredElements: string[];
-  /** 금지 조건 */
+  /** 피할 표현; 정리한 값 */
   forbiddenExpressions: string[];
-  /** 서버 계산; FE 수정 금지 */
+  /** 서버 계산; 목록 순서와 무관. FE 수정 금지 */
   contentHash: string;
   /** 생성 시각 */
   createdAt: ISODateTime;
@@ -178,7 +192,7 @@ export interface GoalData {
 export interface ActivityBody {
   /** 담당 아동 UUID */
   childId: UUID;
-  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 현재 422로 거부 */
+  /** 생략/null은 FIRST_COMBINED. ROLEPLAY는 다음 역할극 난이도가 있어야 배정(없으면 409) */
   activityType?: ActivityType | null;
   /** FIRST_COMBINED/ROLEPLAY 필수, 독립 퀴즈 금지. goalId 대신 목표 내용 전달 */
   goal?: GoalBody | null;
@@ -211,6 +225,14 @@ export interface ActivityData {
   completedAt: ISODateTime | null;
   /** 스탬프 지급 시각. completedAt과 함께 한 번만 채워짐 */
   rewardIssuedAt: ISODateTime | null;
+}
+
+/** 학급 활동 목록의 한 줄. ActivityData 에 아동 이름과 목표 제목을 더한다. 준비 상태(nextAction)는 없다 */
+export interface ClassroomActivityData extends ActivityData {
+  /** 아동 표시 이름 */
+  childName: string;
+  /** 학습 목표 제목. 독립 퀴즈는 null */
+  goalTitle: string | null;
 }
 
 export interface HintSpec {
@@ -484,24 +506,6 @@ export interface DraftSessionPatch {
 
 
 // 설계 제안, 실제 DTO 확정 필요
-export interface DraftTextBody {
-  /** 한 새 입력, 재전송 유지 */
-  clientInputId: UUID;
-  /** 원문 입력; 길이/세부 검증 미정 */
-  text: string;
-}
-
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftInputAccepted {
-  /** 입력 ID */
-  inputId: UUID;
-  /** 조회할 턴 */
-  turnId: UUID;
-  /** 접수 제안, 전달/완료 성공 아님 */
-  status: 'PROCESSING';
-}
-
-// 설계 제안, 실제 DTO 확정 필요
 export interface DraftInputQuality {
   /** 품질 코드 제안 */
   status: string;
@@ -554,56 +558,173 @@ export interface ActivityStatusData {
   status: ActivityStatus;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftReportData {
-  /** 기록 */
-  recordId: UUID;
-  /** 완료 활동 */
-  activityId: UUID;
-  /** 담당 아동 */
-  childId: UUID;
-  /** 완료 시각 */
-  completedAt: ISODateTime;
-  /** 관찰 근거 요약 */
-  summary: string;
-  /** 필드 세부 합의; 초기/독립 활동별 유무 미정 */
-  quiz: Record<string, unknown>;
-  /** 관찰/지원/일반 기술 제외 */
-  roleplay: Record<string, unknown>;
-  /** 최종 판정/정책 버전 */
-  difficultyDecision: Record<string, unknown>;
+// 리포트·추천·다음 역할극 난이도(API-REC-01~06). 2026-10-31 작업 브랜치 구현 기준.
+/** 서버가 센 값의 분자·분모. value = numerator / denominator */
+export interface RatioView {
+  numerator: number;
+  denominator: number;
+  value: number;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftRecommendationData {
-  /** 추천 */
-  recommendationId: UUID;
-  /** 근거 기록 */
-  recordId: UUID;
-  /** 보완/반복/확장/적용 코드 미정 */
-  type: string;
-  /** 목표 제안 */
-  suggestedGoal: Record<string, unknown>;
-  /** 추천 이유 */
+export interface ReportQuiz {
+  validQuestionCount: number;
+  /** 첫 응답이 정답인 문항 */
+  correctQuestionCount: number;
+  overallAccuracy: number | null;
+  resolvedAfterHintCount: number;
+}
+
+export type ObservationStatus = 'EXPLICIT' | 'IMPLICIT' | 'NOT_EXPRESSED' | 'MISUNDERSTOOD' | 'CONTRADICTORY';
+export type GoalResult = 'REACHED' | 'NOT_REACHED' | 'EXCLUDED_TECHNICAL_ERROR' | 'EXCLUDED_INTERRUPTED' | 'EXCLUDED_REFUSED';
+/** 혼자·처음 지원으로·지원을 더 받고·답을 듣고·못 함·제외 */
+export type GoalStatus = 'NO_SUPPORT_NEEDED' | 'REACHED_AT_START' | 'EXTRA_SUPPORT' | 'ANSWER_GIVEN' | 'NOT_REACHED' | 'EXCLUDED';
+
+export interface ReportCriterion {
+  /** 승인 시나리오의 관찰 기준 문장 */
+  description: string;
+  /** 마지막 관찰 상태. 관찰하지 않았으면 null */
+  status: ObservationStatus | null;
+}
+
+export interface ReportGoal {
+  microGoalId: UUID;
+  title: string;
+  startSupport: SupportLevel;
+  finalSupport: SupportLevel;
+  result: GoalResult;
+  status: GoalStatus;
+  criteria: ReportCriterion[];
+  /** 지원 단계와 기준으로 만든 짧은 문장. 아동 발화 원문이 아님 */
+  observations: string[];
+}
+
+export interface ReportRoleplay {
+  scenarioLevel: ScenarioLevel;
+  startSupportLevel: SupportLevel;
+  goals: ReportGoal[];
+  observations: string[];
+  effectiveSupport: string[];
+  /** 기술 오류 코드. 아동의 어려움으로 쓰지 않음 */
+  technicalExclusions: string[];
+}
+
+export interface ReportMetrics {
+  roleplayScore: RatioView | null;
+  goalAchievement: RatioView | null;
+  independentAchievement: RatioView | null;
+  quizAccuracy: RatioView | null;
+  quizHintRecovery: RatioView | null;
+  validGoalCount: number;
+  excludedGoalCount: number;
+}
+
+export interface ReportDifficultyDecision {
+  decisionType: 'FOLLOW_UP';
+  /** 다음 역할극 레벨 */
+  scenarioLevel: ScenarioLevel;
+  /** 이번에 한 역할극 레벨 */
+  previousLevel: ScenarioLevel;
+  nextSupportLevel: SupportLevel;
+  direction: 'LOWER' | 'KEEP' | 'RAISE';
   reason: string;
-  /** 관찰 근거 */
-  evidence: string[];
-  /** 충분성 코드 미정 */
-  evidenceSufficiency: string;
-  /** 미결정/강사 결정 */
-  decision: string | null;
-  /** 채택 목표 연결; 생성 방식 합의 */
-  createdGoalId: UUID | null;
+  /** 분모는 유효 목표 수의 6배. 유효 목표가 없으면 null */
+  scoreRate: RatioView | null;
+  consecutiveUpgradeCandidates: number;
+  policyVersion: string;
 }
 
-// 설계 제안, 실제 DTO 확정 필요
-export interface DraftRecommendationDecision {
-  /** 제안값; 확정 전 실서버 연결 금지 */
-  decision: 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT';
-  /** 수정 채택 목표/새 목표 생성 방식 미정 */
-  goal?: Partial<GoalBody>;
-  /** 거절 이유 선택 */
-  rejectionReason?: string | null;
+export interface ReportNarrativeItem {
+  text: string;
+  /** 생성 입력의 근거 ID(E1…) */
+  evidenceIds: string[];
+}
+
+export interface ReportNarrative {
+  observations: ReportNarrativeItem[];
+  effectiveSupports: ReportNarrativeItem[];
+  difficultPoints: ReportNarrativeItem[];
+}
+
+export interface LearningReportData {
+  recordId: UUID;
+  activityId: UUID;
+  childId: UUID;
+  /** 활동을 완료한 시각(+09:00) */
+  completedAt: ISODateTime;
+  /** 생성·평가 루프를 통과한 AI 요약 한 줄 */
+  summary: string;
+  /** 역할극 단독 활동은 null */
+  quiz: ReportQuiz | null;
+  roleplay: ReportRoleplay;
+  difficultyDecision: ReportDifficultyDecision;
+  metrics: ReportMetrics;
+  narrative: ReportNarrative | null;
+  /** 활동 유형. 리포트 목록 표의 유형 칸 */
+  activityType: ActivityType;
+  /** 아동 표시 이름. 학급 리포트 목록에서 누구의 리포트인지 보인다 */
+  childName: string;
+  /** 활동의 학습 목표 제목. 목표가 없는 활동은 null */
+  goalTitle: string | null;
+}
+
+export type RecommendationType = 'REINFORCE' | 'REPEAT' | 'APPLY' | 'EXTEND';
+export type RecommendationDecision = 'ACCEPT' | 'MODIFIED_ACCEPT' | 'DEFER' | 'REJECT';
+export type RecommendationRejectionReason = 'NOT_NOW' | 'NOT_SUITABLE' | 'ALREADY_PLANNED' | 'OTHER';
+
+export interface SuggestedGoal {
+  /** 확장(EXTEND)은 null. 강사가 넓힐 목표를 쓴다 */
+  title: string | null;
+  category: string | null;
+  parentGoalId: UUID | null;
+}
+
+export interface RecommendationData {
+  recommendationId: UUID;
+  recordId: UUID;
+  activityId: UUID;
+  childId: UUID;
+  type: RecommendationType;
+  displayOrder: number;
+  suggestedGoal: SuggestedGoal;
+  reason: string;
+  reasonCode: string;
+  basisGoalTitle: string | null;
+  evidence: string[];
+  evidenceSufficiency: 'SUFFICIENT' | 'LIMITED' | 'INSUFFICIENT';
+  /** 강사의 마지막 결정. 고르기 전에는 null */
+  decision: RecommendationDecision | null;
+  /** MODIFIED_ACCEPT 때 고친 목표 */
+  decidedGoal: SuggestedGoal | null;
+  rejectionReason: RecommendationRejectionReason | null;
+  /** 채택해도 서버가 목표·활동을 만들지 않아 늘 null */
+  createdGoalId: UUID | null;
+  policyVersion: string;
+  createdAt: ISODateTime;
+  decidedAt: ISODateTime | null;
+}
+
+export interface RecommendationDecisionBody {
+  decision: RecommendationDecision;
+  /** MODIFIED_ACCEPT 때 title 필수(≤200) */
+  goal?: { title?: string; category?: string | null; parentGoalId?: UUID | null } | null;
+  rejectionReason?: RecommendationRejectionReason | null;
+}
+
+export interface RoleplayDifficultyData {
+  childId: UUID;
+  scenarioLevel: ScenarioLevel;
+  initialSupportLevel: SupportLevel;
+  previousLevel: ScenarioLevel;
+  direction: 'LOWER' | 'KEEP' | 'RAISE';
+  reason: string;
+  scoreNumerator: number;
+  scoreDenominator: number;
+  consecutiveUpgradeCandidates: number;
+  policyVersion: string;
+  sourceActivityId: UUID;
+  /** 그 활동의 학습 기록. 리포트가 404여도 추천을 읽을 수 있다 */
+  sourceRecordId: UUID | null;
+  decidedAt: ISODateTime;
 }
 
 
@@ -623,18 +744,22 @@ export interface ActivityDetailData {
   learningRecord: null;
 }
 export interface VoiceInputBody {
-  /** 실제 음성 File. MIME/크기 제한은 서버 배포 설정 확인; 현재 길이 디코딩 검증 없음 */
+  /** 실제 음성 File. MIME/크기 제한은 서버 배포 설정 확인; 실제 프레임 디코딩으로 30초 상한 검증 */
   audio: File;
 }
 export type RoleplayDeliveryStatus = 'DELIVERED' | 'REINPUT_REQUIRED' | 'RETRY_REQUIRED' | 'STOPPED' | 'NOTICE_UNAVAILABLE' | 'PROCESSING';
-export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'RETRY_TURN' | 'STOP_DIALOGUE' | 'WAIT';
+/** RESUBMIT_SAME_REQUEST는 503 ROLEPLAY_BUSY 오류로만 나가 성공 본문에는 오지 않습니다. */
+export type RoleplayDeliveryAction = 'NONE' | 'REQUEST_NEW_INPUT' | 'SUGGEST_TEXT_KEEP_VOICE' | 'RETRY_TURN' | 'STOP_DIALOGUE' | 'WAIT';
 export interface RoleplaySpeechData {
   /** TTS 발행 URL이 있을 때만 true */
   available: boolean;
-  /** 인증된 임시 음성 주소; 미제공/재전송은 null */
+  /** 인증된 임시 음성 주소(roleplay.speech.delivery=inline 이면 응답에만 실리는 data:audio/...;base64 URL); 미제공/재전송은 null */
   url: string | null;
 }
+export type RoleplaySpeakerRole = 'DIALOGUE' | 'HINT';
 export interface RoleplayMessageData {
+  /** DIALOGUE 캐릭터 대사, HINT 마스코트 힌트·고정 안내(음성 없음) */
+  speakerRole: RoleplaySpeakerRole;
   /** 검증된 응답 또는 승인 고정 안내. 실패 후보 제외 */
   text: string;
   /** 음성 제공 정보 */
@@ -653,4 +778,85 @@ export interface RoleplayVoiceData {
   checkpointVersion: number | null;
   /** 같은 세션/키/입력의 저장 결과 재전송 여부 */
   replayed: boolean;
+}
+export interface TextInputBody {
+  /** 아이가 입력한 원문. 누락/null은 422, 빈 값·공백·길이 초과는 200 REINPUT_REQUIRED */
+  text: string;
+}
+
+// API-SCN-01·04·06 시나리오 검토(S4-JIN-01). 담당 강사 Bearer + CSRF + Idempotency-Key, 성공은 모두 200.
+export type ScenarioReviewBody =
+  | { action: 'START_OR_RESUME' }
+  | { action: 'NEXT'; reviewId: UUID; revision: number };
+export interface ScenarioReviewConditions {
+  title: string;
+  category: string | null;
+  situationType: string | null;
+  characters: GoalCharacterData[];
+  requiredElements: string[];
+  forbiddenExpressions: string[];
+  scenarioLevel: 'L1' | 'L2' | 'L3';
+}
+export interface ScenarioReviewMicroGoal {
+  /** DB UUID. MG-01 같은 모델 키가 아니다 */
+  microGoalId: UUID;
+  description: string;
+  requiredEvidence: string[];
+  achievementExample: string;
+}
+export interface ScenarioReviewContent {
+  scenarioId: UUID;
+  scenarioVersion: number;
+  scenarioLevel: 'L1' | 'L2' | 'L3';
+  title: string;
+  summary: string;
+  characters: GoalCharacterData[];
+  scenarioFacts: string[];
+  microGoals: ScenarioReviewMicroGoal[];
+  startingQuestions: Record<'S0' | 'S1' | 'S2', string>;
+  startingQuestionGoalIds: Record<'S0' | 'S1' | 'S2', UUID>;
+}
+export interface ScenarioReviewData {
+  reviewId: UUID;
+  activityId: UUID;
+  /** 늦은 응답 판별·다음 명령에 쓰는 검토 상태 번호(콘텐츠 버전 아님) */
+  revision: number;
+  conditions: ScenarioReviewConditions;
+  /** 현재 후보 한 개. 전체 후보 목록은 내려오지 않는다 */
+  scenario: ScenarioReviewContent;
+}
+export interface ScenarioConfirmBody {
+  reviewId: UUID;
+  revision: number;
+  scenarioId: UUID;
+  scenarioVersion: number;
+  /** 생략·null은 수정 없음. 수정하면 새 ID·버전으로 확정된다 */
+  edits?: {
+    title?: string | null;
+    summary?: string | null;
+    microGoals?: Array<{ microGoalId: UUID; description?: string | null; requiredEvidence?: string[] | null }> | null;
+  } | null;
+}
+export interface ScenarioReviewCancelBody {
+  reviewId: UUID;
+  revision: number;
+}
+export interface ScenarioReviewClosure {
+  reviewId: UUID;
+  activityId: UUID;
+  outcome: 'CONFIRMED' | 'CANCELLED';
+  closedAt: ISODateTime;
+}
+export type ScenarioApprovalState = 'WAITING' | 'IN_REVIEW';
+export interface ScenarioApprovalItem {
+  activityId: UUID;
+  childId: UUID;
+  childName: string;
+  classId: UUID;
+  className: string;
+  goalId: UUID;
+  goalTitle: string;
+  scenarioLevel: ScenarioLevel;
+  waitingSince: ISODateTime;
+  state: ScenarioApprovalState;
 }

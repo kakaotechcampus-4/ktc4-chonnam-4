@@ -11,6 +11,7 @@ import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
 import com.neuringo.neuringobe.ai.application.model.AiFailureType;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.LlmRequest;
+import com.neuringo.neuringobe.ai.application.roleplay.RoleplayNoticeCatalog;
 import com.neuringo.neuringobe.auth.security.AuthenticatedUser;
 import com.neuringo.neuringobe.child.service.ChildAccessCodeService;
 import com.neuringo.neuringobe.roleplay.service.RoleplayCanonicalRetentionService;
@@ -40,10 +41,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 @IntegrationTest
-@Import(RoleplayHttpTestConfiguration.class)
+@Import({
+    RoleplayHttpTestConfiguration.class,
+    RoleplayHttpIntegrationTest.DiagnosticTestConfiguration.class
+})
 @TestPropertySource(
         properties = {
             "roleplay.http.enabled=true",
+            "neuringo.ai.call-log=true",
+            "roleplay.text.enabled=true",
+            "roleplay.text.maximum-characters=64",
             "roleplay.progress.maximum-turn-count=77",
             "roleplay.progress.maximum-support-turns-per-micro-goal=9",
             "roleplay.http.maximum-upload-bytes=16",
@@ -69,6 +76,21 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
         })
 class RoleplayHttpIntegrationTest {
     static final Path UPLOADS = directory();
+    static final Path RAW_DIAGNOSTICS = directory();
+
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)
+    static class DiagnosticTestConfiguration {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        com.neuringo.neuringobe.ai.application.port.AiDiagnostics httpDiagnostics() {
+            return new com.neuringo.neuringobe.ai.infrastructure.diagnostics.FileAiDiagnostics(
+                    RAW_DIAGNOSTICS,
+                    java.time.Duration.ofMinutes(15),
+                    1000,
+                    20L * 1024 * 1024,
+                    1024 * 1024);
+        }
+    }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -89,7 +111,12 @@ class RoleplayHttpIntegrationTest {
 
     @AfterAll
     static void cleanup() throws Exception {
-        Files.delete(UPLOADS);
+        for (var root : List.of(UPLOADS, RAW_DIAGNOSTICS)) {
+            try (var paths = Files.walk(root)) {
+                for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                    Files.deleteIfExists(path);
+            }
+        }
     }
 
     static Path directory() {
@@ -122,9 +149,52 @@ class RoleplayHttpIntegrationTest {
                         .andExpect(jsonPath("$.data.messages[0].speech.available").value(false))
                         .andExpect(jsonPath("$.data.checkpointVersion").value(1))
                         .andReturn();
+        String requestTrace = result.getResponse().getHeader("X-Trace-Id");
+        assertThat(state.llmRequests)
+                .isNotEmpty()
+                .allSatisfy(
+                        r ->
+                                assertThat(r.traceContext().requestId().toString())
+                                        .isEqualTo(requestTrace));
+        var rawFile = RAW_DIAGNOSTICS.resolve(requestTrace).resolve("diagnostics.jsonl");
+        assertThat(Files.readString(rawFile))
+                .contains("MODEL_REQUEST", "MODEL_RESPONSE", "VALIDATION", "HTTP_RESULT");
+        var timing = timingEvents(requestTrace);
+        assertThat(
+                        timing.stream()
+                                .filter(e -> e.path("event").asString().equals("STAGE"))
+                                .map(e -> e.path("stage").asString())
+                                .toList())
+                .contains(
+                        "WORKER_QUEUE",
+                        "WORKER_EXECUTION",
+                        "CONTEXT_PREPARATION",
+                        "STT",
+                        "INPUT_PROCESSING",
+                        "LLM_CALL",
+                        "OUTPUT_VALIDATION",
+                        "TTS",
+                        "RESULT_COMMIT");
+        assertThat(timing)
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("request_id").asString()).isEqualTo(requestTrace);
+                            assertThat(e.path("llm_calls").asInt())
+                                    .isEqualTo(state.llmRequests.size());
+                            assertThat(e.path("in_progress_at_response").asInt()).isZero();
+                        });
+        var finalEvent = Files.readAllLines(rawFile).getLast();
+        assertThat(
+                        new tools.jackson.databind.json.JsonMapper()
+                                .readTree(finalEvent)
+                                .path("data")
+                                .path("result")
+                                .asString())
+                .isEqualTo("DELIVERED");
         assertThat(result.getResponse().getContentAsString())
                 .doesNotContain(
-                        "synthetic raw",
+                        "합성 원문",
                         "test-vendor",
                         "test-model",
                         "test-voice",
@@ -179,7 +249,7 @@ class RoleplayHttpIntegrationTest {
         assertThat(state.llmRequests)
                 .extracting(LlmRequest::responseSchemaVersion)
                 .containsExactly(
-                        "analysis-result/v2", "candidate-response/v1", "evaluation-result/v2");
+                        "analysis-result/v2", "candidate-response/v1", "evaluation-output/v9");
         var json = tools.jackson.databind.json.JsonMapper.builder().build();
         var expected = json.readTree(json.writeValueAsString(state.contextObservations));
         for (var call : List.of(state.llmRequests.get(0), state.llmRequests.get(2))) {
@@ -187,15 +257,10 @@ class RoleplayHttpIntegrationTest {
             assertThat(payload.path("goal_observation_context")).isEqualTo(expected);
             assertThat(payload.path("learner_turn").path("canonical_utterance").asString())
                     .isEqualTo("친구가 울고 있어");
-            assertThat(call.userPrompt()).doesNotContain("synthetic raw private input");
+            assertThat(call.userPrompt()).doesNotContain("합성 원문 비공개 입력");
         }
         var reviewPayload = json.readTree(state.llmRequests.get(2).userPrompt());
-        assertThat(
-                        reviewPayload
-                                .path("analysis_result")
-                                .path("goal_observation")
-                                .path("analysis_id")
-                                .asString())
+        assertThat(reviewPayload.path("analysis_id").asString())
                 .isEqualTo(state.llmRequests.getFirst().traceContext().analysisId().toString());
         assertThat(state.goalDecisions).hasValue(1);
     }
@@ -570,17 +635,37 @@ class RoleplayHttpIntegrationTest {
                 .andExpect(status().isOk());
         retention.completeNormallyAndDelete(f.session(), f.child(), f.activity());
         state.calls.clear();
-        mvc.perform(
-                        request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
-                                .session(session)
-                                .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.replayed").value(true))
-                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
-                .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"));
+        var replay =
+                mvc.perform(
+                                request(f.session(), key, new byte[] {1, 2, 3}, "video/webm")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.replayed").value(true))
+                        .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                        .andExpect(jsonPath("$.data.messages[0].text").value("친구는 어떤 기분일까?"))
+                        .andReturn();
+        assertThat(timingEvents(replay.getResponse().getHeader("X-Trace-Id")))
+                .anySatisfy(
+                        e -> {
+                            assertThat(e.path("event").asString()).isEqualTo("SUMMARY");
+                            assertThat(e.path("replayed").asBoolean()).isTrue();
+                            assertThat(e.path("llm_calls").asInt()).isZero();
+                        });
         assertThat(state.calls).isEmpty();
         assertThat(count(f)).isEqualTo(1);
         assertEmptySpool();
+    }
+
+    private static List<tools.jackson.databind.JsonNode> timingEvents(String requestId)
+            throws Exception {
+        var mapper = new tools.jackson.databind.json.JsonMapper();
+        return Files.readAllLines(RAW_DIAGNOSTICS.resolve(requestId).resolve("diagnostics.jsonl"))
+                .stream()
+                .map(mapper::readTree)
+                .filter(e -> e.path("event").asString().equals("TIMING"))
+                .map(e -> e.path("data"))
+                .toList();
     }
 
     @Test
@@ -903,20 +988,20 @@ class RoleplayHttpIntegrationTest {
                         request(f.session(), UUID.randomUUID(), new byte[0], "audio/webm")
                                 .session(session)
                                 .with(csrf()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VOICE_UPLOAD_EMPTY"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"));
         mvc.perform(
                         request(f.session(), UUID.randomUUID(), new byte[17], "audio/webm")
                                 .session(session)
                                 .with(csrf()))
-                .andExpect(status().is(413))
-                .andExpect(jsonPath("$.error.code").value("VOICE_UPLOAD_TOO_LARGE"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"));
         mvc.perform(
                         request(f.session(), UUID.randomUUID(), new byte[] {1}, "text/plain")
                                 .session(session)
                                 .with(csrf()))
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(jsonPath("$.error.code").value("VOICE_UPLOAD_FORMAT"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"));
         mvc.perform(
                         multipart("/api/v1/roleplay-sessions/{id}/voice-inputs", f.session())
                                 .session(session)
@@ -1007,7 +1092,7 @@ class RoleplayHttpIntegrationTest {
                                 jsonPath("$.data.messages[0].text").value("test child stop notice"))
                         .andReturn();
         assertThat(result.getResponse().getContentAsString())
-                .doesNotContain("private teacher", "synthetic raw", "approval-reference");
+                .doesNotContain("private teacher", "합성 원문", "approval-reference");
         assertThat(state.calls).containsExactly("CONTEXT", "STT", "INPUT");
         assertThat(count(f)).isZero();
         assertThat(state.goalDecisions).hasValue(0);
@@ -1016,7 +1101,8 @@ class RoleplayHttpIntegrationTest {
     }
 
     @Test
-    void lowConfidenceDoesNotProduceLearningTurnAndKeepsMissingNoticeExplicit() throws Exception {
+    void lowConfidenceDoesNotProduceLearningTurnAndAlwaysProvidesReinputGuidance()
+            throws Exception {
         var f = RoleplayHttpFixtures.fixture(jdbc);
         var session = enter(f);
         state.lowConfidence = true;
@@ -1025,7 +1111,7 @@ class RoleplayHttpIntegrationTest {
                                 .session(session)
                                 .with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("NOTICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"))
                 .andExpect(jsonPath("$.data.action").value("REQUEST_NEW_INPUT"));
         assertThat(state.calls).containsExactly("CONTEXT", "STT");
         assertThat(count(f)).isZero();
@@ -1404,6 +1490,692 @@ class RoleplayHttpIntegrationTest {
         assertThat(canonicalCount(f)).isZero();
     }
 
+    @Test
+    void recordedFailureReplaysWithoutContextSttOrLlmEvenWhenContextIsUnavailable()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.lowConfidence = true;
+        submitFailure(f, session, key, new byte[] {1}, "REQUEST_NEW_INPUT", false);
+        var originalCalls = List.copyOf(state.calls);
+        state.unavailable = true;
+        submitFailure(f, session, key, new byte[] {1}, "REQUEST_NEW_INPUT", true);
+        submitFailure(f, session, key, new byte[] {1}, "REQUEST_NEW_INPUT", true);
+        assertThat(state.calls).containsExactlyElementsOf(originalCalls);
+        assertThat(voiceFailureCount(f)).isEqualTo(1);
+        assertThat(count(f)).isZero();
+        assertEmptySpool();
+    }
+
+    @Test
+    void changedBytesUnderFailedKeyConflictBeforeStt() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.lowConfidence = true;
+        submitFailure(f, session, key, new byte[] {1}, "REQUEST_NEW_INPUT", false);
+        var originalCalls = List.copyOf(state.calls);
+        mvc.perform(
+                        request(f.session(), key, new byte[] {2}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ROLEPLAY_CONFLICT"));
+        assertThat(state.calls).containsExactlyElementsOf(originalCalls);
+        assertThat(voiceFailureCount(f)).isEqualTo(1);
+        assertEmptySpool();
+    }
+
+    @Test
+    void replayOfOldFailureUsesCurrentRecommendationWithoutRecounting() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var first = UUID.randomUUID();
+        state.lowConfidence = true;
+        submitFailure(f, session, first, new byte[] {1}, "REQUEST_NEW_INPUT", false);
+        submitFailure(f, session, UUID.randomUUID(), new byte[] {2}, "REQUEST_NEW_INPUT", false);
+        submitFailure(
+                f, session, UUID.randomUUID(), new byte[] {3}, "SUGGEST_TEXT_KEEP_VOICE", false);
+        var originalCalls = List.copyOf(state.calls);
+        submitFailure(f, session, first, new byte[] {1}, "SUGGEST_TEXT_KEEP_VOICE", true);
+        assertThat(state.calls).containsExactlyElementsOf(originalCalls);
+        assertThat(voiceFailureCount(f)).isEqualTo(3);
+        assertThat(
+                        jdbc.queryForObject(
+                                "select failure_count_after from roleplay_voice_input_failure where session_id=? and idempotency_key=?",
+                                Integer.class,
+                                f.session(),
+                                first))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void recommendingTextDoesNotBlockAnotherSuccessfulVoiceInputOrResetCount() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.lowConfidence = true;
+        for (int i = 0; i < 3; i++)
+            submitFailure(
+                    f,
+                    session,
+                    UUID.randomUUID(),
+                    new byte[] {(byte) i},
+                    i == 2 ? "SUGGEST_TEXT_KEEP_VOICE" : "REQUEST_NEW_INPUT",
+                    false);
+        state.lowConfidence = false;
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {4}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(voiceFailureCount(f)).isEqualTo(3);
+        state.lowConfidence = true;
+        submitFailure(
+                f, session, UUID.randomUUID(), new byte[] {5}, "SUGGEST_TEXT_KEEP_VOICE", false);
+        assertThat(voiceFailureCount(f)).isEqualTo(4);
+        assertThat(count(f)).isEqualTo(1);
+    }
+
+    private String submitFailure(
+            RoleplayHttpFixtures.Fixture f,
+            MockHttpSession session,
+            UUID key,
+            byte[] audio,
+            String action,
+            boolean replayed)
+            throws Exception {
+        return submitFailure(f, session, key, audio, action, replayed, "audio/webm");
+    }
+
+    private String submitFailure(
+            RoleplayHttpFixtures.Fixture f,
+            MockHttpSession session,
+            UUID key,
+            byte[] audio,
+            String action,
+            boolean replayed,
+            String mime)
+            throws Exception {
+        return mvc.perform(request(f.session(), key, audio, mime).session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"))
+                .andExpect(jsonPath("$.data.action").value(action))
+                .andExpect(
+                        jsonPath("$.data.messages[0].text")
+                                .value(RoleplayNoticeCatalog.REINPUT_TEXT))
+                .andExpect(jsonPath("$.data.replayed").value(replayed))
+                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                .andExpect(jsonPath("$.data.checkpointVersion").isEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    private int voiceFailureCount(RoleplayHttpFixtures.Fixture f) {
+        return jdbc
+                .queryForList(
+                        "select failure_count from roleplay_voice_input_state where session_id=?",
+                        Integer.class,
+                        f.session())
+                .stream()
+                .findFirst()
+                .orElse(0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void acceptedInputCarriesVerifiedQualityToAnalysisAndReview(boolean text) throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.inputAssessment =
+                new com.neuringo.neuringobe.ai.application.roleplay.RoleplayInputProcessor
+                        .Assessment(0.87, true, true, true);
+        var request =
+                text
+                        ? textRequest(f.session(), UUID.randomUUID(), "private synthetic text")
+                        : request(
+                                f.session(), UUID.randomUUID(), new byte[] {1, 2, 3}, "audio/webm");
+        mvc.perform(request.session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        for (var call : List.of(state.llmRequests.get(0), state.llmRequests.get(2))) {
+            var turn = json.readTree(call.userPrompt()).path("learner_turn");
+            assertThat(turn.path("input_type").asString()).isEqualTo(text ? "TEXT" : "VOICE");
+            assertThat(turn.path("input_quality").path("status").asString())
+                    .isEqualTo("ANALYZABLE");
+            assertThat(turn.path("input_quality").path("normalization_confidence").asDouble())
+                    .isEqualTo(0.87);
+            assertThat(turn.path("input_quality").path("meaning_preserved").asBoolean()).isTrue();
+            assertThat(turn.path("safety_result").path("status").asString()).isEqualTo("SAFE");
+            assertThat(turn.path("safety_result").path("personal_information_masked").asBoolean())
+                    .isTrue();
+            if (text) {
+                assertThat(turn.path("input_quality").path("stt_confidence").isNull()).isTrue();
+                assertThat(turn.path("input_quality").path("stt_confidence_threshold").isNull())
+                        .isTrue();
+            } else {
+                assertThat(turn.path("input_quality").path("stt_confidence").asDouble())
+                        .isEqualTo(0.9);
+                assertThat(turn.path("input_quality").path("stt_confidence_threshold").asDouble())
+                        .isEqualTo(0.40);
+            }
+            assertThat(call.userPrompt()).doesNotContain("private synthetic text", "합성 원문 비공개 입력");
+        }
+        var stored =
+                jdbc.queryForMap(
+                        "select input_quality->>'input_type' as input_type, input_quality->>'normalization_confidence' as normalization_confidence, input_quality->>'personal_information_masked' as masked from roleplay_turn where session_id=?",
+                        f.session());
+        assertThat(stored)
+                .containsEntry("input_type", text ? "TEXT" : "VOICE")
+                .containsEntry("normalization_confidence", "0.87")
+                .containsEntry("masked", "true");
+        assertThat(count(f)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "true,missing,RETRY_REQUIRED", "false,missing,RETRY_REQUIRED",
+        "true,meaning,REINPUT_REQUIRED", "false,meaning,REINPUT_REQUIRED",
+        "true,unsafe,STOPPED", "false,unsafe,STOPPED",
+        "true,confidence,RETRY_REQUIRED", "false,safety,RETRY_REQUIRED",
+        "true,mask,RETRY_REQUIRED", "false,nonfinite,RETRY_REQUIRED"
+    })
+    void missingOrNegativeAssessmentCannotReachLearning(boolean text, String problem, String status)
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var before =
+                jdbc.queryForMap("select * from roleplay_session where session_id=?", f.session());
+        state.inputAssessment =
+                switch (problem) {
+                    case "missing" -> null;
+                    case "meaning" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(0.9, false, true, false);
+                    case "unsafe" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(0.9, true, false, false);
+                    case "confidence" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(null, true, true, false);
+                    case "safety" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(0.9, true, null, false);
+                    case "mask" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(0.9, true, true, null);
+                    case "nonfinite" ->
+                            new com.neuringo.neuringobe.ai.application.roleplay
+                                    .RoleplayInputProcessor.Assessment(
+                                    Double.NaN, true, true, false);
+                    default -> throw new AssertionError(problem);
+                };
+        var request =
+                text
+                        ? textRequest(f.session(), UUID.randomUUID(), "private synthetic text")
+                        : request(
+                                f.session(), UUID.randomUUID(), new byte[] {1, 2, 3}, "audio/webm");
+        mvc.perform(request.session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value(status));
+        assertThat(state.llmRequests).isEmpty();
+        assertThat(state.calls).doesNotContain("TTS", "PUBLISH");
+        assertThat(count(f)).isZero();
+        assertThat(recordCount(f)).isZero();
+        boolean counted = !text && problem.equals("meaning");
+        assertThat(voiceFailureCount(f)).isEqualTo(counted ? 1 : 0);
+        if (counted) before.remove("last_activity_at");
+        assertThat(
+                        counted
+                                ? learningSnapshot(f)
+                                : jdbc.queryForMap(
+                                        "select * from roleplay_session where session_id=?",
+                                        f.session()))
+                .isEqualTo(before);
+        assertEmptySpool();
+    }
+
+    @Test
+    void textInputStartsWithoutVoiceFailuresAndUsesRealGoalEvaluationWithoutStt() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.useServerGoalEvaluator = true;
+        state.sttFailuresRemaining = 100;
+        var key = UUID.randomUUID();
+        String original = "private-learner-input";
+        var result =
+                mvc.perform(textRequest(f.session(), key, original).session(session).with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                        .andExpect(jsonPath("$.data.checkpointVersion").value(1))
+                        .andExpect(jsonPath("$.data.replayed").value(false))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(result).doesNotContain(original);
+        assertThat(state.calls).contains("INPUT").doesNotContain("STT");
+        assertThat(state.llmRequests).hasSize(3);
+        assertThat(state.llmRequests)
+                .allSatisfy(request -> assertThat(request.userPrompt()).doesNotContain(original));
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(voiceFailureCount(f)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_failure where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+        var before = List.copyOf(state.calls);
+        state.unavailable = true;
+        mvc.perform(textRequest(f.session(), key, original).session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(true))
+                .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                .andExpect(jsonPath("$.data.messages[0].speech.available").value(false));
+        mvc.perform(
+                        textRequest(f.session(), key, original + " changed")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isConflict());
+        assertThat(state.calls).containsExactlyElementsOf(before);
+        assertThat(count(f)).isEqualTo(1);
+    }
+
+    @Test
+    void switchingTextVoiceAndTextSharesTheSessionAndRejectsCrossModeKeyReuse() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        mvc.perform(textRequest(f.session(), key, "first text").session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        mvc.perform(
+                        request(f.session(), key, new byte[] {1}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isConflict());
+        assertThat(state.calls).doesNotContain("STT");
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {2}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.checkpointVersion").value(2));
+        mvc.perform(
+                        textRequest(f.session(), UUID.randomUUID(), "next text")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.checkpointVersion").value(3));
+        assertThat(state.calls.stream().filter("STT"::equals).count()).isEqualTo(1);
+        assertThat(count(f)).isEqualTo(3);
+    }
+
+    @Test
+    void threeVoiceFailuresCanBeFollowedByActualTextAndVoiceWithoutResettingTheCounter()
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.lowConfidence = true;
+        var first = UUID.randomUUID();
+        for (int i = 0; i < 3; i++)
+            submitFailure(
+                    f,
+                    session,
+                    i == 0 ? first : UUID.randomUUID(),
+                    new byte[] {(byte) i},
+                    i == 2 ? "SUGGEST_TEXT_KEEP_VOICE" : "REQUEST_NEW_INPUT",
+                    false);
+        mvc.perform(textRequest(f.session(), first, "changed kind").session(session).with(csrf()))
+                .andExpect(status().isConflict());
+        state.lowConfidence = false;
+        long sttCalls = state.calls.stream().filter("STT"::equals).count();
+        mvc.perform(
+                        textRequest(f.session(), UUID.randomUUID(), "text after recommendation")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(state.calls.stream().filter("STT"::equals).count()).isEqualTo(sttCalls);
+        assertThat(voiceFailureCount(f)).isEqualTo(3);
+        mvc.perform(
+                        request(f.session(), UUID.randomUUID(), new byte[] {9}, "audio/webm")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(voiceFailureCount(f)).isEqualTo(3);
+        assertThat(count(f)).isEqualTo(2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "processor-invalid"})
+    void invalidTextRequestsNewInputWithoutVoiceFailureOrLearningRecord(String text)
+            throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.invalidInput = true;
+        mvc.perform(textRequest(f.session(), UUID.randomUUID(), text).session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"))
+                .andExpect(
+                        jsonPath("$.data.messages[0].text")
+                                .value(RoleplayNoticeCatalog.REINPUT_TEXT));
+        assertThat(state.calls).doesNotContain("STT");
+        assertThat(state.llmRequests).isEmpty();
+        assertThat(count(f)).isZero();
+        assertThat(recordCount(f)).isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_state where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select count(*) from roleplay_voice_input_failure where session_id=?",
+                                Integer.class,
+                                f.session()))
+                .isZero();
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "true,UNAVAILABLE", "true,EXCEPTION", "true,NULL",
+        "false,UNAVAILABLE", "false,EXCEPTION", "false,NULL"
+    })
+    void inputCheckFailureReturnsRetryWithoutLearningWritesAndCanRecover(
+            boolean text, String failure) throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        var before =
+                jdbc.queryForMap("select * from roleplay_session where session_id=?", f.session());
+        state.inputFailure = failure;
+        var response =
+                mvc.perform(
+                                (text
+                                                ? textRequest(
+                                                        f.session(), key, "synthetic-private-text")
+                                                : request(
+                                                        f.session(),
+                                                        key,
+                                                        new byte[] {1, 2, 3},
+                                                        "audio/webm"))
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(jsonPath("$.data.status").value("RETRY_REQUIRED"))
+                        .andExpect(jsonPath("$.data.action").value("RETRY_TURN"))
+                        .andExpect(
+                                jsonPath("$.data.messages[0].text")
+                                        .value("test evaluation retry notice"))
+                        .andExpect(jsonPath("$.data.acceptedInput").isEmpty())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(response).doesNotContain("synthetic-private", "provider-detail");
+        assertThat(state.calls)
+                .containsExactlyElementsOf(
+                        text ? List.of("CONTEXT", "INPUT") : List.of("CONTEXT", "STT", "INPUT"));
+        assertThat(state.llmRequests).isEmpty();
+        assertThat(state.goalDecisions).hasValue(0);
+        assertThat(count(f)).isZero();
+        assertThat(recordCount(f)).isZero();
+        assertThat(voiceFailureCount(f)).isZero();
+        for (var table :
+                List.of(
+                        "roleplay_voice_input_state",
+                        "roleplay_voice_input_failure",
+                        "roleplay_goal_assessment")) {
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select count(*) from " + table + " where session_id=?",
+                                    Integer.class,
+                                    f.session()))
+                    .isZero();
+        }
+        assertThat(
+                        jdbc.queryForMap(
+                                "select * from roleplay_session where session_id=?", f.session()))
+                .isEqualTo(before);
+        assertEmptySpool();
+
+        state.inputFailure = null;
+        mvc.perform(
+                        (text
+                                        ? textRequest(f.session(), key, "synthetic-private-text")
+                                        : request(
+                                                f.session(),
+                                                key,
+                                                new byte[] {1, 2, 3},
+                                                "audio/webm"))
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(voiceFailureCount(f)).isZero();
+        assertEmptySpool();
+    }
+
+    @Test
+    void unsafeTextStopsBeforeLlmAndDoesNotExposeTheInput() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        state.unsafe = true;
+        var result =
+                mvc.perform(
+                                textRequest(f.session(), UUID.randomUUID(), "private-unsafe-input")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("STOPPED"))
+                        .andExpect(jsonPath("$.data.action").value("STOP_DIALOGUE"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertThat(result).doesNotContain("private-unsafe-input", "private teacher");
+        assertThat(state.calls).doesNotContain("STT");
+        assertThat(state.llmRequests).isEmpty();
+        assertThat(count(f)).isZero();
+    }
+
+    @Test
+    void textLimitUsesConfiguredCodePointCountAndDoesNotInventAProductDefault() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        mvc.perform(
+                        textRequest(f.session(), UUID.randomUUID(), "x".repeat(65))
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REINPUT_REQUIRED"));
+        assertThat(state.calls).isEmpty();
+        mvc.perform(
+                        textRequest(f.session(), UUID.randomUUID(), "\uD83D\uDE00".repeat(64))
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(count(f)).isEqualTo(1);
+    }
+
+    @Test
+    void textEndpointEnforcesChildOwnershipCsrfAndRequiredRequestFields() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var other = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        mvc.perform(textRequest(f.session(), UUID.randomUUID(), "text").with(csrf()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(textRequest(f.session(), UUID.randomUUID(), "text").session(session))
+                .andExpect(status().isForbidden());
+        mvc.perform(
+                        textRequest(other.session(), UUID.randomUUID(), "text")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isNotFound());
+        mvc.perform(
+                        post("/api/v1/roleplay-sessions/{id}/text-inputs", f.session())
+                                .session(session)
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        post("/api/v1/roleplay-sessions/{id}/text-inputs", f.session())
+                                .session(session)
+                                .with(csrf())
+                                .header("Idempotency-Key", UUID.randomUUID())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isUnprocessableEntity());
+        assertThat(state.calls).isEmpty();
+    }
+
+    @Test
+    void concurrentTextDuplicateReturnsProcessingWithoutStartingAnotherPipeline() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.blockInput = true;
+        try (var clients = Executors.newSingleThreadExecutor()) {
+            var first =
+                    clients.submit(
+                            () ->
+                                    mvc.perform(
+                                                    textRequest(f.session(), key, "same text")
+                                                            .session(session)
+                                                            .with(csrf()))
+                                            .andReturn());
+            try {
+                assertThat(state.entered.await(1, TimeUnit.SECONDS)).isTrue();
+                mvc.perform(
+                                textRequest(f.session(), key, "same text")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.data.status").value("PROCESSING"));
+                mvc.perform(
+                                textRequest(f.session(), key, "different text")
+                                        .session(session)
+                                        .with(csrf()))
+                        .andExpect(status().isConflict());
+                assertThat(state.calls.stream().filter("INPUT"::equals).count()).isEqualTo(1);
+            } finally {
+                state.release.countDown();
+            }
+            assertThat(first.get(5, TimeUnit.SECONDS).getResponse().getStatus()).isEqualTo(200);
+        }
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(state.calls).doesNotContain("STT");
+    }
+
+    @Test
+    void textSaveFailureRollsBackAndTheSameKeyCanBeRetried() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        var before =
+                jdbc.queryForMap("select * from roleplay_session where session_id=?", f.session());
+        var constraint = "test_text_write_" + f.session().toString().replace("-", "");
+        jdbc.execute(
+                "alter table roleplay_turn add constraint "
+                        + constraint
+                        + " check (session_id <> '"
+                        + f.session()
+                        + "'::uuid) not valid");
+        try {
+            mvc.perform(textRequest(f.session(), key, "same text").session(session).with(csrf()))
+                    .andExpect(status().isInternalServerError());
+            assertThat(count(f)).isZero();
+            assertThat(
+                            jdbc.queryForMap(
+                                    "select * from roleplay_session where session_id=?",
+                                    f.session()))
+                    .isEqualTo(before);
+            assertThat(
+                            jdbc.queryForObject(
+                                    "select count(*) from roleplay_goal_assessment where session_id=?",
+                                    Integer.class,
+                                    f.session()))
+                    .isZero();
+            assertThat(recordCount(f)).isZero();
+        } finally {
+            jdbc.execute("alter table roleplay_turn drop constraint " + constraint);
+        }
+        mvc.perform(textRequest(f.session(), key, "same text").session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.checkpointVersion").value(1));
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(voiceFailureCount(f)).isZero();
+        assertThat(state.calls).doesNotContain("STT");
+    }
+
+    @Test
+    void completedTextResultReplaysAfterCanonicalDeletionAndBlocksNewInput() throws Exception {
+        var f = RoleplayHttpFixtures.fixture(jdbc);
+        var session = enter(f);
+        var key = UUID.randomUUID();
+        state.activityGoalAchieved = true;
+        mvc.perform(textRequest(f.session(), key, "final text").session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELIVERED"));
+        assertThat(
+                        jdbc.queryForObject(
+                                "select canonical_utterance from roleplay_turn where session_id=?",
+                                String.class,
+                                f.session()))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "select input_quality::text from roleplay_turn where session_id=?",
+                                String.class,
+                                f.session()))
+                .isNull();
+        var before = List.copyOf(state.calls);
+        state.unavailable = true;
+        mvc.perform(textRequest(f.session(), key, "final text").session(session).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.replayed").value(true))
+                .andExpect(jsonPath("$.data.acceptedInput").isEmpty());
+        mvc.perform(
+                        textRequest(f.session(), UUID.randomUUID(), "new text")
+                                .session(session)
+                                .with(csrf()))
+                .andExpect(status().isConflict());
+        assertThat(state.calls).containsExactlyElementsOf(before);
+        assertThat(count(f)).isEqualTo(1);
+        assertThat(recordCount(f)).isEqualTo(1);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder textRequest(
+            UUID session, UUID key, String text) {
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        return post("/api/v1/roleplay-sessions/{id}/text-inputs", session)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(java.util.Map.of("text", text)));
+    }
+
+    private java.util.Map<String, Object> learningSnapshot(RoleplayHttpFixtures.Fixture f) {
+        var values =
+                new java.util.HashMap<>(
+                        jdbc.queryForMap(
+                                "select * from roleplay_session where session_id=?", f.session()));
+        values.remove("last_activity_at");
+        return values;
+    }
+
     private int recordCount(RoleplayHttpFixtures.Fixture f) {
         return jdbc.queryForObject(
                 "select count(*) from learning_record where activity_id=?",
@@ -1459,8 +2231,19 @@ class RoleplayHttpIntegrationTest {
     }
 
     private void assertEmptySpool() throws Exception {
-        try (var files = Files.list(UPLOADS)) {
-            assertThat(files.count()).isZero();
+        try (var files = Files.walk(UPLOADS)) {
+            assertThat(
+                            files.filter(Files::isRegularFile)
+                                    .filter(
+                                            path ->
+                                                    path.getFileName()
+                                                                    .toString()
+                                                                    .startsWith("roleplay-upload-")
+                                                            || path.getFileName()
+                                                                    .toString()
+                                                                    .startsWith("upload_"))
+                                    .count())
+                    .isZero();
         }
     }
 

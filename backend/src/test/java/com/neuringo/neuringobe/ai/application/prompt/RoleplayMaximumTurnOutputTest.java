@@ -90,7 +90,180 @@ class RoleplayMaximumTurnOutputTest {
                 .isInstanceOf(InvalidLlmOutputException.class);
     }
 
+    @Test
+    void unknownLearningEvidenceDoesNotUseTheStoredOrdinalAsTheMaximum() {
+        var input = inputWithMaximum(1, null);
+        var analysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser()
+                        .parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1"));
+        assertThat(analysis.nextStrategy().type()).isEqualTo("PROBE_EMOTION");
+        assertThat(
+                        factory.responseGeneration(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        1,
+                                        input,
+                                        analysis,
+                                        CANDIDATE_ID,
+                                        null)
+                                .parser()
+                                .parse(candidateJson("친구는 어떤 기분일까?", "GUIDING_QUESTION"))
+                                .responseType())
+                .isEqualTo("GUIDING_QUESTION");
+    }
+
+    @Test
+    void unassessableInputDoesNotForceAClosingCandidateAtTheKnownMaximum() {
+        var input = inputWithMaximum(1);
+        var analysis =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser()
+                        .parse(
+                                analysisJson("CONFIRM_UNDERSTANDING", MG_EMOTION, "S1")
+                                        .replace("PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE"));
+        var candidate =
+                candidateJson("다시 한번 알려줄래?", "CONFIRMATION")
+                        .replace("PROBE_EMOTION", "CONFIRM_UNDERSTANDING");
+        assertThat(
+                        factory.responseGeneration(
+                                        trace(ANALYSIS_ID, null),
+                                        attempts(),
+                                        1,
+                                        input,
+                                        analysis,
+                                        CANDIDATE_ID,
+                                        null)
+                                .parser()
+                                .parse(candidate)
+                                .responseType())
+                .isEqualTo("CONFIRMATION");
+    }
+
+    @Test
+    void tenthStoredTurnClosesEvenWhenLearningEvidenceIsUnknown() {
+        var input = inputAtStoredTurn(10, null);
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser();
+        assertThatThrownBy(() -> parser.parse(analysisJson("PROBE_EMOTION", MG_EMOTION, "S1")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        var analysis = parser.parse(analysisJson("CLOSE_ROLEPLAY", MG_EMOTION, "S1"));
+        var candidateParser =
+                factory.responseGeneration(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                analysis,
+                                CANDIDATE_ID,
+                                null)
+                        .parser();
+        assertThatThrownBy(
+                        () ->
+                                candidateParser.parse(
+                                        candidateJson("다음 질문", "GUIDING_QUESTION")
+                                                .replace("PROBE_EMOTION", "CLOSE_ROLEPLAY")))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        assertThat(
+                        candidateParser
+                                .parse(
+                                        candidateJson("함께해 줘서 고마워.", "CLOSING")
+                                                .replace("PROBE_EMOTION", "CLOSE_ROLEPLAY"))
+                                .responseType())
+                .isEqualTo("CLOSING");
+    }
+
+    @Test
+    void tenthStoredTurnClosesAnUnassessableInput() {
+        var input = inputAtStoredTurn(10, null);
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser();
+        var unassessableQuestion =
+                analysisJson("CONFIRM_UNDERSTANDING", MG_EMOTION, "S1")
+                        .replace("PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE");
+        assertThatThrownBy(() -> parser.parse(unassessableQuestion))
+                .isInstanceOf(InvalidLlmOutputException.class);
+        assertThat(
+                        parser.parse(
+                                        analysisJson("CLOSE_ROLEPLAY", MG_EMOTION, "S1")
+                                                .replace("PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE"))
+                                .nextStrategy()
+                                .type())
+                .isEqualTo("CLOSE_ROLEPLAY");
+    }
+
+    @Test
+    void ninthStoredTurnStillAllowsConfirmationWithUnknownLearningEvidence() {
+        var input = inputAtStoredTurn(9, null);
+        var parser =
+                factory.causeAnalysis(
+                                trace(ANALYSIS_ID, null),
+                                attempts(),
+                                1,
+                                input,
+                                null,
+                                RoleplayObservationTestPlans.inputForScenario(input.scenario()))
+                        .parser();
+        assertThat(
+                        parser.parse(
+                                        analysisJson("CONFIRM_UNDERSTANDING", MG_EMOTION, "S1")
+                                                .replace("PARTIAL_UNDERSTANDING", "NOT_ASSESSABLE"))
+                                .nextStrategy()
+                                .type())
+                .isEqualTo("CONFIRM_UNDERSTANDING");
+    }
+
+    private RoleplayTurnInput inputAtStoredTurn(int storedTurn, Integer learningTurn) {
+        var original = input("친구가 울어.");
+        var state = original.state();
+        return new RoleplayTurnInput(
+                original.scenario(),
+                new RoleplayTurnInput.State(
+                        state.currentMicroGoalId(),
+                        state.currentSupportLevel(),
+                        state.currentMicroGoalSupportTurn(),
+                        state.currentMicroGoalPromptCount(),
+                        state.answerRevealed(),
+                        storedTurn,
+                        state.maximumTurnCount(),
+                        state.maximumSupportTurnsPerMicroGoal(),
+                        state.currentMicroGoalSupportTurn(),
+                        learningTurn),
+                original.learnerTurn(),
+                original.recentDialogue());
+    }
+
     private RoleplayTurnInput inputWithMaximum(int maximum) {
+        return inputWithMaximum(maximum, input("친구가 울어.").state().turnCount());
+    }
+
+    private RoleplayTurnInput inputWithMaximum(int maximum, Integer learningTurn) {
         var original = input("친구가 울어.");
         var state = original.state();
         return new RoleplayTurnInput(
@@ -103,7 +276,9 @@ class RoleplayMaximumTurnOutputTest {
                         state.answerRevealed(),
                         state.turnCount(),
                         maximum,
-                        state.maximumSupportTurnsPerMicroGoal()),
+                        state.maximumSupportTurnsPerMicroGoal(),
+                        state.currentMicroGoalSupportTurn(),
+                        learningTurn),
                 original.learnerTurn(),
                 original.recentDialogue());
     }

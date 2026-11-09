@@ -1,0 +1,421 @@
+[
+  {
+    "case_id": "A",
+    "input": {
+      "scenario": {
+        "learning_goal": "친구의 감정을 이해하고 공감하기",
+        "scenario_level": "L1",
+        "scenario_facts": [
+          "친구가 반 친구들 앞에서 발표를 했다.",
+          "친구가 발표하다가 할 말을 찾지 못해 중간에 멈췄다.",
+          "친구가 아무 말 없이 자리에 앉았다."
+        ],
+        "prohibited_inferences": [
+          "친구가 발표하기 싫어서 일부러 멈췄다고 단정하지 않는다.",
+          "다른 친구가 놀렸다는 등 시나리오에 없는 사건을 지어내지 않는다."
+        ],
+        "ai_character": {
+          "id": "FRIEND",
+          "role": "발표하다가 말을 찾지 못해 자리에 앉은 친구",
+          "personality": null,
+          "speech_style": "반말, 짧은 문장"
+        },
+        "micro_goals": [
+          {
+            "id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "description": "친구가 발표하다가 말을 못 하고 자리에 앉았다는 사건을 파악한다.",
+            "required_evidence": [
+              "발표 중에 멈췄거나 말을 못 하고 앉았다는 것을 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          },
+          {
+            "id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "description": "친구가 부끄럽거나 불안했을 수 있음을 파악한다.",
+            "required_evidence": [
+              "부끄러움·불안·속상함처럼 상황에 맞는 감정을 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          },
+          {
+            "id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "description": "감정과 발표 중에 말이 안 나온 사건을 연결한다.",
+            "required_evidence": [
+              "말이 안 나와서 부끄럽거나 불안했다고 이유와 함께 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          }
+        ]
+      },
+      "state": {
+        "current_micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+        "current_support_level": "S0",
+        "current_micro_goal_support_turn": 1,
+        "current_micro_goal_prompt_count": 0,
+        "answer_revealed": false,
+        "turn_count": 1,
+        "maximum_stored_turn_count": 10,
+        "learning_turn_count": 1,
+        "current_micro_goal_learning_support_turn": 1,
+        "maximum_turn_count": 6,
+        "maximum_support_turns_per_micro_goal": 4
+      },
+      "recent_dialogue": [],
+      "learner_turn": {
+        "turn_id": "00000000-0000-0000-0000-000000000201",
+        "canonical_utterance": "너 발표하다가 말을 못 찾아서 중간에 멈추고 그냥 앉았지?"
+      },
+      "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+      "goal_observation_context": {
+        "approved_criteria": [
+          {
+            "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d",
+            "description": "발표 중에 멈췄거나 말을 못 하고 앉았다는 것을 말한다."
+          },
+          {
+            "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "reference": "evidence/v1:4f91c88a83b3fc22b12d8a3ab771b8f9b359256e5ed2978e564a976351e0e1d9",
+            "description": "부끄러움·불안·속상함처럼 상황에 맞는 감정을 말한다."
+          },
+          {
+            "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "reference": "evidence/v1:e93f403293a89a9d07d3b7164e406ec215d82b3969ee7356860a68db2bea08e3",
+            "description": "말이 안 나와서 부끄럽거나 불안했다고 이유와 함께 말한다."
+          }
+        ],
+        "confirmed_observations": [],
+        "confirmed_observation_contexts": [],
+        "current_goal_exposures": [
+          {
+            "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          },
+          {
+            "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          },
+          {
+            "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          }
+        ],
+        "support_adjustment": {
+          "status": "NOT_ELIGIBLE",
+          "policy_version": "SUPPORT_DECREASE_V1",
+          "required_independent_goals": 2,
+          "in_progress_handling": "RESET_SEQUENCE",
+          "independent_goal_count": 0,
+          "basis": [],
+          "confirmed_inputs": []
+        }
+      },
+      "independence_review_context": [],
+      "goal_evidence_so_far": [
+        {
+          "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+          "evidence": "NONE",
+          "reference": null
+        },
+        {
+          "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+          "evidence": "NONE",
+          "reference": null
+        },
+        {
+          "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+          "evidence": "NONE",
+          "reference": null
+        }
+      ],
+      "analysis_result": {
+        "turn_id": "00000000-0000-0000-0000-000000000201",
+        "response_act": "ANSWER_ATTEMPT",
+        "relevance": "RELEVANT",
+        "learning_state": "GOAL_ACHIEVED",
+        "primary_gap": {
+          "code": "NONE",
+          "description": "발표 중 멈추거나 말을 못 하고 앉았다는 사건을 말함"
+        },
+        "next_strategy": {
+          "type": "ADVANCE_GOAL",
+          "target_micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+          "purpose": "발표 중에 말이 안 나와서 친구가 느꼈을 수 있는 감정을 말하게 하기",
+          "recommended_support_level": "S0"
+        },
+        "analysis_confidence": 0.93,
+        "goal_observation": {
+          "schema_version": "analysis-result/v2",
+          "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+          "observations": [
+            {
+              "reference": {
+                "turn_id": "00000000-0000-0000-0000-000000000201",
+                "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+                "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d"
+              },
+              "status": "EXPLICIT"
+            }
+          ],
+          "activity_goal": {
+            "decision": "IN_PROGRESS",
+            "basis": [
+              {
+                "turn_id": "00000000-0000-0000-0000-000000000201",
+                "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+                "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "output": {
+      "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+      "reviews": [
+        {
+          "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d",
+          "evidence_quote": "너 발표하다가 말을 못 찾아서 중간에 멈추고 그냥 앉았지?",
+          "verdict": "SUPPORTED",
+          "reason_code": "MATCHED_EXPRESSION",
+          "explanation": "발표 중 말을 못 찾아 중간에 멈추고 앉았다는 사건을 직접 말함."
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "B",
+    "input": {
+      "scenario": {
+        "learning_goal": "친구의 감정을 이해하고 공감하기",
+        "scenario_level": "L1",
+        "scenario_facts": [
+          "친구가 반 친구들 앞에서 발표를 했다.",
+          "친구가 발표하다가 할 말을 찾지 못해 중간에 멈췄다.",
+          "친구가 아무 말 없이 자리에 앉았다."
+        ],
+        "prohibited_inferences": [
+          "친구가 발표하기 싫어서 일부러 멈췄다고 단정하지 않는다.",
+          "다른 친구가 놀렸다는 등 시나리오에 없는 사건을 지어내지 않는다."
+        ],
+        "ai_character": {
+          "id": "FRIEND",
+          "role": "발표하다가 말을 찾지 못해 자리에 앉은 친구",
+          "personality": null,
+          "speech_style": "반말, 짧은 문장"
+        },
+        "micro_goals": [
+          {
+            "id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "description": "친구가 발표하다가 말을 못 하고 자리에 앉았다는 사건을 파악한다.",
+            "required_evidence": [
+              "발표 중에 멈췄거나 말을 못 하고 앉았다는 것을 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          },
+          {
+            "id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "description": "친구가 부끄럽거나 불안했을 수 있음을 파악한다.",
+            "required_evidence": [
+              "부끄러움·불안·속상함처럼 상황에 맞는 감정을 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          },
+          {
+            "id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "description": "감정과 발표 중에 말이 안 나온 사건을 연결한다.",
+            "required_evidence": [
+              "말이 안 나와서 부끄럽거나 불안했다고 이유와 함께 말한다."
+            ],
+            "status": "NOT_OBSERVED"
+          }
+        ]
+      },
+      "state": {
+        "current_micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+        "current_support_level": "S0",
+        "current_micro_goal_support_turn": 1,
+        "current_micro_goal_prompt_count": 0,
+        "answer_revealed": false,
+        "turn_count": 1,
+        "maximum_stored_turn_count": 10,
+        "learning_turn_count": 1,
+        "current_micro_goal_learning_support_turn": 1,
+        "maximum_turn_count": 6,
+        "maximum_support_turns_per_micro_goal": 4
+      },
+      "recent_dialogue": [],
+      "learner_turn": {
+        "turn_id": "00000000-0000-0000-0000-000000000201",
+        "canonical_utterance": "너 발표하다가 말을 못 찾아서 중간에 멈추고 그냥 앉았지?"
+      },
+      "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+      "goal_observation_context": {
+        "approved_criteria": [
+          {
+            "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d",
+            "description": "발표 중에 멈췄거나 말을 못 하고 앉았다는 것을 말한다."
+          },
+          {
+            "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "reference": "evidence/v1:4f91c88a83b3fc22b12d8a3ab771b8f9b359256e5ed2978e564a976351e0e1d9",
+            "description": "부끄러움·불안·속상함처럼 상황에 맞는 감정을 말한다."
+          },
+          {
+            "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "reference": "evidence/v1:e93f403293a89a9d07d3b7164e406ec215d82b3969ee7356860a68db2bea08e3",
+            "description": "말이 안 나와서 부끄럽거나 불안했다고 이유와 함께 말한다."
+          }
+        ],
+        "confirmed_observations": [],
+        "confirmed_observation_contexts": [],
+        "current_goal_exposures": [
+          {
+            "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          },
+          {
+            "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          },
+          {
+            "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+            "exposure_before_input": {
+              "question_count": 0,
+              "answer_revealed": false,
+              "last_response": null,
+              "highest_support_level": null,
+              "mascot_hint_seen": false
+            }
+          }
+        ],
+        "support_adjustment": {
+          "status": "NOT_ELIGIBLE",
+          "policy_version": "SUPPORT_DECREASE_V1",
+          "required_independent_goals": 2,
+          "in_progress_handling": "RESET_SEQUENCE",
+          "independent_goal_count": 0,
+          "basis": [],
+          "confirmed_inputs": []
+        }
+      },
+      "independence_review_context": [],
+      "goal_evidence_so_far": [
+        {
+          "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+          "evidence": "NONE",
+          "reference": null
+        },
+        {
+          "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+          "evidence": "NONE",
+          "reference": null
+        },
+        {
+          "micro_goal_id": "6f77bd25-3c91-4217-a364-5a13704139b2",
+          "evidence": "NONE",
+          "reference": null
+        }
+      ],
+      "analysis_result": {
+        "turn_id": "00000000-0000-0000-0000-000000000201",
+        "response_act": "ANSWER_ATTEMPT",
+        "relevance": "RELEVANT",
+        "learning_state": "GOAL_ACHIEVED",
+        "primary_gap": {
+          "code": "NONE",
+          "description": "발표 중 멈추거나 말을 못 하고 앉았다는 사건을 말함"
+        },
+        "next_strategy": {
+          "type": "ADVANCE_GOAL",
+          "target_micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+          "purpose": "발표 중에 말이 안 나와서 친구가 느꼈을 수 있는 감정을 말하게 하기",
+          "recommended_support_level": "S0"
+        },
+        "analysis_confidence": 0.93,
+        "goal_observation": {
+          "schema_version": "analysis-result/v2",
+          "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+          "observations": [
+            {
+              "reference": {
+                "turn_id": "00000000-0000-0000-0000-000000000201",
+                "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+                "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d"
+              },
+              "status": "EXPLICIT"
+            },
+            {
+              "reference": {
+                "turn_id": "00000000-0000-0000-0000-000000000201",
+                "micro_goal_id": "f69bb41d-903d-4690-bc5d-09392b577c19",
+                "criterion_reference": "evidence/v1:4f91c88a83b3fc22b12d8a3ab771b8f9b359256e5ed2978e564a976351e0e1d9"
+              },
+              "status": "EXPLICIT"
+            }
+          ],
+          "activity_goal": {
+            "decision": "IN_PROGRESS",
+            "basis": [
+              {
+                "turn_id": "00000000-0000-0000-0000-000000000201",
+                "micro_goal_id": "070e3820-7b3a-413b-899a-140f90801e04",
+                "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "output": {
+      "analysis_id": "8731e6c0-2b73-429c-890f-aedd9b156e79",
+      "reviews": [
+        {
+          "criterion_reference": "evidence/v1:602bb2753f092f035af5a1f87d989e7443cc7ec81838265d240574a00e98232d",
+          "evidence_quote": "너 발표하다가 말을 못 찾아서 중간에 멈추고 그냥 앉았지?",
+          "verdict": "SUPPORTED",
+          "reason_code": "MATCHED_EXPRESSION",
+          "explanation": "발표하다가 말을 못 찾고 중간에 멈춰 앉았다고 직접 말함."
+        },
+        {
+          "criterion_reference": "evidence/v1:4f91c88a83b3fc22b12d8a3ab771b8f9b359256e5ed2978e564a976351e0e1d9",
+          "evidence_quote": null,
+          "verdict": "UNSUPPORTED",
+          "reason_code": "NO_MATCHING_EXPRESSION",
+          "explanation": "부끄러움·불안·속상함 같은 감정을 말하지 않음."
+        }
+      ]
+    }
+  }
+]

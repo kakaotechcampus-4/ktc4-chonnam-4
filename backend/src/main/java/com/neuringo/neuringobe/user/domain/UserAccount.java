@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.user.domain;
 
+import com.neuringo.neuringobe.common.time.StoredTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -77,10 +78,10 @@ public class UserAccount {
         this.orgName = orgName;
         this.role = role;
         this.status = status;
-        this.createdAt = createdAt;
+        this.createdAt = StoredTime.normalize(createdAt);
         this.termsVersion = termsVersion;
         this.privacyVersion = privacyVersion;
-        this.consentedAt = consentedAt;
+        this.consentedAt = StoredTime.normalize(consentedAt);
     }
 
     public UUID getUserId() {

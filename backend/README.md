@@ -81,3 +81,27 @@ LLM 호출 포트, Spring AI 어댑터, 실패 유형 및 MockServer 테스트 �
 docker build -t neuringo-backend .   # backend/ 에서
 bash scripts/verify.sh docker         # 레포 루트에서: 빌드 → compose 로 기동 → local 프로필로 요청을 받는지
 ```
+
+### 로컬 AI 모델 테스트
+
+`./gradlew roleplayEval --args="--provider openai --repeats 1"` 또는
+`./gradlew integratedEvaluationDiagnostic` 실행 전 `backend/.env.local`을 변경한다.
+매 실행마다 파일을 다시 읽으며 파일의 비어 있지 않은 값이 셸 환경변수보다 우선한다.
+진단 실행기는 `AI_MODEL`을 요청과 결과 메타데이터에 사용하고, 결과를 `build/eval/` 아래 모델명과 고유 접미사가 있는 새 폴더에 저장한다.
+
+```dotenv
+AI_MODEL=사용할-모델-ID
+AI_BASE_URL=해당-모델의-API-base-URL
+AI_API_KEY=해당-제공자의-키
+```
+
+Elice는 모델마다 호출 주소가 다르므로 모델을 바꿀 때 `AI_BASE_URL`도 함께 맞춘다.
+OpenAI 직접 호출도 이 세 `AI_*` 설정을 사용한다. `OPENAI_BASE_URL`과 `OPENAI_API_KEY`는 이 LLM 경로의 설정이 아니다.
+리포트 평가의 `--gen`·`--review` 및 `mlApiTest -Pmlapi.model`은 기존처럼 `MODEL_<별칭>_*` 설정으로 각 모델을 선택한다.
+
+`./gradlew bootRun`도 `.env.local`을 읽는다. 서버는 파일 변경 후 재시작한다.
+IDE에서 main 클래스를 직접 실행할 때는 실행 설정에서 `.env.local`을 환경변수 파일로 지정한다.
+
+팀 AWS Dev 서버에서 직접 입력하고 요청별 AI 원문·시간·검증 결과를 확인하는 방법은
+[Dev 서버 관측 실행 절차](docs/roleplay-dev-observation-runbook-2026-11-08.md)를 따른다.
+원문 수집은 기본 비활성인 제한된 실험 기능이며 로컬 설정 파일은 서버에 전달되지 않는다.

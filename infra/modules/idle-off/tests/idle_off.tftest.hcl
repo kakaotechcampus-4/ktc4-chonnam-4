@@ -63,6 +63,10 @@ run "checks_every_10_minutes_and_turns_off_after_30" {
     error_message = "대문이 다 닫히길 기다릴 시간(900초)·가장 작은 메모리"
   }
   assert {
+    condition     = aws_lambda_function.this.environment[0].variables.NEURINGO_ENV == "dev"
+    error_message = "밀린 develop 이어 띄우기가 이 환경의 wanted 기록(state/dev.wanted)을 본다"
+  }
+  assert {
     condition     = aws_lambda_permission.events.principal == "events.amazonaws.com" && aws_lambda_permission.events.source_arn == aws_cloudwatch_event_rule.every.arn
     error_message = "이 규칙만 Lambda 를 부를 수 있다"
   }
