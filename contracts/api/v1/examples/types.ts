@@ -464,8 +464,8 @@ export interface RoleplayStartData {
   delivery: {
     messages: Array<{
       messageId: UUID;
-      speakerRole: 'DIALOGUE';
-      purpose: 'QUESTION' | 'RESUME';
+      speakerRole: 'DIALOGUE' | 'HINT';
+      purpose: 'INTRO' | 'QUESTION' | 'RESUME';
       text: string;
       speech: { available: false; url: null };
     }>;

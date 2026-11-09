@@ -26,6 +26,7 @@
 - 첫 질문은 승인 시나리오의 저장된 지원 수준별 `opening_prompts`에서 읽습니다. 질문과 고정 메시지 ID를 세션·요청 키와 같은 트랜잭션으로 저장합니다. 문구 미준비나 저장 실패 시 신규 생성도 함께 롤백합니다.
 - 승인 전에 `scenario_opening_focus`에 S별 작은 목표를 명시하면 신규 세션의 질문 초점도 함께 저장합니다. 목표 목록 순서를 선택 기준으로 사용하지 않습니다. 기존 텍스트 시작 계약은 유지하지만 목표 연결이 없는 세션은 후속 운영 문맥을 공급하지 않습니다. 연결 정보는 서버 승인 자료이며 요청 본문이나 공개 응답에 추가하지 않습니다.
 - 학습 턴이 없으면 저장한 첫 질문을 같은 메시지 ID로 반환합니다. 기존 세션에 첫 질문 저장이 없으면 조건에 맞는 승인 문구를 확인해 한 번 저장합니다.
+- 2026-11-09: 학습 턴이 없고 시나리오의 `ai_role` 등장인물 이름표가 있으면 첫 질문 앞에 깡총이 장면 소개(`speakerRole=HINT`, `purpose=INTRO`)를 하나 붙입니다. 예) "저기 민수 보이지? 민수 말을 잘 듣고 이야기를 나눠 보자." 첫 목표가 사건 알아차리기라서 사건·감정은 말하지 않고, 이름표의 마지막 낱말만 부릅니다("넘어진 친구 지우" → "지우"). 저장하지 않고 매번 이름표로 만들며, 메시지 ID는 첫 질문 ID에서 정해지는 고정 값입니다. 학습 턴이 아니고 음성이 없습니다. 이름표가 없는 시나리오(안내자 등)와 RESUME 복원에는 붙이지 않습니다.
 - 진행된 세션은 마지막 확정 턴의 서버 응답만 `purpose=RESUME`으로 반환합니다. 원문 발화·전체 이력·초기 질문을 대신 반환하지 않습니다. 메시지 ID는 그 턴의 ID입니다. 그 턴에 마스코트 힌트(HINT)가 붙었어도 복원에는 캐릭터 대사(DIALOGUE)만 오고 힌트는 다시 보내지 않습니다.
 - 활동이 PAUSED·RECOVERY_NEEDED이거나 세션이 PAUSED라면, 시작 요청에서 활동별 시나리오 확정 근거·승인 버전·현재 작은 목표·지원 수준·복원 자료를 다시 검사합니다. 통과하면 활동과 세션을 IN_PROGRESS로 전환하고 200과 복원 문구를 반환합니다. 기존 세션의 재개에 최초 퀴즈 자료를 다시 요구하지 않습니다. 활동의 RECOVERY_NEEDED는 세션 상태가 아니며, 세션 상태에는 RECOVERY_NEEDED를 추가하지 않습니다.
 - 재개 검사 실패는 409 ROLEPLAY_RESUME_NOT_READY입니다. 새 요청 키 기록·상태 전환·문구 저장이 함께 롤백됩니다. 활동 또는 세션이 COMPLETED이면 재개하지 않고 현재 상태와 빈 메시지 배열을 반환합니다. 비활성 아동은 기존대로 404이며 참여 상태를 변경하지 않습니다.
@@ -88,10 +89,10 @@
 | `activityStatus` | 저장된 활동 상태. 세션 상태와 함께 다음 행동 판단 |
 | `lastDeliveredTurnId` | 마지막 확정 학습 턴 ID, 아직 없으면 null |
 | `checkpointVersion` | 현재 세션 버전. 마지막 턴 이후 상태 변경으로도 증가할 수 있음 |
-| `delivery.messages` | 재개 검사 통과 후 첫 질문 또는 마지막 확정 응답. 완료 상태는 빈 배열 |
+| `delivery.messages` | 재개 검사 통과 후 [장면 소개,] 첫 질문 또는 마지막 확정 응답. 완료 상태는 빈 배열 |
 | `messageId` | 재전송·복원 시 중복 표시를 막을 안정된 식별자 |
-| `speakerRole` | 현재 DIALOGUE |
-| `purpose` | 첫 질문 QUESTION, 마지막 응답 복원 RESUME |
+| `speakerRole` | 캐릭터 대사 DIALOGUE, 깡총이 장면 소개 HINT |
+| `purpose` | 장면 소개 INTRO, 첫 질문 QUESTION, 마지막 응답 복원 RESUME |
 | `speech` | 현재 `{available:false,url:null}`. 오디오 재생 준비를 기다리지 않음 |
 
 같은 키는 같은 세션을 가리키며 현재 진행 상태를 반환합니다. 진행 후의 응답을 최초 생성 응답의 고정 복사본으로 간주하지 않습니다.
@@ -139,8 +140,8 @@ export interface RoleplayStartData {
   delivery: {
     messages: Array<{
       messageId: UUID;
-      speakerRole: 'DIALOGUE';
-      purpose: 'QUESTION' | 'RESUME';
+      speakerRole: 'DIALOGUE' | 'HINT';
+      purpose: 'INTRO' | 'QUESTION' | 'RESUME';
       text: string;
       speech: { available: false; url: null };
     }>;

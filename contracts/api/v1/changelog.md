@@ -1,5 +1,10 @@
 # API v1 변경 이력
 
+## 2026-11-09 — 역할극 시작에 깡총이 장면 소개(INTRO)
+
+- [API-RPL-01](./roleplay/start-roleplay.md) 첫 시작(학습 턴 없음) 응답의 `delivery.messages` 앞에 깡총이 장면 소개 `{speakerRole: "HINT", purpose: "INTRO"}`가 하나 더 올 수 있습니다. 시나리오의 AI 등장인물 이름표가 있을 때만 붙고, RESUME 복원에는 붙지 않습니다.
+- 메시지가 하나라고 가정하지 말고 `speakerRole`로 말풍선을 나눕니다. 기존 첫 질문(QUESTION)의 ID·문구는 바뀌지 않습니다.
+
 ## 2026-11-06 — 아동 입장 시도 제한(429)
 
 - [API-IAM-08](./auth/enter-child.md)에 429 두 가지를 더했습니다. 둘 다 `Retry-After`(초)를 붙이고 몸통은 같은 오류 envelope 입니다. FE 는 429 상태로 분기하고 `Retry-After` 동안 입력을 막습니다(헤더가 없으면 60초).
