@@ -22,7 +22,8 @@ const KNOWN_VIOLATIONS: Record<string, Record<string, number>> = {
   "/child/activities": { "color-contrast": 1 },
   "/child/activities/:activityId": { "color-contrast": 2 },
   "/child/quiz/:activityId": { "color-contrast": 1 },
-  "/child/_dev/states": { "color-contrast": 6 },
+  // 보라 글자 1곳 + 모달 미리보기 버튼마다 1곳(ChildStatePreviewPage 의 DIALOG_PREVIEWS). 미리보기를 더하면 같이 늘린다.
+  "/child/_dev/states": { "color-contrast": 7 },
 }
 
 async function checkAccessibility(page: Page, path: string) {
