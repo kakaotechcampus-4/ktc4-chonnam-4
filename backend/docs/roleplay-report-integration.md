@@ -55,6 +55,8 @@ develop에서는 역할극 단독 활동(ROLEPLAY)을 422로 막고 있었다. �
 | `REPORT_UPGRADE_THRESHOLD_PERCENT`·`REPORT_FAST_UPGRADE_PERCENT` | 80·끔 | 팀 결정 대기 3번. 바꾸면 정책 버전 뒤에 값이 붙는다 |
 | `REPORT_EXTEND_FROM_LOWEST_LEVEL` | true | 팀 결정 대기 4번. L1 만점에서도 확장을 낼지 |
 
+Dev 서버에서는 리포트 경로 값을 Parameter Store `/neuringo/dev/ai/routes/report-generation/…`과 `/neuringo/dev/ai/routes/report-review/…`(base-url, model, timeout, max-output-tokens, reasoning-effort)에 넣는다. `deploy/host/params.txt`가 이 이름을 `AI_REPORT_*`로 읽어 서버 `.env`에 넣는다. 값을 넣지 않으면 리포트도 `AI_MODEL`로 간다.
+
 ## 팀 코드를 고친 곳과 이유
 
 | 파일 | 바꾼 것 | 이유 |
