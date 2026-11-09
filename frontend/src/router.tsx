@@ -6,6 +6,7 @@ import { ClassroomCreatePage, ClassroomEditPage } from './features/instructor/pa
 import { ChildDetailPage } from './features/instructor/pages/ChildDetailPage'
 import { ChildEditPage } from './features/instructor/pages/ChildEditPage'
 import { ActivityCreatePage } from './features/instructor/pages/ActivityCreatePage'
+import { ActivityManagementPage } from './features/instructor/pages/ActivityManagementPage'
 import { ActivityReportPage } from './features/instructor/pages/ActivityReportPage'
 import { RecommendationsPage } from './features/instructor/pages/RecommendationsPage'
 import { AccountPage } from './features/instructor/pages/AccountPage'
@@ -91,6 +92,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <ChildEditPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  {
+    path: '/activities',
+    element: (
+      <RequireInstructorAuth>
+        <ActivityManagementPage />
       </RequireInstructorAuth>
     ),
   },

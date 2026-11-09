@@ -10,6 +10,8 @@ type InstructorNavItem = {
   label: string
   icon: MaterialIconName
   to?: string
+  /** 하위 주소가 다른 메뉴인 경우(`/activities` 와 `/activities/new`) 주소가 같을 때만 선택으로 본다. */
+  exact?: boolean
 }
 
 const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
@@ -17,7 +19,7 @@ const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
   { label: '학급', icon: 'groups', to: '/classrooms' },
   { label: '활동 만들기', icon: 'post_add', to: '/activities/new' },
   { label: '콘텐츠·승인', icon: 'fact_check', to: '/content' },
-  { label: '활동 관리', icon: 'assignment' },
+  { label: '활동 관리', icon: 'assignment', to: '/activities', exact: true },
   { label: '리포트', icon: 'insert_chart', to: '/reports' },
   { label: '추천·다음목표', icon: 'flag', to: '/recommendations' },
   { label: '알림', icon: 'notifications' },
@@ -27,9 +29,10 @@ const INSTRUCTOR_NAV_ITEMS: InstructorNavItem[] = [
 /**
  * 하위 화면(`/classrooms/abc`, `/classrooms/new`)에서도 상위 메뉴를 선택된 상태로 보인다.
  * `/classrooms-archive` 같은 이름이 겹치는 경로는 제외하려고 `/` 경계까지 확인한다.
+ * `exact` 면 주소가 같을 때만 선택으로 본다.
  */
-function isNavActive(pathname: string, to: string): boolean {
-  return pathname === to || pathname.startsWith(`${to}/`)
+function isNavActive(pathname: string, to: string, exact = false): boolean {
+  return pathname === to || (!exact && pathname.startsWith(`${to}/`))
 }
 
 export { INSTRUCTOR_NAV_ITEMS, isNavActive }

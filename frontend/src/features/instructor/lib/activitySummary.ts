@@ -23,6 +23,16 @@ export function countByStatus(activities: Countable[]): StatusCounts {
   return counts
 }
 
+/** 활동 관리 "전체 활동 상태 분포"의 줄 순서. 진행 흐름(시작 전 → 진행 → 멈춤 → 완료) 순이다. */
+export const STATUS_ORDER: ActivityStatus[] = ['NOT_STARTED', 'IN_PROGRESS', 'PAUSED', 'RECOVERY_NEEDED', 'COMPLETED']
+
+/** 서버 상태 다섯 가지를 하나씩 센다. 대시보드의 countByStatus 와 달리 일시 중지·복구 필요를 나누어 센다. */
+export function countEachStatus(activities: { status: ActivityStatus }[]): Record<ActivityStatus, number> {
+  const counts = Object.fromEntries(STATUS_ORDER.map((status) => [status, 0])) as Record<ActivityStatus, number>
+  for (const { status } of activities) counts[status]++
+  return counts
+}
+
 const TYPE_ORDER: ActivityType[] = ['FIRST_COMBINED', 'SELF_EMOTION_QUIZ', 'OTHER_EMOTION_QUIZ', 'ROLEPLAY']
 
 export type TypeCompletion = { activityType: ActivityType; completed: number; total: number }

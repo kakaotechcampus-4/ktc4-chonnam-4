@@ -75,7 +75,7 @@ function InstructorLayout({
                 </span>
               )
             }
-            const active = isNavActive(pathname, item.to)
+            const active = isNavActive(pathname, item.to, item.exact)
             return (
               <Link
                 key={item.label}

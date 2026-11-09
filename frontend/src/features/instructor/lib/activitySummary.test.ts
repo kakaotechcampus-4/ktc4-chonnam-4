@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { completionByType, countByStatus, recentEvents } from './activitySummary'
+import { completionByType, countByStatus, countEachStatus, recentEvents } from './activitySummary'
 
 const at = (day: number) => `2026-11-0${day}T10:00:00+09:00`
 
 describe('활동 요약', () => {
+  it('상태 다섯 가지를 하나씩 세고, 없는 상태는 0 으로 둔다', () => {
+    expect(countEachStatus([{ status: 'PAUSED' }, { status: 'RECOVERY_NEEDED' }, { status: 'RECOVERY_NEEDED' }])).toEqual({
+      NOT_STARTED: 0,
+      IN_PROGRESS: 0,
+      PAUSED: 1,
+      RECOVERY_NEEDED: 2,
+      COMPLETED: 0,
+    })
+  })
+
   it('상태별로 세고, 일시 중지와 복구 필요는 함께 "챙길 활동"으로 센다', () => {
     const counts = countByStatus([
       { status: 'NOT_STARTED', activityType: 'FIRST_COMBINED' },
