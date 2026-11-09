@@ -158,6 +158,7 @@ public final class SplitReviewValidation {
                                             output.path("revision_instruction"),
                                             RevisionInstruction.class),
                             null,
+                            null,
                             null);
             boolean priority =
                     decision == EvaluationDecision.SAFETY_ESCALATION

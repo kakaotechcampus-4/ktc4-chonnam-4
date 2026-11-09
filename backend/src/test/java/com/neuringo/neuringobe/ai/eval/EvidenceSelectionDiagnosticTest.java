@@ -329,6 +329,9 @@ class EvidenceSelectionDiagnosticTest {
         body.putNull("revision_instruction");
         body.putNull("answer_directness_violation");
         body.putNull("goal_progress_violation");
+        body.putObject("character_interaction_review")
+                .put("mode", "CHARACTER_REACTION")
+                .put("quote", input.path("candidate_response").path("text").asString());
         return body;
     }
 

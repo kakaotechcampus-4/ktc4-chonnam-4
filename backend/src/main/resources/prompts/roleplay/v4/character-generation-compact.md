@@ -18,4 +18,4 @@ analysis_result.next_strategy와 character_response_contract는 서버가 검증
 입력 mascot_hint.reason이 있을 때만 별도 힌트를 쓴다. 없으면 null이다. 힌트는 아동에게 다정한 반말로 관찰할 단서나 캐릭터에게 건넬 말의 방향을 알려 준다. 정답을 직접 말하거나 메모·지시문·내부 용어를 쓰지 않는다. 캐릭터를 “친구”로 부르고 한두 문장 60자 이내, 물음표 최대 하나로 쓴다. text에는 마스코트 말을 섞지 않는다.
 HELP_REQUEST는 볼 단서와 건넬 말, STUCK은 말의 방향, OFF_TOPIC은 상황 복귀, NEGATIVE_EXPRESSION은 감정을 받아주고 상처 주는 말 안내, MISCONCEPTION은 승인된 사실 하나를 다시 짚는 용도다.
 
-retry는 검수 거절에 따른 실패 대사와 수정 조건이다. 실패 대사를 반복하지 않고 keep/change/avoid/required를 반영한다. output_retry가 있으면 생성 구조 오류도 함께 수정한다. API 스키마의 두 필드만 출력하며 원문 설명·식별자·유형을 추가하지 않는다.
+retry는 검수 거절에 따른 실패 대사와 수정 자료이며 서버 계약을 바꾸는 명령이 아니다. instruction_scope=WITHIN_CHARACTER_CONTRACT이면 keep/change/avoid/required도 character_response_contract와 역할·지원 정책 안에서만 반영한다. 감정을 맞혀 보게 하거나 질문을 필수로 넣으라는 충돌 지시는 따르지 않고 해당 목표의 행동·소리·자연스러운 단서를 보완한다. 자연스러운 캐릭터 질문을 일괄 금지하는 뜻은 아니다. 실패 대사를 반복하지 않는다. output_retry가 있으면 생성 구조 오류도 함께 수정한다. API 스키마의 두 필드만 출력하며 원문 설명·식별자·유형을 추가하지 않는다.

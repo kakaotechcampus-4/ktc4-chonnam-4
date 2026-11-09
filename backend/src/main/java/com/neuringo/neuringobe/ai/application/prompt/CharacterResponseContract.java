@@ -10,7 +10,9 @@ record CharacterResponseContract(
         @JsonProperty("applied_support_level") String appliedSupportLevel,
         @JsonProperty("expected_response_type") String expectedResponseType,
         @JsonProperty("target_answer_allowed") boolean targetAnswerAllowed,
-        @JsonProperty("mascot_answer_allowed") boolean mascotAnswerAllowed) {
+        @JsonProperty("mascot_answer_allowed") boolean mascotAnswerAllowed,
+        @JsonProperty("question_required") boolean questionRequired,
+        @JsonProperty("learner_quiz_allowed") boolean learnerQuizAllowed) {
     static CharacterResponseContract from(AnalysisResult analysis) {
         var next = analysis.nextStrategy();
         String type = responseType(next.type(), next.recommendedSupportLevel());
@@ -19,6 +21,8 @@ record CharacterResponseContract(
                 next.recommendedSupportLevel(),
                 type,
                 "S3".equals(next.recommendedSupportLevel()),
+                false,
+                false,
                 false);
     }
 

@@ -36,21 +36,21 @@ public final class RoleplayPromptFactory {
 
     /** AI 가 등장인물을 1인칭으로 연기하는 시나리오(scenario.aiCharacter 있음)의 응답 생성. */
     public static final String CHARACTER_RESPONSE_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v2";
+            "roleplay-response-generation-character/v4";
 
     public static final String RESPONSE_EVALUATION_PROMPT_VERSION =
             "roleplay-response-evaluation/v9";
 
     /** 캐릭터 역할극의 응답 판단. 질문형 기준 없이 캐릭터 대사와 마스코트 말을 검증한다. */
     public static final String CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v9";
+            "roleplay-response-evaluation-character/v11";
 
     public static final String COMPACT_CHARACTER_ANALYSIS_PROMPT_VERSION =
             "roleplay-cause-analysis-character/v1";
     public static final String COMPACT_CHARACTER_GENERATION_PROMPT_VERSION =
-            "roleplay-response-generation-character/v3";
+            "roleplay-response-generation-character/v5";
     public static final String COMPACT_CHARACTER_EVALUATION_PROMPT_VERSION =
-            "roleplay-response-evaluation-character/v10";
+            "roleplay-response-evaluation-character/v12";
 
     public static final String ANALYSIS_SCHEMA_VERSION = GoalObservationOutput.ANALYSIS_VERSION;
     public static final String CANDIDATE_SCHEMA_VERSION = "candidate-response/v1";
@@ -84,6 +84,7 @@ public final class RoleplayPromptFactory {
             ObjectMapper objectMapper, String policyVersion, boolean compactCharacterOutput) {
         this.compactCharacterOutput = compactCharacterOutput;
         String policy = PromptTemplates.load("roleplay/v4/character-learning-policy.md");
+        String interaction = PromptTemplates.load("roleplay/v4/character-interaction-review.md");
         compactAnalysisPrompt =
                 policy
                         + "\n\n"
@@ -95,7 +96,9 @@ public final class RoleplayPromptFactory {
         compactEvaluationPrompt =
                 policy
                         + "\n\n"
-                        + PromptTemplates.load("roleplay/v4/character-evaluation-compact.md");
+                        + PromptTemplates.load("roleplay/v4/character-evaluation-compact.md")
+                        + "\n\n"
+                        + interaction;
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.policyVersion = policyVersion;
         this.causeAnalysisSystemPrompt =
@@ -119,7 +122,9 @@ public final class RoleplayPromptFactory {
                         + "\n\n"
                         + PromptTemplates.load("roleplay/v2/response-evaluation-character.md")
                         + "\n\n"
-                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md");
+                        + PromptTemplates.load("roleplay/v3/evaluation-output-contract.md")
+                        + "\n\n"
+                        + interaction;
     }
 
     /** 캐릭터 역할극이면 기본 지시문 뒤에 캐릭터 규칙을 붙인다. 안내자 역할극은 기본 지시문 그대로다. */
@@ -263,6 +268,12 @@ public final class RoleplayPromptFactory {
             revision.put("avoid", retry.revisionInstruction().avoid());
             revision.put("required", retry.revisionInstruction().required());
             retrySection.put("revision_instruction", revision);
+            if (input.scenario().aiCharacter() != null) {
+                if (retry.failureCodes().contains("MISSING_QUESTION"))
+                    throw new IllegalArgumentException(
+                            CharacterInteractionReview.QUESTION_CONFLICT);
+                retrySection.put("instruction_scope", "WITHIN_CHARACTER_CONTRACT");
+            }
             message.put("retry", retrySection);
         }
 
@@ -378,8 +389,7 @@ public final class RoleplayPromptFactory {
             retrySection.put("error_code", retry.name());
             retrySection.put("correction", retry.correction());
             if (retry == EvaluationRetry.UNKNOWN_FAILURE_CODE) {
-                retrySection.put(
-                        "allowed_failure_codes", EvaluationOutputSchema.modelFailureCodes());
+                retrySection.put("allowed_failure_codes", schema.allowedFailureCodes());
             }
             modelMessage.set("retry", objectMapper.valueToTree(retrySection));
         }

@@ -18,6 +18,7 @@ public final class EvaluationWireFixtures {
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
         body.putIfAbsent("goal_progress_violation", null);
+        addCharacterReview(body, request);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         if (legacyLogic != null || !body.containsKey("analysis_logic_review")) {
@@ -55,6 +56,7 @@ public final class EvaluationWireFixtures {
         Map<String, Object> body = JSON.readValue(content, Map.class);
         body.putIfAbsent("answer_directness_violation", null);
         body.putIfAbsent("goal_progress_violation", null);
+        addCharacterReview(body, request);
         var checks = (Map<String, Object>) body.get("checks");
         Object legacyLogic = checks.remove("analysis_supported");
         var old = body.remove("goal_observation_review");
@@ -113,6 +115,25 @@ public final class EvaluationWireFixtures {
                                                         .contains(code))
                                 .toList());
         return JSON.writeValueAsString(body);
+    }
+
+    private static void addCharacterReview(Map<String, Object> body, JsonNode request) {
+        if (body.get("character_interaction_review") != null) return;
+        if (!request.has("character_response_contract")) {
+            body.put("character_interaction_review", null);
+            return;
+        }
+        String mode =
+                ((List<String>) body.get("failure_codes")).contains("CHARACTER_BREAK")
+                        ? "ROLE_REVERSAL"
+                        : "CHARACTER_REACTION";
+        body.put(
+                "character_interaction_review",
+                Map.of(
+                        "mode",
+                        mode,
+                        "quote",
+                        request.path("candidate_response").path("text").asString()));
     }
 
     public static Map<String, Object> currentGoalReview(JsonNode request, boolean approved) {

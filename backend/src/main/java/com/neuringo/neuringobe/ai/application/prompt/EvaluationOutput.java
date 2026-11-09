@@ -28,7 +28,9 @@ record EvaluationOutput(
         @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
         @JsonProperty("answer_directness_violation")
                 AnswerDirectnessViolation answerDirectnessViolation,
-        @JsonProperty("goal_progress_violation") GoalProgressViolation goalProgressViolation) {
+        @JsonProperty("goal_progress_violation") GoalProgressViolation goalProgressViolation,
+        @JsonProperty("character_interaction_review")
+                CharacterInteractionReview characterInteractionReview) {
 
     EvaluationResult toResult(ScopedAnalysisContext.Approvals approvals) {
         boolean priority =

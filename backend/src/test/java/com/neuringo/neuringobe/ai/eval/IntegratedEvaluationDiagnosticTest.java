@@ -39,8 +39,10 @@ class IntegratedEvaluationDiagnosticTest {
                                     .path("state")
                                     .path("current_micro_goal_id"));
             assertThat(request.promptVersion())
-                    .isEqualTo("roleplay-response-evaluation-character/v9");
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v7");
+                    .isEqualTo(
+                            com.neuringo.neuringobe.ai.application.prompt.RoleplayPromptFactory
+                                    .CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v8");
             assertThat(request.userPrompt())
                     .doesNotContain("expected_verdict", "case_id", "expected_status");
         }
@@ -203,6 +205,9 @@ class IntegratedEvaluationDiagnosticTest {
         body.putNull("revision_instruction");
         body.putNull("answer_directness_violation");
         body.putNull("goal_progress_violation");
+        body.putObject("character_interaction_review")
+                .put("mode", "CHARACTER_REACTION")
+                .put("quote", input.path("candidate_response").path("text").asString());
         body.put("analysis_id", request.traceContext().analysisId().toString());
         body.set(
                 "activity_review",

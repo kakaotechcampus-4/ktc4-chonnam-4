@@ -4,6 +4,10 @@ import com.neuringo.neuringobe.ai.application.structured.InvalidLlmOutputExcepti
 
 /** 모델 원문이나 예외 내용을 다시 보내지 않고 서버가 확인한 수정 조건만 전달한다. */
 public enum EvaluationRetry {
+    CHARACTER_QUESTION_CONFLICT(
+            "캐릭터 계약은 question_required=false다. 질문 부재만으로 거절하지 않는다. 목표 단서가 부족하면 ANALYSIS_RESPONSE_MISMATCH, 반응을 잇기 어려우면 NOT_ANSWERABLE로 실제 대사를 검수한다. 소리·행동도 단서가 될 수 있으며 정답을 묻는 문답으로 고치라고 지시하지 않는다. 통과하려고 PASS로 바꾸지 않는다."),
+    CHARACTER_INTERACTION_CONFLICT(
+            "character_interaction_review는 실제 후보 text의 연속 인용과 발화 방식이다. 캐릭터의 반응·자연스러운 질문과 아동에게 감정을 맞히게 하는 LEARNER_QUIZ·도움 주체를 바꾼 ROLE_REVERSAL을 구분한다. 뒤 두 경우 CHARACTER_BREAK와 conversation_coherent=false로 거절한다. 인용을 만들거나 PASS로 강제하지 않는다."),
     GOAL_PROGRESS_CONFLICT(
             "goal_progress_violation에는 실제 달성 주장이나 조기 마무리의 출처와 근거를 쓴다. 현재 목표 미달성 상태에서 질문 초점만 바꾸는 것은 거절 사유가 아니다. 근거 없는 분석·후보는 해당 검사로 독립 검수하며 통과하려고 PASS로 바꾸지 않는다."),
     DIRECTNESS_CONTRACT_CONFLICT(
@@ -57,6 +61,8 @@ public enum EvaluationRetry {
     private static EvaluationRetry knownReason(String reason) {
         if (reason == null) return null;
         return switch (reason) {
+            case CharacterInteractionReview.QUESTION_CONFLICT -> CHARACTER_QUESTION_CONFLICT;
+            case CharacterInteractionReview.CONFLICT -> CHARACTER_INTERACTION_CONFLICT;
             case GoalProgressViolation.CONFLICT -> GOAL_PROGRESS_CONFLICT;
             case AnswerDirectnessViolation.CONFLICT -> DIRECTNESS_CONTRACT_CONFLICT;
             case "목표 관찰과 활동 목표 판정이 모두 승인되어야 합니다.", "근거 없는 분석은 후보만 재생성할 수 없습니다." ->

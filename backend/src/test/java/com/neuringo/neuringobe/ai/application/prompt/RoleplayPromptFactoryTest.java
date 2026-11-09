@@ -41,10 +41,15 @@ class RoleplayPromptFactoryTest {
                                     RoleplayObservationTestPlans.inputForScenario(input.scenario()),
                                     EvaluationRetry.INVALID_STRUCTURE)
                             .request();
-            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v7");
+            assertThat(request.responseSchemaVersion()).isEqualTo("evaluation-output/v8");
             assertThat(request.responseJsonSchema())
                     .contains("additionalProperties", "failure_codes");
-            assertThat(request.promptVersion()).endsWith("/v9");
+            assertThat(request.promptVersion())
+                    .isEqualTo(
+                            input.scenario().aiCharacter() == null
+                                    ? RoleplayPromptFactory.RESPONSE_EVALUATION_PROMPT_VERSION
+                                    : RoleplayPromptFactory
+                                            .CHARACTER_RESPONSE_EVALUATION_PROMPT_VERSION);
             assertThat(request.systemPrompt())
                     .contains(
                             "현재 목표 달성과 활동 전체 판정을 구분한다",

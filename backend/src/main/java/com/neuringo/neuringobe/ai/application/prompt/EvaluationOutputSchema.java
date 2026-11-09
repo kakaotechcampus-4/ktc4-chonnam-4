@@ -13,7 +13,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** 요청의 바인딩과 같은 스키마를 제공자 제약과 수신 검증에 사용한다. */
 final class EvaluationOutputSchema {
-    static final String VERSION = "evaluation-output/v7";
+    static final String VERSION = "evaluation-output/v8";
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final String jsonSchema;
     private final Schema validator;
@@ -58,9 +58,16 @@ final class EvaluationOutputSchema {
                 JSON.valueToTree(
                         java.util.Map.of(
                                 "type", "string", "enum", List.of(candidateId.toString()))));
-        var parts = EvaluationSchemaParts.properties();
+        var parts = EvaluationSchemaParts.properties().deepCopy();
         for (String key : List.of("checks", "decision", "failure_codes", "revision_instruction"))
             properties.set(key, parts.path(key));
+        if (contract != null) {
+            ((ObjectNode) properties.path("failure_codes").path("items"))
+                    .set("enum", JSON.valueToTree(allowedFailureCodes()));
+        }
+        properties.set(
+                "character_interaction_review",
+                JSON.valueToTree(CharacterInteractionReview.schema(contract)));
         var directness = JSON.valueToTree(AnswerDirectnessViolation.schema(contract, candidate));
         properties.set("answer_directness_violation", directness);
         directnessValidator =
@@ -85,6 +92,12 @@ final class EvaluationOutputSchema {
 
     void validate(String content) {
         var node = JSON.readTree(content);
+        if (contract != null && node != null && node.path("failure_codes").isArray()) {
+            for (var code : node.path("failure_codes"))
+                if ("MISSING_QUESTION".equals(code.asString()))
+                    throw new InvalidLlmOutputException(
+                            CharacterInteractionReview.QUESTION_CONFLICT, null);
+        }
         if (node != null
                 && node.has("answer_directness_violation")
                 && !directnessValidator
@@ -107,11 +120,18 @@ final class EvaluationOutputSchema {
     }
 
     void requireValidDirectness(EvaluationOutput output) {
+        CharacterInteractionReview.requireValid(output, contract, candidate);
         AnswerDirectnessViolation.requireValid(output, contract, candidate);
         if (contract != null) GoalProgressViolation.requireValid(output, analysis, candidate);
     }
 
     static List<String> modelFailureCodes() {
         return EvaluationSchemaParts.modelFailureCodes();
+    }
+
+    List<String> allowedFailureCodes() {
+        return modelFailureCodes().stream()
+                .filter(code -> contract == null || !code.equals("MISSING_QUESTION"))
+                .toList();
     }
 }

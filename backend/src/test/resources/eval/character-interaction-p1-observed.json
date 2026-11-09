@@ -1,0 +1,129 @@
+{
+  "description": "실제 P1 대사를 고정한 서버 계약 회귀 자료. 새로운 검수 모델의 의미 정확도를 증명하는 자료가 아니다.",
+  "analysis": {
+    "analysis_basis": [
+      "발표하다가 말을 못 찾아 중간에 멈추고 앉았다고 말했다."
+    ],
+    "response_act": "ANSWER_ATTEMPT",
+    "relevance": "RELEVANT",
+    "learning_state": "GOAL_ACHIEVED",
+    "primary_gap": {
+      "code": "MISSING_EMOTION",
+      "description": "발표 중 친구가 느꼈을 감정은 아직 말하지 않았다."
+    },
+    "next_strategy": {
+      "type": "ADVANCE_GOAL",
+      "target_micro_goal_id": "00000000-0000-0000-0000-000000000102",
+      "purpose": "친구가 발표 중 어떤 감정을 느꼈을지 살펴본다.",
+      "recommended_support_level": "S0"
+    },
+    "analysis_confidence": 0.99,
+    "observations": {
+      "o0": "EXPLICIT",
+      "o1": "NOT_EXPRESSED",
+      "o2": "NOT_EXPRESSED"
+    },
+    "activity_goal": {
+      "basis": [
+        {
+          "criterion_reference": "test-evidence:00000000-0000-0000-0000-000000000101:0",
+          "turn_id": "00000000-0000-0000-0000-000000000201",
+          "micro_goal_id": "00000000-0000-0000-0000-000000000101"
+        }
+      ],
+      "decision": "IN_PROGRESS"
+    }
+  },
+  "candidates": [
+    "응… (잠깐 고개를 숙인다)",
+    "응, 그러다 자리에 앉았어. 그때 내 얼굴은 어때 보였어?",
+    "응, 말이 안 나와서 앉았어. 발표할 때 어떤 기분이었을까?"
+  ],
+  "first_evaluation": {
+    "analysis_id": "3e0817a8-afef-4f95-aa33-bd5967ce0ca4",
+    "observation_reviews": {
+      "o0": {
+        "evidence_quote": "발표하다가 말을 못 찾아서 중간에 멈추고 그냥 앉았지?",
+        "verdict": "SUPPORTED",
+        "reason_code": "MATCHED_EXPRESSION",
+        "explanation": "발표 중 말을 못 찾아 멈추고 앉았다는 사건을 직접 말했습니다."
+      },
+      "o1": {
+        "evidence_quote": null,
+        "verdict": "SUPPORTED",
+        "reason_code": "ABSENCE_CONFIRMED",
+        "explanation": "이번 발화에는 친구의 감정을 나타내는 표현이 없습니다."
+      },
+      "o2": {
+        "evidence_quote": null,
+        "verdict": "SUPPORTED",
+        "reason_code": "ABSENCE_CONFIRMED",
+        "explanation": "이번 발화는 감정을 말이 나오지 않은 사건과 연결하지 않았습니다."
+      }
+    },
+    "current_goal_review": {
+      "verdict": "SUPPORTED",
+      "reason_code": "LOGIC_GROUNDED",
+      "explanation": "이번 발화가 발표 중 멈추고 앉았다는 현재 목표의 승인 기준을 충족합니다.",
+      "reviewed_micro_goal_id": "00000000-0000-0000-0000-000000000101",
+      "reviewed_learning_state": "GOAL_ACHIEVED"
+    },
+    "activity_review": {
+      "reviewed_decision": "IN_PROGRESS",
+      "verdict": "SUPPORTED",
+      "reason_code": "ASSESSMENT_GROUNDED",
+      "evidence_references": [
+        {
+          "turn_id": "00000000-0000-0000-0000-000000000201",
+          "micro_goal_id": "00000000-0000-0000-0000-000000000101",
+          "criterion_reference": "test-evidence:00000000-0000-0000-0000-000000000101:0"
+        }
+      ],
+      "explanation": "사건 파악의 근거는 있으나 감정 이해와 사건 연결은 아직 확인되지 않아 진행 중 판정이 타당합니다."
+    },
+    "interpretation_strategy_review": {
+      "verdict": "SUPPORTED",
+      "reason_code": "LOGIC_GROUNDED",
+      "explanation": "아동은 사건을 답했고 감정은 말하지 않았으므로 다음 초점으로 감정을 살피는 전략이 적절합니다."
+    },
+    "candidate_id": "c0db7fa5-85c4-4960-900e-96949c23add8",
+    "checks": {
+      "format_valid": true,
+      "safety_valid": true,
+      "privacy_valid": true,
+      "scenario_consistent": true,
+      "analysis_response_consistent": false,
+      "goal_aligned": true,
+      "educationally_correct": true,
+      "difficulty_appropriate": true,
+      "conversation_coherent": true,
+      "answerable": false,
+      "non_repetitive": true
+    },
+    "decision": "REGENERATE",
+    "failure_codes": [
+      "ANALYSIS_RESPONSE_MISMATCH",
+      "MISSING_QUESTION",
+      "NOT_ANSWERABLE"
+    ],
+    "revision_instruction": {
+      "keep": [
+        "친구의 반말과 짧은 말투",
+        "다음 초점을 친구가 발표 중 느꼈을 감정에 둠",
+        "S0에 맞춰 감정의 정답을 직접 말하지 않음"
+      ],
+      "change": [
+        "친구가 아동의 사건 설명에 반응한 뒤 발표 중 어떤 기분이었는지 묻는 자연스러운 질문을 덧붙임"
+      ],
+      "avoid": [
+        "감정을 대신 단정하거나 정답으로 제시하기",
+        "안내자나 교사 말투로 바꾸기"
+      ],
+      "required": [
+        "correctly complete valid JSON"
+      ]
+    },
+    "answer_directness_violation": null,
+    "goal_progress_violation": null
+  }
+}
