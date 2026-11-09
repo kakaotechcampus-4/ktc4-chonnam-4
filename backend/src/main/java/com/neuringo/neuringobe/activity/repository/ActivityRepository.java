@@ -26,6 +26,10 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
     Page<Activity> findByChildIdAndStatusOrderByAssignedAtDesc(
             UUID childId, ActivityStatus status, Pageable pageable);
 
+    /** 학급 아동들의 활동을 한 번에 읽는다. 같은 배정 시각이면 활동 ID 순으로 페이지 경계를 고정한다. */
+    Page<Activity> findByChildIdInOrderByAssignedAtDescActivityIdAsc(
+            Collection<UUID> childIds, Pageable pageable);
+
     Optional<Activity> findByIdempotencyKey(UUID idempotencyKey);
 
     boolean existsByChildIdAndActivityType(UUID childId, ActivityType activityType);

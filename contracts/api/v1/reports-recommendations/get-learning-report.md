@@ -172,7 +172,10 @@ HTTP 200.
           ]
         }
       ]
-    }
+    },
+    "activityType": "FIRST_COMBINED",
+    "childName": "민준",
+    "goalTitle": "친구가 속상할 때 위로하는 말을 한다"
   },
   "meta": {
     "traceId": "90000000-0000-4000-8000-000000000001"
@@ -194,6 +197,9 @@ HTTP 200.
 | data.difficultyDecision | ReportDifficultyDecision | 예 | 아니오 | 이 역할극 뒤 정한 다음 난이도 |
 | data.metrics | ReportMetrics | 예 | 아니오 | 분자·분모를 함께 든 지표 |
 | data.narrative | ReportNarrative | 예 | 예 | AI 항목(관찰·효과적인 지원·어려운 지점)과 근거 ID |
+| data.activityType | ActivityType | 예 | 아니오 | 활동 유형(최초 결합·역할극). 리포트 목록 표의 유형 칸 |
+| data.childName | string | 예 | 아니오 | 아동 표시 이름 |
+| data.goalTitle | string | 예 | 예 | 활동의 학습 목표 제목. 목표가 없는 활동은 null |
 
 meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며 빈 배열도 정상입니다. 중첩 DTO는 아래 TypeScript 정의를 함께 확인합니다.
 

@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { apiError, fixtures } from "@/test/msw/handlers"
+import { apiError, fixtures, seedActivity, seedRoleplayLearning } from "@/test/msw/handlers"
 import { server } from "@/test/msw/server"
 import { renderRoutes, signIn } from "@/test/render"
 import { listClassrooms } from "../api"
@@ -213,5 +213,56 @@ describe("학급 상세 화면", () => {
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("잠시 후 다시 시도해 주세요.")
     expect(router.state.location.pathname).toBe(`/classrooms/${A1}`)
+  })
+
+  describe("학급 단위 활동·리포트", () => {
+    const A1_1 = fixtures.childA1_1.childId
+    const A1_2 = fixtures.childA1_2.childId
+    const B1_1 = fixtures.childB1_1.childId
+
+    it("개요는 학급 활동으로 진행 중·완료·복구 필요와 유형별 완료 수를 센다", async () => {
+      seedActivity({ childId: A1_1, goalTitle: "위로하는 말 하기", status: "COMPLETED" })
+      seedActivity({ childId: A1_2, goalTitle: "차례 기다리기", status: "IN_PROGRESS" })
+      seedActivity({ childId: A1_2, goalTitle: "도움 요청하기", status: "RECOVERY_NEEDED" })
+      seedActivity({ childId: B1_1, goalTitle: "다른 반 활동", status: "COMPLETED" })
+      renderDetailPage()
+
+      const stat = async (label: string) => (await screen.findByText(label, { selector: "dt" })).nextElementSibling?.textContent
+      await screen.findByText("최초 결합 활동")
+      expect(await stat("진행 중")).toBe("1")
+      expect(await stat("완료")).toBe("1")
+      expect(await stat("복구 필요")).toBe("1")
+      expect(screen.getByText("완료 1/3")).toBeInTheDocument()
+    })
+
+    it("배정 활동 탭은 이 학급 아동의 활동만 아동·목표와 함께 보인다", async () => {
+      seedActivity({ childId: A1_1, goalTitle: "위로하는 말 하기" })
+      seedActivity({ childId: B1_1, goalTitle: "다른 반 활동" })
+      renderDetailPage(A1, "activities")
+
+      const panel = await screen.findByRole("tabpanel", { name: "배정 활동" })
+      expect(await within(panel).findByRole("link", { name: "위로하는 말 하기" })).toBeInTheDocument()
+      expect(within(panel).getByRole("link", { name: "김하늘" })).toBeInTheDocument()
+      expect(within(panel).queryByText("다른 반 활동")).not.toBeInTheDocument()
+    })
+
+    it("리포트 탭은 이 학급 리포트만 보이고, 아동을 고르면 주소에 남기고 그 아동 것만 보인다", async () => {
+      seedRoleplayLearning({ childId: A1_1, goalTitle: "첫째 리포트" })
+      seedRoleplayLearning({ childId: A1_2, goalTitle: "둘째 리포트" })
+      seedRoleplayLearning({ childId: B1_1, goalTitle: "다른 반 리포트" })
+      const { user, router } = renderDetailPage(A1, "reports")
+
+      const panel = await screen.findByRole("tabpanel", { name: "리포트" })
+      expect(await within(panel).findByRole("link", { name: "첫째 리포트" })).toBeInTheDocument()
+      expect(within(panel).getByRole("link", { name: "둘째 리포트" })).toBeInTheDocument()
+      expect(within(panel).queryByText("다른 반 리포트")).not.toBeInTheDocument()
+
+      // 동명이인은 보기에 순번이 붙는다.
+      const childSelect = within(panel).getByRole("combobox", { name: "아동" })
+      expect(within(childSelect).getAllByRole("option").map((o) => o.textContent)).toEqual(["전체", "김하늘 (1)", "김하늘 (2)"])
+      await user.selectOptions(childSelect, "김하늘 (1)")
+      expect(new URLSearchParams(router.state.location.search).get("childId")).not.toBeNull()
+      expect(within(panel).getAllByRole("link")).toHaveLength(1)
+    })
   })
 })

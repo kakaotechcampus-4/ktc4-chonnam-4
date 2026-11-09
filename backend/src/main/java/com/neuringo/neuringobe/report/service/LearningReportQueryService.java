@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.report.service;
 
 import com.neuringo.neuringobe.activity.repository.ActivityRepository;
 import com.neuringo.neuringobe.child.security.ChildAccessScope;
+import com.neuringo.neuringobe.classroom.service.ClassroomService;
 import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.report.application.ReportNarrative;
@@ -40,6 +41,7 @@ public class LearningReportQueryService {
     private final RecommendationStore recommendations;
     private final FollowUpDifficultyService difficulties;
     private final ChildAccessScope access;
+    private final ClassroomService classrooms;
     private final JsonMapper json;
 
     public LearningReportQueryService(
@@ -48,12 +50,14 @@ public class LearningReportQueryService {
             RecommendationStore recommendations,
             FollowUpDifficultyService difficulties,
             ChildAccessScope access,
+            ClassroomService classrooms,
             JsonMapper json) {
         this.activities = activities;
         this.reports = reports;
         this.recommendations = recommendations;
         this.difficulties = difficulties;
         this.access = access;
+        this.classrooms = classrooms;
         this.json = json;
     }
 
@@ -65,7 +69,7 @@ public class LearningReportQueryService {
         access.requireInstructor(
                 authentication, activity.getChildId(), LearningReportQueryService::recordNotFound);
         return reports.findCompletedByActivity(activityId)
-                .map(this::toResponse)
+                .map(report -> withLabels(List.of(report)).getFirst())
                 .orElseThrow(LearningReportQueryService::recordNotFound);
     }
 
@@ -75,8 +79,25 @@ public class LearningReportQueryService {
         if (page < 0 || size < 1 || size > 100) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
         }
-        return reports.findCompletedByChild(childId, page, size).stream()
-                .map(this::toResponse)
+        return withLabels(reports.findCompletedByChild(childId, page, size));
+    }
+
+    /** 학급 아동 전체의 완료 리포트. 남의 학급은 없는 학급과 같은 404 다. */
+    public List<LearningReportResponse> listByClassroom(
+            UUID instructorId, UUID classId, int page, int size) {
+        classrooms.requireOwnedClassroom(instructorId, classId);
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "페이지 범위가 올바르지 않습니다.");
+        }
+        return withLabels(reports.findCompletedByClassroom(classId, page, size));
+    }
+
+    private List<LearningReportResponse> withLabels(List<LearningReportStore.StoredReport> found) {
+        var labels =
+                reports.findLabels(
+                        found.stream().map(LearningReportStore.StoredReport::activityId).toList());
+        return found.stream()
+                .map(report -> toResponse(report, labels.get(report.activityId())))
                 .toList();
     }
 
@@ -147,7 +168,8 @@ public class LearningReportQueryService {
                 koreanTime(row.decidedAt()));
     }
 
-    private LearningReportResponse toResponse(LearningReportStore.StoredReport report) {
+    private LearningReportResponse toResponse(
+            LearningReportStore.StoredReport report, LearningReportStore.ReportLabels labels) {
         var snapshot = json.readValue(report.snapshotJson(), ReportSnapshot.class);
         return new LearningReportResponse(
                 report.recordId(),
@@ -161,7 +183,10 @@ public class LearningReportQueryService {
                 snapshot.metrics(),
                 report.itemsJson() == null
                         ? null
-                        : json.readValue(report.itemsJson(), ReportNarrative.class));
+                        : json.readValue(report.itemsJson(), ReportNarrative.class),
+                labels == null ? null : labels.activityType(),
+                labels == null ? null : labels.childName(),
+                labels == null ? null : labels.goalTitle());
     }
 
     private static OffsetDateTime koreanTime(Instant instant) {

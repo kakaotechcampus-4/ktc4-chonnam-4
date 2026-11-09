@@ -461,6 +461,9 @@ export function seedRoleplayLearning({
       effectiveSupports: [{ text: "두 선택지를 들은 뒤 이유를 분명히 말했어요.", evidenceIds: ["E7"] }],
       difficultPoints: [{ text: "위로하는 말은 답을 듣고 따라 말했어요.", evidenceIds: ["E11"] }],
     },
+    activityType: activity.activityType,
+    childName: children.find((c) => c.childId === childId)?.displayName ?? "",
+    goalTitle,
   }
   if (withReport) reports.set(activity.activityId, report)
   const suggested = { title: goalTitle, category: null, parentGoalId: activity.goalId }
@@ -1411,6 +1414,33 @@ export const handlers = [
     return HttpResponse.json(envelope(goal))
   }),
 
+  // 학급 아동 전체의 활동(API-ACT-05). 강사만 부르고, 각 줄에 아동 이름과 목표 제목을 더한다. 준비 상태는 없다.
+  http.get("*/api/v1/classrooms/:classId/activities", ({ params, request }) => {
+    const session = authenticate(request)
+    if (session instanceof Response) return session
+    const classId = String(params.classId)
+    const url = new URL(request.url)
+    const path = url.pathname
+    if (!UUID_FORMAT.test(classId)) return invalidRequest(path)
+    if (!ownedClassroom(classId, session)) return classroomNotFound(classId, path)
+    const page = Number(url.searchParams.get("page") ?? 0)
+    const size = Number(url.searchParams.get("size") ?? 20)
+    if (!Number.isInteger(page) || !Number.isInteger(size) || page < 0 || size < 1 || size > 100) {
+      return invalidRequest(path)
+    }
+    const names = new Map(children.filter((c) => c.classId === classId).map((c) => [c.childId, c.displayName]))
+    const list = activities.filter((a) => names.has(a.childId)).reverse()
+    return HttpResponse.json(
+      envelope(
+        list.slice(page * size, (page + 1) * size).map((stored) => ({
+          ...toActivity(stored),
+          childName: names.get(stored.childId) ?? "",
+          goalTitle: goals.find((g) => g.goalId === stored.goalId)?.title ?? null,
+        })),
+      ),
+    )
+  }),
+
   // 강사(Bearer)와 입장한 아동(세션 쿠키) 둘 다 부른다. 아동은 자기 목록만 보고, 다른 아동 ID 는 서버처럼 404 로 숨긴다.
   http.get("*/api/v1/children/:childId/activities", ({ params, request }) => {
     const childId = String(params.childId)
@@ -1583,20 +1613,30 @@ export const handlers = [
     return HttpResponse.json(envelope(report))
   }),
 
+  // childId(아동 한 명)와 classId(학급 전체) 중 하나만 받는다(API-REC-02).
   http.get("*/api/v1/learning-records", ({ request }) => {
     const session = authenticate(request)
     if (session instanceof Response) return session
     const url = new URL(request.url)
     const path = url.pathname
     const childId = url.searchParams.get("childId")
-    if (!childId || !UUID_FORMAT.test(childId)) return invalidRequest(path)
-    if (!ownedChild(childId, session)) return childNotFound(path)
+    const classId = url.searchParams.get("classId")
+    if ((childId === null) === (classId === null)) return invalidRequest(path)
+    if (classId !== null) {
+      if (!UUID_FORMAT.test(classId)) return invalidRequest(path)
+      if (!ownedClassroom(classId, session)) return classroomNotFound(classId, path)
+    } else {
+      if (!childId || !UUID_FORMAT.test(childId)) return invalidRequest(path)
+      if (!ownedChild(childId, session)) return childNotFound(path)
+    }
     const page = Number(url.searchParams.get("page") ?? 0)
     const size = Number(url.searchParams.get("size") ?? 20)
     if (!Number.isInteger(page) || !Number.isInteger(size) || page < 0 || size < 1 || size > 100) {
       return invalidRequest(path)
     }
-    const list = [...reports.values()].filter((r) => r.childId === childId).reverse()
+    const inScope = (r: LearningReport) =>
+      classId !== null ? children.some((c) => c.childId === r.childId && c.classId === classId) : r.childId === childId
+    const list = [...reports.values()].filter(inScope).reverse()
     return HttpResponse.json(envelope(list.slice(page * size, (page + 1) * size)))
   }),
 

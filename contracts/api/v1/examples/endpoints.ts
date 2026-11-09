@@ -409,6 +409,27 @@ export function listChildActivities(
   });
 }
 
+export interface ListClassroomActivitiesArgs {
+  classId: T.UUID;
+  query?: {
+    page?: number;
+    size?: number;
+  };
+}
+
+export function listClassroomActivities(
+  api: ApiClient,
+  args: ListClassroomActivitiesArgs,
+  options: CallOptions = {}
+): Promise<T.ApiResponse<T.ClassroomActivityData[]>> {
+  return api.request<T.ClassroomActivityData[]>("/api/v1/classrooms/" + encodeURIComponent(args.classId) + "/activities" + queryString(args.query), {
+    method: "GET",
+    auth: "instructor",
+    expectedStatuses: [200],
+    signal: options.signal
+  });
+}
+
 export interface GetActivityArgs {
   activityId: T.UUID;
 }
@@ -696,9 +717,11 @@ export function getLearningReport(
   });
 }
 
+/** childId 와 classId 중 하나만 보낸다. 둘 다 있거나 둘 다 없으면 400 INVALID_REQUEST */
 export interface ListLearningReportsArgs {
   query: {
-    childId: T.UUID;
+    childId?: T.UUID;
+    classId?: T.UUID;
     page?: number;
     size?: number;
   };

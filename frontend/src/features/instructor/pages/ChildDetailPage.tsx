@@ -1,7 +1,15 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { deleteChild, getChild, getClassroom, issueChildCode, listChildActivities, listLearningGoals } from '../api'
+import {
+  deleteChild,
+  getChild,
+  getClassroom,
+  issueChildCode,
+  listChildActivities,
+  listLearningGoals,
+  listLearningReports,
+} from '../api'
 import { describeError } from '../errorMessage'
 import { InstructorLayout } from '../layout/InstructorLayout'
 import { ActivityStatusBadge } from '../components/ActivityStatusBadge'
@@ -13,7 +21,6 @@ import {
   outlineButtonClass,
   primaryButtonClass,
   tabBaseClass,
-  tabDisabledClass,
   tabIdleClass,
   tabSelectedClass,
   tableClass,
@@ -21,14 +28,21 @@ import {
   tableRowClass,
 } from '../components/styles'
 import { ACTIVITY_TYPE_LABELS } from '../lib/activityTypes'
-import { formatDateTime } from '../lib/dateTime'
+import { formatDate, formatDateTime } from '../lib/dateTime'
+import { countByStatus } from '../lib/activitySummary'
+import { DIRECTION_LABELS, SUPPORT_LABELS } from '../lib/reportLabels'
+import { useChildLatestLearning } from '../components/report/learningQueries'
+import { StatCard } from '../components/StatCard'
+import type { Activity } from '../api'
 import { cn } from '@/lib/utils'
 import { Notice } from '../components/Feedback'
 
-type DetailTab = 'history' | 'access-code'
+type DetailTab = 'overview' | 'history' | 'access-code'
+
+const TABS: DetailTab[] = ['overview', 'access-code', 'history']
 
 /**
- * 아동 상세 (시안 T-LRN-03~05). 활동 이력과 접근 코드 탭을 연다. 개요·학습 상태는 후속 범위라 탭만 보인다.
+ * 아동 상세 (시안 T-LRN-03~05). 개요·학습 상태, 접근 코드, 활동 이력 탭을 연다. 처음에는 활동 이력이 열린다.
  * 탭은 주소의 ?tab= 으로 관리한다(학급 상세와 같은 방식). 시안의 QR 은 MVP 범위 밖이라 탭 이름에서도 뺀다.
  * 활동을 누르면 활동 리포트로 간다.
  * 아동 삭제는 기록과 함께 영구 삭제라, 확인 창에서 함께 지워지는 활동 수를 알린다(ADR 2026-10-04 D3·D4).
@@ -39,7 +53,8 @@ function ChildDetailPage() {
   const queryClient = useQueryClient()
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab: DetailTab = searchParams.get('tab') === 'access-code' ? 'access-code' : 'history'
+  const requested = searchParams.get('tab')
+  const tab: DetailTab = TABS.includes(requested as DetailTab) ? (requested as DetailTab) : 'history'
 
   const childQuery = useQuery({
     queryKey: ['children', childId],
@@ -122,15 +137,15 @@ function ChildDetailPage() {
       }
       subheader={
         <div role="tablist" aria-label="아동 상세" className="flex gap-1">
-          <span
+          <button
+            type="button"
             role="tab"
-            aria-disabled="true"
-            aria-selected={false}
-            title="준비 중인 화면입니다"
-            className={cn(tabBaseClass, tabDisabledClass)}
+            aria-selected={tab === 'overview'}
+            onClick={() => selectTab('overview')}
+            className={cn(tabBaseClass, tab === 'overview' ? tabSelectedClass : tabIdleClass)}
           >
             개요 · 학습 상태
-          </span>
+          </button>
           <button
             type="button"
             role="tab"
@@ -183,6 +198,14 @@ function ChildDetailPage() {
           {/* 받은 코드는 다시 조회할 수 없어, 탭을 오가도 사라지지 않게 접근 코드 패널은 숨기기만 한다.
               다른 아동으로 바로 넘어가면 앞 아동의 코드가 남지 않도록 아동마다 패널을 새로 만든다(key). */}
           <AccessCodePanel key={childId} childId={childId!} hidden={tab !== 'access-code'} />
+          {tab === 'overview' && (
+            <ChildOverview
+              childId={childId!}
+              activities={activities}
+              goalTitles={goalTitles}
+              activitiesError={activitiesQuery.error}
+            />
+          )}
           {tab === 'history' && (
             <section role="tabpanel" aria-label="활동 이력">
               {activitiesQuery.isLoading ? (
@@ -351,6 +374,108 @@ function AccessCodePanel({ childId, hidden }: { childId: string; hidden: boolean
       <Notice tone="warning">
         다시 받으면 이전 코드는 바로 쓸 수 없어요. 코드는 지금만 볼 수 있으니 아이에게 전해 주세요.
       </Notice>
+    </section>
+  )
+}
+
+/**
+ * 개요·학습 상태 탭(시안 T-LRN-03 "현재 학습 상태"). 서버가 정한 다음 역할극 난이도·지원 수준, 활동 상태별 개수, 최근 활동과
+ * 최근 리포트 요약을 보인다. 서버가 주지 않는 "장기 미완료"·"평균 턴 수"는 넣지 않는다.
+ */
+function ChildOverview({
+  childId,
+  activities,
+  goalTitles,
+  activitiesError,
+}: {
+  childId: string
+  activities: Activity[] | undefined
+  goalTitles: Map<string, string>
+  activitiesError: Error | null
+}) {
+  const learning = useChildLatestLearning(childId)
+  // 최근 리포트 요약은 최신 난이도와 상관없이 가장 최근 완료 리포트다. 새 역할극의 요약이 아직 없어도 이전 요약은 보인다.
+  // 추천 화면과 같은 캐시 키라 다시 부르지 않는다.
+  const latestReportQuery = useQuery({
+    queryKey: ['learning-records', { childId, size: 1 }],
+    queryFn: () => listLearningReports(childId, 1),
+  })
+  const latestReport = latestReportQuery.data?.[0] ?? null
+  // 가장 최근 역할극(난이도를 정한 활동)의 요약이 아직 생성 중이거나 만들지 못한 경우.
+  const newestSummaryPending =
+    learning.difficulty !== null && latestReportQuery.isSuccess && latestReport?.activityId !== learning.difficulty.sourceActivityId
+  const counts = activities ? countByStatus(activities) : null
+  const latest = activities?.[0]
+  const difficulty = learning.difficulty
+
+  return (
+    <section role="tabpanel" aria-label="개요 · 학습 상태" className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
+          label="다음 역할극 난이도"
+          value={difficulty ? difficulty.scenarioLevel : learning.isLoading ? '…' : '-'}
+          note={difficulty ? `지난번보다 ${DIRECTION_LABELS[difficulty.direction]}` : '역할극을 마치면 정해져요'}
+        />
+        <StatCard
+          label="시작 지원"
+          value={difficulty ? SUPPORT_LABELS[difficulty.initialSupportLevel] : learning.isLoading ? '…' : '-'}
+          note={difficulty ? `${formatDate(difficulty.decidedAt)} 역할극 기준` : undefined}
+        />
+        <StatCard label="진행 중" value={counts ? String(counts.inProgress) : '-'} note={counts ? `시작 전 ${counts.notStarted}` : undefined} />
+        <StatCard
+          label="완료"
+          value={counts ? String(counts.completed) : '-'}
+          note={counts && counts.needsAttention > 0 ? `복구 필요 ${counts.needsAttention}` : counts ? `배정 ${counts.total}` : undefined}
+        />
+      </div>
+
+      {activitiesError && <Notice tone="error">{activitiesError.message || '활동을 불러오지 못했습니다.'}</Notice>}
+      {learning.error && (
+        <Notice tone="error">{describeError(learning.error, '학습 상태를 불러오지 못했습니다.')}</Notice>
+      )}
+
+      <div className={cn(cardClass, 'flex flex-col gap-2 p-5')}>
+        <h2 className="text-sm font-semibold">최근 활동</h2>
+        {latest ? (
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            <Link to={`/activities/${latest.activityId}/report`} className="hover:underline">
+              {latest.goalId ? (goalTitles.get(latest.goalId) ?? '학습 목표') : ACTIVITY_TYPE_LABELS[latest.activityType]}
+            </Link>
+            <ActivityStatusBadge status={latest.status} />
+            <span className="text-xs text-[var(--instructor-text-subtle)]">
+              {formatDateTime(latest.completedAt ?? latest.startedAt ?? latest.assignedAt)}
+            </span>
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--instructor-text-muted)]">아직 배정된 활동이 없습니다.</p>
+        )}
+      </div>
+
+      <div className={cn(cardClass, 'flex flex-col gap-2 p-5')}>
+        <h2 className="text-sm font-semibold">최근 리포트 요약</h2>
+        {newestSummaryPending && (
+          <p className="text-xs text-[var(--instructor-text-subtle)]">
+            가장 최근 역할극의 요약은 아직 준비 중이거나 만들지 못했어요.
+          </p>
+        )}
+        {latestReportQuery.isError ? (
+          <Notice tone="error">{describeError(latestReportQuery.error, '리포트를 불러오지 못했습니다.')}</Notice>
+        ) : latestReport ? (
+          <>
+            <p className="text-sm">{latestReport.summary}</p>
+            <Link
+              to={`/activities/${latestReport.activityId}/report`}
+              className="self-start text-xs text-[var(--instructor-link)] hover:underline"
+            >
+              리포트 보기 · {formatDate(latestReport.completedAt)}
+            </Link>
+          </>
+        ) : (
+          <p className="text-sm text-[var(--instructor-text-muted)]">
+            {latestReportQuery.isLoading ? '불러오는 중...' : '아직 완료한 역할극 리포트가 없습니다.'}
+          </p>
+        )}
+      </div>
     </section>
   )
 }

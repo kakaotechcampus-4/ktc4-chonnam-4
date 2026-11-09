@@ -149,6 +149,70 @@ class LearningReportApiIntegrationTest {
     }
 
     @Test
+    void classroomListShowsReportsWithLabelsAndHidesOtherInstructorsClassrooms() {
+        var owner = fixtures.signUpInstructor();
+        UUID classId = fixtures.createClassroom(owner, "학급 리포트");
+        UUID childId = fixtures.createChild(owner, classId, "학급 리포트 아동");
+        var seeded =
+                new RoleplayReportSeed(jdbc)
+                        .completedRoleplay(owner.userId(), classId, childId, NOW);
+        assertThat(preparation.prepare(seeded.activity())).isPresent();
+        complete(seeded.activity());
+        String goalTitle =
+                jdbc.queryForObject(
+                        "select title from learning_goal where goal_id=?",
+                        String.class,
+                        seeded.goal());
+        String activityType =
+                jdbc.queryForObject(
+                        "select activity_type from activity where activity_id=?",
+                        String.class,
+                        seeded.activity());
+
+        var listed = fixtures.get(owner, "/api/v1/learning-records?classId={id}", classId);
+        assertThat(listed).hasStatusOk();
+        String body = TestFixtures.body(listed);
+        assertThat((List<String>) JsonPath.read(body, "$.data[*].activityId"))
+                .containsExactly(seeded.activity().toString());
+        assertThat((List<String>) JsonPath.read(body, "$.data[*].childName"))
+                .containsExactly("학급 리포트 아동");
+        assertThat((List<String>) JsonPath.read(body, "$.data[*].goalTitle"))
+                .containsExactly(goalTitle);
+        assertThat((List<String>) JsonPath.read(body, "$.data[*].activityType"))
+                .containsExactly(activityType);
+
+        // 아동 목록과 단건도 같은 칸을 싣는다.
+        var byChild = fixtures.get(owner, "/api/v1/learning-records?childId={id}", childId);
+        assertThat((List<String>) JsonPath.read(TestFixtures.body(byChild), "$.data[*].childName"))
+                .containsExactly("학급 리포트 아동");
+        var single =
+                fixtures.get(owner, "/api/v1/activities/{id}/learning-record", seeded.activity());
+        assertThat((String) JsonPath.read(TestFixtures.body(single), "$.data.goalTitle"))
+                .isEqualTo(goalTitle);
+
+        UUID emptyClass = fixtures.createClassroom(owner, "빈 학급");
+        var empty = fixtures.get(owner, "/api/v1/learning-records?classId={id}", emptyClass);
+        assertThat((List<String>) JsonPath.read(TestFixtures.body(empty), "$.data")).isEmpty();
+
+        var other = fixtures.signUpInstructor();
+        assertHidden(
+                fixtures.get(other, "/api/v1/learning-records?classId={id}", classId),
+                "CLASSROOM_NOT_FOUND");
+
+        for (var query :
+                List.of(
+                        "/api/v1/learning-records",
+                        "/api/v1/learning-records?childId=" + childId + "&classId=" + classId)) {
+            var invalid = fixtures.get(owner, query);
+            assertThat(invalid).hasStatus(HttpStatus.BAD_REQUEST);
+            assertThat(invalid)
+                    .bodyJson()
+                    .extractingPath("$.error.code")
+                    .isEqualTo("INVALID_REQUEST");
+        }
+    }
+
+    @Test
     void decisionsAreIdempotentAndFinalOnceAccepted() {
         var owner = fixtures.signUpInstructor();
         var seeded = seed(owner);

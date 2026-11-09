@@ -6,10 +6,13 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -162,6 +165,45 @@ public class LearningReportStore {
                 size,
                 page * size);
     }
+
+    /** 학급 아동 전체의 완료 리포트. 정렬과 페이지는 아동별 목록과 같다. */
+    public List<StoredReport> findCompletedByClassroom(UUID classId, int page, int size) {
+        return jdbc.query(
+                "select "
+                        + COLUMNS
+                        + " from learning_report l join learning_record r on r.record_id = l.record_id"
+                        + " join child c on c.child_id = l.child_id"
+                        + " where c.class_id = ? and l.status = 'COMPLETED'"
+                        + " order by r.created_at desc, l.report_id desc limit ? offset ?",
+                LearningReportStore::stored,
+                classId,
+                size,
+                page * size);
+    }
+
+    /** 리포트 목록 표에 쓰는 활동 유형·아동 이름·목표 제목을 활동마다 한 번에 읽는다. */
+    public Map<UUID, ReportLabels> findLabels(Collection<UUID> activityIds) {
+        if (activityIds.isEmpty()) return Map.of();
+        var labels = new HashMap<UUID, ReportLabels>();
+        named.query(
+                "select a.activity_id, a.activity_type, c.display_name, g.title"
+                        + " from activity a join child c on c.child_id = a.child_id"
+                        + " left join learning_goal g on g.goal_id = a.goal_id"
+                        + " where a.activity_id in (:ids)",
+                new MapSqlParameterSource("ids", activityIds),
+                (RowCallbackHandler)
+                        rs ->
+                                labels.put(
+                                        rs.getObject("activity_id", UUID.class),
+                                        new ReportLabels(
+                                                rs.getString("activity_type"),
+                                                rs.getString("display_name"),
+                                                rs.getString("title"))));
+        return labels;
+    }
+
+    /** 리포트 표의 사람이 읽는 칸. 독립 퀴즈처럼 목표가 없으면 goalTitle 이 null 이다. */
+    public record ReportLabels(String activityType, String childName, String goalTitle) {}
 
     /** 추천 조회의 소유권 확인용. 리포트 상태와 상관없이 학습 기록에 연결된 리포트를 찾는다. */
     public Optional<StoredReport> findByRecord(UUID recordId) {

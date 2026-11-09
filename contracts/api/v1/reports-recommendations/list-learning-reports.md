@@ -16,7 +16,10 @@
 
 ## 2. 용도·중요 규칙
 
-담당 아동의 완료 리포트를 최근 완료 순으로 돌려준다. 학급 개요의 "최근 학습 요약"과 추천 화면이 아동마다 첫 쪽(size 1~5)을 읽는다.
+담당 아동 한 명(`childId`) 또는 담당 학급 아동 전체(`classId`)의 완료 리포트를 최근 완료 순으로 돌려준다. 추천 화면은 아동마다 첫 쪽(size 1~5)을 읽고, 리포트 목록 화면은 학급 하나를 `classId`로 읽는다.
+
+- `childId`와 `classId` 중 하나만 보낸다. 둘 다 있거나 둘 다 없으면 400 `INVALID_REQUEST`다.
+- 각 리포트에 표에 쓰는 `activityType`·`childName`·`goalTitle`이 함께 온다([API-REC-01](./get-learning-report.md)의 response schema).
 
 - 완료본(COMPLETED)만 담는다. 빈 배열도 정상이다.
 - `page`는 0부터, `size`는 1~100(기본 20)이다. 범위를 벗어나면 400 `INVALID_REQUEST`다. 응답은 배열이고 전체 개수는 주지 않는다.
@@ -27,7 +30,8 @@
 
 | 이름 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| childId | UUID string | 예 | 담당 아동 |
+| childId | UUID string | 둘 중 하나 | 담당 아동 |
+| classId | UUID string | 둘 중 하나 | 담당 학급 |
 | page | number | 아니오 | 0부터, 기본 0 |
 | size | number | 아니오 | 1~100, 기본 20 |
 
@@ -173,7 +177,10 @@ HTTP 200.
             ]
           }
         ]
-      }
+      },
+      "activityType": "FIRST_COMBINED",
+      "childName": "민준",
+      "goalTitle": "친구가 속상할 때 위로하는 말을 한다"
     }
   ],
   "meta": {
@@ -192,11 +199,12 @@ meta.traceId는 필수 문자열입니다. optional(누락)과 null은 다르며
 
 | HTTP | code | 상황·FE 행동 |
 |---|---|---|
-| 400 | INVALID_REQUEST | UUID·쿼리·헤더 형식 |
+| 400 | INVALID_REQUEST | UUID·쿼리·헤더 형식, childId·classId 를 둘 다 보내거나 둘 다 빠뜨림 |
 | 401 | AUTHENTICATION_REQUIRED | 토큰 없음 |
 | 401 | INVALID_TOKEN | 강사 토큰 만료·위조. 입력·토큰 폐기 |
 | 403 | ACCESS_DENIED | 강사가 아닌 역할 |
-| 404 | CHILD_NOT_FOUND | 없는 아동·남의 아동 |
+| 404 | CHILD_NOT_FOUND | 없는 아동·남의 아동(childId 로 부를 때) |
+| 404 | CLASSROOM_NOT_FOUND | 없는 학급·남의 학급(classId 로 부를 때) |
 | 500 | INTERNAL_ERROR | 내부 오류. 원문·예외 전문 비노출 |
 
 남의 아동·기록·추천은 없는 자원과 같은 404로 숨깁니다. 공통 오류 envelope은 [공통 연동 규칙](../integration-guide.md)을 따릅니다.
@@ -212,9 +220,11 @@ import type { ApiClient, CallOptions } from "./api-client.ts";
 import { queryString } from "./api-client.ts";
 import type * as T from "./types.ts";
 
+/** childId 와 classId 중 하나만 보낸다. 둘 다 있거나 둘 다 없으면 400 INVALID_REQUEST */
 export interface ListLearningReportsArgs {
   query: {
-    childId: T.UUID;
+    childId?: T.UUID;
+    classId?: T.UUID;
     page?: number;
     size?: number;
   };

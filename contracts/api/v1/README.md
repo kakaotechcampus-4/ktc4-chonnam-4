@@ -91,6 +91,7 @@ develop `f017637`에 리포트·추천·다음 역할극 난이도(API-REC-01~06
 | [API-ACT-02 · 아동 배정 활동 목록 조회](./activities/list-child-activities.md) | GET | `/api/v1/children/{childId}/activities` | 구현 | listChildActivities |
 | [API-ACT-03 · 활동 상세 조회](./activities/get-activity.md) | GET | `/api/v1/activities/{activityId}` | 구현 | getActivity |
 | [API-ACT-04 · 활동 완료 status 전용 조회](./activities/get-activity-status.md) | GET | `/api/v1/activities/{activityId}/status` | 구현 | getActivityStatus |
+| [API-ACT-05 · 학급 활동 목록 조회](./activities/list-classroom-activities.md) | GET | `/api/v1/classrooms/{classId}/activities` | 구현 | listClassroomActivities |
 ### 표정·퀴즈
 
 | API 문서 | Method | 경로 | 상태 | FE 함수 |
