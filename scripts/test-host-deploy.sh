@@ -288,6 +288,31 @@ for entry in "ROLEPLAY_HTTP_ENABLED=true" "ROLEPLAY_SPEECH_DELIVERY=none" "ROLEP
 done
 check "역할극 설정 전달 중에도 비밀값을 출력하지 않는다" no_leak
 
+# 리포트 초안·검수 모델 경로(neuringo.ai.routes)도 Parameter Store 값이 backend env 파일로 전달된다.
+new_case
+export FAKE_GOOD_TAGS="aaaaaaa"
+cat >> "$tmp/fake/params" <<'PARAMS'
+/neuringo/dev/ai/routes/report-generation/base-url	https://report-draft.invalid/v1
+/neuringo/dev/ai/routes/report-generation/model	draft-model
+/neuringo/dev/ai/routes/report-generation/timeout	61s
+/neuringo/dev/ai/routes/report-generation/max-output-tokens	1999
+/neuringo/dev/ai/routes/report-generation/reasoning-effort	none
+/neuringo/dev/ai/routes/report-review/base-url	https://report-review.invalid/v1
+/neuringo/dev/ai/routes/report-review/model	review-model
+/neuringo/dev/ai/routes/report-review/timeout	91s
+/neuringo/dev/ai/routes/report-review/max-output-tokens	1998
+/neuringo/dev/ai/routes/report-review/reasoning-effort	low
+PARAMS
+deploy aaaaaaa
+check "리포트 모델 경로를 포함한 배포가 성공한다" same "$code" 0
+for entry in "AI_REPORT_GENERATION_BASE_URL=https://report-draft.invalid/v1" "AI_REPORT_GENERATION_MODEL=draft-model" \
+  "AI_REPORT_GENERATION_TIMEOUT=61s" "AI_REPORT_GENERATION_MAX_OUTPUT_TOKENS=1999" "AI_REPORT_GENERATION_REASONING_EFFORT=none" \
+  "AI_REPORT_REVIEW_BASE_URL=https://report-review.invalid/v1" "AI_REPORT_REVIEW_MODEL=review-model" \
+  "AI_REPORT_REVIEW_TIMEOUT=91s" "AI_REPORT_REVIEW_MAX_OUTPUT_TOKENS=1998" "AI_REPORT_REVIEW_REASONING_EFFORT=low"; do
+  check "리포트 모델 경로 ${entry%%=*} 전달" file_has "$tmp/home/state/dev.env" "${entry%%=*}='${entry#*=}'"
+done
+check "리포트 모델 경로 전달 중에도 비밀값을 출력하지 않는다" no_leak
+
 # ── develop ────────────────────────────────────────────
 new_case
 export FAKE_GOOD_TAGS="aaaaaaa bbbbbbb"
