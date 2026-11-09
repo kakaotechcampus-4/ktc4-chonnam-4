@@ -469,11 +469,12 @@ export interface RoleplayStartData {
   activityStatus: ActivityStatus;
   lastDeliveredTurnId: UUID | null;
   checkpointVersion: number;
+  characterName: string | null;
   delivery: {
     messages: Array<{
       messageId: UUID;
-      speakerRole: 'DIALOGUE';
-      purpose: 'QUESTION' | 'RESUME';
+      speakerRole: 'DIALOGUE' | 'HINT';
+      purpose: 'INTRO' | 'QUESTION' | 'RESUME';
       text: string;
       speech: { available: false; url: null };
     }>;

@@ -361,6 +361,8 @@ export type RoleplaySession = {
   sessionId: string
   status: RoleplaySessionStatus
   activityStatus: ChildActivityStatus
+  /** 거북이가 연기하는 상대 이름(예: 지우). 말풍선 이름표에 쓴다. 상대 인물이 없는 시나리오면 null. */
+  characterName: string | null
   /** 첫 질문 또는 이어서 할 때 마지막 응답. 진행할 수 없는 상태면 비어 있다. */
   messages: (RoleplayMessage & { id: string })[]
 }
@@ -388,6 +390,7 @@ type RoleplayStartData = {
   sessionId: string
   status: RoleplaySessionStatus
   activityStatus: ChildActivityStatus
+  characterName?: string | null
   delivery: { messages: (ServerMessage & { messageId: string })[] }
 }
 
@@ -406,6 +409,7 @@ export async function startRoleplay(activityId: string, requestKey: string): Pro
     sessionId: data.sessionId,
     status: data.status,
     activityStatus: data.activityStatus,
+    characterName: data.characterName?.trim() || null,
     messages: data.delivery.messages.map((message) => ({ id: message.messageId, ...toMessage(message) })),
   }
 }

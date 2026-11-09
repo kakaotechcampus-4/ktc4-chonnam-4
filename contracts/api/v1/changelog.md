@@ -1,5 +1,11 @@
 # API v1 변경 이력
 
+## 2026-11-09 — 역할극 시작에 깡총이 장면 소개(INTRO)
+
+- [API-RPL-01](./roleplay/start-roleplay.md) 첫 시작(학습 턴 없음) 응답의 `delivery.messages` 앞에 깡총이 장면 소개 `{speakerRole: "HINT", purpose: "INTRO"}`가 하나 더 올 수 있습니다. 시나리오의 AI 등장인물 이름표가 있을 때만 붙고, RESUME 복원에는 붙지 않습니다.
+- 메시지가 하나라고 가정하지 말고 `speakerRole`로 말풍선을 나눕니다. 기존 첫 질문(QUESTION)의 ID·문구는 바뀌지 않습니다.
+- 응답에 `characterName`(문자열 또는 null)을 더했습니다. 아동 화면은 이 값을 캐릭터 말풍선 이름표로 쓰고, null이면 "거북이 안내자"로 둡니다. 시작·복원 모두 옵니다.
+
 ## 학급 단위 조회(강사 대시보드·학급 상세·리포트 목록)
 
 - [API-ACT-05](./activities/list-classroom-activities.md) `GET /api/v1/classrooms/{classId}/activities`를 더했습니다. 학급 아동 전체의 활동을 최근 배정 순으로 주고, 각 줄에 `childName`·`goalTitle`을 덧붙입니다. 준비 상태(`nextAction`)는 넣지 않습니다. 남의 학급은 404 `CLASSROOM_NOT_FOUND`입니다.

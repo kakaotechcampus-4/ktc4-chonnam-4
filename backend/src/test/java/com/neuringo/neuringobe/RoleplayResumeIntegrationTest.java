@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.neuringo.neuringobe.activity.domain.ActivityNextAction;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointCommand;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayCheckpointStore;
@@ -317,6 +318,42 @@ class RoleplayResumeIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void startIntroducesTheCharacterBeforeTheFirstQuestionAndKeepsItsNameOnResume(
+            boolean progressed) throws Exception {
+        var f = fixture("IN_PROGRESS", "IN_PROGRESS", progressed, true, "NONE", "넘어진 친구 지우");
+        var first =
+                request(f, f.key())
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.characterName").value("지우"));
+        if (progressed) {
+            first.andExpect(jsonPath("$.data.delivery.messages.length()").value(1))
+                    .andExpect(jsonPath("$.data.delivery.messages[0].purpose").value("RESUME"));
+            return;
+        }
+        first.andExpect(jsonPath("$.data.delivery.messages.length()").value(2))
+                .andExpect(jsonPath("$.data.delivery.messages[0].speakerRole").value("HINT"))
+                .andExpect(jsonPath("$.data.delivery.messages[0].purpose").value("INTRO"))
+                .andExpect(
+                        jsonPath("$.data.delivery.messages[0].text")
+                                .value("저기 지우 보이지? 지우 말을 잘 듣고 이야기를 나눠 보자."))
+                .andExpect(jsonPath("$.data.delivery.messages[0].speech.available").value(false))
+                .andExpect(jsonPath("$.data.delivery.messages[1].speakerRole").value("DIALOGUE"))
+                .andExpect(jsonPath("$.data.delivery.messages[1].purpose").value("QUESTION"))
+                .andExpect(
+                        jsonPath("$.data.delivery.messages[1].messageId")
+                                .value(f.message().toString()));
+        String introId =
+                JsonPath.read(
+                        first.andReturn().getResponse().getContentAsString(),
+                        "$.data.delivery.messages[0].messageId");
+        // 다른 요청 키로 다시 불러도 소개 ID 는 같다(화면이 중복으로 보여 주지 않는다).
+        request(f, UUID.randomUUID())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.delivery.messages[0].messageId").value(introId));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"PAUSED", "RECOVERY_NEEDED"})
     void readyActivityWithoutASessionCanStartAfterCheckingTheSavedInitialEvidence(String state)
             throws Exception {
@@ -383,6 +420,18 @@ class RoleplayResumeIntegrationTest {
             boolean progressed,
             boolean savedOpening,
             String missingLegacyData) {
+        return fixture(
+                activityStatus, sessionStatus, progressed, savedOpening, missingLegacyData, null);
+    }
+
+    /** characterRole 이 있으면 AI 가 연기할 등장인물(FRIEND)을 그 이름표로 둔다. */
+    private Fixture fixture(
+            String activityStatus,
+            String sessionStatus,
+            boolean progressed,
+            boolean savedOpening,
+            String missingLegacyData,
+            String characterRole) {
         UUID user = UUID.randomUUID(),
                 classroom = UUID.randomUUID(),
                 child = UUID.randomUUID(),
@@ -419,10 +468,16 @@ class RoleplayResumeIntegrationTest {
                 learningGoal,
                 activityStatus);
         jdbc.update(
-                "insert into scenario(scenario_id,class_id,status,scenario_level,goal_content_hash,title,scenario_facts,opening_prompts,origin,created_at) values(?,?,'DRAFT','L2',?,'합성 시나리오','[\"사실\"]','{\"S1\":\"승인된 첫 질문\"}','PREPARED',now())",
+                "insert into scenario(scenario_id,class_id,status,scenario_level,goal_content_hash,title,ai_role,characters,scenario_facts,opening_prompts,origin,created_at) values(?,?,'DRAFT','L2',?,'합성 시나리오',?,cast(? as jsonb),'[\"사실\"]','{\"S1\":\"승인된 첫 질문\"}','PREPARED',now())",
                 scenario,
                 classroom,
-                "a".repeat(64));
+                "a".repeat(64),
+                characterRole == null ? null : "FRIEND",
+                characterRole == null
+                        ? "[]"
+                        : "[{\"id\":\"LEARNER\",\"role\":\"학습자\"},{\"id\":\"FRIEND\",\"role\":\""
+                                + characterRole
+                                + "\"}]");
         jdbc.update(
                 "insert into scenario_micro_goal(micro_goal_id,scenario_id,order_no,description,required_evidence) values(?,?,1,'합성 작은 목표','[\"말한다\"]')",
                 goal,

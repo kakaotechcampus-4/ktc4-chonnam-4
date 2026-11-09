@@ -35,6 +35,11 @@ public class RoleplayStartDeliveryService {
     @Transactional(propagation = Propagation.MANDATORY)
     public RoleplayStartResponse require(RoleplaySessionState state) {
         List<RoleplayStartResponse.Message> messages = List.of();
+        String characterName =
+                scenarios
+                        .findAiCharacterRole(state.scenarioId(), state.scenarioVersion())
+                        .flatMap(RoleplaySceneIntro::name)
+                        .orElse(null);
         if ("IN_PROGRESS".equals(state.status())
                 && state.activityStatus() == ActivityStatus.IN_PROGRESS) {
             if (state.lastTurnNumber() == 0) {
@@ -64,7 +69,14 @@ public class RoleplayStartDeliveryService {
                     messageId = opening.getMessageId();
                     text = opening.getOpeningText();
                 }
-                messages = List.of(message(messageId, "QUESTION", text));
+                var question = message(messageId, "QUESTION", text);
+                messages =
+                        characterName == null
+                                ? List.of(question)
+                                : List.of(
+                                        sceneIntro(
+                                                messageId, RoleplaySceneIntro.text(characterName)),
+                                        question);
             } else {
                 // 상태 변경으로 세션 버전이 증가해도 마지막 확정 턴은 그대로 복원한다.
                 var saved =
@@ -86,12 +98,23 @@ public class RoleplayStartDeliveryService {
                 state.activityStatus(),
                 state.lastTurnId(),
                 state.checkpointVersion(),
+                characterName,
                 new RoleplayStartResponse.Delivery(messages));
     }
 
     private RoleplayStartResponse.Message message(UUID id, String purpose, String text) {
         return new RoleplayStartResponse.Message(
                 id, "DIALOGUE", purpose, text, new RoleplayTurnResponse.Speech(false, null));
+    }
+
+    /** 깡총이(HINT)의 장면 소개. 음성 없이 첫 질문 앞에 둔다. 학습 턴이 아니며 저장하지 않는다. */
+    private RoleplayStartResponse.Message sceneIntro(UUID openingMessageId, String text) {
+        return new RoleplayStartResponse.Message(
+                RoleplaySceneIntro.messageId(openingMessageId),
+                "HINT",
+                RoleplaySceneIntro.PURPOSE,
+                text,
+                new RoleplayTurnResponse.Speech(false, null));
     }
 
     private ApiException notReady() {

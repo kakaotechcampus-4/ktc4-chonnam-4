@@ -44,6 +44,22 @@ public interface ScenarioRepository extends JpaRepository<Scenario, UUID> {
             @Param("version") int version,
             @Param("support") String support);
 
+    /** AI 가 연기하는 등장인물(ai_role)의 이름표. 역할극 시작 때 깡총이가 상대를 소개하는 데 쓴다. */
+    @Query(
+            value =
+                    """
+            select c ->> 'role'
+            from scenario s
+                cross join lateral jsonb_array_elements(
+                    case when jsonb_typeof(s.characters) = 'array' then s.characters else cast('[]' as jsonb) end) c
+            where s.scenario_id = :id and s.scenario_version = :version
+                and c ->> 'id' = s.ai_role
+            limit 1
+            """,
+            nativeQuery = true)
+    Optional<String> findAiCharacterRole(
+            @Param("id") UUID scenarioId, @Param("version") int version);
+
     /** 새 세션 저장이 끝날 때까지 승인 폐기와의 경합을 막는다. */
     @Query(
             value =
