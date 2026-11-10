@@ -63,6 +63,9 @@ const STEP_LABEL: Record<string, string> = {
   REPORT_CALL_LIMIT: '호출 한도',
   SCENARIO_GENERATION: '시나리오 생성',
   RESULT: '최종 결과',
+  // 턴 결과 판정이 지목하는 곳(declaredNext). 실제 결과 코드와 같은 이름이면 화면에서 겹쳐 보이지 않는다.
+  RESPONSE_DELIVERY: '응답 전달',
+  SAFETY_STOP: '대화 중단',
   // 흐름의 끝(최종 결과 코드)
   DELIVERED: '응답 전달',
   REINPUT_REQUIRED: '다시 입력 요청',
@@ -83,7 +86,7 @@ const STAGE_LABEL: Record<string, string> = {
   REQUEST_PREPARATION: '요청 준비',
   UPLOAD_VALIDATION: '음성 파일 검사',
   WORKER_QUEUE: '작업 대기',
-  WORKER_EXECUTION: '작업 실행(기타)',
+  WORKER_EXECUTION: '작업 실행',
   TURN_PREPARATION: '턴 준비',
   REQUEST_CLAIM: '중복 요청 확인',
   CHECKPOINT_LOOKUP: '저장된 결과 조회',

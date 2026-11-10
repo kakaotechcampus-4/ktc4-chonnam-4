@@ -126,6 +126,9 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     expect(within(rejected).getByText("거절")).toBeInTheDocument()
     expect(within(rejected).getByText("ANSWER_TOO_DIRECT")).toBeInTheDocument()
     expect(rejected).toHaveTextContent("다음: 응답 생성")
+    // 승인된 턴은 판정이 지목한 곳(RESPONSE_DELIVERY)과 실제 결과(DELIVERED)가 같은 뜻이라 덧붙이지 않는다.
+    expect(steps[6]).toHaveTextContent("다음: 응답 전달")
+    expect(steps[6]).not.toHaveTextContent("판정이 지목한 곳")
 
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("dialog", { name: "실행 상세" })).not.toBeInTheDocument()

@@ -167,7 +167,7 @@ function StepRow({ step, last }: { step: AgentRunStep; last: boolean }) {
           <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--ops-text-2)]">
             <ArrowDown aria-hidden size={13} className="text-[var(--ops-muted)]" />
             다음: <span className="font-medium text-[var(--ops-text)]">{stepLabel(step.ledTo)}</span>
-            {step.declaredNext && step.declaredNext !== step.ledTo && (
+            {step.declaredNext && stepLabel(step.declaredNext) !== stepLabel(step.ledTo) && (
               <span className="text-[var(--ops-muted)]">
                 (판정이 지목한 곳 <Code>{step.declaredNext}</Code>)
               </span>
@@ -198,14 +198,20 @@ function Waterfall({ spans, total }: { spans: AgentRunSpan[]; total: number }) {
       <ul className="mt-3 flex flex-col gap-1.5">
         {spans.map((span) => {
           const failed = span.outcome !== null && span.outcome !== 'COMPLETED'
+          // 맨 바깥 구간은 실행 전체다. "분류 안 된 시간"은 그 구간의 자체 시간을 부르는 이름이라 여기서는 쓰지 않는다.
+          const label = span.operation
+            ? stepLabel(span.operation)
+            : span.stage === 'HTTP_REQUEST'
+              ? '실행 전체'
+              : stageLabel(span.stage)
           return (
             <li key={span.id} className="grid grid-cols-[150px_minmax(0,1fr)_56px] items-center gap-x-3 text-xs">
               <span
                 className="truncate text-[var(--ops-text-2)]"
                 style={{ paddingLeft: depthOf(span, byId) * 10 }}
-                title={failed ? `${stageLabel(span.stage)} — ${span.outcome}` : stageLabel(span.stage)}
+                title={failed ? `${label} — ${span.outcome}` : label}
               >
-                {span.operation ? stepLabel(span.operation) : stageLabel(span.stage)}
+                {label}
               </span>
               <span aria-hidden className="relative h-2 rounded-full bg-[var(--ops-track)]">
                 <span
