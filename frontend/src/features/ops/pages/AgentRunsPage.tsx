@@ -5,13 +5,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/features/instructor/api'
 import { getAgentRunOverview, listAgentRuns, type AgentRunFilter, type RunPath, type Workflow } from '../api'
 import { LatencyChart, PathSeriesChart } from '../components/charts'
+import { FlowPatternsPanel, OutcomeSection, OutcomeStat, RunListPanel } from '../components/flows'
 import {
   CallStat,
   CodePanel,
-  EndingPanel,
-  PathStat,
-  RunsPanel,
-  RunsStat,
+  FailureCausePanel,
   StagePanel,
   StepPanel,
   TransitionPanel,
@@ -21,7 +19,7 @@ import { Empty, Panel } from '../components/primitives'
 import { PeriodContext } from '../lib/period'
 import { RunDetail } from '../components/RunDetail'
 import { dayClockSeconds } from '../lib/format'
-import { PATHS, WORKFLOW_LABEL, WORKFLOWS } from '../lib/labels'
+import { WORKFLOW_LABEL, WORKFLOWS } from '../lib/labels'
 import { focusRing } from '../lib/tones'
 
 const PERIODS = [
@@ -50,9 +48,11 @@ export function AgentRunsPage() {
     PERIODS.find((option) => option.hours === DEFAULT_HOURS)!
   const hours = period.hours
   const workflow = WORKFLOWS.find((value) => value === params.get('workflow'))
-  const path = PATHS.find((value) => value === params.get('path'))
   const selected = params.get('run') ?? undefined
   const filter: AgentRunFilter = { hours, workflow }
+  // 구역마다 세부 흐름(예: 실패 구역의 안내로 종료·오류)으로 좁힐 수 있다. 화면 안에서만 바뀌므로 주소에는 남기지 않는다.
+  const [successPath, setSuccessPath] = useState<RunPath | undefined>()
+  const [failurePath, setFailurePath] = useState<RunPath | undefined>()
 
   const overview = useQuery({
     queryKey: ['ops', 'agent-runs', 'overview', hours, workflow ?? null],
@@ -60,9 +60,15 @@ export function AgentRunsPage() {
     refetchInterval: REFRESH_MS,
     placeholderData: keepPreviousData,
   })
-  const runs = useQuery({
-    queryKey: ['ops', 'agent-runs', 'list', hours, workflow ?? null, path ?? null],
-    queryFn: () => listAgentRuns({ ...filter, path }),
+  const successRuns = useQuery({
+    queryKey: ['ops', 'agent-runs', 'list', hours, workflow ?? null, 'SUCCESS', successPath ?? null],
+    queryFn: () => listAgentRuns({ ...filter, outcome: 'SUCCESS', path: successPath }),
+    refetchInterval: REFRESH_MS,
+    placeholderData: keepPreviousData,
+  })
+  const failureRuns = useQuery({
+    queryKey: ['ops', 'agent-runs', 'list', hours, workflow ?? null, 'FAILURE', failurePath ?? null],
+    queryFn: () => listAgentRuns({ ...filter, outcome: 'FAILURE', path: failurePath }),
     refetchInterval: REFRESH_MS,
     placeholderData: keepPreviousData,
   })
@@ -81,8 +87,9 @@ export function AgentRunsPage() {
     )
   }
 
-  const refreshing = overview.isFetching || runs.isFetching
+  const refreshing = overview.isFetching || successRuns.isFetching || failureRuns.isFetching
   const data = overview.data
+  const open = (runId: string) => change({ run: runId })
 
   return (
     <div className="ops-scope">
@@ -132,7 +139,8 @@ export function AgentRunsPage() {
             type="button"
             onClick={() => {
               void overview.refetch()
-              void runs.refetch()
+              void successRuns.refetch()
+              void failureRuns.refetch()
             }}
             aria-label="새로 고침"
             title={
@@ -155,7 +163,7 @@ export function AgentRunsPage() {
       </header>
 
       <main className="flex flex-col gap-2 p-2 sm:p-3">
-        <TraceSearch onOpen={(runId) => change({ run: runId })} />
+        <TraceSearch onOpen={open} />
 
         <PeriodContext.Provider value={period.label}>
           {overview.isPending ? (
@@ -165,11 +173,10 @@ export function AgentRunsPage() {
           ) : overview.isError || !data ? (
             <Unavailable error={overview.error} />
           ) : (
-            <div
-              className={`grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4 ${overview.isPlaceholderData ? 'opacity-60' : ''}`}
-            >
-              <RunsStat totals={data.totals} series={data.series} />
-              <PathStat totals={data.totals} />
+            <div className={`flex flex-col gap-3 ${overview.isPlaceholderData ? 'opacity-60' : ''}`}>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <OutcomeStat outcome="SUCCESS" totals={data.totals} series={data.series} />
+              <OutcomeStat outcome="FAILURE" totals={data.totals} series={data.series} />
               <CallStat totals={data.totals} />
               <WorkflowPanel workflows={data.workflows} />
 
@@ -195,29 +202,57 @@ export function AgentRunsPage() {
                   <LatencyChart series={data.series} bucketMinutes={data.window.bucketMinutes} />
                 )}
               </Panel>
+            </div>
 
-              <div className="grid md:col-span-2">
+            <OutcomeSection
+              outcome="SUCCESS"
+              value={data.totals.normal + data.totals.retried}
+              total={data.totals.runs}
+            >
+              <FlowPatternsPanel outcome="SUCCESS" flows={data.flows} mixed={!workflow} onOpen={open} />
+              <RunListPanel
+                outcome="SUCCESS"
+                runs={successRuns.data}
+                path={successPath}
+                onPath={setSuccessPath}
+                selected={selected}
+                onOpen={open}
+                className="md:col-span-2"
+              />
+            </OutcomeSection>
+
+            <OutcomeSection
+              outcome="FAILURE"
+              value={data.totals.guided + data.totals.failed}
+              total={data.totals.runs}
+            >
+              <FlowPatternsPanel outcome="FAILURE" flows={data.flows} mixed={!workflow} onOpen={open} />
+              <FailureCausePanel endings={data.endings} className="md:col-span-2" />
+              <RunListPanel
+                outcome="FAILURE"
+                runs={failureRuns.data}
+                path={failurePath}
+                onPath={setFailurePath}
+                selected={selected}
+                onOpen={open}
+                className="md:col-span-2 xl:col-span-4"
+              />
+            </OutcomeSection>
+
+            <section aria-label="단계 분석" className="flex flex-col gap-2">
+              <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[4px] border border-l-4 border-[var(--ops-border)] border-l-[var(--ops-accent)] bg-[var(--ops-panel)] px-3 py-2">
+                <h2 className="text-sm font-semibold text-[var(--ops-text)]">단계 분석</h2>
+                <span className="text-xs text-[var(--ops-muted)]">
+                  성공·실패를 합쳐 단계마다 어떤 판정이 나왔고 어디로 이어졌는지, 호출 결과와 시간이 어땠는지 봅니다.
+                </span>
+              </header>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <TransitionPanel transitions={data.transitions} mixed={!workflow} />
-              </div>
-              <div className="grid md:col-span-2">
                 <StepPanel steps={data.steps} mixed={!workflow} />
+                <CodePanel codes={data.codes} />
+                <StagePanel stages={data.stages} />
               </div>
-
-              <div className="grid md:col-span-2">
-                <EndingPanel endings={data.endings} runs={data.totals.runs} />
-              </div>
-              <CodePanel codes={data.codes} />
-              <StagePanel stages={data.stages} />
-
-              <div className="grid md:col-span-2 xl:col-span-4">
-                <RunsPanel
-                  runs={runs.data}
-                  path={path}
-                  onPath={(next: RunPath | undefined) => change({ path: next })}
-                  selected={selected}
-                  onSelect={(runId) => change({ run: runId })}
-                />
-              </div>
+            </section>
             </div>
           )}
         </PeriodContext.Provider>

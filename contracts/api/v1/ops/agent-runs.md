@@ -35,6 +35,7 @@
 | hours | query | number | 24 | 1~336. 지금부터 거꾸로 이 시간만큼 |
 | workflow | query | string | 전체 | `ROLEPLAY_TURN`·`LEARNING_REPORT`·`SCENARIO_GENERATION` |
 | path | query | string | 전체 | API-OPS-02 만. `NORMAL`·`RETRIED`·`GUIDED`·`FAILED` |
+| outcome | query | string | 전체 | API-OPS-02 만. `SUCCESS`(NORMAL·RETRIED)·`FAILURE`(GUIDED·FAILED). path 와 같이 주면 path 가 그 묶음에 속해야 합니다 |
 | limit | query | number | 50 | API-OPS-02 만. 1~200 |
 | runId | path | UUID | — | API-OPS-03 만 |
 
@@ -53,7 +54,16 @@
     "transitions": [{ "workflow": "ROLEPLAY_TURN", "from": "RESPONSE_EVALUATION", "status": "REJECTED", "verdict": "REGENERATE", "to": "RESPONSE_GENERATION", "count": 8 }],
     "codes": [{ "workflow": "ROLEPLAY_TURN", "step": "RESPONSE_EVALUATION", "code": "ANSWER_TOO_DIRECT", "count": 8 }],
     "endings": [{ "workflow": "ROLEPLAY_TURN", "path": "GUIDED", "result": "REINPUT_REQUIRED", "endedBy": "SPEECH_TRANSCRIPTION", "reason": "LOW_CONFIDENCE", "count": 6 }],
-    "stages": [{ "stage": "LLM_CALL", "avgMs": 21400, "p95Ms": 30200 }]
+    "stages": [{ "stage": "LLM_CALL", "avgMs": 21400, "p95Ms": 30200 }],
+    "flows": [{
+      "workflow": "ROLEPLAY_TURN", "outcome": "SUCCESS", "path": "RETRIED", "result": "DELIVERED",
+      "steps": [
+        { "step": "RESPONSE_EVALUATION", "status": "REJECTED", "verdict": "REGENERATE" },
+        { "step": "RESPONSE_GENERATION", "status": "PASSED", "verdict": "VALID" }
+      ],
+      "count": 9, "p50Ms": 33700,
+      "recentRunIds": ["7c1f3a52-0d6b-4f0e-9a51-2b8f6f3c9d10"]
+    }]
   },
   "meta": { "traceId": "90000000-0000-4000-8000-000000000001" }
 }
@@ -62,6 +72,7 @@
 - `series`는 실행이 없던 구간도 0 으로 채워 옵니다. 구간 길이(`bucketMinutes`)는 기간에 따라 5·15·60·180·360·720분입니다.
 - `transitions`는 많이 일어난 순서로 최대 200개, `codes`·`endings`는 최대 30개입니다.
 - `stages`는 역할극 턴의 구간별 자체 시간(안쪽 구간을 뺀 시간)입니다.
+- `flows`는 워크플로우·흐름·결과와 최종 결과 앞 단계들의 "단계·상태·판정" 순서가 같은 실행끼리 묶은 흐름 패턴입니다. 많이 일어난 순서로 최대 60개이고, `recentRunIds`는 그 흐름으로 끝난 최근 실행 번호 최대 3개입니다. `outcome`은 `SUCCESS`(정상 결과로 끝남) 또는 `FAILURE`입니다.
 
 ### API-OPS-02 목록
 

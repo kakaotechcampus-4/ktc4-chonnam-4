@@ -185,6 +185,39 @@ class RoleplayAgentRunHttpIntegrationTest {
                 .andExpect(
                         jsonPath("$.data[?(@.runId=='" + trace + "')].reason").value("REGENERATE"))
                 .andExpect(jsonPath("$.data[0].steps").isEmpty());
+        // 성공 묶음(NORMAL·RETRIED)으로 읽으면 이 실행이 들어 있고, 실패 묶음에는 없다.
+        mvc.perform(
+                        get("/api/v1/ops/agent-runs")
+                                .param("hours", "1")
+                                .param("outcome", "SUCCESS")
+                                .with(authentication(operator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].runId").value(org.hamcrest.Matchers.hasItem(trace)))
+                .andExpect(
+                        jsonPath("$.data[*].path")
+                                .value(
+                                        org.hamcrest.Matchers.everyItem(
+                                                org.hamcrest.Matchers.is(
+                                                        org.hamcrest.Matchers.oneOf(
+                                                                "NORMAL", "RETRIED")))));
+        mvc.perform(
+                        get("/api/v1/ops/agent-runs")
+                                .param("hours", "1")
+                                .param("outcome", "FAILURE")
+                                .with(authentication(operator)))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data[*].runId")
+                                .value(
+                                        org.hamcrest.Matchers.not(
+                                                org.hamcrest.Matchers.hasItem(trace))));
+        // 흐름 하나와 그 묶음이 맞지 않으면 조건 오류다.
+        mvc.perform(
+                        get("/api/v1/ops/agent-runs")
+                                .param("outcome", "FAILURE")
+                                .param("path", "RETRIED")
+                                .with(authentication(operator)))
+                .andExpect(status().isBadRequest());
         mvc.perform(
                         get("/api/v1/ops/agent-runs/overview")
                                 .param("hours", "1")
@@ -207,7 +240,19 @@ class RoleplayAgentRunHttpIntegrationTest {
                 .andExpect(
                         jsonPath("$.data.endings[?(@.endedBy=='RESPONSE_EVALUATION')]")
                                 .isNotEmpty())
-                .andExpect(jsonPath("$.data.stages[?(@.stage=='LLM_CALL')]").isNotEmpty());
+                .andExpect(jsonPath("$.data.stages[?(@.stage=='LLM_CALL')]").isNotEmpty())
+                // 흐름 패턴: 검수 거절 뒤 다시 생성된 흐름이 성공 묶음에 따로 묶이고, 최근 실행 번호로 이 요청이 붙는다.
+                .andExpect(
+                        jsonPath(
+                                        "$.data.flows[?(@.outcome=='SUCCESS' && @.path=='RETRIED')].recentRunIds[*]")
+                                .value(org.hamcrest.Matchers.hasItem(trace)))
+                .andExpect(
+                        jsonPath(
+                                        "$.data.flows[?(@.path=='RETRIED')].steps[?(@.verdict=='REGENERATE')].status")
+                                .value(org.hamcrest.Matchers.hasItem("REJECTED")))
+                .andExpect(
+                        jsonPath("$.data.flows[?(@.path=='RETRIED')].steps[*].step")
+                                .value(org.hamcrest.Matchers.hasItem("TURN_RESOLUTION")));
     }
 
     @Test

@@ -11,6 +11,7 @@ import java.util.List;
  * @param codes 거절·실패 사유 코드 건수
  * @param endings 한 번에 통과하지 못한 실행이 무엇 때문에 어떻게 끝났는지
  * @param stages 역할극 턴의 구간별 자체 시간
+ * @param flows 같은 단계 순서·판정으로 흘러간 실행끼리 묶은 흐름 패턴. 많이 일어난 순서다
  */
 public record AgentRunOverviewResponse(
         Window window,
@@ -21,7 +22,8 @@ public record AgentRunOverviewResponse(
         List<Transition> transitions,
         List<CodeCount> codes,
         List<Ending> endings,
-        List<StageTime> stages) {
+        List<StageTime> stages,
+        List<Flow> flows) {
 
     public record Window(Instant from, Instant to, int hours, int bucketMinutes) {}
 
@@ -82,4 +84,23 @@ public record AgentRunOverviewResponse(
             long count) {}
 
     public record StageTime(String stage, long avgMs, long p95Ms) {}
+
+    /**
+     * 흐름 패턴 하나.
+     *
+     * @param outcome SUCCESS(정상 결과로 끝남) 또는 FAILURE
+     * @param steps 최종 결과 앞까지의 단계와 판정(같은 단계가 다시 돌면 다시 나온다)
+     * @param recentRunIds 이 흐름으로 끝난 최근 실행 번호(최대 3개). 역할극 턴은 X-Trace-Id 와 같다
+     */
+    public record Flow(
+            String workflow,
+            String outcome,
+            String path,
+            String result,
+            List<FlowStep> steps,
+            long count,
+            long p50Ms,
+            List<java.util.UUID> recentRunIds) {}
+
+    public record FlowStep(String step, String status, String verdict) {}
 }

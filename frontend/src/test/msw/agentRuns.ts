@@ -4,6 +4,7 @@ import type {
   AgentRunOverview,
   AgentRunSpan,
   AgentRunStep,
+  Outcome,
   RunPath,
   StepKind,
   StepStatus,
@@ -547,6 +548,39 @@ export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | 
     })
     .sort((a, b) => b.avgMs - a.avgMs)
 
+  // 백엔드 AgentRunStore.flows 와 같은 묶음: 워크플로우·흐름·결과와 "단계|상태|판정" 순서가 같은 실행끼리.
+  const flows = [
+    ...groupBy(runs, (run) =>
+      [
+        run.workflow,
+        run.path,
+        run.result,
+        run.steps
+          .filter((step) => step.kind !== "RESULT")
+          .map((step) => `${step.step}|${step.status}|${step.verdict ?? ""}`)
+          .join(","),
+      ].join("#"),
+    ),
+  ]
+    .map(([, group]) => {
+      const sample = group[0]
+      const recent = [...group].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.runId.localeCompare(b.runId))
+      return {
+        workflow: sample.workflow,
+        outcome: (sample.path === "NORMAL" || sample.path === "RETRIED" ? "SUCCESS" : "FAILURE") as Outcome,
+        path: sample.path,
+        result: sample.result,
+        steps: sample.steps
+          .filter((step) => step.kind !== "RESULT")
+          .map((step) => ({ step: step.step, status: step.status, verdict: step.verdict })),
+        count: group.length,
+        p50Ms: percentile(group.map((run) => run.durationMs), 0.5),
+        recentRunIds: recent.slice(0, 3).map((run) => run.runId),
+      }
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 60)
+
   const durations = runs.map((run) => run.durationMs)
   return {
     window: { from: from.toISOString(), to: to.toISOString(), hours, bucketMinutes: minutes },
@@ -566,11 +600,13 @@ export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | 
     codes,
     endings,
     stages,
+    flows,
   }
 }
 
 const WORKFLOW_VALUES = ["ROLEPLAY_TURN", "LEARNING_REPORT", "SCENARIO_GENERATION"]
 const PATH_VALUES = ["NORMAL", "RETRIED", "GUIDED", "FAILED"]
+const OUTCOME_PATHS: Record<string, RunPath[]> = { SUCCESS: ["NORMAL", "RETRIED"], FAILURE: ["GUIDED", "FAILED"] }
 
 /**
  * 조회 세 개의 가짜 응답. denied 면 허용 목록에 없는 계정처럼 404 RESOURCE_NOT_FOUND 로 답한다.
@@ -586,14 +622,25 @@ export function agentRunHandlers({ denied = false, runs }: { denied?: boolean; r
     return null
   }
 
-  function filters(request: Request): { hours: number; workflow: Workflow | null; path: RunPath | null } | Response {
+  function filters(
+    request: Request,
+  ): { hours: number; workflow: Workflow | null; paths: RunPath[] } | Response {
     const url = new URL(request.url)
     const hours = Number(url.searchParams.get("hours") ?? 24)
     const workflow = url.searchParams.get("workflow")
     const path = url.searchParams.get("path")
-    if (!Number.isInteger(hours) || hours < 1 || hours > 336 || (workflow && !WORKFLOW_VALUES.includes(workflow)) || (path && !PATH_VALUES.includes(path)))
-      return apiError(400, "INVALID_AGENT_RUN_FILTER", "조회 조건이 올바르지 않습니다.", url.pathname)
-    return { hours, workflow: workflow as Workflow | null, path: path as RunPath | null }
+    const outcome = url.searchParams.get("outcome")
+    const group = outcome ? OUTCOME_PATHS[outcome] : undefined
+    const invalid =
+      !Number.isInteger(hours) ||
+      hours < 1 ||
+      hours > 336 ||
+      (workflow && !WORKFLOW_VALUES.includes(workflow)) ||
+      (path && !PATH_VALUES.includes(path)) ||
+      (outcome && !group) ||
+      (path && group && !group.includes(path as RunPath))
+    if (invalid) return apiError(400, "INVALID_AGENT_RUN_FILTER", "조회 조건이 올바르지 않습니다.", url.pathname)
+    return { hours, workflow: workflow as Workflow | null, paths: path ? [path as RunPath] : (group ?? []) }
   }
 
   return [
@@ -623,7 +670,7 @@ export function agentRunHandlers({ denied = false, runs }: { denied?: boolean; r
           (run) =>
             new Date(run.startedAt).getTime() >= since &&
             (!filter.workflow || run.workflow === filter.workflow) &&
-            (!filter.path || run.path === filter.path),
+            (filter.paths.length === 0 || filter.paths.includes(run.path)),
         )
         .slice(0, limit)
         .map((run) => ({ ...run, stageMs: {}, spans: [], steps: [] }))

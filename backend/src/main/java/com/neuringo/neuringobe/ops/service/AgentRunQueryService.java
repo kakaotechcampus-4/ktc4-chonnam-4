@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AgentRunQueryService {
     static final int MAX_HOURS = 24 * 14;
     static final int MAX_LIST = 200;
+    static final int MAX_FLOWS = 60;
 
     private final AgentRunStore store;
     private final UserAccountRepository users;
@@ -69,18 +70,30 @@ public class AgentRunQueryService {
                 store.transitions(window, 200),
                 store.codes(window, 30),
                 store.endings(window, 30),
-                store.stages(window));
+                store.stages(window),
+                store.flows(window, MAX_FLOWS));
     }
 
+    /**
+     * 최근 순 실행 목록. path 를 주면 그 흐름 하나, outcome(SUCCESS·FAILURE)을 주면 그 묶음의 흐름들만 준다. 둘 다 주면 path 가 그
+     * 묶음에 속해야 한다.
+     */
     @Transactional(readOnly = true)
     public List<AgentRunResponse> list(
-            AuthenticatedUser user, int hours, String workflow, String path, int limit) {
+            AuthenticatedUser user,
+            int hours,
+            String workflow,
+            String path,
+            String outcome,
+            int limit) {
         requireOperator(user);
         Instant to = clock.instant().plusSeconds(60);
         var window =
                 new AgentRunStore.Window(
                         to.minus(Duration.ofHours(hours(hours))), to, workflow(workflow));
-        return store.list(window, path(path), Math.max(1, Math.min(MAX_LIST, limit))).stream()
+        return store
+                .list(window, paths(path, outcome), Math.max(1, Math.min(MAX_LIST, limit)))
+                .stream()
                 .map(AgentRunResponse::from)
                 .toList();
     }
@@ -132,13 +145,19 @@ public class AgentRunQueryService {
         }
     }
 
-    private static String path(String path) {
-        if (path == null || path.isBlank()) return null;
+    private static List<String> paths(String path, String outcome) {
+        AgentRun.Path one = null;
+        AgentRun.Outcome group = null;
         try {
-            return AgentRun.Path.valueOf(path).name();
+            if (path != null && !path.isBlank()) one = AgentRun.Path.valueOf(path);
+            if (outcome != null && !outcome.isBlank()) group = AgentRun.Outcome.valueOf(outcome);
         } catch (IllegalArgumentException unknown) {
             throw invalid();
         }
+        if (one != null && group != null && one.outcome() != group) throw invalid();
+        if (one != null) return List.of(one.name());
+        if (group != null) return group.paths().stream().map(Enum::name).toList();
+        return List.of();
     }
 
     private static ApiException invalid() {

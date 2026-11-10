@@ -36,10 +36,33 @@ public record AgentRun(
 
     /** NORMAL 한 번에 통과, RETRIED 다시 돌아 정상 결과, GUIDED 설계된 안내로 끝남, FAILED 오류로 끝남. */
     public enum Path {
-        NORMAL,
-        RETRIED,
-        GUIDED,
-        FAILED
+        NORMAL(Outcome.SUCCESS),
+        RETRIED(Outcome.SUCCESS),
+        GUIDED(Outcome.FAILURE),
+        FAILED(Outcome.FAILURE);
+
+        private final Outcome outcome;
+
+        Path(Outcome outcome) {
+            this.outcome = outcome;
+        }
+
+        public Outcome outcome() {
+            return outcome;
+        }
+    }
+
+    /**
+     * 실행이 정상 결과(응답 전달·리포트 완성·시나리오 완성)로 끝났는가. 성공은 한 번에 통과와 재시도 후 정상, 실패는 안내로 종료와 오류다. 대시보드가 성공 흐름과
+     * 실패 흐름을 나눠 보일 때 쓴다.
+     */
+    public enum Outcome {
+        SUCCESS,
+        FAILURE;
+
+        public java.util.List<Path> paths() {
+            return java.util.Arrays.stream(Path.values()).filter(p -> p.outcome == this).toList();
+        }
     }
 
     public enum Kind {

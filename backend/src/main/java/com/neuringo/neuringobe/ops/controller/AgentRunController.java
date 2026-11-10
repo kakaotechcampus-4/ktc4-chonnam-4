@@ -36,15 +36,19 @@ public class AgentRunController {
         return ApiResponse.of(queries.overview(user, hours, workflow));
     }
 
-    /** 최근 순 실행 목록. path 는 NORMAL·RETRIED·GUIDED·FAILED 가운데 하나다. */
+    /**
+     * 최근 순 실행 목록. path 는 NORMAL·RETRIED·GUIDED·FAILED 가운데 하나, outcome 은 SUCCESS(NORMAL·RETRIED)·
+     * FAILURE(GUIDED·FAILED)다.
+     */
     @GetMapping("/api/v1/ops/agent-runs")
     public ApiResponse<List<AgentRunResponse>> list(
             @RequestParam(defaultValue = "24") int hours,
             @RequestParam(required = false) String workflow,
             @RequestParam(required = false) String path,
+            @RequestParam(required = false) String outcome,
             @RequestParam(defaultValue = "50") int limit,
             @AuthenticationPrincipal AuthenticatedUser user) {
-        return ApiResponse.of(queries.list(user, hours, workflow, path, limit));
+        return ApiResponse.of(queries.list(user, hours, workflow, path, outcome, limit));
     }
 
     /** 실행 한 건의 단계별 판정과 시간 구간. 역할극 턴은 X-Trace-Id 가 실행 번호다. */

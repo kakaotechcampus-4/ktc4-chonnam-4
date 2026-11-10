@@ -1,9 +1,8 @@
 import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
-import type { AgentRun, AgentRunOverview, RunPath, Workflow } from '../api'
-import { compact, count, dayClock, duration, percent } from '../lib/format'
+import type { AgentRunOverview, Workflow } from '../api'
+import { compact, count, duration, percent } from '../lib/format'
 import {
-  PATH_HINT,
   PATH_KEY,
   PATH_LABEL,
   PATHS,
@@ -15,9 +14,8 @@ import {
   WORKFLOWS,
 } from '../lib/labels'
 import { focusRing, pathColor, statusColor } from '../lib/tones'
-import { runsIn } from '../lib/period'
-import { RankedBars, SegmentBar, Sparkline } from './charts'
-import { Code, Empty, Panel, PathBadge, PathIcon, StatusIcon } from './primitives'
+import { RankedBars, SegmentBar } from './charts'
+import { Code, Empty, Panel, PathBadge, StatusIcon } from './primitives'
 
 type Overview = AgentRunOverview
 
@@ -25,42 +23,6 @@ const thClass =
   'border-b border-[var(--ops-grid)] px-2 py-1.5 text-left text-xs font-semibold whitespace-nowrap text-[var(--ops-text-2)]'
 const tdClass = 'px-2 py-2 align-middle text-[13px] text-[var(--ops-text-2)]'
 const bigNumberClass = 'text-[34px] leading-none font-semibold tracking-tight'
-
-/** 전체 실행 수와 구간별 추세선(이미지의 큰 숫자 패널 모양). */
-export function RunsStat({ totals, series }: { totals: Overview['totals']; series: Overview['series'] }) {
-  return (
-    <Panel title="실행 수" hint="기간 안에 기록된 워크플로우 실행. 아래 선은 구간별 실행 수입니다.">
-      <div className="flex h-full flex-col justify-between gap-2">
-        <p className={`${bigNumberClass} text-[var(--ops-accent)]`}>{compact(totals.runs)}</p>
-        <Sparkline values={series.map(runsIn)} color="var(--ops-accent)" />
-      </div>
-    </Panel>
-  )
-}
-
-/** 흐름 종류 네 가지의 건수와 비율. 색과 함께 아이콘·이름을 붙여 색만으로 읽지 않게 한다. */
-export function PathStat({ totals }: { totals: Overview['totals'] }) {
-  return (
-    <Panel title="흐름 종류" hint="정상 흐름(한 번에 통과·재시도 후 정상)과 오류 흐름(안내로 종료·오류)의 건수와 비율">
-      <ul className="flex flex-col gap-1.5">
-        {PATHS.map((path) => (
-          <li key={path} className="flex items-center justify-between gap-3" title={PATH_HINT[path]}>
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-[13px] text-[var(--ops-text-2)]">
-              <PathIcon path={path} size={14} />
-              {PATH_LABEL[path]}
-            </span>
-            <span className="flex items-baseline gap-2">
-              <span className="ops-num text-xs text-[var(--ops-muted)]">{percent(totals[PATH_KEY[path]], totals.runs)}</span>
-              <span className="text-[22px] leading-tight font-semibold" style={{ color: pathColor(path) }}>
-                {compact(totals[PATH_KEY[path]])}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  )
-}
 
 /** AI 호출 수·토큰·걸린 시간. */
 export function CallStat({ totals }: { totals: Overview['totals'] }) {
@@ -356,13 +318,18 @@ export function CodePanel({ codes }: { codes: Overview['codes'] }) {
   )
 }
 
-export function EndingPanel({ endings, runs }: { endings: Overview['endings']; runs: number }) {
+/** 실패 흐름의 원인. 어느 단계의 어떤 판정·사유 때문에 정상 결과 없이 끝났는지 많이 일어난 순서로 보인다. */
+export function FailureCausePanel({ endings, className = '' }: { endings: Overview['endings']; className?: string }) {
+  const rows = endings.filter((row) => row.path === 'GUIDED' || row.path === 'FAILED')
   return (
-    <Panel title="한 번에 통과하지 못한 실행" hint="어느 단계의 어떤 판정 때문에 어떻게 끝났는지">
-      {runs === 0 ? (
-        <Empty>이 기간에 기록된 실행이 없습니다.</Empty>
-      ) : endings.length === 0 ? (
-        <Empty>모든 실행이 한 번에 통과했습니다.</Empty>
+    <Panel
+      title="실패 원인"
+      hint="어느 단계의 어떤 판정·사유 때문에 정상 결과 없이 끝났는지"
+      className={className}
+      scroll
+    >
+      {rows.length === 0 ? (
+        <Empty>정상 결과 없이 끝난 실행이 없습니다.</Empty>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
@@ -383,7 +350,7 @@ export function EndingPanel({ endings, runs }: { endings: Overview['endings']; r
               </tr>
             </thead>
             <tbody>
-              {endings.slice(0, 8).map((row) => (
+              {rows.map((row) => (
                 <tr
                   key={`${row.workflow}-${row.path}-${row.result}-${row.endedBy}-${row.reason}`}
                   className="border-b border-[var(--ops-grid)] last:border-b-0"
@@ -429,120 +396,3 @@ export function StagePanel({ stages }: { stages: Overview['stages'] }) {
   )
 }
 
-export function RunsPanel({
-  runs,
-  path,
-  onPath,
-  selected,
-  onSelect,
-}: {
-  runs: AgentRun[] | undefined
-  path: RunPath | undefined
-  onPath: (path: RunPath | undefined) => void
-  selected: string | undefined
-  onSelect: (runId: string) => void
-}) {
-  return (
-    <Panel
-      title="최근 실행"
-      hint="시작 시각을 누르면 그 실행의 단계 흐름을 봅니다. 역할극 턴은 요청 번호(X-Trace-Id)로도 찾을 수 있습니다."
-      scroll
-      action={
-        <label className="flex shrink-0 items-center gap-2 text-xs text-[var(--ops-muted)]">
-          흐름
-          <select
-            value={path ?? ''}
-            onChange={(event) => onPath((event.target.value || undefined) as RunPath | undefined)}
-            className={`h-8 rounded-[4px] border border-[var(--ops-border)] bg-[var(--ops-panel-raised)] px-2 text-[13px] text-[var(--ops-text)] ${focusRing}`}
-          >
-            <option value="">전체</option>
-            {PATHS.map((option) => (
-              <option key={option} value={option}>
-                {PATH_LABEL[option]}
-              </option>
-            ))}
-          </select>
-        </label>
-      }
-    >
-      {runs === undefined ? (
-        <Empty>불러오는 중입니다.</Empty>
-      ) : runs.length === 0 ? (
-        <Empty>조건에 맞는 실행이 없습니다.</Empty>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-[1] bg-[var(--ops-panel)]">
-              <tr>
-                <th scope="col" className={thClass}>
-                  시작
-                </th>
-                <th scope="col" className={thClass}>
-                  워크플로우
-                </th>
-                <th scope="col" className={thClass}>
-                  흐름
-                </th>
-                <th scope="col" className={thClass}>
-                  결과
-                </th>
-                <th scope="col" className={thClass}>
-                  원인 단계 · 사유
-                </th>
-                <th scope="col" className={`${thClass} text-right`}>
-                  걸린 시간
-                </th>
-                <th scope="col" className={`${thClass} text-right`}>
-                  AI 호출
-                </th>
-                <th scope="col" className={`${thClass} text-right`}>
-                  토큰
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr
-                  key={run.runId}
-                  className={`border-b border-[var(--ops-grid)] last:border-b-0 ${
-                    selected === run.runId ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'
-                  }`}
-                >
-                  <td className={`${tdClass} ops-num whitespace-nowrap`}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(run.runId)}
-                      aria-label={`${dayClock(run.startedAt)} ${WORKFLOW_LABEL[run.workflow]} 실행 상세 열기`}
-                      className={`rounded text-[var(--ops-accent)] hover:underline hover:underline-offset-4 ${focusRing}`}
-                    >
-                      {dayClock(run.startedAt)}
-                    </button>
-                  </td>
-                  <td className={`${tdClass} whitespace-nowrap`}>{WORKFLOW_LABEL[run.workflow]}</td>
-                  <td className={tdClass}>
-                    <PathBadge path={run.path} />
-                  </td>
-                  <td className={`${tdClass} whitespace-nowrap`}>{stepLabel(run.result)}</td>
-                  <td className={tdClass}>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      {run.endedBy ? stepLabel(run.endedBy) : '—'}
-                      {run.reason && <Code>{run.reason}</Code>}
-                    </span>
-                  </td>
-                  <td className={`${tdClass} ops-num text-right`}>{duration(run.durationMs)}</td>
-                  <td className={`${tdClass} ops-num text-right whitespace-nowrap`}>
-                    {count(run.aiCalls)}
-                    {run.repeatedCalls > 0 && (
-                      <span className="text-[var(--ops-muted)]"> (반복 {count(run.repeatedCalls)})</span>
-                    )}
-                  </td>
-                  <td className={`${tdClass} ops-num text-right`}>{compact(run.inputTokens + run.outputTokens)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Panel>
-  )
-}

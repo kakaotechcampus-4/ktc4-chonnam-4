@@ -38,21 +38,82 @@ function renderDashboard(search = "", options: Parameters<typeof agentRunHandler
 describe("에이전트 워크플로우 실행 기록 대시보드", () => {
   beforeEach(() => signIn())
 
-  it("정상 흐름과 오류 흐름의 건수를 함께 보인다", async () => {
+  it("성공 실행과 실패 실행을 나눠 세고, 각각의 세부 흐름 건수를 보인다", async () => {
     renderDashboard()
 
-    const paths = await screen.findByRole("region", { name: "흐름 종류" })
-    for (const [label, count] of [
-      ["한 번에 통과", "1"],
-      ["재시도 후 정상", "1"],
-      ["안내로 종료", "1"],
-      ["오류", "1"],
-    ]) {
-      const row = within(paths).getByText(label).closest("li")!
-      expect(within(row).getByText(count)).toBeInTheDocument()
-      expect(within(row).getByText("25%")).toBeInTheDocument()
-    }
-    expect(within(screen.getByRole("region", { name: "실행 수" })).getByText("4")).toBeInTheDocument()
+    const success = await screen.findByRole("region", { name: "성공 실행" })
+    expect(success).toHaveTextContent("2")
+    expect(success).toHaveTextContent("50%")
+    expect(success).toHaveTextContent("한 번에 통과 1")
+    expect(success).toHaveTextContent("재시도 후 정상 1")
+
+    const failure = screen.getByRole("region", { name: "실패 실행" })
+    expect(failure).toHaveTextContent("2")
+    expect(failure).toHaveTextContent("안내로 종료 1")
+    expect(failure).toHaveTextContent("오류 1")
+
+    // 성공·실패 구역이 따로 있고, 머리에 건수와 비율이 나온다.
+    expect(screen.getByRole("region", { name: "성공 흐름" })).toHaveTextContent("2건 · 50%")
+    expect(screen.getByRole("region", { name: "실패 흐름" })).toHaveTextContent("2건 · 50%")
+  })
+
+  it("성공 구역과 실패 구역에 각각의 흐름 패턴을 단계 순서대로 보이고 최근 Trace ID 를 붙인다", async () => {
+    const { user } = renderDashboard()
+
+    const success = await screen.findByRole("region", { name: "성공 흐름" })
+    const successPatterns = within(success).getByRole("region", { name: "흐름 패턴" })
+    const retried = within(successPatterns).getByText("재시도 후 정상").closest("li")!
+    const chain = within(retried).getByRole("list", { name: "단계 흐름" })
+    expect(within(chain).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "통과입력 판정",
+      "통과원인 분석",
+      "통과응답 생성",
+      "거절응답 검수REGENERATE",
+      "통과응답 생성 2",
+      "통과응답 검수 2",
+      "통과턴 결과 판정",
+      "응답 전달",
+    ])
+    expect(within(retried).getByRole("button", { name: `Trace ID ${ID.regenerate} 상세 열기` })).toBeInTheDocument()
+    // 실패한 흐름은 성공 구역에 나오지 않는다.
+    expect(within(successPatterns).queryByText("오류")).not.toBeInTheDocument()
+
+    const failure = screen.getByRole("region", { name: "실패 흐름" })
+    const failurePatterns = within(failure).getByRole("region", { name: "흐름 패턴" })
+    expect(within(failurePatterns).getAllByText("TIMEOUT")).toHaveLength(3)
+    expect(within(failurePatterns).getByText("LIMIT_REACHED")).toBeInTheDocument()
+    expect(within(failurePatterns).getByText("INPUT_REJECTED")).toBeInTheDocument()
+    expect(within(failurePatterns).queryByText("REGENERATE")).not.toBeInTheDocument()
+
+    await user.click(within(failurePatterns).getByRole("button", { name: `Trace ID ${ID.timeout} 상세 열기` }))
+    const detail = await screen.findByRole("dialog", { name: "실행 상세" })
+    expect(await within(detail).findByText(ID.timeout)).toBeInTheDocument()
+  })
+
+  it("실행 목록은 구역마다 따로 보이고 Trace ID 를 복사할 수 있다", async () => {
+    const { user } = renderDashboard()
+
+    const success = await screen.findByRole("region", { name: "성공 흐름" })
+    const successList = within(success).getByRole("region", { name: "실행 목록" })
+    await within(successList).findByRole("button", { name: `Trace ID ${ID.normal} 상세 열기` })
+    expect(within(successList).getByRole("button", { name: `Trace ID ${ID.regenerate} 상세 열기` })).toBeInTheDocument()
+    expect(within(successList).queryByRole("button", { name: `Trace ID ${ID.timeout} 상세 열기` })).not.toBeInTheDocument()
+
+    const failureList = within(screen.getByRole("region", { name: "실패 흐름" })).getByRole("region", {
+      name: "실행 목록",
+    })
+    // 실패 목록은 넓은 칸이라 Trace ID 를 줄이지 않고 다 보인다.
+    expect(await within(failureList).findByText(ID.lowConfidence)).toBeInTheDocument()
+    expect(within(failureList).getByText(ID.timeout)).toBeInTheDocument()
+
+    await user.click(within(failureList).getByRole("button", { name: `Trace ID ${ID.timeout} 복사` }))
+    expect(await navigator.clipboard.readText()).toBe(ID.timeout)
+    expect(within(failureList).getByRole("button", { name: "Trace ID 복사함" })).toBeInTheDocument()
+
+    // 세부 흐름으로 좁히면 그 흐름만 남는다.
+    await user.click(within(failureList).getByRole("button", { name: "오류" }))
+    await waitFor(() => expect(within(failureList).queryByText(ID.lowConfidence)).not.toBeInTheDocument())
+    expect(within(failureList).getByText(ID.timeout)).toBeInTheDocument()
   })
 
   it("단계가 낸 판정과 그 때문에 이어진 다음 단계를 단계별로 보인다", async () => {
@@ -87,26 +148,24 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     expect(within(transitions).getAllByText("TIMEOUT").length).toBeGreaterThan(0)
   })
 
-  it("한 번에 통과하지 못한 실행을 원인 단계와 사유로 묶어 보인다", async () => {
+  it("실패 원인은 실패 구역에만, 원인 단계와 사유로 묶어 보인다", async () => {
     renderDashboard()
 
-    const endings = await screen.findByRole("region", { name: "한 번에 통과하지 못한 실행" })
-    const rows = within(endings).getAllByRole("row").slice(1)
-    expect(rows.map((row) => row.textContent)).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/재시도 후 정상응답 검수REGENERATE응답 전달1/),
-        expect.stringMatching(/안내로 종료음성 인식LOW_CONFIDENCE다시 입력 요청1/),
-        expect.stringMatching(/오류응답 검수LIMIT_REACHED다시 시도 요청1/),
-      ]),
-    )
+    const failure = await screen.findByRole("region", { name: "실패 흐름" })
+    const causes = within(failure).getByRole("region", { name: "실패 원인" })
+    const rows = within(causes).getAllByRole("row").slice(1)
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringMatching(/안내로 종료음성 인식LOW_CONFIDENCE다시 입력 요청1/),
+      expect.stringMatching(/오류응답 검수LIMIT_REACHED다시 시도 요청1/),
+    ])
   })
 
   it("실행을 누르면 단계 흐름 상세가 열리고 주소에 남으며 Esc 로 닫힌다", async () => {
     const { user, router } = renderDashboard()
 
-    const list = await screen.findByRole("region", { name: "최근 실행" })
-    const row = (await within(list).findByText("REGENERATE")).closest("tr")!
-    await user.click(within(row).getByRole("button", { name: /실행 상세 열기/ }))
+    const success = await screen.findByRole("region", { name: "성공 흐름" })
+    const list = within(success).getByRole("region", { name: "실행 목록" })
+    await user.click(await within(list).findByRole("button", { name: `Trace ID ${ID.regenerate} 상세 열기` }))
 
     const detail = await screen.findByRole("dialog", { name: "실행 상세" })
     expect(new URLSearchParams(router.state.location.search).get("run")).toBe(ID.regenerate)
@@ -179,7 +238,7 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     })
     const { user, router } = renderDashboard()
 
-    await screen.findByRole("region", { name: "흐름 종류" })
+    await screen.findByRole("region", { name: "성공 실행" })
     await user.selectOptions(screen.getByRole("combobox", { name: "기간" }), "168")
     await user.selectOptions(screen.getByRole("combobox", { name: "워크플로우" }), "ROLEPLAY_TURN")
 
@@ -203,10 +262,13 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
 
     const chart = await screen.findByRole("region", { name: "시간대별 실행" })
     expect(within(chart).getByText("이 기간에 기록된 실행이 없습니다.")).toBeInTheDocument()
-    // 실행이 0건이면 "모두 한 번에 통과했다"고 말하지 않는다.
-    const endings = screen.getByRole("region", { name: "한 번에 통과하지 못한 실행" })
-    expect(within(endings).getByText("이 기간에 기록된 실행이 없습니다.")).toBeInTheDocument()
-    expect(screen.queryByText("모든 실행이 한 번에 통과했습니다.")).not.toBeInTheDocument()
-    expect(within(screen.getByRole("region", { name: "최근 실행" })).getByText("조건에 맞는 실행이 없습니다.")).toBeInTheDocument()
+    const success = screen.getByRole("region", { name: "성공 흐름" })
+    expect(within(success).getByText("정상 결과로 끝난 실행이 없습니다.")).toBeInTheDocument()
+    const failure = screen.getByRole("region", { name: "실패 흐름" })
+    expect(within(failure).getAllByText("정상 결과 없이 끝난 실행이 없습니다.")).toHaveLength(2)
+    for (const section of [success, failure]) {
+      const list = within(section).getByRole("region", { name: "실행 목록" })
+      expect(await within(list).findByText("조건에 맞는 실행이 없습니다.")).toBeInTheDocument()
+    }
   })
 })

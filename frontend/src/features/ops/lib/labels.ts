@@ -1,4 +1,4 @@
-import type { RunPath, StepKind, StepStatus, Workflow } from '../api'
+import type { Outcome, RunPath, StepKind, StepStatus, Workflow } from '../api'
 
 /**
  * 서버가 주는 고정 코드에 붙이는 한국어 이름. 판정·실패 사유 코드(REGENERATE, TIMEOUT 등)는 로그·코드와 맞춰 보도록 그대로 둔다.
@@ -26,6 +26,24 @@ export const PATH_HINT: Record<RunPath, string> = {
   RETRIED: '거절·실패 뒤 다시 돌아 정상 결과',
   GUIDED: '입력 문제·안전 판정으로 안내 문구',
   FAILED: '호출 실패·한도·시간 초과·서버 오류',
+}
+
+/** 성공 = 정상 결과로 끝남(한 번에 통과·재시도 후 정상), 실패 = 정상 결과 없이 끝남(안내로 종료·오류). */
+export const OUTCOMES: Outcome[] = ['SUCCESS', 'FAILURE']
+
+export const OUTCOME_PATHS: Record<Outcome, RunPath[]> = {
+  SUCCESS: ['NORMAL', 'RETRIED'],
+  FAILURE: ['GUIDED', 'FAILED'],
+}
+
+export const OUTCOME_LABEL: Record<Outcome, string> = {
+  SUCCESS: '성공 흐름',
+  FAILURE: '실패 흐름',
+}
+
+export const OUTCOME_HINT: Record<Outcome, string> = {
+  SUCCESS: '정상 결과(응답 전달·리포트 완성·시나리오 완성)로 끝난 실행. 중간에 거절·재시도가 있었어도 결과가 나갔으면 여기입니다.',
+  FAILURE: '정상 결과 없이 끝난 실행. 입력·안전 판정으로 다시 입력을 요청했거나, 호출 실패·한도·시간 초과로 끝났습니다.',
 }
 
 /** PathCounts 의 키. 색 변수 이름(--ops-path-*)에도 같은 말을 쓴다. */

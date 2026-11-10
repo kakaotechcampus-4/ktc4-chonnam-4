@@ -4,6 +4,8 @@ import com.neuringo.neuringobe.ops.domain.AgentRun;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.Bucket;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.CodeCount;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.Ending;
+import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.Flow;
+import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.FlowStep;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.StageTime;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.StepStat;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.Totals;
@@ -332,17 +334,73 @@ public class AgentRunStore {
                 window.args().toArray());
     }
 
-    /** 최근 순 목록. 단계·구간은 싣지 않는다. */
-    public List<AgentRun> list(Window window, String path, int limit) {
+    /**
+     * 같은 단계 순서·판정으로 흘러간 실행끼리 묶는다. 서명은 최종 결과 앞 단계들의 "단계|상태|판정"을 순서대로 이은 것이다. 단계·판정은 저장할 때 코드
+     * 형식(쉼표·세로줄 없음)만 남기므로 나눌 때 섞이지 않는다.
+     */
+    public List<Flow> flows(Window window, int limit) {
         var args = window.args();
-        if (path != null) args.add(path);
+        args.add(limit);
+        return jdbc.query(
+                """
+                select r.workflow, r.path, r.result, f.signature, count(*) as runs,
+                    coalesce(percentile_cont(0.5) within group (order by r.duration_ms), 0) as p50,
+                    (array_agg(r.run_id order by r.started_at desc, r.run_id))[1:3] as recent
+                from agent_run r
+                cross join lateral (
+                    select coalesce(string_agg(
+                        s.step || '|' || s.status || '|' || coalesce(s.verdict, ''), ',' order by s.seq), '')
+                        as signature
+                    from agent_run_step s where s.run_id = r.run_id and s.kind <> 'RESULT'
+                ) f
+                where
+                """
+                        + window.where()
+                        + " group by r.workflow, r.path, r.result, f.signature"
+                        + " order by runs desc, r.workflow, r.path limit ?",
+                (rs, row) -> {
+                    String path = rs.getString("path");
+                    var recent = new ArrayList<UUID>();
+                    for (Object id : (Object[]) rs.getArray("recent").getArray())
+                        recent.add(id instanceof UUID uuid ? uuid : UUID.fromString(id.toString()));
+                    return new Flow(
+                            rs.getString("workflow"),
+                            AgentRun.Path.valueOf(path).outcome().name(),
+                            path,
+                            rs.getString("result"),
+                            flowSteps(rs.getString("signature")),
+                            rs.getLong("runs"),
+                            Math.round(rs.getDouble("p50")),
+                            List.copyOf(recent));
+                },
+                args.toArray());
+    }
+
+    private static List<FlowStep> flowSteps(String signature) {
+        if (signature == null || signature.isEmpty()) return List.of();
+        return java.util.Arrays.stream(signature.split(","))
+                .map(part -> part.split("\\|", -1))
+                .map(p -> new FlowStep(p[0], p[1], p[2].isEmpty() ? null : p[2]))
+                .toList();
+    }
+
+    /** 최근 순 목록. paths 가 비어 있으면 모든 흐름이다. 단계·구간은 싣지 않는다. */
+    public List<AgentRun> list(Window window, List<String> paths, int limit) {
+        var args = window.args();
+        args.addAll(paths);
         args.add(limit);
         return jdbc.query(
                 "select "
                         + RUN_COLUMNS
                         + " from agent_run r where"
                         + window.where()
-                        + (path == null ? "" : " and r.path = ?")
+                        + (paths.isEmpty()
+                                ? ""
+                                : " and r.path in ("
+                                        + String.join(
+                                                ", ",
+                                                java.util.Collections.nCopies(paths.size(), "?"))
+                                        + ")")
                         + " order by r.started_at desc, r.run_id limit ?",
                 (rs, row) -> run(rs, Map.of(), List.of(), List.of()),
                 args.toArray());

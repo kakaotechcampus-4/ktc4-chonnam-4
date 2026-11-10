@@ -9,6 +9,9 @@ export type Workflow = 'ROLEPLAY_TURN' | 'LEARNING_REPORT' | 'SCENARIO_GENERATIO
 /** NORMAL 한 번에 통과, RETRIED 다시 돌아 정상 결과, GUIDED 설계된 안내로 끝남, FAILED 오류로 끝남. */
 export type RunPath = 'NORMAL' | 'RETRIED' | 'GUIDED' | 'FAILED'
 
+/** SUCCESS 는 정상 결과로 끝난 실행(NORMAL·RETRIED), FAILURE 는 정상 결과 없이 끝난 실행(GUIDED·FAILED). */
+export type Outcome = 'SUCCESS' | 'FAILURE'
+
 export type StepKind = 'CALL' | 'CHECK' | 'RESULT'
 
 export type StepStatus = 'PASSED' | 'REJECTED' | 'FAILED'
@@ -113,9 +116,22 @@ export type AgentRunOverview = {
     count: number
   }[]
   stages: { stage: string; avgMs: number; p95Ms: number }[]
+  flows: AgentRunFlow[]
 }
 
-export type AgentRunFilter = { hours: number; workflow?: Workflow; path?: RunPath }
+/** 같은 단계 순서·판정으로 흘러간 실행끼리 묶은 흐름 패턴. recentRunIds 는 최근 실행 번호(역할극 턴은 X-Trace-Id). */
+export type AgentRunFlow = {
+  workflow: Workflow
+  outcome: Outcome
+  path: RunPath
+  result: string
+  steps: { step: string; status: StepStatus; verdict: string | null }[]
+  count: number
+  p50Ms: number
+  recentRunIds: string[]
+}
+
+export type AgentRunFilter = { hours: number; workflow?: Workflow; path?: RunPath; outcome?: Outcome }
 
 function query(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams()
@@ -129,8 +145,8 @@ export function getAgentRunOverview({ hours, workflow }: AgentRunFilter): Promis
   return readRequest(`/ops/agent-runs/overview?${query({ hours, workflow })}`)
 }
 
-export function listAgentRuns({ hours, workflow, path }: AgentRunFilter, limit = 50): Promise<AgentRun[]> {
-  return readRequest(`/ops/agent-runs?${query({ hours, workflow, path, limit })}`)
+export function listAgentRuns({ hours, workflow, path, outcome }: AgentRunFilter, limit = 50): Promise<AgentRun[]> {
+  return readRequest(`/ops/agent-runs?${query({ hours, workflow, path, outcome, limit })}`)
 }
 
 export function getAgentRun(runId: string): Promise<AgentRun> {
