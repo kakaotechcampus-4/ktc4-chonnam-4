@@ -36,6 +36,7 @@ NEURINGO_AI_DIAGNOSTICS_MAX_EVENT_BYTES?=ai/diagnostics/max-event-bytes
 # operators 는 볼 수 있는 강사 계정 이메일을 쉼표로 적는다(* 는 로그인한 강사 모두). 비우면 켜도 아무도 볼 수 없다.
 NEURINGO_AGENT_RUNS_ENABLED?=ops/agent-runs/enabled
 NEURINGO_AGENT_RUNS_OPERATORS?=ops/agent-runs/operators
+# retention 은 비우거나 0 이면 기록을 지우지 않는다. 14d 처럼 주면 그보다 오래된 기록을 지운다.
 NEURINGO_AGENT_RUNS_RETENTION?=ops/agent-runs/retention
 # public 이 true 면 로그인 없이 누구나 대시보드를 본다(시연·외부 평가용). 시연이 끝나면 false 로 돌리고 Deploy(force)를 다시 돌린다.
 NEURINGO_AGENT_RUNS_PUBLIC?=ops/agent-runs/public
