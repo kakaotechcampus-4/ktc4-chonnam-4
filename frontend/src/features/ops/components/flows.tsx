@@ -3,18 +3,19 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { AgentRun, AgentRunFlow, AgentRunOverview, Outcome, RunPath } from '../api'
 import { compact, count, dayClock, duration, percent } from '../lib/format'
 import {
+  codeLabel,
   OUTCOME_HINT,
   OUTCOME_LABEL,
   OUTCOME_PATHS,
   PATH_KEY,
   PATH_LABEL,
-  STATUS_LABEL,
   stepLabel,
   WORKFLOW_LABEL,
 } from '../lib/labels'
-import { focusRing, pathColor, statusColor } from '../lib/tones'
+import { stepTones, TONE_LABEL } from '../lib/steps'
+import { focusRing, pathColor, tint, toneColor } from '../lib/tones'
 import { Sparkline } from './charts'
-import { Code, Empty, Panel, PathBadge, PathIcon, StatusIcon } from './primitives'
+import { CodeWithLabel, Empty, Panel, PathBadge, PathIcon, ToneIcon } from './primitives'
 
 type Overview = AgentRunOverview
 
@@ -85,14 +86,14 @@ export function OutcomeSection({
   return (
     <section aria-label={OUTCOME_LABEL[outcome]} className="flex flex-col gap-2">
       <header
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[4px] border border-l-4 border-[var(--ops-border)] bg-[var(--ops-panel)] px-3 py-2"
-        style={{ borderLeftColor: OUTCOME_COLOR[outcome] }}
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[4px] border border-l-4 border-[var(--ops-border)] px-3 py-2"
+        style={{ borderLeftColor: OUTCOME_COLOR[outcome], background: tint(OUTCOME_COLOR[outcome], 12, 'var(--ops-panel)') }}
       >
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ops-text)]">
           <Icon aria-hidden size={16} strokeWidth={2.2} style={{ color: OUTCOME_COLOR[outcome] }} />
           {OUTCOME_LABEL[outcome]}
         </h2>
-        <span className="ops-num text-sm text-[var(--ops-text-2)]">
+        <span className="ops-num text-sm font-semibold" style={{ color: OUTCOME_COLOR[outcome] }}>
           {count(value)}건 · {percent(value, total)}
         </span>
         <span className="text-xs text-[var(--ops-muted)]">{OUTCOME_HINT[outcome]}</span>
@@ -150,28 +151,44 @@ export function TraceId({ runId, onOpen, full = false }: { runId: string; onOpen
   )
 }
 
-/** 흐름 하나를 단계 칩 사슬로 그린다. 같은 단계가 다시 돌면 몇 번째인지 붙이고, 통과하지 못한 단계에는 판정 코드를 붙인다. */
+/**
+ * 흐름 하나를 단계 칩 사슬로 그린다. 같은 단계가 다시 돌면 몇 번째인지 붙이고, 통과하지 못한 단계에는 판정의 뜻을 붙인다(코드는 마우스를 올리면 보인다).
+ * 거절이 다시 시도로 이어졌는지(노랑), 거기서 안내로 멈췄는지(파랑), 오류로 끝났는지(빨강)를 칩 색으로 나눈다.
+ */
 function FlowChain({ flow }: { flow: AgentRunFlow }) {
   const seen = new Map<string, number>()
+  const tones = stepTones(flow.steps, flow.path)
+  const ended = flow.path === 'GUIDED' || flow.path === 'FAILED'
+  const end = pathColor(flow.path)
   return (
     <ol className="flex flex-wrap items-center gap-x-1 gap-y-1.5" aria-label="단계 흐름">
       {flow.steps.map((step, index) => {
         const nth = (seen.get(step.step) ?? 0) + 1
         seen.set(step.step, nth)
-        const blocked = step.status !== 'PASSED'
+        const tone = tones[index]
+        const blocked = tone !== 'passed'
+        const meaning = step.verdict ? (codeLabel(step.verdict) ?? step.verdict) : null
         return (
           <li key={index} className="inline-flex items-center gap-1">
             <span
-              className="inline-flex items-center gap-1 rounded-[3px] border bg-[var(--ops-panel-raised)] px-1.5 py-0.5 text-xs text-[var(--ops-text-2)]"
-              style={{ borderColor: blocked ? statusColor(step.status) : 'var(--ops-border)' }}
+              className="inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-0.5 text-xs text-[var(--ops-text-2)]"
+              style={{
+                borderColor: blocked ? toneColor(tone) : 'var(--ops-border)',
+                background: blocked ? tint(toneColor(tone)) : 'var(--ops-panel-raised)',
+              }}
+              title={blocked && step.verdict ? `${TONE_LABEL[tone]} · ${step.verdict}` : undefined}
             >
-              <StatusIcon status={step.status} size={12} />
-              <span className="sr-only">{STATUS_LABEL[step.status]}</span>
+              <ToneIcon tone={tone} size={12} />
+              <span className="sr-only">{TONE_LABEL[tone]}</span>
               <span className={blocked ? 'text-[var(--ops-text)]' : ''}>
                 {stepLabel(step.step)}
                 {nth > 1 && <span className="text-[var(--ops-muted)]"> {nth}</span>}
               </span>
-              {blocked && step.verdict && <span className="ops-mono text-[var(--ops-text)]">{step.verdict}</span>}
+              {blocked && meaning && (
+                <span className="font-medium" style={{ color: toneColor(tone) }}>
+                  · {meaning}
+                </span>
+              )}
             </span>
             <ArrowRight aria-hidden size={12} className="text-[var(--ops-muted)]" />
           </li>
@@ -179,9 +196,15 @@ function FlowChain({ flow }: { flow: AgentRunFlow }) {
       })}
       <li>
         <span
-          className="inline-flex items-center gap-1 rounded-[3px] border-l-2 bg-[var(--ops-panel-raised)] px-1.5 py-0.5 text-xs font-medium text-[var(--ops-text)]"
-          style={{ borderLeftColor: pathColor(flow.path) }}
+          className={`inline-flex items-center gap-1 rounded-[3px] px-1.5 py-0.5 text-xs font-semibold text-[var(--ops-text)] ${
+            ended ? 'border' : 'border-l-2'
+          }`}
+          style={{
+            borderColor: end,
+            background: ended ? tint(end, 24) : 'var(--ops-panel-raised)',
+          }}
         >
+          {ended && <PathIcon path={flow.path} size={12} />}
           {stepLabel(flow.result)}
         </span>
       </li>
@@ -353,7 +376,7 @@ export function RunListPanel({
                   <td className={tdClass}>
                     <span className="flex flex-wrap items-center gap-1.5">
                       {run.endedBy ? stepLabel(run.endedBy) : '—'}
-                      {run.reason && <Code>{run.reason}</Code>}
+                      {run.reason && <CodeWithLabel code={run.reason} />}
                     </span>
                   </td>
                   {wide && <td className={`${tdClass} whitespace-nowrap`}>{stepLabel(run.result)}</td>}

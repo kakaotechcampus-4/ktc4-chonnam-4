@@ -32,7 +32,7 @@
 
 | 이름 | 위치 | 타입 | 기본 | 설명 |
 |---|---|---|---|---|
-| hours | query | number | 24 | 1~336. 지금부터 거꾸로 이 시간만큼 |
+| hours | query | number | 24 | 1~2160(90일). 지금부터 거꾸로 이 시간만큼. 화면은 기본 30일(720)로 묻습니다 |
 | workflow | query | string | 전체 | `ROLEPLAY_TURN`·`LEARNING_REPORT`·`SCENARIO_GENERATION` |
 | path | query | string | 전체 | API-OPS-02 만. `NORMAL`·`RETRIED`·`GUIDED`·`FAILED` |
 | outcome | query | string | 전체 | API-OPS-02 만. `SUCCESS`(NORMAL·RETRIED)·`FAILURE`(GUIDED·FAILED). path 와 같이 주면 path 가 그 묶음에 속해야 합니다 |

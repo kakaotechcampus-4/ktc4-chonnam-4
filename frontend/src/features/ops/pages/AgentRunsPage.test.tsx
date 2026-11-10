@@ -68,7 +68,7 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
       "통과입력 판정",
       "통과원인 분석",
       "통과응답 생성",
-      "거절응답 검수REGENERATE",
+      "거절 → 다시 시도응답 검수· 응답 다시 만들기",
       "통과응답 생성 2",
       "통과응답 검수 2",
       "통과턴 결과 판정",
@@ -80,10 +80,11 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
 
     const failure = screen.getByRole("region", { name: "실패 흐름" })
     const failurePatterns = within(failure).getByRole("region", { name: "흐름 패턴" })
-    expect(within(failurePatterns).getAllByText("TIMEOUT")).toHaveLength(3)
-    expect(within(failurePatterns).getByText("LIMIT_REACHED")).toBeInTheDocument()
-    expect(within(failurePatterns).getByText("INPUT_REJECTED")).toBeInTheDocument()
-    expect(within(failurePatterns).queryByText("REGENERATE")).not.toBeInTheDocument()
+    // 칩에는 판정의 뜻을 쓰고, 코드와 그 단계가 한 역할(다시 시도·멈춤·실패)은 마우스를 올리면 보인다.
+    expect(within(failurePatterns).getAllByTitle(/· TIMEOUT$/)).toHaveLength(3)
+    expect(within(failurePatterns).getByTitle("실패 → 오류로 종료 · LIMIT_REACHED")).toHaveTextContent("재시도 한도 도달")
+    expect(within(failurePatterns).getByTitle("멈춤 → 안내로 종료 · INPUT_REJECTED")).toHaveTextContent("입력 거절")
+    expect(within(failurePatterns).queryByTitle(/REGENERATE$/)).not.toBeInTheDocument()
 
     await user.click(within(failurePatterns).getByRole("button", { name: `Trace ID ${ID.timeout} 상세 열기` }))
     const detail = await screen.findByRole("dialog", { name: "실행 상세" })
@@ -176,8 +177,8 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     const items = within(diagnosis).getAllByRole("listitem")
     expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
       "실패 비율이 42%입니다 (앞 기간 10%)",
-      "역할극 턴 응답 검수 단계의 거절·실패가 24%입니다. 가장 많은 판정은 REGENERATE",
-      "LOW_CONFIDENCE(으)로 끝난 실행이 8건으로 늘었습니다 (앞 기간 2건) · 역할극 턴 음성 인식",
+      "역할극 턴 응답 검수 단계의 거절·실패가 24%입니다. 가장 많은 판정은 「응답 다시 만들기」(REGENERATE)",
+      "「음성 인식 신뢰도 낮음」(LOW_CONFIDENCE) 사유로 끝난 실행이 8건으로 늘었습니다 (앞 기간 2건) · 역할극 턴 음성 인식",
     ])
     expect(items[0]).toHaveTextContent("심각")
     expect(items[0]).toHaveTextContent("실패 흐름 구역의 흐름 패턴과 실패 원인")
@@ -229,8 +230,8 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     const causes = within(failure).getByRole("region", { name: "실패 원인" })
     const rows = within(causes).getAllByRole("row").slice(1)
     expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/안내로 종료음성 인식LOW_CONFIDENCE다시 입력 요청1/),
-      expect.stringMatching(/오류응답 검수LIMIT_REACHED다시 시도 요청1/),
+      expect.stringMatching(/안내로 종료음성 인식음성 인식 신뢰도 낮음LOW_CONFIDENCE다시 입력 요청1/),
+      expect.stringMatching(/오류응답 검수재시도 한도 도달LIMIT_REACHED다시 시도 요청1/),
     ])
     // 원인마다 그 원인으로 끝난 최근 실행의 Trace ID 를 붙인다.
     expect(within(rows[0]).getByRole("button", { name: `Trace ID ${ID.lowConfidence} 상세 열기` })).toBeInTheDocument()
@@ -259,7 +260,8 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
       "최종 결과최종 결과",
     ])
     const rejected = steps[3]
-    expect(within(rejected).getByText("거절")).toBeInTheDocument()
+    expect(within(rejected).getByText("거절 → 다시 시도")).toBeInTheDocument()
+    expect(within(rejected).getByText("답을 바로 알려 줌")).toBeInTheDocument()
     expect(within(rejected).getByText("ANSWER_TOO_DIRECT")).toBeInTheDocument()
     expect(rejected).toHaveTextContent("다음: 응답 생성")
     // 승인된 턴은 판정이 지목한 곳(RESPONSE_DELIVERY)과 실제 결과(DELIVERED)가 같은 뜻이라 덧붙이지 않는다.
@@ -279,8 +281,10 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
       item.textContent?.startsWith("턴 결과 판정"),
     )!
     expect(resolution).toHaveTextContent("다음: 다시 시도 요청")
-    expect(within(resolution).getByText("NOTICE_SAFETY_CHECK_ERROR")).toBeInTheDocument()
+    // 안내 문구 코드는 뜻으로 읽는다. 판정 코드는 뜻과 코드를 함께 둔다.
+    expect(resolution).toHaveTextContent("고른 안내: 안전 확인 오류 안내")
     expect(within(resolution).getByText("LIMIT_REACHED")).toBeInTheDocument()
+    expect(within(resolution).getByText("재시도 한도 도달")).toBeInTheDocument()
   })
 
   it("요청 번호로 실행을 찾고, 형식이 틀리면 안내한다", async () => {

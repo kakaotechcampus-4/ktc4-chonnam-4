@@ -16,7 +16,7 @@ import {
 import { focusRing, pathColor, statusColor } from '../lib/tones'
 import { RankedBars, SegmentBar } from './charts'
 import { TraceId } from './flows'
-import { Code, Empty, Panel, PathBadge, StatusIcon } from './primitives'
+import { CodeWithLabel, Empty, Panel, PathBadge, StatusIcon } from './primitives'
 
 type Overview = AgentRunOverview
 
@@ -198,7 +198,7 @@ export function TransitionPanel({ transitions, mixed }: { transitions: Overview[
                     <span className="inline-flex flex-wrap items-center gap-1.5">
                       <StatusIcon status={row.status} size={13} />
                       <span className="sr-only">{STATUS_LABEL[row.status]}</span>
-                      {row.verdict ? <Code>{row.verdict}</Code> : STATUS_LABEL[row.status]}
+                      {row.verdict ? <CodeWithLabel code={row.verdict} /> : STATUS_LABEL[row.status]}
                     </span>
                   </td>
                   <td className={`${tdClass} py-1.5`}>
@@ -308,7 +308,7 @@ export function CodePanel({ codes }: { codes: Overview['codes'] }) {
             valueText: `${count(row.count)}건`,
             label: (
               <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                <Code>{row.code}</Code>
+                <CodeWithLabel code={row.code} />
                 <span className="text-xs text-[var(--ops-muted)]">{stepLabel(row.step)}</span>
               </span>
             ),
@@ -373,7 +373,7 @@ export function FailureCausePanel({
                   <td className={tdClass}>
                     <span className="flex flex-wrap items-center gap-1.5">
                       {row.endedBy ? stepLabel(row.endedBy) : '—'}
-                      {row.reason && <Code>{row.reason}</Code>}
+                      {row.reason && <CodeWithLabel code={row.reason} />}
                     </span>
                   </td>
                   <td className={tdClass}>{stepLabel(row.result)}</td>
