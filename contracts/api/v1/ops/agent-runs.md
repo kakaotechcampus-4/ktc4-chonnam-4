@@ -12,7 +12,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 인증 | 강사 Bearer. 그 가운데 `neuringo.agent-runs.operators` 에 있는 계정만 |
+| 인증 | 강사 Bearer. 그 가운데 `neuringo.agent-runs.operators` 에 있는 계정만. `neuringo.agent-runs.public-read=true` 면 로그인 없이 누구나 |
 | 성공 | 200 |
 | 화면 | `/ops/agent-runs`(강사 메뉴에는 없음) |
 | 서버 | `backend/src/main/java/com/neuringo/neuringobe/ops/` |
@@ -137,7 +137,7 @@
 |---|---|---|
 | 400 | INVALID_AGENT_RUN_FILTER | hours·workflow·path 값이 범위 밖 |
 | 400 | INVALID_REQUEST | runId 가 UUID 가 아님 |
-| 401 | AUTHENTICATION_REQUIRED·INVALID_TOKEN | 로그인 화면으로 |
+| 401 | AUTHENTICATION_REQUIRED·INVALID_TOKEN | 로그인 화면으로(공개가 꺼져 있을 때 로그인하지 않은 요청, 또는 만료된 토큰) |
 | 404 | RESOURCE_NOT_FOUND | 기능이 꺼져 있거나 허용 목록에 없는 계정. 화면이 있다는 사실도 알리지 않습니다 |
 | 404 | AGENT_RUN_NOT_FOUND | 없는 실행 번호(보관 기간이 지났거나 기록을 켜기 전 요청) |
 
@@ -148,6 +148,7 @@
 | NEURINGO_AGENT_RUNS_ENABLED | `ops/agent-runs/enabled` | false | `true` 면 기록을 저장하고 조회 API 를 엽니다 |
 | NEURINGO_AGENT_RUNS_OPERATORS | `ops/agent-runs/operators` | 비어 있음 | 볼 수 있는 강사 계정 이메일을 쉼표로 적습니다. `*` 는 로그인한 강사 모두 |
 | NEURINGO_AGENT_RUNS_RETENTION | `ops/agent-runs/retention` | 14d | 이 기간이 지난 기록은 한 시간마다 지웁니다 |
+| NEURINGO_AGENT_RUNS_PUBLIC | `ops/agent-runs/public` | false | `true` 면 로그인 없이 누구나 조회합니다(시연·외부 평가용). 조회 GET 만 열리고, 저장 값은 2절대로 고정 코드·횟수·시간·토큰 수뿐입니다. 시연이 끝나면 `false` 로 돌립니다 |
 
 값을 넣은 뒤 Actions → Deploy(force)로 다시 배포합니다. 기존 호출 로그(`NEURINGO_AI_CALL_LOG`)는 켜지 않아도 됩니다. 기록은 같은 서버의 Postgres(`agent_run`, `agent_run_step`, V44)에 저장되며 새 AWS 서비스는 쓰지 않습니다.
 

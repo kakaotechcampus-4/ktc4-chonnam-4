@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 /**
  * 운영 대시보드는 강사 화면이 아니다. 허용 목록(neuringo.agent-runs.operators)에 있는 계정만 읽고, 그 밖의 강사에게는 화면이 있다는 사실도 알리지
@@ -31,6 +32,7 @@ class AgentRunAccessIntegrationTest {
     }
 
     @Autowired private TestFixtures fixtures;
+    @Autowired private MockMvcTester mvc;
 
     @Test
     void 허용_목록에_있는_계정은_요약과_목록을_읽는다() {
@@ -50,6 +52,17 @@ class AgentRunAccessIntegrationTest {
                 .isEqualTo(24);
         assertThat(fixtures.get(operator, "/api/v1/ops/agent-runs").getResponse().getStatus())
                 .isEqualTo(200);
+    }
+
+    @Test
+    void 공개를_켜지_않으면_로그인하지_않은_요청은_401_이다() {
+        assertThat(
+                        mvc.get()
+                                .uri("/api/v1/ops/agent-runs/overview")
+                                .exchange()
+                                .getResponse()
+                                .getStatus())
+                .isEqualTo(401);
     }
 
     @Test
