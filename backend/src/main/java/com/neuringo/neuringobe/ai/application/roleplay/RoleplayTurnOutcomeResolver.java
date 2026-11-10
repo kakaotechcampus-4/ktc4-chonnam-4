@@ -1,8 +1,12 @@
 package com.neuringo.neuringobe.ai.application.roleplay;
 
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayNoticeCatalog.Kind;
 import com.neuringo.neuringobe.ai.application.roleplay.RoleplayTurnOutcome.Action;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -22,6 +26,74 @@ public final class RoleplayTurnOutcomeResolver {
 
     public RoleplayTurnOutcome resolve(RoleplayTurnResult result) {
         Objects.requireNonNull(result);
+        var outcome = resolved(result);
+        RoleplayTiming.note("DECISION", resolution(result, outcome));
+        return outcome;
+    }
+
+    /** 턴이 왜 이 결과로 끝났는지 실행 기록에 남길 고정 코드. error 는 설계된 안내(입력 품질·안전 판정)가 아니라 호출 실패·한도·시간 초과로 끝난 경우다. */
+    static Map<String, Object> resolution(RoleplayTurnResult result, RoleplayTurnOutcome outcome) {
+        String verdict;
+        boolean error = false;
+        List<String> codes = List.of();
+        Object operation = null;
+        switch (result) {
+            case RoleplayTurnResult.SpokenReady ignored -> verdict = "APPROVED";
+            case RoleplayTurnResult.Ready ignored -> verdict = "APPROVED";
+            case RoleplayTurnResult.InputRejected rejected -> {
+                verdict = "INPUT_REJECTED";
+                codes = List.of(rejected.reason().name());
+                error =
+                        rejected.reason() == RoleplayTurnResult.InputFailure.TRANSCRIPTION_FAILED
+                                || rejected.reason()
+                                        == RoleplayTurnResult.InputFailure
+                                                .AUDIO_INSPECTION_UNAVAILABLE;
+            }
+            case RoleplayTurnResult.InputUnsafe ignored -> verdict = "INPUT_UNSAFE";
+            case RoleplayTurnResult.InputCheckUnavailable ignored -> {
+                verdict = "INPUT_CHECK_UNAVAILABLE";
+                error = true;
+            }
+            case RoleplayTurnResult.TimedOut ignored -> {
+                verdict = "TIMED_OUT";
+                error = true;
+            }
+            case RoleplayTurnResult.RecoveryRequired recovery -> {
+                verdict = recovery.reason().name();
+                codes = List.of(recovery.target().name());
+                operation = recovery.operation();
+                error =
+                        recovery.reason() != RoleplayTurnResult.RecoveryReason.MODEL_REQUESTED
+                                && recovery.reason()
+                                        != RoleplayTurnResult.RecoveryReason.INPUT_SAFETY_REJECTED;
+            }
+            case RoleplayTurnResult.CallFailed ignored -> verdict = "CALL_FAILED";
+            case RoleplayTurnResult.Rejected ignored -> verdict = "REJECTED";
+        }
+        var data = new LinkedHashMap<String, Object>();
+        data.put("step", "TURN_RESOLUTION");
+        data.put("verdict", verdict);
+        data.put("accepted", "APPROVED".equals(verdict));
+        data.put("error", error);
+        data.put("codes", codes);
+        data.put("operation", operation);
+        data.put("next", next(outcome));
+        return data;
+    }
+
+    private static String next(RoleplayTurnOutcome outcome) {
+        return switch (outcome) {
+            case RoleplayTurnOutcome.SpokenResponse ignored -> "RESPONSE_DELIVERY";
+            case RoleplayTurnOutcome.ApprovedResponse ignored -> "RESPONSE_DELIVERY";
+            case RoleplayTurnOutcome.InputRetry retry -> "NOTICE_" + retry.notice().kind();
+            case RoleplayTurnOutcome.InputCheckRetry retry -> "NOTICE_" + retry.notice().kind();
+            case RoleplayTurnOutcome.Guidance guidance -> "NOTICE_" + guidance.notice().kind();
+            case RoleplayTurnOutcome.SafetyStop ignored -> "SAFETY_STOP";
+            default -> "NOTICE_UNAVAILABLE";
+        };
+    }
+
+    private RoleplayTurnOutcome resolved(RoleplayTurnResult result) {
         return switch (result) {
             case RoleplayTurnResult.SpokenReady spoken ->
                     new RoleplayTurnOutcome.SpokenResponse(

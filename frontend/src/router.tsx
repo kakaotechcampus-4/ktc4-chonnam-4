@@ -26,6 +26,7 @@ import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
 import { ChildDonePage } from './features/child/pages/ChildDonePage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
 import { RequireChildSession } from './features/child/routes/RequireChildSession'
+import { AgentRunsPage } from './features/ops/pages/AgentRunsPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <App /> },
@@ -148,6 +149,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireInstructorAuth>
         <AccountPage />
+      </RequireInstructorAuth>
+    ),
+  },
+  // 운영 대시보드. 강사 메뉴에는 넣지 않는다. 강사 토큰으로 조회하고, 볼 수 있는 계정인지는 서버가 정한다.
+  {
+    path: '/ops/agent-runs',
+    element: (
+      <RequireInstructorAuth>
+        <AgentRunsPage />
       </RequireInstructorAuth>
     ),
   },

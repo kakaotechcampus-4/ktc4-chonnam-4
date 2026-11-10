@@ -231,7 +231,8 @@ async function fetchCsrfToken(signal: AbortSignal): Promise<CsrfToken> {
   return parseApiResponse<CsrfToken>(res)
 }
 
-function readRequest<T>(path: string): Promise<T> {
+// 운영 대시보드(features/ops)도 같은 강사 토큰·401 처리로 조회하므로 밖에서 쓸 수 있게 둔다.
+export function readRequest<T>(path: string): Promise<T> {
   const session = startSession(true)
   return withCancellation(async (signal) => {
     // CSRF 쿠키가 다른 Origin 으로도 오가야 하므로 조회에도 credentials 를 붙인다.

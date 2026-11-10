@@ -2,8 +2,13 @@ package com.neuringo.neuringobe.scenario.service;
 
 import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
+import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
 import com.neuringo.neuringobe.ai.application.model.LlmCompletion;
+import com.neuringo.neuringobe.ai.application.observation.AgentRunTrace;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
+import com.neuringo.neuringobe.ai.application.port.AgentRunRecorder;
+import com.neuringo.neuringobe.ai.application.port.AgentRunRecorder.Workflow;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioGenerationInput;
 import com.neuringo.neuringobe.ai.application.prompt.ScenarioPromptFactory;
@@ -19,6 +24,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -37,13 +43,59 @@ public class ScenarioGenerationService {
     private final ScenarioPromptFactory prompts;
     private final JsonMapper json;
 
+    private final ObjectProvider<AgentRunRecorder> runs;
+
     public ScenarioGenerationService(ObjectProvider<LlmProvider> providers, JsonMapper json) {
+        this(providers, json, null);
+    }
+
+    @Autowired
+    public ScenarioGenerationService(
+            ObjectProvider<LlmProvider> providers,
+            JsonMapper json,
+            ObjectProvider<AgentRunRecorder> runs) {
         this.providers = providers;
         this.json = json;
         this.prompts = new ScenarioPromptFactory(json, null);
+        this.runs = runs;
     }
 
+    /**
+     * 생성 한 번을 실행 기록으로 묶는다. 기록에는 시도별 호출 결과와 출력 거절 코드만 남고, 활동·학급 번호와 시나리오 글은 넣지 않는다. 같은 requestId 로
+     * 다시 들어온 요청도 따로 남도록 실행 번호는 새로 만든다.
+     */
     public GeneratedScenario generate(ScenarioGenerationContext context, UUID requestId) {
+        var recorder =
+                runs == null
+                        ? AgentRunRecorder.NONE
+                        : runs.getIfAvailable(() -> AgentRunRecorder.NONE);
+        try (var run =
+                AgentRunTrace.open(recorder, UUID.randomUUID(), Workflow.SCENARIO_GENERATION)) {
+            try {
+                var scenario = generateTraced(context, requestId);
+                run.completed("GENERATED");
+                return scenario;
+            } catch (ApiException failure) {
+                run.failed("FAILED", failure.getCode());
+                throw failure;
+            }
+        }
+    }
+
+    private static void noted(int attempt, String outcome, String code) {
+        var data = new java.util.LinkedHashMap<String, Object>();
+        data.put("operation", AiOperation.SCENARIO_GENERATION);
+        data.put("attempt", attempt);
+        data.put("outcome", outcome);
+        if (code != null) {
+            data.put("verdict", outcome);
+            data.put("accepted", false);
+            data.put("codes", List.of(code));
+        }
+        RoleplayTiming.note("VALIDATION", data);
+    }
+
+    private GeneratedScenario generateTraced(ScenarioGenerationContext context, UUID requestId) {
         var provider = providers.getIfAvailable();
         if (provider == null)
             throw new ApiException(
@@ -123,6 +175,7 @@ public class ScenarioGenerationService {
                 scenario = prompt.parser().parse(success.data().content());
             } catch (InvalidLlmOutputException invalid) {
                 String code = failureCode(invalid);
+                noted(attempt, "INVALID_OUTPUT_FORMAT", code);
                 log.info(
                         "event=scenario_generation_invalid_output activityId={} reviewId={} attempt={} reason={}",
                         context.snapshot().activityId(),
@@ -154,6 +207,7 @@ public class ScenarioGenerationService {
             var violation = ScenarioTeacherConditions.violation(teacherInput, scenario);
             if (violation.isPresent()) {
                 String code = violation.get();
+                noted(attempt, "CONDITION_VIOLATED", code);
                 log.info(
                         "event=scenario_generation_invalid_output activityId={} reviewId={} attempt={} reason={}",
                         context.snapshot().activityId(),
@@ -175,6 +229,7 @@ public class ScenarioGenerationService {
                 if (!failureCodes.contains(code)) failureCodes.add(code);
                 continue;
             }
+            noted(attempt, "VALID", null);
             log.info(
                     "event=scenario_generation_completed activityId={} reviewId={} reason={} elapsedMs={} attempts={} inputTokens={} outputTokens={}",
                     context.snapshot().activityId(),

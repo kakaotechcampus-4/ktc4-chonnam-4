@@ -2,6 +2,7 @@ package com.neuringo.neuringobe.ai.application.structured.output;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.neuringo.neuringobe.ai.application.structured.JudgedOutput;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -15,7 +16,8 @@ public record EvaluationResult(
         @JsonProperty("failure_codes") List<String> failureCodes,
         @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction,
         @JsonProperty("goal_observation_review") GoalObservationOutput.Review goalObservationReview,
-        @JsonIgnore List<AnalysisReviewIssue> analysisReviewIssues) {
+        @JsonIgnore List<AnalysisReviewIssue> analysisReviewIssues)
+        implements JudgedOutput {
 
     public EvaluationResult(
             UUID candidateId,
@@ -85,6 +87,26 @@ public record EvaluationResult(
                 && decision == EvaluationDecision.PASS
                 && criticalFailureCount == 0
                 && (goalObservationReview == null || goalObservationReview.supportsAnalysis());
+    }
+
+    @Override
+    public String verdict() {
+        return decision.name();
+    }
+
+    @Override
+    public boolean accepted() {
+        return canDeliver();
+    }
+
+    @Override
+    public String nextStep() {
+        return retryTarget == null ? null : retryTarget.name();
+    }
+
+    @Override
+    public List<String> verdictCodes() {
+        return failureCodes;
     }
 
     public boolean matchesObservationContract(AnalysisResult analysis) {

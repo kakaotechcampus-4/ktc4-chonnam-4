@@ -1,6 +1,7 @@
 package com.neuringo.neuringobe.ai.application.structured.output;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.neuringo.neuringobe.ai.application.structured.JudgedOutput;
 import java.util.List;
 import java.util.Objects;
 
@@ -18,7 +19,8 @@ public record ReportReview(
         ReportReviewDecision decision,
         ReportReviewScores scores,
         @JsonProperty("failure_codes") List<String> failureCodes,
-        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction) {
+        @JsonProperty("revision_instruction") RevisionInstruction revisionInstruction)
+        implements JudgedOutput {
 
     /**
      * 초안 항목 하나의 확인 결과.
@@ -67,5 +69,21 @@ public record ReportReview(
 
     public boolean everyItemChecked() {
         return itemChecks.stream().allMatch(ItemCheck::passed);
+    }
+
+    @Override
+    public String verdict() {
+        return decision.name();
+    }
+
+    /** 평가 모델의 판정만 본다. 점수 기준까지 넣은 최종 통과 여부는 생성 루프가 따로 남긴다. */
+    @Override
+    public boolean accepted() {
+        return decision == ReportReviewDecision.PASS && failureCodes.isEmpty();
+    }
+
+    @Override
+    public List<String> verdictCodes() {
+        return failureCodes;
     }
 }
