@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 운영 대시보드 조회. 강사 화면이 아니라 개발·운영 담당자가 보는 화면이라, 허용 목록(neuringo.agent-runs.operators)에 있는 계정만 읽는다. 목록에
- * 없는 계정에는 화면이 있다는 사실도 알리지 않도록 404 로 답한다.
+ * 없는 계정에는 화면이 있다는 사실도 알리지 않도록 404 로 답한다. public-read 를 켜면 로그인 없이 누구나 읽는다(SecurityConfig 도 이 주소의 GET
+ * 을 연다).
  */
 @Service
 @ConditionalOnProperty(name = "neuringo.agent-runs.enabled", havingValue = "true")
@@ -143,6 +144,7 @@ public class AgentRunQueryService {
     }
 
     private void requireOperator(AuthenticatedUser user) {
+        if (properties.publicRead()) return;
         if (user != null && properties.everyInstructor()) return;
         boolean allowed =
                 user != null

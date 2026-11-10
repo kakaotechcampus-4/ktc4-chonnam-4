@@ -110,6 +110,8 @@ neuringo:
     enabled: ${NEURINGO_AGENT_RUNS_ENABLED:false}
     operators: ${NEURINGO_AGENT_RUNS_OPERATORS:}
     retention: ${NEURINGO_AGENT_RUNS_RETENTION:14d}
+    # true 면 로그인 없이 누구나 조회한다(시연·외부 평가용). 끄면 위 operators 규칙으로 돌아간다.
+    public-read: ${NEURINGO_AGENT_RUNS_PUBLIC:false}
   ai:
     provider-name: ${AI_PROVIDER_NAME:openai-compatible}
     model: ${AI_MODEL:}

@@ -37,6 +37,8 @@ NEURINGO_AI_DIAGNOSTICS_MAX_EVENT_BYTES?=ai/diagnostics/max-event-bytes
 NEURINGO_AGENT_RUNS_ENABLED?=ops/agent-runs/enabled
 NEURINGO_AGENT_RUNS_OPERATORS?=ops/agent-runs/operators
 NEURINGO_AGENT_RUNS_RETENTION?=ops/agent-runs/retention
+# public 이 true 면 로그인 없이 누구나 대시보드를 본다(시연·외부 평가용). 시연이 끝나면 false 로 돌리고 Deploy(force)를 다시 돌린다.
+NEURINGO_AGENT_RUNS_PUBLIC?=ops/agent-runs/public
 
 # 리포트 초안·검수만 다른 모델로 보내는 경로(application.yml neuringo.ai.routes). 키는 AI_API_KEY 를 같이 쓴다.
 # 경로마다 base-url 과 model 이 둘 다 있을 때만 켜진다. 비워 두면 리포트도 위 AI_MODEL 로 간다.
