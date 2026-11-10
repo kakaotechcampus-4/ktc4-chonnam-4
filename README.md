@@ -106,8 +106,12 @@
 - 강사는 후보를 넘기거나, 고친 뒤 승인할 수 있고, 승인 대기함에서 한꺼번에 확인합니다.
 
 <div align="center">
-  <img src="docs/images/readme/teacher-scenario-review.png" width="800" alt="시나리오 검토">
-  <br>시나리오 검토 — 상황·인물·고정 사실·작은 목표와 단계별 첫 질문을 확인하고 승인합니다
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/readme/teacher-scenario-review.png" width="400" alt="시나리오 검토"><br>시나리오 검토<br><sub>상황·인물·고정 사실·작은 목표·첫 질문 확인</sub></td>
+    <td align="center"><img src="docs/images/readme/teacher-scenario-approve.png" width="400" alt="시나리오 승인"><br>승인 확인<br><sub>검토 확인 후 승인하면 활동에 배정</sub></td>
+  </tr>
+</table>
 </div>
 
 #### ✨ 활동 관리와 리포트
@@ -179,6 +183,17 @@
 - 음성은 브라우저에서 최대 30초까지 녹음해 서버로 보냅니다. 음성 인식이 안 되면 다시 말해 달라고 하고, **3번째부터는 글자 입력**을 권합니다.
 - 막히면 도움을 한 단계씩 늘립니다: **열린 질문 → 단서 주기 → 두 개 중 고르기 → 정답 알려 주기**. 힌트 없이 연속으로 잘하면 다음 목표는 한 단계 낮춰서 시작합니다.
 - 작은 목표를 모두 달성하거나 최대 턴에 도달하면 역할극이 끝나고, 스탬프를 받습니다.
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/readme/child-roleplay-start.png" width="400" alt="역할극 시작"><br>역할극 시작 — 말이나 글로 대답</td>
+    <td align="center"><img src="docs/images/readme/child-roleplay-hint.png" width="400" alt="깡총이 도움"><br>막히면 깡총이가 도와줘요</td>
+  </tr>
+</table>
+<img src="docs/images/readme/child-roleplay-chat.png" width="600" alt="역할극 대화">
+<br>감정 → 이유 → 위로하는 말 순서로 대화가 이어집니다
+</div>
 
 ---
 
