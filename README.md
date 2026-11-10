@@ -19,6 +19,12 @@
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white)
 
+<br><br>
+
+<b>🌐 서비스 바로가기:</b> <a href="https://d430pejtvizp8.cloudfront.net/" target="_blank"><b>https://d430pejtvizp8.cloudfront.net</b></a>
+<br>
+<sub>Chrome(PC·태블릿) 권장 · 카메라·마이크 권한이 필요합니다</sub>
+
 </div>
 
 ---
@@ -231,6 +237,7 @@ flowchart LR
 
 | 구성 요소 | 설명 |
 |---|---|
+| **배포 링크** | [https://d430pejtvizp8.cloudfront.net](https://d430pejtvizp8.cloudfront.net/) (CloudFront → EC2) |
 | **프론트엔드** | React + Vite 빌드 결과를 서버의 **nginx 컨테이너**가 제공하고, `/api/` 요청은 백엔드로 넘깁니다. 화면과 API가 같은 커밋으로 함께 배포·롤백되고, 같은 출처라 CORS 없이 세션 CSRF를 그대로 씁니다. |
 | **HTTPS** | 카메라·마이크는 HTTPS에서만 열리므로 **CloudFront 기본 주소**로 도메인·인증서 없이 HTTPS를 제공합니다. 정적 파일(`/assets/*`)만 캐시합니다. |
 | **백엔드** | Spring Boot 컨테이너(비root 사용자)로 배포되며, PostgreSQL과 Flyway 마이그레이션으로 스키마를 관리합니다. |
