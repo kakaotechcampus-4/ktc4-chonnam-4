@@ -32,6 +32,12 @@ NEURINGO_AI_DIAGNOSTICS_MAX_REQUESTS?=ai/diagnostics/max-requests
 NEURINGO_AI_DIAGNOSTICS_MAX_BYTES?=ai/diagnostics/max-bytes
 NEURINGO_AI_DIAGNOSTICS_MAX_EVENT_BYTES?=ai/diagnostics/max-event-bytes
 
+# 에이전트 워크플로우 실행 기록·운영 대시보드(/ops/agent-runs). 없으면 꺼진 채로 뜬다.
+# operators 는 볼 수 있는 강사 계정 이메일을 쉼표로 적는다(* 는 로그인한 강사 모두). 비우면 켜도 아무도 볼 수 없다.
+NEURINGO_AGENT_RUNS_ENABLED?=ops/agent-runs/enabled
+NEURINGO_AGENT_RUNS_OPERATORS?=ops/agent-runs/operators
+NEURINGO_AGENT_RUNS_RETENTION?=ops/agent-runs/retention
+
 # 리포트 초안·검수만 다른 모델로 보내는 경로(application.yml neuringo.ai.routes). 키는 AI_API_KEY 를 같이 쓴다.
 # 경로마다 base-url 과 model 이 둘 다 있을 때만 켜진다. 비워 두면 리포트도 위 AI_MODEL 로 간다.
 AI_REPORT_GENERATION_BASE_URL?=ai/routes/report-generation/base-url

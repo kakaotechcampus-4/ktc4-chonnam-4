@@ -139,6 +139,12 @@ develop `f017637`에 리포트·추천·다음 역할극 난이도(API-REC-01~06
 | [API-REC-05 · 추천 채택·수정 채택·보류·거절](./reports-recommendations/decide-recommendation.md) | PATCH | `/api/v1/recommendations/{recommendationId}` | 구현 | decideRecommendation |
 | [API-REC-06 · 다음 역할극 난이도 조회](./reports-recommendations/get-roleplay-difficulty.md) | GET | `/api/v1/children/{childId}/roleplay-difficulty` | 구현 | getRoleplayDifficulty |
 
+### 운영(개발·운영 담당자 전용)
+
+| API 문서 | Method | 경로 | 상태 | FE 함수 |
+|---|---|---|---|---|
+| [API-OPS-01~03 · 에이전트 워크플로우 실행 기록](./ops/agent-runs.md) | GET | `/api/v1/ops/agent-runs/overview`, `/api/v1/ops/agent-runs`, `/api/v1/ops/agent-runs/{runId}` | 조건부 구현 | getAgentRunOverview·listAgentRuns·getAgentRun |
+
 ## 변경과 검증 절차
 
 1. 동작 변경 PR에서 영향 API ID와 호환성 영향을 적고, 해당 MD의 Method/Path·인증·필수 필드·null·응답·상태·오류·복구를 먼저 갱신합니다.

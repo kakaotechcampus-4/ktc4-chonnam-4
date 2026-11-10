@@ -103,6 +103,13 @@ neuringo:
       window: 10m
       block-for: 10m
       max-tracked-clients: 10000
+  # 에이전트 워크플로우 실행 기록(운영 대시보드 /ops/agent-runs). 켜면 역할극 턴·리포트 생성·시나리오 생성 한 번마다
+  # 단계별 판정과 시간·토큰을 agent_run 에 남기고 조회 API(/api/v1/ops/agent-runs)를 연다. 글 내용과 아동·세션 번호는 남기지 않는다.
+  # operators 는 대시보드를 볼 강사 계정 이메일(쉼표로 구분). 비우면 아무도 못 보고, * 이면 로그인한 강사 모두가 본다.
+  agent-runs:
+    enabled: ${NEURINGO_AGENT_RUNS_ENABLED:false}
+    operators: ${NEURINGO_AGENT_RUNS_OPERATORS:}
+    retention: ${NEURINGO_AGENT_RUNS_RETENTION:14d}
   ai:
     provider-name: ${AI_PROVIDER_NAME:openai-compatible}
     model: ${AI_MODEL:}

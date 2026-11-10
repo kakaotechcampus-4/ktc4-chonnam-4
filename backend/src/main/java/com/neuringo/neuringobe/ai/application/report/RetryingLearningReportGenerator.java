@@ -3,6 +3,7 @@ package com.neuringo.neuringobe.ai.application.report;
 import com.neuringo.neuringobe.ai.application.model.AiAttemptContext;
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
+import com.neuringo.neuringobe.ai.application.observation.RoleplayTiming;
 import com.neuringo.neuringobe.ai.application.prompt.LearningReportInput;
 import com.neuringo.neuringobe.ai.application.prompt.ReportCodes;
 import com.neuringo.neuringobe.ai.application.prompt.ReportRevision;
@@ -14,6 +15,7 @@ import com.neuringo.neuringobe.ai.application.structured.output.ReportReviewDeci
 import com.neuringo.neuringobe.ai.application.structured.output.ReportReviewScores;
 import com.neuringo.neuringobe.ai.application.structured.output.RevisionInstruction;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -90,11 +92,13 @@ public final class RetryingLearningReportGenerator {
                         rules.stream().flatMap(rule -> rule.check(draft, input).stream()).toList();
                 if (!issues.isEmpty()) {
                     List<String> codes = codesOf(issues);
+                    noted("REPORT_RULE_CHECK", round, "RULES_REJECTED", false, false, codes);
                     rounds.add(new ReportRound(round, Outcome.RULES_REJECTED, codes, null));
                     revision = new ReportRevision(draft, codes, instructionFor(codes, issues));
                     lastRejection = AiOperation.REPORT_GENERATION;
                     continue;
                 }
+                noted("REPORT_RULE_CHECK", round, "RULES_PASSED", true, false, List.of());
 
                 AiCallResult<ReportReview> reviewed =
                         withRetry(
@@ -107,6 +111,7 @@ public final class RetryingLearningReportGenerator {
                 }
                 ReportReview review = ((AiCallResult.Success<ReportReview>) reviewed).data();
                 if (passes(review)) {
+                    noted("REPORT_QUALITY_GATE", round, "PASSED", true, false, List.of());
                     rounds.add(new ReportRound(round, Outcome.PASSED, List.of(), review.scores()));
                     return new LearningReportResult.Completed(draft, review, rounds);
                 }
@@ -119,6 +124,7 @@ public final class RetryingLearningReportGenerator {
                         review.revisionInstruction() != null
                                 ? review.revisionInstruction()
                                 : instructionFor(codes, List.of());
+                noted("REPORT_QUALITY_GATE", round, "REVIEW_REJECTED", false, false, codes);
                 rounds.add(new ReportRound(round, Outcome.REVIEW_REJECTED, codes, review.scores()));
                 revision = new ReportRevision(draft, codes, instruction);
                 lastRejection = AiOperation.REPORT_REVIEW;
@@ -141,6 +147,13 @@ public final class RetryingLearningReportGenerator {
 
         private LearningReportResult callFailed(
                 int round, AiCallResult.Failure<?> failure, AiOperation operation) {
+            noted(
+                    "REPORT_CALL_LIMIT",
+                    round,
+                    "CALL_FAILED",
+                    false,
+                    true,
+                    List.of(failure.failure().type().name()));
             rounds.add(
                     new ReportRound(
                             round,
@@ -156,6 +169,24 @@ public final class RetryingLearningReportGenerator {
 
         private AiAttemptContext attempts() {
             return new AiAttemptContext(0, draftCalls, reviewCalls);
+        }
+
+        /** 바퀴마다 코드가 내린 판정(규칙 검사·통과 기준·호출 한도)을 실행 기록에 넘긴다. 초안 문장은 넣지 않는다. */
+        private void noted(
+                String step,
+                int round,
+                String verdict,
+                boolean accepted,
+                boolean error,
+                List<String> codes) {
+            var data = new LinkedHashMap<String, Object>();
+            data.put("step", step);
+            data.put("attempt", round);
+            data.put("verdict", verdict);
+            data.put("accepted", accepted);
+            data.put("error", error);
+            data.put("codes", codes);
+            RoleplayTiming.note("DECISION", data);
         }
     }
 

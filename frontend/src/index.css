@@ -531,3 +531,59 @@ code {
     cursor: not-allowed;
   }
 }
+
+/*
+ * 운영 대시보드(/ops/agent-runs) 전용 토큰. 개발·운영 담당자가 보는 모니터링 화면이라 Grafana 같은 어두운 패널 격자를 쓴다.
+ * 글꼴·강조색은 강사 화면과 같은 Figma 디자인 시스템 Teacher 값이다(Pretendard, primary #6654d9, focus #a99bf5).
+ * 흐름 종류 4색(초록·노랑·파랑·빨강)은 어두운 패널(#181b1f) 위에서 색각 이상 구분(인접 쌍 ΔE 9.5)과 3:1 대비를 통과했다.
+ * 노랑은 다른 색보다 밝아 명도 권고 범위를 벗어나므로, 화면에서는 항상 아이콘·이름과 함께 쓴다.
+ */
+#root:has(.ops-scope) {
+  width: 100%;
+  border-inline: none;
+  text-align: left;
+}
+
+.ops-scope {
+  color-scheme: dark;
+  --ops-page: #111217;
+  --ops-panel: #181b1f;
+  --ops-panel-raised: #22252b;
+  --ops-border: rgba(204, 204, 220, 0.12);
+  --ops-grid: #24272d;
+  --ops-axis: #3b3f46;
+  --ops-track: #262a31;
+  --ops-text: #e8e8ee;
+  --ops-text-2: #c7c7d1;
+  --ops-muted: #9a9ca8;
+
+  /* Figma Teacher 강조색을 어두운 바탕에 맞춘 값. 선택된 기간·링크·포커스·한 가지 값 막대에 쓴다 */
+  --ops-accent: #a99bf5;
+  --ops-accent-strong: #6654d9;
+  --ops-accent-bar: #8b7cf0;
+  --ops-focus: #a99bf5;
+
+  --ops-path-normal: #56a64b;
+  --ops-path-retried: #e0b400;
+  --ops-path-guided: #3274d9;
+  --ops-path-failed: #e02f44;
+
+  min-height: 100svh;
+  font-family: 'Pretendard Variable', var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ops-text);
+  background: var(--ops-page);
+  scrollbar-color: #3b3f46 transparent;
+  scrollbar-width: thin;
+}
+
+.ops-scope .ops-mono {
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.86em;
+  letter-spacing: -0.01em;
+}
+
+.ops-scope .ops-num {
+  font-variant-numeric: tabular-nums;
+}
