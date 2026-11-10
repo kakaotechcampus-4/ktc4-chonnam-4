@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,6 +43,7 @@ public class AgentRunRecordingService implements AgentRunRecorder {
     private static final Duration ABANDONED_AFTER = Duration.ofMinutes(15);
 
     private final Map<UUID, Open> open = new ConcurrentHashMap<>();
+    private final AtomicInteger pending = new AtomicInteger();
     private final AgentRunStore store;
     private final TransactionTemplate transaction;
     private final Clock clock;
@@ -84,9 +87,18 @@ public class AgentRunRecordingService implements AgentRunRecorder {
     public void end(UUID runId, Map<String, Object> result) {
         var run = open.remove(runId);
         if (run == null) return;
+        pending.incrementAndGet();
         try {
-            writer.execute(() -> persist(runId, run, result));
+            writer.execute(
+                    () -> {
+                        try {
+                            persist(runId, run, result);
+                        } finally {
+                            pending.decrementAndGet();
+                        }
+                    });
         } catch (RejectedExecutionException full) {
+            pending.decrementAndGet();
             log.warn("AGENT_RUN_SKIPPED workflow={} reason=WRITE_QUEUE_FULL", run.workflow);
         }
     }
@@ -119,12 +131,17 @@ public class AgentRunRecordingService implements AgentRunRecorder {
         return before - open.size();
     }
 
-    /** 대기 중인 저장을 끝낸다. 테스트와 종료 절차에서 쓴다. */
+    /**
+     * 넘긴 저장이 모두 끝날 때까지 기다린다. 테스트와 종료 절차에서 쓴다.
+     *
+     * <p>쓰기 스레드의 "일하는 수"와 대기열만 보면, 스레드가 대기열에서 작업을 꺼낸 직후 아직 일을 시작하지 않은 순간에 둘 다 0 이라 저장 전에 끝난 것으로
+     * 보인다. 그래서 넘길 때 늘리고 저장이 끝날 때 줄이는 수를 따로 센다.
+     */
     public boolean drain(Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
-        while (writer.getActiveCount() > 0 || !writer.getQueue().isEmpty()) {
+        while (pending.get() > 0) {
             if (System.nanoTime() > deadline) return false;
-            Thread.onSpinWait();
+            LockSupport.parkNanos(1_000_000);
         }
         return true;
     }
