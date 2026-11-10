@@ -116,7 +116,7 @@
 
 #### ✨ 활동 관리와 리포트
 - 활동별 진행 상태를 관리하고, 퀴즈·역할극 **활동 리포트**를 봅니다.
-- 역할극이 끝나면 점수와 추천을 먼저 저장하고, **AI가 리포트를 쓰고 다른 AI가 검토하는 과정을 최대 3번** 반복합니다. 통과한 리포트만 강사에게 보입니다.
+- 역할극이 끝나면 점수와 추천을 먼저 저장하고, **AI가 리포트를 쓰고 별도의 검토 단계에서 확인하는 과정을 최대 3번** 반복합니다. 통과한 리포트만 강사에게 보입니다.
 
 #### ✨ 다음 활동 추천
 - **보완 · 반복 · 적용 · 확장** 중 최대 3개를 근거와 함께 추천합니다.
@@ -224,9 +224,9 @@ flowchart LR
 
 | 용도 | 모델 | 비고 |
 |---|---|---|
-| 역할극 · 입력 검사 · 시나리오 생성 | 엘리스 ML API (OpenAI 호환) | Spring AI로 연결해 주소와 모델 이름만 바꿔 교체 가능 |
-| 리포트 작성 | Claude Haiku 5.5 | |
-| 리포트 검토 | Gemini 4 Argon | 작성 모델이 스스로 검토하면 14건 중 2건만 통과해서 검토 모델을 따로 두었습니다 |
+| 역할극 · 입력 검사 · 시나리오 생성 | google/gemini-3.8-flash | 엘리스 ML API(OpenAI 호환)로 호출. Spring AI로 연결해 주소와 모델 이름만 바꿔 교체 가능 |
+| 리포트 작성 | google/gemini-3.8-flash | |
+| 리포트 검토 | google/gemini-3.8-flash | 작성과 검토를 다른 프롬프트로 분리 |
 | 음성 인식 (STT) | OpenAI gpt-4o-mini-transcribe | 인식 신뢰도가 낮으면 다시 말해 달라고 합니다 |
 | 음성 합성 (TTS) | 타입캐스트 ssfm-v30 / OpenAI gpt-4o-mini-tts | 설정으로 선택 |
 | 표정 인식 | face-api (TensorFlow.js) | 브라우저에서 실행, 서버 호출 없음 |
@@ -237,10 +237,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  E["활동 기록 → 근거 E1, E2…"] --> D["초안 작성<br/>Claude Haiku"]
+  E["활동 기록 → 근거 E1, E2…"] --> D["초안 작성<br/>gemini-3.8-flash"]
   D --> R{"코드 규칙<br/>근거 ID · 칸 배치 · 진단 낱말 · 길이"}
   R -- "위반" --> D
-  R -- "통과" --> V{"검토 모델<br/>Gemini Argon"}
+  R -- "통과" --> V{"검토 모델<br/>gemini-3.8-flash"}
   V -- "고칠 점 전달" --> D
   V -- "통과" --> OK["✅ 강사에게 표시"]
 ```
@@ -281,7 +281,6 @@ flowchart LR
 | 외부 유해성 검사 API vs AI 입력 검사 | **AI 입력 검사** | 대화 맥락까지 보고 판단할 수 있다 |
 | 브라우저 vs 서버 음성 인식 | **서버** | 기기마다 인식 결과가 달라지는 문제를 없앤다 |
 | 서버 vs 브라우저 표정 인식 | **브라우저** | 아이 얼굴 영상을 밖으로 보내지 않는다 |
-| 리포트 작성·검토 같은 모델 vs 다른 모델 | **다른 모델** | 같은 모델 14건 중 2건 통과 → 다른 모델 14건 모두 통과 |
 | 시나리오 매번 생성 vs 승인본 재사용 | **재사용 우선** | 강사 검토 부담과 비용을 줄인다 |
 | 풀스택 하나 vs 프론트·백엔드 분리 | **분리** | 역할극 처리가 길고 단계가 많아 백엔드 서버를 따로 두는 게 안정적이다 |
 
@@ -293,7 +292,7 @@ flowchart LR
 |---|---|
 | **Frontend** | ![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white) ![React Router](https://img.shields.io/badge/React%20Router-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white) ![TanStack Query](https://img.shields.io/badge/TanStack%20Query-FF4154?style=for-the-badge&logo=reactquery&logoColor=white) ![Zustand](https://img.shields.io/badge/Zustand-443E38?style=for-the-badge&logoColor=white) ![React Hook Form](https://img.shields.io/badge/React%20Hook%20Form-EC5990?style=for-the-badge&logo=reacthookform&logoColor=white) ![Zod](https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white) ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white) |
 | **Backend** | ![Java](https://img.shields.io/badge/Java%2021-007396?style=for-the-badge&logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=for-the-badge&logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring%20Security-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white) ![Spring Data JPA](https://img.shields.io/badge/Spring%20Data%20JPA-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Flyway](https://img.shields.io/badge/Flyway-CC0200?style=for-the-badge&logo=flyway&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=for-the-badge&logo=gradle&logoColor=white) |
-| **AI** | ![Spring AI](https://img.shields.io/badge/Spring%20AI-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Elice](https://img.shields.io/badge/Elice%20ML%20API-6E3BFF?style=for-the-badge&logoColor=white) ![Claude](https://img.shields.io/badge/Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI%20STT·TTS-412991?style=for-the-badge&logo=openai&logoColor=white) ![Typecast](https://img.shields.io/badge/Typecast%20TTS-FF6B6B?style=for-the-badge&logoColor=white) ![TensorFlow.js](https://img.shields.io/badge/face--api-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white) |
+| **AI** | ![Spring AI](https://img.shields.io/badge/Spring%20AI-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Elice](https://img.shields.io/badge/Elice%20ML%20API-6E3BFF?style=for-the-badge&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini%203.8%20Flash-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI%20STT·TTS-412991?style=for-the-badge&logo=openai&logoColor=white) ![Typecast](https://img.shields.io/badge/Typecast%20TTS-FF6B6B?style=for-the-badge&logoColor=white) ![TensorFlow.js](https://img.shields.io/badge/face--api-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white) |
 | **Database** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL%2018-4169E1?style=for-the-badge&logo=postgresql&logoColor=white) |
 | **Infrastructure** | ![Amazon EC2](https://img.shields.io/badge/Amazon%20EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white) ![CloudFront](https://img.shields.io/badge/CloudFront-8C4FFF?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon ECR](https://img.shields.io/badge/Amazon%20ECR-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon S3](https://img.shields.io/badge/Amazon%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white) ![AWS Lambda](https://img.shields.io/badge/AWS%20Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white) ![Docker](https://img.shields.io/badge/Docker%20Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white) |
 | **CI/CD · 보안** | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?style=for-the-badge&logo=github&logoColor=white) ![Gitleaks](https://img.shields.io/badge/Gitleaks-DC143C?style=for-the-badge&logoColor=white) |
@@ -354,7 +353,7 @@ flowchart LR
 ```
 
 <div align="center">
-  <img src="docs/architecture/1-infra-aws.drawio.svg" width="750" alt="AWS 인프라 구성도">
+  <img src="docs/images/readme/system-architecture.png" width="900" alt="GitHub Actions에서 AWS 배포까지 이어지는 시스템 아키텍처">
 </div>
 
 ### 시스템 구성 요약
