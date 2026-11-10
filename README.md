@@ -25,6 +25,10 @@
 <br>
 <sub>태블릿·PC·모바일 웹 · 카메라·마이크 권한 필요 · 국내에서만 접속 가능</sub>
 
+<br><br>
+
+<img src="docs/images/readme/landing.png" width="700" alt="느링고 시작 화면">
+
 </div>
 
 ---
@@ -102,12 +106,8 @@
 - 강사는 후보를 넘기거나, 고친 뒤 승인할 수 있고, 승인 대기함에서 한꺼번에 확인합니다.
 
 <div align="center">
-<table>
-  <tr>
-    <td align="center"><img src="docs/wireframes/week-1/teacher-scenario-generating.png" width="400" alt="시나리오 생성"><br>시나리오 생성</td>
-    <td align="center"><img src="docs/wireframes/week-1/teacher-scenario-review.png" width="400" alt="시나리오 검토"><br>시나리오 검토·승인</td>
-  </tr>
-</table>
+  <img src="docs/images/readme/teacher-scenario-review.png" width="800" alt="시나리오 검토">
+  <br>시나리오 검토 — 상황·인물·고정 사실·작은 목표와 단계별 첫 질문을 확인하고 승인합니다
 </div>
 
 #### ✨ 활동 관리와 리포트
@@ -122,8 +122,12 @@
 <div align="center">
 <table>
   <tr>
-    <td align="center"><img src="docs/wireframes/week-1/teacher-dashboard.png" width="400" alt="강사 대시보드"><br>강사 대시보드</td>
-    <td align="center"><img src="docs/wireframes/week-1/teacher-activity-management.png" width="400" alt="활동 관리"><br>활동 관리</td>
+    <td align="center"><img src="docs/images/readme/teacher-dashboard.png" width="400" alt="강사 대시보드"><br>대시보드</td>
+    <td align="center"><img src="docs/images/readme/teacher-classroom-detail.png" width="400" alt="학급 상세"><br>학급 상세</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/readme/teacher-activities.png" width="400" alt="활동 관리"><br>활동 관리</td>
+    <td align="center"><img src="docs/images/readme/teacher-quiz-report.png" width="400" alt="퀴즈 리포트"><br>활동 리포트 (표정 퀴즈)</td>
   </tr>
 </table>
 </div>
@@ -137,14 +141,37 @@
 #### ✨ 코드로 입장
 - 강사가 준 4자리 코드만 입력하면 바로 오늘의 활동으로 들어갑니다. 여러 번 틀리면 일정 시간 막힙니다.
 
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/readme/child-access.png" width="400" alt="코드 입력"><br>코드 입력</td>
+    <td align="center"><img src="docs/images/readme/child-hello.png" width="400" alt="인사"><br>오늘의 활동</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/readme/child-activities.png" width="400" alt="내 활동"><br>내 활동</td>
+    <td align="center"><img src="docs/images/readme/child-activity-intro.png" width="400" alt="활동 소개"><br>활동 소개 (퀴즈 → 역할극 → 스탬프)</td>
+  </tr>
+</table>
+</div>
+
 #### ✨ 표정 퀴즈
 - **사진·그림 보고 감정 고르기**: 표정을 보고 어떤 감정인지 고릅니다.
 - **카메라로 표정 지어 보기**: 상황을 듣고 그때의 표정을 직접 지어 봅니다. 표정 인식은 [face-api](https://github.com/vladmandic/face-api)로 **브라우저 안에서만** 처리하며, 얼굴 영상은 서버로 보내지 않습니다.
 - 틀리면 **힌트 2단계**를 받고 다시 도전합니다.
 
 <div align="center">
-  <img src="docs/wireframes/week-1/child-emotion-quiz-flow.png" width="700" alt="표정 퀴즈 흐름">
-  <br>표정 퀴즈 흐름 (와이어프레임)
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/readme/child-quiz-camera.png" width="400" alt="카메라로 표정 짓기"><br>카메라로 표정 지어 보기</td>
+    <td align="center"><img src="docs/images/readme/child-quiz-photo.png" width="400" alt="상황 보고 감정 고르기"><br>상황 보고 친구 감정 고르기</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/readme/child-quiz-hint.png" width="400" alt="깡총이 힌트"><br>틀리면 깡총이 힌트</td>
+    <td align="center"><img src="docs/images/readme/child-quiz-correct.png" width="400" alt="정답"><br>정답 피드백</td>
+  </tr>
+</table>
+<img src="docs/images/readme/child-quiz-done.png" width="500" alt="퀴즈 완료">
+<br>퀴즈 완료 → 역할극으로
 </div>
 
 #### ✨ AI 역할극
