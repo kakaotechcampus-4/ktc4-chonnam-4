@@ -375,8 +375,8 @@ AI 기능은 기본으로 꺼져 있으며, 실제 모델을 쓰려면 `backend/
     <td align="center">배재일</td>
     <td align="center">진미나</td>
     <td align="center">정민서</td>
-    <td align="center">lgwoo</td>
-    <td align="center">SangHyeonY</td>
+    <td align="center">이건우</td>
+    <td align="center">윤상현</td>
   </tr>
   <tr>
     <th>Position</th>
