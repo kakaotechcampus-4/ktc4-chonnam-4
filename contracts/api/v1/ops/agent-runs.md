@@ -147,7 +147,7 @@
 |---|---|---|---|
 | NEURINGO_AGENT_RUNS_ENABLED | `ops/agent-runs/enabled` | false | `true` 면 기록을 저장하고 조회 API 를 엽니다 |
 | NEURINGO_AGENT_RUNS_OPERATORS | `ops/agent-runs/operators` | 비어 있음 | 볼 수 있는 강사 계정 이메일을 쉼표로 적습니다. `*` 는 로그인한 강사 모두 |
-| NEURINGO_AGENT_RUNS_RETENTION | `ops/agent-runs/retention` | 14d | 이 기간이 지난 기록은 한 시간마다 지웁니다 |
+| NEURINGO_AGENT_RUNS_RETENTION | `ops/agent-runs/retention` | 0(지우지 않음) | `14d` 처럼 기간을 주면 그보다 오래된 기록을 한 시간마다 지웁니다. `0` 이면 지우지 않습니다 |
 | NEURINGO_AGENT_RUNS_PUBLIC | `ops/agent-runs/public` | false | `true` 면 로그인 없이 누구나 조회합니다(시연·외부 평가용). 조회 GET 만 열리고, 저장 값은 2절대로 고정 코드·횟수·시간·토큰 수뿐입니다. 시연이 끝나면 `false` 로 돌립니다 |
 
 값을 넣은 뒤 Actions → Deploy(force)로 다시 배포합니다. 기존 호출 로그(`NEURINGO_AI_CALL_LOG`)는 켜지 않아도 됩니다. 기록은 같은 서버의 Postgres(`agent_run`, `agent_run_step`, V44)에 저장되며 새 AWS 서비스는 쓰지 않습니다.
