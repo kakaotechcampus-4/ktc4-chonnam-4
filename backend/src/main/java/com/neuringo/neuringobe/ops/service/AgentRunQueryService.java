@@ -35,7 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @ConditionalOnProperty(name = "neuringo.agent-runs.enabled", havingValue = "true")
 public class AgentRunQueryService {
-    static final int MAX_HOURS = 24 * 14;
+    /** 기록은 기본으로 지우지 않으므로(retention 0) 시연·평가 기간을 넘겨서도 볼 수 있게 90일까지 연다. */
+    static final int MAX_HOURS = 24 * 90;
+
     static final int MAX_LIST = 200;
     static final int MAX_FLOWS = 60;
 
@@ -162,13 +164,15 @@ public class AgentRunQueryService {
         return hours;
     }
 
-    /** 어느 기간을 골라도 구간이 12~28개가 되게 한다. */
+    /** 어느 기간을 골라도 구간이 12~30개가 되게 한다. */
     static int bucketMinutes(int hours) {
         if (hours <= 1) return 5;
         if (hours <= 6) return 15;
         if (hours <= 24) return 60;
         if (hours <= 72) return 180;
-        return hours <= 168 ? 360 : 720;
+        if (hours <= 168) return 360;
+        if (hours <= 336) return 720;
+        return hours <= 720 ? 1440 : 4320;
     }
 
     private static String workflow(String workflow) {

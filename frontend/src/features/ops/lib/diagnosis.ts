@@ -1,6 +1,6 @@
 import type { DiagnosisFinding, DiagnosisSeverity } from '../api'
 import { count, duration } from './format'
-import { stepLabel, WORKFLOW_LABEL } from './labels'
+import { codeLabel, stepLabel, WORKFLOW_LABEL } from './labels'
 
 /**
  * 자동 진단 문장. 서버는 kind·step·code·숫자만 주고, 문장과 "볼 곳"은 여기서 만든다.
@@ -10,6 +10,12 @@ export const SEVERITY_LABEL: Record<DiagnosisSeverity, string> = {
   CRITICAL: '심각',
   WARNING: '주의',
   INFO: '참고',
+}
+
+/** 문장 안의 코드는 뜻을 앞에 두고 코드를 괄호에 남긴다. 모르는 코드는 코드만 쓴다. */
+function named(code: string): string {
+  const label = codeLabel(code) ?? stepLabel(code)
+  return label === code ? code : `「${label}」(${code})`
 }
 
 function rate(value: number): string {
@@ -36,14 +42,14 @@ export function findingTitle(finding: DiagnosisFinding): string {
       return `실패 비율이 ${rate(finding.current)}입니다${before}`
     case 'NEW_FAILURE_FLOW':
       return `앞 기간에 없던 실패 흐름이 ${count(finding.current)}건 나왔습니다: ${where(finding)}${
-        finding.code ? ` ${finding.code}` : ''
+        finding.code ? ` ${named(finding.code)}` : ''
       }`
     case 'STEP_BLOCKED':
       return `${where(finding)} 단계의 거절·실패가 ${rate(finding.current)}입니다${before}${
-        finding.code ? `. 가장 많은 판정은 ${finding.code}` : ''
+        finding.code ? `. 가장 많은 판정은 ${named(finding.code)}` : ''
       }`
     case 'REASON_SURGE':
-      return `${finding.code}(으)로 끝난 실행이 ${count(finding.current)}건으로 늘었습니다${before}${
+      return `${finding.code ? named(finding.code) : '같은'} 사유로 끝난 실행이 ${count(finding.current)}건으로 늘었습니다${before}${
         finding.step ? ` · ${where(finding)}` : ''
       }`
     case 'LATENCY':

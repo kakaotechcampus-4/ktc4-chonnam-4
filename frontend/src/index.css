@@ -565,8 +565,8 @@ code {
 
   --ops-path-normal: #56a64b;
   --ops-path-retried: #e0b400;
-  --ops-path-guided: #3274d9;
-  --ops-path-failed: #e02f44;
+  --ops-path-guided: #5794f2;
+  --ops-path-failed: #f2495c;
 
   min-height: 100svh;
   font-family: 'Pretendard Variable', var(--font-sans);

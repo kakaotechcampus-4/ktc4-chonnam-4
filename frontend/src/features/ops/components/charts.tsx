@@ -315,8 +315,8 @@ export function Sparkline({ values, color }: { values: number[]; color: string }
   const line = values.map((value, index) => `${index * step},${100 - (value / max) * 92}`).join(' ')
   return (
     <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="h-10 w-full">
-      <path d={`M0,100 L${line.replaceAll(' ', ' L')} L100,100Z`} fill={color} opacity={0.14} />
-      <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <path d={`M0,100 L${line.replaceAll(' ', ' L')} L100,100Z`} fill={color} opacity={0.26} />
+      <polyline points={line} fill="none" stroke={color} strokeWidth={2.25} vectorEffect="non-scaling-stroke" />
     </svg>
   )
 }

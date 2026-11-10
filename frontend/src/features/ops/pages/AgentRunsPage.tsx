@@ -29,8 +29,11 @@ const PERIODS = [
   { hours: 24, label: '최근 24시간' },
   { hours: 72, label: '최근 3일' },
   { hours: 168, label: '최근 7일' },
+  { hours: 720, label: '최근 30일' },
+  { hours: 2160, label: '최근 90일' },
 ]
-const DEFAULT_HOURS = 24
+// 기록은 지우지 않는다(retention 0). 처음 연 사람이 지난 시연 기록을 바로 보도록 30일을 기본으로 둔다.
+const DEFAULT_HOURS = 720
 const REFRESH_MS = 30_000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

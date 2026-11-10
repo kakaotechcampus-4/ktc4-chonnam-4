@@ -442,7 +442,9 @@ function bucketMinutes(hours: number): number {
   if (hours <= 6) return 15
   if (hours <= 24) return 60
   if (hours <= 72) return 180
-  return hours <= 168 ? 360 : 720
+  if (hours <= 168) return 360
+  if (hours <= 336) return 720
+  return hours <= 720 ? 1440 : 4320
 }
 
 /** 백엔드 AgentRunQueryService.overview 와 같은 계산. */
@@ -839,7 +841,7 @@ export function agentRunHandlers({
     const invalid =
       !Number.isInteger(hours) ||
       hours < 1 ||
-      hours > 336 ||
+      hours > 2160 ||
       (workflow && !WORKFLOW_VALUES.includes(workflow)) ||
       (path && !PATH_VALUES.includes(path)) ||
       (outcome && !group) ||

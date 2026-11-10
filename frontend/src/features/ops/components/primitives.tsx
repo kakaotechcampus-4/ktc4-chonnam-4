@@ -1,9 +1,10 @@
 import { CircleCheck, CircleX, Clock3, Info, MessageCircleWarning, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useContext, useId, type ReactNode } from 'react'
 import type { RunPath, StepStatus } from '../api'
-import { PATH_LABEL, STATUS_LABEL } from '../lib/labels'
+import { codeLabel, PATH_LABEL, STATUS_LABEL } from '../lib/labels'
 import { PeriodContext } from '../lib/period'
-import { pathColor, statusColor } from '../lib/tones'
+import { TONE_LABEL, type StepTone } from '../lib/steps'
+import { pathColor, statusColor, toneColor } from '../lib/tones'
 
 /**
  * 대시보드의 칸 하나(Grafana 패널 모양). 머리에 제목·설명 아이콘·조회 기간을 두고, 본문은 칸마다 다르다.
@@ -134,6 +135,42 @@ export function StatusBadge({ status }: { status: StepStatus }) {
     <span className="inline-flex items-center gap-1 whitespace-nowrap text-[var(--ops-text-2)]">
       <StatusIcon status={status} />
       {STATUS_LABEL[status]}
+    </span>
+  )
+}
+
+const TONE_ICON = {
+  passed: CircleCheck,
+  retry: RotateCcw,
+  guided: MessageCircleWarning,
+  failed: CircleX,
+} as const
+
+export function ToneIcon({ tone, size = 14 }: { tone: StepTone; size?: number }) {
+  const Icon = TONE_ICON[tone]
+  return <Icon aria-hidden size={size} strokeWidth={2.2} style={{ color: toneColor(tone) }} className="shrink-0" />
+}
+
+/** 단계가 실행에서 한 역할. 통과가 아니면 글자도 그 색으로 써서 실패 흐름에서 어디서 멈췄는지 바로 보이게 한다. */
+export function ToneBadge({ tone }: { tone: StepTone }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 whitespace-nowrap font-medium"
+      style={{ color: tone === 'passed' ? 'var(--ops-text-2)' : toneColor(tone) }}
+    >
+      <ToneIcon tone={tone} />
+      {TONE_LABEL[tone]}
+    </span>
+  )
+}
+
+/** 판정·사유 코드에 한국어 뜻을 앞에 붙인다. 모르는 코드는 코드만 보인다. */
+export function CodeWithLabel({ code }: { code: string }) {
+  const label = codeLabel(code)
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {label && <span className="text-[var(--ops-text)]">{label}</span>}
+      <Code>{code}</Code>
     </span>
   )
 }
