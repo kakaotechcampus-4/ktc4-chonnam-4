@@ -46,6 +46,7 @@
 | [💻 기술 스택](#-기술-스택) |
 | [🛠 시스템 아키텍처](#-시스템-아키텍처) |
 | [🚀 CI/CD](#-cicd) |
+| [📈 에이전트 실행 대시보드](#-에이전트-실행-대시보드) |
 | [🧪 테스트 전략](#-테스트-전략) |
 | [📊 측정 지표](#-측정-지표) |
 | [🗂 디렉터리 구조](#-디렉터리-구조) |
@@ -296,7 +297,7 @@ flowchart LR
 | **Database** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL%2018-4169E1?style=for-the-badge&logo=postgresql&logoColor=white) |
 | **Infrastructure** | ![Amazon EC2](https://img.shields.io/badge/Amazon%20EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white) ![CloudFront](https://img.shields.io/badge/CloudFront-8C4FFF?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon ECR](https://img.shields.io/badge/Amazon%20ECR-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon S3](https://img.shields.io/badge/Amazon%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white) ![AWS Lambda](https://img.shields.io/badge/AWS%20Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white) ![Docker](https://img.shields.io/badge/Docker%20Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white) |
 | **CI/CD · 보안** | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?style=for-the-badge&logo=github&logoColor=white) ![Gitleaks](https://img.shields.io/badge/Gitleaks-DC143C?style=for-the-badge&logoColor=white) |
-| **Monitoring** | ![CloudWatch](https://img.shields.io/badge/CloudWatch-FF4F8B?style=for-the-badge&logo=amazoncloudwatch&logoColor=white) ![AWS Budgets](https://img.shields.io/badge/AWS%20Budgets-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white) |
+| **Monitoring** | ![CloudWatch](https://img.shields.io/badge/CloudWatch-FF4F8B?style=for-the-badge&logo=amazoncloudwatch&logoColor=white) ![AWS Budgets](https://img.shields.io/badge/AWS%20Budgets-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Agent Runs](https://img.shields.io/badge/에이전트%20실행%20대시보드-6654D9?style=for-the-badge&logoColor=white) |
 | **Test** | ![JUnit5](https://img.shields.io/badge/JUnit5-25A162?style=for-the-badge&logo=junit5&logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-291A3F?style=for-the-badge&logoColor=white) ![MockServer](https://img.shields.io/badge/MockServer-4B8BBE?style=for-the-badge&logoColor=white) ![ArchUnit](https://img.shields.io/badge/ArchUnit-4B8BBE?style=for-the-badge&logoColor=white) ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white) ![MSW](https://img.shields.io/badge/MSW-FF6A33?style=for-the-badge&logo=mockserviceworker&logoColor=white) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white) ![axe](https://img.shields.io/badge/axe--core-663399?style=for-the-badge&logoColor=white) |
 
 <details>
@@ -396,6 +397,47 @@ flowchart LR
 | **로컬 재현** | 모든 검사는 `bash scripts/verify.sh [frontend\|backend\|infra\|security\|e2e\|docker]`로 똑같이 돌려 볼 수 있습니다. |
 
 전체 워크플로 목록은 [GitHub Actions 정리](docs/github-actions.md)에 있습니다.
+
+---
+
+## 📈 에이전트 실행 대시보드
+
+> 🔗 [https://d430pejtvizp8.cloudfront.net/ops/agent-runs](https://d430pejtvizp8.cloudfront.net/ops/agent-runs) · 허용 목록에 등록된 계정만 볼 수 있습니다 · 자세한 설명은 [PR #146](https://github.com/kakaotechcampus-4/ktc4-chonnam-4/pull/146)
+
+역할극 한 턴, 학습 리포트, 시나리오 생성은 AI를 여러 번 부르고, 검수 결과에 따라 다시 만들거나 안내 문구로 끝나기도 합니다. 예전에는 무엇이 왜 그렇게 흘러갔는지 보려면 서버에 들어가 로그를 `grep` 해야 했습니다. 이 대시보드는 **단계마다 어떤 판정이 나왔고, 그 때문에 다음에 무엇이 돌았는지**를 정상 흐름과 오류 흐름 모두 한 화면에서 보여 줍니다.
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/9136b487-315c-4545-bf8d-94af59bbc9cd" width="900" alt="에이전트 실행 대시보드 첫 화면">
+</div>
+
+| 기능 | 설명 |
+|---|---|
+| **실행 기록** | 단계가 낸 판정(검수 통과·재생성·입력 재요청 등)을 "단계 → 판정 → 실제로 이어진 다음 단계"로 묶어 저장합니다. 글 내용·아동 이름은 남기지 않고 고정 코드만 남깁니다. |
+| **흐름 분류** | 실행마다 **정상**(바로 성공) · **재시도 후 정상** · **안내로 종료**(입력 품질·안전 판정) · **실패**(호출 실패·한도·시간 초과)로 나눕니다. |
+| **흐름 패턴** | 같은 단계 순서·판정으로 흘러간 실행끼리 묶어 `입력 판정 ✓ → 응답 검수 REGENERATE → 응답 생성 2 → 응답 전달 · 9건`처럼 보여 줍니다. |
+| **Trace ID** | 실행마다 Trace ID를 붙이고 복사 버튼을 둬서, 서버 로그를 바로 찾을 수 있습니다. |
+| **자동 진단** | 이번 기간과 바로 앞 기간을 비교해 실패 비율 급증, 응답 지연, 거절이 몰리는 단계, 새로 나타난 실패 흐름을 규칙으로 찾아 "먼저 볼 곳"을 알려 줍니다. AI를 부르지 않습니다. |
+| **운영 부담** | 기본은 꺼짐이고, 저장은 별도 스레드가 맡아 아동 응답을 기다리게 하지 않습니다. 기록은 14일 뒤 지웁니다. |
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img src="https://github.com/user-attachments/assets/b1a929e5-b2c8-41d4-8820-f9d1c9cdf45e" width="420" alt="성공 흐름 구역"><br>성공 흐름</td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/4d1ccdbf-9605-4a3b-a122-3ab94c2d1df2" width="420" alt="실패 흐름 구역"><br>실패 흐름</td>
+  </tr>
+</table>
+<table>
+  <tr>
+    <td align="center"><img src="https://github.com/user-attachments/assets/450e1af8-7ae2-4d65-b993-8ce45fc96293" width="270" alt="실행 상세: 재시도 후 정상"><br>재시도 후 정상</td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/a1fdc308-6a34-4251-838b-e03ca3ed5ffa" width="270" alt="실행 상세: 오류"><br>오류</td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/7dc1be5a-5239-4abb-8ea7-5ae342e27048" width="270" alt="실행 상세: 안내로 종료"><br>안내로 종료</td>
+  </tr>
+</table>
+<img src="https://github.com/user-attachments/assets/1593140a-42b0-45b7-bd7a-62c969fa51d1" width="900" alt="자동 진단 패널">
+<br>자동 진단
+</div>
+
+> Grafana·CloudWatch Logs도 검토했지만, 서버 한 대(4GiB) 메모리와 실습 계정 권한 제한 때문에 같은 PostgreSQL에 기록하고 앱 화면으로 보는 방식을 골랐습니다.
 
 ---
 
