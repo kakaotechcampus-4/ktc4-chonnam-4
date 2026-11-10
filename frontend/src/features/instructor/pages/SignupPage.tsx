@@ -6,6 +6,8 @@ import { AuthLayout } from '../layout/AuthLayout'
 import { fieldLabelClass, inputClass, primaryButtonClass } from '../components/styles'
 import { FieldError, Notice } from '../components/Feedback'
 import { ButtonLabel } from '../components/ButtonLabel'
+import { AgreementDialog } from '../components/AgreementDialog'
+import { PRIVACY_POLICY, TERMS_OF_SERVICE, type AgreementDocument } from '../content/agreements'
 
 // 백엔드 가입 규칙(SignupRequest)과 맞춘다. 서버가 최종 검증하고, 여기서는 바로 알 수 있는 실수만 막는다.
 const PASSWORD_MIN_LENGTH = 8
@@ -25,6 +27,11 @@ const AGREEMENT_LABELS: Record<keyof Agreements, string> = {
   privacy: '[필수] 개인정보 처리방침 동의',
 }
 
+const AGREEMENT_DOCUMENTS: Record<keyof Agreements, AgreementDocument> = {
+  terms: TERMS_OF_SERVICE,
+  privacy: PRIVACY_POLICY,
+}
+
 /** 필수 항목이 모두 체크되어 "전체 동의"가 체크된 것으로 보일지 정한다. 선택 항목이 생기면 여기서 제외한다. */
 function isAllAgreed(agreements: Agreements): boolean {
   return agreements.terms && agreements.privacy
@@ -42,6 +49,7 @@ function SignupPage() {
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [name, setName] = useState('')
   const [agreements, setAgreements] = useState<Agreements>({ terms: false, privacy: false })
+  const [openedDocument, setOpenedDocument] = useState<AgreementDocument | null>(null)
   const navigate = useNavigate()
 
   // 가입에 성공하면 같은 자격으로 바로 로그인해 학급 화면으로 보낸다.
@@ -183,14 +191,25 @@ function SignupPage() {
             전체 동의
           </label>
           {(Object.keys(AGREEMENT_LABELS) as (keyof Agreements)[]).map((key) => (
-            <label key={key} className="flex items-center gap-3 pl-0.5 text-sm text-[var(--instructor-text-muted)]">
-              <input
-                type="checkbox"
-                checked={agreements[key]}
-                onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
+            <div key={key} className="flex items-center justify-between gap-3 pl-0.5">
+              <label className="flex items-center gap-3 text-sm text-[var(--instructor-text-muted)]">
+                <input
+                  type="checkbox"
+                  checked={agreements[key]}
+                  onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
                 />
-              {AGREEMENT_LABELS[key]}
-            </label>
+                {AGREEMENT_LABELS[key]}
+              </label>
+              {/* 체크박스 label 밖에 두어, 본문을 열 때 동의가 같이 바뀌지 않게 한다. */}
+              <button
+                type="button"
+                onClick={() => setOpenedDocument(AGREEMENT_DOCUMENTS[key])}
+                aria-label={`${AGREEMENT_DOCUMENTS[key].title} 보기`}
+                className="shrink-0 text-sm text-[var(--instructor-link)] underline underline-offset-2"
+              >
+                보기
+              </button>
+            </div>
           ))}
         </fieldset>
 
@@ -213,6 +232,7 @@ function SignupPage() {
           <ButtonLabel pending={signupMutation.isPending} label="가입하기" pendingLabel="가입 중..." />
         </button>
       </form>
+      <AgreementDialog document={openedDocument} onOpenChange={(open) => !open && setOpenedDocument(null)} />
 
       <div className="mt-6 border-t border-[var(--instructor-border-subtle)] pt-4 text-center text-xs text-[var(--instructor-text-subtle)]">
         이미 계정이 있으신가요?{' '}

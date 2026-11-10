@@ -90,6 +90,18 @@ describe("강사 가입·로그인", () => {
     expect(submit).toBeEnabled()
   })
 
+  it("약관 보기를 누르면 본문 창이 열리고, 동의 체크는 바뀌지 않는다", async () => {
+    const { user } = renderRoutes(router.routes, "/signup")
+
+    await user.click(screen.getByRole("button", { name: "개인정보 처리방침 보기" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "개인정보 처리방침" })
+    expect(dialog).toHaveTextContent("처리하는 개인정보 항목")
+    await user.click(screen.getByRole("button", { name: "닫기" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("[필수] 개인정보 처리방침 동의")).not.toBeChecked()
+  })
+
   it("비밀번호가 8자보다 짧거나 확인과 다르면 가입 버튼이 꺼져 있다", async () => {
     const { user } = renderRoutes(router.routes, "/signup")
     const submit = screen.getByRole("button", { name: "가입하기" })
