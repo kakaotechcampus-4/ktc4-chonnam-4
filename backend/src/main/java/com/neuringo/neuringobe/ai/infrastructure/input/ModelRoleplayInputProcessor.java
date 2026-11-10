@@ -120,7 +120,18 @@ public final class ModelRoleplayInputProcessor implements RoleplayInputProcessor
     }
 
     public record Judgment(
-            Decision decision, Boolean meaningPreserved, Boolean privacyClear, Double confidence) {
+            Decision decision, Boolean meaningPreserved, Boolean privacyClear, Double confidence)
+            implements com.neuringo.neuringobe.ai.application.structured.JudgedOutput {
+        @Override
+        public String verdict() {
+            return decision.name();
+        }
+
+        @Override
+        public boolean accepted() {
+            return decision == Decision.ANALYZABLE && meaningPreserved && privacyClear;
+        }
+
         public Judgment {
             Objects.requireNonNull(decision);
             Objects.requireNonNull(meaningPreserved);

@@ -26,6 +26,7 @@ import { ChildRoleplayPage } from './features/child/pages/ChildRoleplayPage'
 import { ChildDonePage } from './features/child/pages/ChildDonePage'
 import { ChildStatePreviewPage } from './features/child/pages/ChildStatePreviewPage'
 import { RequireChildSession } from './features/child/routes/RequireChildSession'
+import { AgentRunsPage } from './features/ops/pages/AgentRunsPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <App /> },
@@ -151,6 +152,9 @@ export const router = createBrowserRouter([
       </RequireInstructorAuth>
     ),
   },
+  // 운영 대시보드. 강사 메뉴에는 넣지 않는다. 로그인 없이 볼 수 있는지(public-read)와 볼 수 있는 계정은 서버가 정하므로
+  // 화면에서는 로그인을 요구하지 않는다. 공개가 꺼져 있으면 첫 조회의 401 처리(api.ts)가 로그인 화면으로 보낸다.
+  { path: '/ops/agent-runs', element: <AgentRunsPage /> },
   { path: '/child', element: <ChildAccessPage /> },
   {
     element: <RequireChildSession />,

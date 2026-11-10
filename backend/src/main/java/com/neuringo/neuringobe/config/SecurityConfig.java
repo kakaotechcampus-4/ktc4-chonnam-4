@@ -8,9 +8,11 @@ import com.neuringo.neuringobe.roleplay.controller.RoleplayUploadRetentionFactor
 import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -28,6 +30,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfig {
+    // 운영 대시보드 조회를 로그인 없이 연다(시연·외부 평가용). 기록을 켠 경우에만 의미가 있다. 끄면 다른 API 처럼 강사만 닿고, 누가 볼지는
+    // AgentRunQueryService 가 허용 목록으로 정한다.
+    private final boolean agentRunsPublic;
+
+    public SecurityConfig(
+            @Value("${neuringo.agent-runs.enabled:false}") boolean agentRunsEnabled,
+            @Value("${neuringo.agent-runs.public-read:false}") boolean agentRunsPublicRead) {
+        this.agentRunsPublic = agentRunsEnabled && agentRunsPublicRead;
+    }
 
     /** 로컬 개발 정책. 다른 프로필과 인증 규칙은 같고, 프론트 개발 서버(5173)용 CORS 와 쿠키 CSRF 만 더한다. */
     @Bean
@@ -83,6 +94,15 @@ public class SecurityConfig {
             throws Exception {
         RequestAttributeSecurityContextRepository requestContextRepository =
                 new RequestAttributeSecurityContextRepository();
+        // 아래 규칙보다 먼저 등록해야 마지막 anyRequest(강사만)보다 앞에서 맞는다.
+        if (agentRunsPublic)
+            http.authorizeHttpRequests(
+                    auth ->
+                            auth.requestMatchers(
+                                            HttpMethod.GET,
+                                            "/api/v1/ops/agent-runs",
+                                            "/api/v1/ops/agent-runs/**")
+                                    .permitAll());
         http.sessionManagement(
                         session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .securityContext(

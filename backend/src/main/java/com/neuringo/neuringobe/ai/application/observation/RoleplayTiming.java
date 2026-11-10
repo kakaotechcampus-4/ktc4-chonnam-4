@@ -1,5 +1,6 @@
 package com.neuringo.neuringobe.ai.application.observation;
 
+import com.neuringo.neuringobe.ai.application.model.AiCallMetadata;
 import com.neuringo.neuringobe.ai.application.model.AiCallResult;
 import com.neuringo.neuringobe.ai.application.model.AiOperation;
 import com.neuringo.neuringobe.ai.application.port.AiDiagnostics;
@@ -38,19 +39,51 @@ public final class RoleplayTiming {
     private static final Logger log = LoggerFactory.getLogger(RoleplayTiming.class);
     private static final ThreadLocal<Frame> CURRENT = new ThreadLocal<>();
     private static final int MAX_SPANS = 256;
+    private static final int MAX_NOTES = 128;
+    private static final java.util.Set<Object> NOTES = java.util.Set.of("VALIDATION", "DECISION");
 
     private RoleplayTiming() {}
 
     public static Session begin(UUID requestId, AiDiagnostics diagnostics) {
+        return begin(requestId, diagnostics, event -> {});
+    }
+
+    /** 기술 로그·원문 진단에 더해 listener 에도 같은 사건을 넘긴다(실행 기록 저장용). */
+    public static Session begin(
+            UUID requestId, AiDiagnostics diagnostics, Consumer<Map<String, Object>> listener) {
         return begin(
                 requestId,
                 System::nanoTime,
                 event -> {
-                    if ("SUMMARY".equals(event.get("event")))
+                    try {
+                        listener.accept(event);
+                    } catch (RuntimeException failure) {
+                        /* 실행 기록 실패는 로그·진단 기록까지 막지 않는다. */
+                    }
+                    Object kind = event.get("event");
+                    if ("SUMMARY".equals(kind))
                         log.info("ROLEPLAY_TIMING request={} data={}", requestId, event);
-                    else log.info("ROLEPLAY_STAGE request={} data={}", requestId, event);
+                    else if (NOTES.contains(kind)) {
+                        // 판정 사건은 호출 시점에 바로 나온다. 원문 진단에는 같은 내용이 VALIDATION 으로 이미 들어간다.
+                        log.info("ROLEPLAY_DECISION request={} data={}", requestId, event);
+                        return;
+                    } else log.info("ROLEPLAY_STAGE request={} data={}", requestId, event);
                     diagnostics.record(requestId, "TIMING", event);
                 });
+    }
+
+    /** HTTP 요청이 아닌 워크플로우(리포트·시나리오 생성)용. 로그 없이 listener 에만 사건을 넘긴다. */
+    public static Session observe(UUID runId, Consumer<Map<String, Object>> listener) {
+        return begin(runId, System::nanoTime, listener);
+    }
+
+    /**
+     * 판정 사건을 남긴다. event 는 VALIDATION(모델 출력 검사 결과)이나 DECISION(코드가 내린 분기)이고, data 에는 고정 코드만 넣는다. 관측
+     * 중인 요청이 없으면 아무 일도 하지 않는다.
+     */
+    public static void note(String event, Map<String, Object> data) {
+        var frame = CURRENT.get();
+        if (frame != null) frame.state.note(frame.node.id, event, data);
     }
 
     static Session begin(UUID requestId, LongSupplier clock, Consumer<Map<String, Object>> sink) {
@@ -76,8 +109,11 @@ public final class RoleplayTiming {
         try (var scope = open(stage, operation, attempt)) {
             try {
                 var result = action.get();
-                if (result instanceof AiCallResult.Failure<?> failed)
+                if (result instanceof AiCallResult.Failure<?> failed) {
                     scope.outcome = "PROVIDER_FAILURE_" + failed.failure().type().name();
+                    scope.describe(failed.metadata());
+                } else if (result instanceof AiCallResult.Success<?> succeeded)
+                    scope.describe(succeeded.metadata());
                 return result;
             } catch (RuntimeException | Error failure) {
                 scope.outcome = "FAILED";
@@ -184,6 +220,10 @@ public final class RoleplayTiming {
             outcome = "FAILED";
         }
 
+        private void describe(AiCallMetadata metadata) {
+            if (node != null) node.metadata = metadata;
+        }
+
         @Override
         public void close() {
             if (closed || state == null) return;
@@ -208,6 +248,7 @@ public final class RoleplayTiming {
         final long start;
         long end = -1;
         String outcome, cancellation;
+        volatile AiCallMetadata metadata;
 
         Node(int id, int parent, Stage stage, AiOperation operation, int attempt, long start) {
             this.id = id;
@@ -227,6 +268,7 @@ public final class RoleplayTiming {
         final List<Node> nodes = new ArrayList<>();
         long closedAt = -1;
         boolean truncated;
+        int notes;
 
         State(UUID requestId, LongSupplier clock, Consumer<Map<String, Object>> sink) {
             this.requestId = requestId;
@@ -253,6 +295,31 @@ public final class RoleplayTiming {
             var node = new Node(nodes.size() + 1, parent, stage, operation, attempt, now());
             nodes.add(node);
             return node;
+        }
+
+        synchronized void note(int span, String event, Map<String, Object> data) {
+            if (notes >= MAX_NOTES) {
+                truncated = true;
+                return;
+            }
+            notes++;
+            var fields =
+                    AiDiagnostics.fields(
+                            "event",
+                            event,
+                            "request_id",
+                            requestId,
+                            "parent_span_id",
+                            span,
+                            "at_ms",
+                            ms(now()),
+                            // 이 판정이 나올 때까지 열린 구간 수. 구간 번호와 견주어 호출과 판정의 앞뒤를 시각 없이 정한다.
+                            "after_span",
+                            nodes.size(),
+                            "after_response",
+                            closedAt >= 0);
+            if (data != null) data.forEach(fields::putIfAbsent);
+            emit(fields);
         }
 
         synchronized void cancel(Node node, String reason) {
@@ -330,27 +397,38 @@ public final class RoleplayTiming {
         }
 
         private Map<String, Object> fields(Node node, long end) {
-            return AiDiagnostics.fields(
-                    "event",
-                    "STAGE",
-                    "request_id",
-                    requestId,
-                    "span_id",
-                    node.id,
-                    "parent_span_id",
-                    node.parent,
-                    "stage",
-                    node.stage,
-                    "operation",
-                    node.operation,
-                    "attempt",
-                    node.attempt,
-                    "start_ms",
-                    ms(node.start),
-                    "duration_ms",
-                    ms(Math.max(0, end - node.start)),
-                    "outcome",
-                    node.end < 0 ? "IN_PROGRESS_AT_RESPONSE" : node.outcome);
+            var fields =
+                    AiDiagnostics.fields(
+                            "event",
+                            "STAGE",
+                            "request_id",
+                            requestId,
+                            "span_id",
+                            node.id,
+                            "parent_span_id",
+                            node.parent,
+                            "stage",
+                            node.stage,
+                            "operation",
+                            node.operation,
+                            "attempt",
+                            node.attempt,
+                            "start_ms",
+                            ms(node.start),
+                            "duration_ms",
+                            ms(Math.max(0, end - node.start)),
+                            "outcome",
+                            node.end < 0 ? "IN_PROGRESS_AT_RESPONSE" : node.outcome);
+            var metadata = node.metadata;
+            if (metadata != null) {
+                // AI 호출 구간에는 어떤 모델이 토큰을 얼마나 썼는지도 붙인다. 글 내용은 메타데이터에 없다.
+                fields.put("model", metadata.model());
+                fields.put("prompt_version", metadata.promptVersion());
+                fields.put("finish_reason", metadata.finishReason());
+                fields.put("input_tokens", metadata.inputTokens());
+                fields.put("output_tokens", metadata.outputTokens());
+            }
+            return fields;
         }
 
         private long coveredChildren(Node parent, long end) {

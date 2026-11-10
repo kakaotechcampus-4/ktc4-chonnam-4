@@ -71,6 +71,26 @@ public final class StructuredLlmExecutor {
                     outcome);
     }
 
+    /** 출력 검사 결과와, 판정 출력이면 그 판정 코드까지 실행 기록에 넘긴다. 글 내용은 넣지 않는다. */
+    private static void noted(LlmRequest request, String outcome, Object output) {
+        if (request == null) return;
+        var data =
+                AiDiagnostics.fields(
+                        "operation",
+                        request.operation(),
+                        "attempt",
+                        request.currentAttempt(),
+                        "outcome",
+                        outcome);
+        if (output instanceof JudgedOutput judged) {
+            data.put("verdict", judged.verdict());
+            data.put("accepted", judged.accepted());
+            data.put("next", judged.nextStep());
+            data.put("codes", judged.verdictCodes());
+        }
+        RoleplayTiming.note("VALIDATION", data);
+    }
+
     public <T> AiCallResult<T> execute(LlmRequest request, LlmOutputParser<T> parser) {
         AiCallResult<LlmCompletion> providerResult = llmProvider.complete(request);
 
@@ -88,15 +108,18 @@ public final class StructuredLlmExecutor {
                     RoleplayTiming.measure(
                             OUTPUT_VALIDATION, () -> parser.parse(completion.content()));
             observed(request, "VALID");
+            noted(request, "VALID", output);
             diagnostic(request, "VALID", null, output);
             return new AiCallResult.Success<>(output, success.metadata());
         } catch (IndeterminateLlmOutputException exception) {
             observed(request, "INDETERMINATE_OUTPUT");
+            noted(request, "INDETERMINATE_OUTPUT", null);
             diagnostic(request, "INDETERMINATE_OUTPUT", "INSUFFICIENT_CONTEXT", null);
             return new AiCallResult.Failure<>(
                     new AiFailure(AiFailureType.INDETERMINATE_OUTPUT, null), success.metadata());
         } catch (InvalidLlmOutputException exception) {
             observed(request, "INVALID_OUTPUT_FORMAT");
+            noted(request, "INVALID_OUTPUT_FORMAT", null);
             diagnostic(request, "INVALID_OUTPUT_FORMAT", exception.getMessage(), null);
             // 예외 메시지는 원문을 포함할 수 있어 제한된 진단 파일에서만 확인한다.
             if (log.isDebugEnabled() && request != null) {

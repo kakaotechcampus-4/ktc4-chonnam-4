@@ -1,6 +1,9 @@
 package com.neuringo.neuringobe.report.service;
 
 import com.neuringo.neuringobe.ai.application.model.AiTraceContext;
+import com.neuringo.neuringobe.ai.application.observation.AgentRunTrace;
+import com.neuringo.neuringobe.ai.application.port.AgentRunRecorder;
+import com.neuringo.neuringobe.ai.application.port.AgentRunRecorder.Workflow;
 import com.neuringo.neuringobe.ai.application.port.LlmProvider;
 import com.neuringo.neuringobe.ai.application.prompt.LearningReportInput;
 import com.neuringo.neuringobe.ai.application.prompt.LearningReportPromptFactory;
@@ -44,10 +47,12 @@ public class ReportGenerationService {
     private final ReportProperties properties;
     private final JsonMapper json;
     private final Clock clock;
+    private final ObjectProvider<AgentRunRecorder> runs;
 
     public ReportGenerationService(
             LearningReportStore reports,
             ObjectProvider<LlmProvider> llm,
+            ObjectProvider<AgentRunRecorder> runs,
             LearningReportPromptFactory prompts,
             RetryingLearningReportGenerator generator,
             @Qualifier("reportGenerationWorkers") ThreadPoolExecutor workers,
@@ -56,6 +61,7 @@ public class ReportGenerationService {
             Clock clock) {
         this.reports = reports;
         this.llm = llm;
+        this.runs = runs;
         this.prompts = prompts;
         this.generator = generator;
         this.workers = workers;
@@ -78,20 +84,29 @@ public class ReportGenerationService {
         if (job == null) {
             return;
         }
+        UUID runId = UUID.randomUUID();
+        var recorder = runs.getIfAvailable(() -> AgentRunRecorder.NONE);
         if (job.attemptCount() > properties.maxAttempts()) {
             reports.fail(reportId, "GENERATION_STALLED", "[]", clock.instant());
+            try (var run = AgentRunTrace.open(recorder, runId, Workflow.LEARNING_REPORT)) {
+                run.failed("FAILED", "GENERATION_STALLED");
+            }
             return;
         }
         LlmProvider provider = llm.getIfAvailable();
         if (provider == null) {
             reports.fail(reportId, "AI_UNAVAILABLE", "[]", clock.instant());
+            try (var run = AgentRunTrace.open(recorder, runId, Workflow.LEARNING_REPORT)) {
+                run.failed("FAILED", "AI_UNAVAILABLE");
+            }
             return;
         }
-        try {
+        // 실행 기록에는 바퀴별 판정과 호출 시간·토큰만 남는다. 리포트 번호·아동 번호와 초안 문장은 넣지 않는다.
+        try (var run = AgentRunTrace.open(recorder, runId, Workflow.LEARNING_REPORT)) {
             var input = json.readValue(job.llmInputJson(), LearningReportInput.class);
             var trace =
                     new AiTraceContext(
-                            UUID.randomUUID(),
+                            runId,
                             job.activityId(),
                             null,
                             job.childId(),
@@ -114,9 +129,11 @@ public class ReportGenerationService {
                         json.writeValueAsString(ReportNarrative.from(completed.draft())),
                         rounds,
                         clock.instant());
+                run.completed("COMPLETED");
                 log.info("리포트 생성 완료: reportId={} rounds={}", reportId, completed.rounds().size());
             } else if (result instanceof LearningReportResult.Failed failed) {
                 reports.fail(reportId, failed.reason().name(), rounds, clock.instant());
+                run.failed("FAILED", failed.reason().name());
                 log.warn(
                         "리포트 생성 실패: reportId={} reason={} operation={}",
                         reportId,
