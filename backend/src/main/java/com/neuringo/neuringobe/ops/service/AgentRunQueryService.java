@@ -6,6 +6,7 @@ import com.neuringo.neuringobe.common.ApiException;
 import com.neuringo.neuringobe.common.ResourceNotFoundException;
 import com.neuringo.neuringobe.ops.config.AgentRunProperties;
 import com.neuringo.neuringobe.ops.domain.AgentRun;
+import com.neuringo.neuringobe.ops.domain.AgentRunDiagnosis;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse;
 import com.neuringo.neuringobe.ops.dto.AgentRunOverviewResponse.Bucket;
 import com.neuringo.neuringobe.ops.dto.AgentRunResponse;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,16 +42,19 @@ public class AgentRunQueryService {
     private final UserAccountRepository users;
     private final AgentRunProperties properties;
     private final Clock clock;
+    private final Duration turnBudget;
 
     public AgentRunQueryService(
             AgentRunStore store,
             UserAccountRepository users,
             AgentRunProperties properties,
-            Clock clock) {
+            Clock clock,
+            @Value("${roleplay.http.turn-budget:60s}") Duration turnBudget) {
         this.store = store;
         this.users = users;
         this.properties = properties;
         this.clock = clock;
+        this.turnBudget = turnBudget;
     }
 
     @Transactional(readOnly = true)
@@ -61,17 +66,45 @@ public class AgentRunQueryService {
         Instant to = clock.instant().truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES);
         Instant from = to.minus(Duration.ofHours(span));
         var window = new AgentRunStore.Window(from, to, workflow(workflow));
+        var now = snapshot(window);
         return new AgentRunOverviewResponse(
                 new AgentRunOverviewResponse.Window(from, to, span, bucketMinutes),
-                store.totals(window),
+                now.totals(),
                 filled(store.series(window, bucketMinutes), from, to, bucketMinutes),
-                store.workflows(window),
-                store.steps(window),
+                now.workflows(),
+                now.steps(),
                 store.transitions(window, 200),
                 store.codes(window, 30),
-                store.endings(window, 30),
+                now.endings().subList(0, Math.min(30, now.endings().size())),
                 store.stages(window),
-                store.flows(window, MAX_FLOWS));
+                now.flows().subList(0, Math.min(MAX_FLOWS, now.flows().size())),
+                diagnosis(window, now, Duration.ofHours(span)));
+    }
+
+    private AgentRunDiagnosis.Snapshot snapshot(AgentRunStore.Window window) {
+        return new AgentRunDiagnosis.Snapshot(
+                store.totals(window),
+                store.workflows(window),
+                store.steps(window),
+                store.endings(window, 200),
+                store.flows(window, 200));
+    }
+
+    /** 바로 앞 같은 길이 기간과 비교한 자동 진단. 같은 워크플로우 조건으로 앞 기간을 읽는다. */
+    private AgentRunOverviewResponse.Diagnosis diagnosis(
+            AgentRunStore.Window window, AgentRunDiagnosis.Snapshot now, Duration span) {
+        var earlierWindow =
+                new AgentRunStore.Window(
+                        window.from().minus(span), window.from(), window.workflow());
+        var before = snapshot(earlierWindow);
+        var slowest = store.slowest(window, Workflow.ROLEPLAY_TURN.name(), 3);
+        return new AgentRunOverviewResponse.Diagnosis(
+                earlierWindow.from(),
+                earlierWindow.to(),
+                before.totals().runs(),
+                AgentRunDiagnosis.failureRate(now.totals()),
+                AgentRunDiagnosis.failureRate(before.totals()),
+                AgentRunDiagnosis.diagnose(now, before, turnBudget.toMillis(), slowest));
     }
 
     /**

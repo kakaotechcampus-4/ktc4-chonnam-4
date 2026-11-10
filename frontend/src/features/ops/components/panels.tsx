@@ -15,6 +15,7 @@ import {
 } from '../lib/labels'
 import { focusRing, pathColor, statusColor } from '../lib/tones'
 import { RankedBars, SegmentBar } from './charts'
+import { TraceId } from './flows'
 import { Code, Empty, Panel, PathBadge, StatusIcon } from './primitives'
 
 type Overview = AgentRunOverview
@@ -319,7 +320,15 @@ export function CodePanel({ codes }: { codes: Overview['codes'] }) {
 }
 
 /** 실패 흐름의 원인. 어느 단계의 어떤 판정·사유 때문에 정상 결과 없이 끝났는지 많이 일어난 순서로 보인다. */
-export function FailureCausePanel({ endings, className = '' }: { endings: Overview['endings']; className?: string }) {
+export function FailureCausePanel({
+  endings,
+  onOpen,
+  className = '',
+}: {
+  endings: Overview['endings']
+  onOpen: (runId: string) => void
+  className?: string
+}) {
   const rows = endings.filter((row) => row.path === 'GUIDED' || row.path === 'FAILED')
   return (
     <Panel
@@ -347,6 +356,9 @@ export function FailureCausePanel({ endings, className = '' }: { endings: Overvi
                 <th scope="col" className={`${thClass} text-right`}>
                   건수
                 </th>
+                <th scope="col" className={thClass}>
+                  예시 Trace ID
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -366,6 +378,9 @@ export function FailureCausePanel({ endings, className = '' }: { endings: Overvi
                   </td>
                   <td className={tdClass}>{stepLabel(row.result)}</td>
                   <td className={`${tdClass} ops-num text-right text-[var(--ops-text)]`}>{count(row.count)}</td>
+                  <td className={`${tdClass} whitespace-nowrap`}>
+                    {row.recentRunIds[0] ? <TraceId runId={row.recentRunIds[0]} onOpen={onOpen} /> : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

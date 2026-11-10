@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/features/instructor/api'
 import { getAgentRunOverview, listAgentRuns, type AgentRunFilter, type RunPath, type Workflow } from '../api'
 import { LatencyChart, PathSeriesChart } from '../components/charts'
+import { DiagnosisPanel } from '../components/DiagnosisPanel'
 import { FlowPatternsPanel, OutcomeSection, OutcomeStat, RunListPanel } from '../components/flows'
 import {
   CallStat,
@@ -175,6 +176,7 @@ export function AgentRunsPage() {
           ) : (
             <div className={`flex flex-col gap-3 ${overview.isPlaceholderData ? 'opacity-60' : ''}`}>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <DiagnosisPanel diagnosis={data.diagnosis} runs={data.totals.runs} onOpen={open} />
               <OutcomeStat outcome="SUCCESS" totals={data.totals} series={data.series} />
               <OutcomeStat outcome="FAILURE" totals={data.totals} series={data.series} />
               <CallStat totals={data.totals} />
@@ -227,7 +229,7 @@ export function AgentRunsPage() {
               total={data.totals.runs}
             >
               <FlowPatternsPanel outcome="FAILURE" flows={data.flows} mixed={!workflow} onOpen={open} />
-              <FailureCausePanel endings={data.endings} className="md:col-span-2" />
+              <FailureCausePanel endings={data.endings} onOpen={open} className="md:col-span-2" />
               <RunListPanel
                 outcome="FAILURE"
                 runs={failureRuns.data}

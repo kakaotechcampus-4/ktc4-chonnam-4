@@ -116,6 +116,80 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
     expect(within(failureList).getByText(ID.timeout)).toBeInTheDocument()
   })
 
+  it("자동 진단은 실행이 적으면 판단하지 않았다고 알린다", async () => {
+    renderDashboard()
+
+    const diagnosis = await screen.findByRole("region", { name: "자동 진단" })
+    expect(diagnosis).toHaveTextContent("실행이 20건 미만이라 판단하지 않았습니다(이번 기간 4건).")
+  })
+
+  it("자동 진단 항목을 심각한 순서로 문장·볼 곳·예시 Trace ID 와 함께 보인다", async () => {
+    const { user } = renderDashboard("", {
+      runs: runs(),
+      diagnosis: {
+        previousRuns: 40,
+        failureRate: 0.42,
+        previousFailureRate: 0.1,
+        findings: [
+          {
+            kind: "FAILURE_RATE",
+            severity: "CRITICAL",
+            workflow: null,
+            step: null,
+            code: null,
+            current: 0.42,
+            previous: 0.1,
+            threshold: 0.3,
+            unit: "RATE",
+            sampleRunIds: [ID.timeout],
+          },
+          {
+            kind: "STEP_BLOCKED",
+            severity: "WARNING",
+            workflow: "ROLEPLAY_TURN",
+            step: "RESPONSE_EVALUATION",
+            code: "REGENERATE",
+            current: 0.24,
+            previous: null,
+            threshold: 0.2,
+            unit: "RATE",
+            sampleRunIds: [ID.regenerate],
+          },
+          {
+            kind: "REASON_SURGE",
+            severity: "WARNING",
+            workflow: "ROLEPLAY_TURN",
+            step: "SPEECH_TRANSCRIPTION",
+            code: "LOW_CONFIDENCE",
+            current: 8,
+            previous: 2,
+            threshold: 2,
+            unit: "COUNT",
+            sampleRunIds: [ID.lowConfidence],
+          },
+        ],
+      },
+    })
+
+    const diagnosis = await screen.findByRole("region", { name: "자동 진단" })
+    expect(diagnosis).toHaveTextContent("실패 비율 42% · 앞 기간 10%(40건)")
+    const items = within(diagnosis).getAllByRole("listitem")
+    expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
+      "실패 비율이 42%입니다 (앞 기간 10%)",
+      "역할극 턴 응답 검수 단계의 거절·실패가 24%입니다. 가장 많은 판정은 REGENERATE",
+      "LOW_CONFIDENCE(으)로 끝난 실행이 8건으로 늘었습니다 (앞 기간 2건) · 역할극 턴 음성 인식",
+    ])
+    expect(items[0]).toHaveTextContent("심각")
+    expect(items[0]).toHaveTextContent("실패 흐름 구역의 흐름 패턴과 실패 원인")
+    expect(items[1]).toHaveTextContent("주의")
+    expect(items[1]).toHaveTextContent("생성 프롬프트와 검수 기준")
+    expect(items[2]).toHaveTextContent("STT confidence threshold")
+
+    await user.click(within(items[2]).getByRole("button", { name: `Trace ID ${ID.lowConfidence} 상세 열기` }))
+    const detail = await screen.findByRole("dialog", { name: "실행 상세" })
+    expect(await within(detail).findByText(ID.lowConfidence)).toBeInTheDocument()
+  })
+
   it("단계가 낸 판정과 그 때문에 이어진 다음 단계를 단계별로 보인다", async () => {
     renderDashboard()
 
@@ -158,6 +232,9 @@ describe("에이전트 워크플로우 실행 기록 대시보드", () => {
       expect.stringMatching(/안내로 종료음성 인식LOW_CONFIDENCE다시 입력 요청1/),
       expect.stringMatching(/오류응답 검수LIMIT_REACHED다시 시도 요청1/),
     ])
+    // 원인마다 그 원인으로 끝난 최근 실행의 Trace ID 를 붙인다.
+    expect(within(rows[0]).getByRole("button", { name: `Trace ID ${ID.lowConfidence} 상세 열기` })).toBeInTheDocument()
+    expect(within(rows[1]).getByRole("button", { name: `Trace ID ${ID.timeout} 상세 열기` })).toBeInTheDocument()
   })
 
   it("실행을 누르면 단계 흐름 상세가 열리고 주소에 남으며 Esc 로 닫힌다", async () => {

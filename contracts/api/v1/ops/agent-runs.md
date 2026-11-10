@@ -53,7 +53,7 @@
     "steps": [{ "workflow": "ROLEPLAY_TURN", "step": "RESPONSE_EVALUATION", "calls": 82, "passed": 71, "rejected": 8, "failed": 3, "avgMs": 8100, "p95Ms": 10000, "inputTokens": 245000, "outputTokens": 20500 }],
     "transitions": [{ "workflow": "ROLEPLAY_TURN", "from": "RESPONSE_EVALUATION", "status": "REJECTED", "verdict": "REGENERATE", "to": "RESPONSE_GENERATION", "count": 8 }],
     "codes": [{ "workflow": "ROLEPLAY_TURN", "step": "RESPONSE_EVALUATION", "code": "ANSWER_TOO_DIRECT", "count": 8 }],
-    "endings": [{ "workflow": "ROLEPLAY_TURN", "path": "GUIDED", "result": "REINPUT_REQUIRED", "endedBy": "SPEECH_TRANSCRIPTION", "reason": "LOW_CONFIDENCE", "count": 6 }],
+    "endings": [{ "workflow": "ROLEPLAY_TURN", "path": "GUIDED", "result": "REINPUT_REQUIRED", "endedBy": "SPEECH_TRANSCRIPTION", "reason": "LOW_CONFIDENCE", "count": 6, "recentRunIds": ["7c1f3a52-0d6b-4f0e-9a51-2b8f6f3c9d11"] }],
     "stages": [{ "stage": "LLM_CALL", "avgMs": 21400, "p95Ms": 30200 }],
     "flows": [{
       "workflow": "ROLEPLAY_TURN", "outcome": "SUCCESS", "path": "RETRIED", "result": "DELIVERED",
@@ -63,7 +63,16 @@
       ],
       "count": 9, "p50Ms": 33700,
       "recentRunIds": ["7c1f3a52-0d6b-4f0e-9a51-2b8f6f3c9d10"]
-    }]
+    }],
+    "diagnosis": {
+      "previousFrom": "2026-11-08T06:31:00Z", "previousTo": "2026-11-09T06:31:00Z", "previousRuns": 85,
+      "failureRate": 0.2, "previousFailureRate": 0.21,
+      "findings": [{
+        "kind": "STEP_BLOCKED", "severity": "WARNING", "workflow": "ROLEPLAY_TURN",
+        "step": "RESPONSE_EVALUATION", "code": "TIMEOUT", "current": 0.35, "previous": 0.35,
+        "threshold": 0.2, "unit": "RATE", "sampleRunIds": ["7c1f3a52-0d6b-4f0e-9a51-2b8f6f3c9d12"]
+      }]
+    }
   },
   "meta": { "traceId": "90000000-0000-4000-8000-000000000001" }
 }
@@ -72,6 +81,16 @@
 - `series`는 실행이 없던 구간도 0 으로 채워 옵니다. 구간 길이(`bucketMinutes`)는 기간에 따라 5·15·60·180·360·720분입니다.
 - `transitions`는 많이 일어난 순서로 최대 200개, `codes`·`endings`는 최대 30개입니다.
 - `stages`는 역할극 턴의 구간별 자체 시간(안쪽 구간을 뺀 시간)입니다.
+- `diagnosis`는 이번 기간과 바로 앞 같은 길이 기간(`previousFrom`~`previousTo`)을 비교한 자동 진단입니다. AI 를 부르지 않고 집계 값에 규칙을 적용합니다. 실행 20건 미만이면 판단하지 않고, 앞 기간이 20건 미만이면 비교하는 규칙(새 실패 흐름·원인 급증)은 건너뜁니다. `findings`는 심각한 순서로 최대 8개이고, 문장은 화면이 `kind`·`step`·`code`로 만듭니다.
+
+  | kind | 걸리는 조건 | severity |
+  |---|---|---|
+  | `FAILURE_RATE` | 실패 비율 30% 이상 또는 앞 기간보다 5%p 이상 오름 | 50% 이상·15%p 이상이면 CRITICAL, 아니면 WARNING |
+  | `LATENCY` | 역할극 턴 p95 가 턴 제한 시간(`roleplay.http.turn-budget`)의 80% 이상, 또는 앞 기간의 1.5배 이상이면서 제한 시간의 50% 이상 | 제한 시간 이상이면 CRITICAL |
+  | `STEP_BLOCKED` | 호출 10번 이상인 단계의 거절·실패 비율 20% 이상. `code`는 가장 많은 판정 | 40% 이상이면 CRITICAL |
+  | `NEW_FAILURE_FLOW` | 앞 기간에 없던 실패 흐름 패턴(최대 3개). `step`·`code`는 처음 통과하지 못한 단계와 판정 | 오류면 WARNING, 안내로 종료면 INFO |
+  | `REASON_SURGE` | 같은 원인 단계·사유로 끝난 실행이 5건 이상이고 실행 대비 비율이 앞 기간의 2배 이상(앞 기간 0건 포함). `STEP_BLOCKED`가 짚은 것은 빼고 냅니다 | 실패 흐름이 섞이면 WARNING, 아니면 INFO |
+
 - `flows`는 워크플로우·흐름·결과와 최종 결과 앞 단계들의 "단계·상태·판정" 순서가 같은 실행끼리 묶은 흐름 패턴입니다. 많이 일어난 순서로 최대 60개이고, `recentRunIds`는 그 흐름으로 끝난 최근 실행 번호 최대 3개입니다. `outcome`은 `SUCCESS`(정상 결과로 끝남) 또는 `FAILURE`입니다.
 
 ### API-OPS-02 목록
@@ -135,5 +154,5 @@
 ## 7. 연결 Task·검증
 
 - 서버 기록: `RoleplayRequestObservationFilter`(역할극 턴), `ReportGenerationService`·`ScenarioGenerationService`(`AgentRunTrace`), 판정 사건은 `StructuredLlmExecutor`·`RoleplayTurnOutcomeResolver`·`RetryingLearningReportGenerator`가 `RoleplayTiming.note`로 넘깁니다.
-- 검증: `AgentRunAssemblerTest`(흐름 조립), `RoleplayTurnResolutionNoteTest`(턴 결과 판정), `RoleplayAgentRunHttpIntegrationTest`(실제 HTTP·DB, 정상·재시도·안내·오류 흐름과 조회 API), `AgentRunAccessIntegrationTest`(허용 목록), `AgentRunDisabledIntegrationTest`(기본 꺼짐), 프론트 `AgentRunsPage.test.tsx`.
+- 검증: `AgentRunAssemblerTest`(흐름 조립), `AgentRunDiagnosisTest`(자동 진단 규칙), `RoleplayTurnResolutionNoteTest`(턴 결과 판정), `RoleplayAgentRunHttpIntegrationTest`(실제 HTTP·DB, 정상·재시도·안내·오류 흐름과 조회 API), `AgentRunAccessIntegrationTest`(허용 목록), `AgentRunDisabledIntegrationTest`(기본 꺼짐), 프론트 `AgentRunsPage.test.tsx`.
 - [API 목차](../README.md) · [공통 규칙](../integration-guide.md)

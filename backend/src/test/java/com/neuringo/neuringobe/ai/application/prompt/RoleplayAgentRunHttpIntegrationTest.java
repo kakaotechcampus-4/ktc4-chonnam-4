@@ -252,7 +252,11 @@ class RoleplayAgentRunHttpIntegrationTest {
                                 .value(org.hamcrest.Matchers.hasItem("REJECTED")))
                 .andExpect(
                         jsonPath("$.data.flows[?(@.path=='RETRIED')].steps[*].step")
-                                .value(org.hamcrest.Matchers.hasItem("TURN_RESOLUTION")));
+                                .value(org.hamcrest.Matchers.hasItem("TURN_RESOLUTION")))
+                // 자동 진단: 앞 기간(같은 길이)과 비교한 결과 모양. 실행이 적어 진단 항목은 없을 수 있다.
+                .andExpect(jsonPath("$.data.diagnosis.previousFrom").exists())
+                .andExpect(jsonPath("$.data.diagnosis.findings").isArray())
+                .andExpect(jsonPath("$.data.endings[0].recentRunIds").isArray());
     }
 
     @Test

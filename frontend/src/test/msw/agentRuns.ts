@@ -1,7 +1,9 @@
 import { http, HttpResponse } from "msw"
 import type {
   AgentRun,
+  AgentRunFlow,
   AgentRunOverview,
+  DiagnosisFinding,
   AgentRunSpan,
   AgentRunStep,
   Outcome,
@@ -384,7 +386,7 @@ const WEIGHT: Record<string, number> = {
 }
 
 /** 지난 7일 동안의 실행 기록. 오후 수업 시간대에 몰리게 만든다. */
-export function sampleAgentRuns(now = new Date()): AgentRun[] {
+export function sampleAgentRuns(now = new Date(), spike = true): AgentRun[] {
   const random = seeded(20_261_110)
   const runs: AgentRun[] = []
   for (let hour = 0; hour < 24 * 7; hour += 1) {
@@ -397,6 +399,14 @@ export function sampleAgentRuns(now = new Date()): AgentRun[] {
       for (let index = 0; index < occurrences; index += 1) {
         const startedAt = new Date(at.getTime() + Math.floor(random() * 3_600_000))
         runs.push(buildAgentRun(template, uuid(runs.length), startedAt, 0.75 + random() * 0.6))
+      }
+    }
+    // 최근 3시간에는 검수 시간 초과와 음성 신뢰도 미달이 몰린다. 미리보기에서 자동 진단이 무엇을 짚는지 보이게 하려는 것이다.
+    if (spike && hour < 3) {
+      for (const key of ["roleplay-evaluation-timeout", "roleplay-evaluation-timeout", "roleplay-low-confidence"]) {
+        const template = AGENT_RUN_TEMPLATES.find((candidate) => candidate.key === key)!
+        const startedAt = new Date(at.getTime() + Math.floor(random() * 3_600_000))
+        runs.push(buildAgentRun(template, uuid(runs.length), startedAt, 1 + random() * 0.4))
       }
     }
   }
@@ -436,7 +446,7 @@ function bucketMinutes(hours: number): number {
 }
 
 /** 백엔드 AgentRunQueryService.overview 와 같은 계산. */
-export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | null, now = new Date()): AgentRunOverview {
+function summarize(all: AgentRun[], hours: number, workflow: Workflow | null, now: Date): Summary {
   const minutes = bucketMinutes(hours)
   const to = new Date(Math.floor(now.getTime() / 60_000) * 60_000 + 60_000)
   const from = new Date(to.getTime() - hours * 3_600_000)
@@ -530,7 +540,16 @@ export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | 
   ]
     .map(([key, group]) => {
       const [name, path, result, endedBy, reason] = key.split("|")
-      return { workflow: name as Workflow, path: path as RunPath, result, endedBy, reason, count: group.length }
+      const recent = [...group].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.runId.localeCompare(b.runId))
+      return {
+        workflow: name as Workflow,
+        path: path as RunPath,
+        result,
+        endedBy,
+        reason,
+        count: group.length,
+        recentRunIds: recent.slice(0, 3).map((run) => run.runId),
+      }
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 30)
@@ -604,6 +623,188 @@ export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | 
   }
 }
 
+type Summary = Omit<AgentRunOverview, "diagnosis">
+
+/** 백엔드 AgentRunQueryService.overview 와 같은 계산: 이번 기간 요약 + 바로 앞 같은 길이 기간과 비교한 자동 진단. */
+export function overviewOf(all: AgentRun[], hours: number, workflow: Workflow | null, now = new Date()): AgentRunOverview {
+  const current = summarize(all, hours, workflow, now)
+  const before = summarize(all, hours, workflow, new Date(new Date(current.window.from).getTime() - 60_000))
+  const slowest = all
+    .filter(
+      (run) =>
+        run.workflow === "ROLEPLAY_TURN" &&
+        new Date(run.startedAt) >= new Date(current.window.from) &&
+        new Date(run.startedAt) < new Date(current.window.to),
+    )
+    .sort((a, b) => b.durationMs - a.durationMs || a.runId.localeCompare(b.runId))
+    .slice(0, 3)
+    .map((run) => run.runId)
+  return {
+    ...current,
+    diagnosis: {
+      previousFrom: before.window.from,
+      previousTo: before.window.to,
+      previousRuns: before.totals.runs,
+      failureRate: failureRate(current.totals),
+      previousFailureRate: failureRate(before.totals),
+      findings: diagnose(current, before, TURN_BUDGET_MS, slowest),
+    },
+  }
+}
+
+// 백엔드 AgentRunDiagnosis 와 같은 규칙·기준값.
+const TURN_BUDGET_MS = 60_000
+const MIN_RUNS = 20
+const MIN_CALLS = 10
+
+function failureRate(totals: Summary["totals"]): number | null {
+  return totals.runs === 0 ? null : (totals.guided + totals.failed) / totals.runs
+}
+
+function signature(flow: AgentRunFlow): string {
+  return [flow.workflow, flow.path, flow.result, flow.steps.map((s) => `${s.step}|${s.status}|${s.verdict}`).join(",")].join("#")
+}
+
+function diagnose(now: Summary, before: Summary, budget: number, slowest: string[]): DiagnosisFinding[] {
+  const findings: DiagnosisFinding[] = []
+  const comparable = before.totals.runs >= MIN_RUNS
+
+  if (now.totals.runs >= MIN_RUNS) {
+    const rate = failureRate(now.totals)!
+    const previous = comparable ? failureRate(before.totals) : null
+    const rise = previous === null ? 0 : rate - previous
+    const severity = rate >= 0.5 || rise >= 0.15 ? "CRITICAL" : rate >= 0.3 || rise >= 0.05 ? "WARNING" : null
+    if (severity)
+      findings.push({
+        kind: "FAILURE_RATE",
+        severity,
+        workflow: null,
+        step: null,
+        code: null,
+        current: rate,
+        previous,
+        threshold: 0.3,
+        unit: "RATE",
+        sampleRunIds: now.flows
+          .filter((flow) => flow.outcome === "FAILURE")
+          .flatMap((flow) => flow.recentRunIds)
+          .slice(0, 3),
+      })
+  }
+
+  if (comparable) {
+    const seen = new Set(before.flows.map(signature))
+    for (const flow of now.flows.filter((f) => f.outcome === "FAILURE" && !seen.has(signature(f))).slice(0, 3)) {
+      const blocked = flow.steps.find((step) => step.status !== "PASSED") ?? flow.steps.at(-1)
+      findings.push({
+        kind: "NEW_FAILURE_FLOW",
+        severity: flow.path === "FAILED" ? "WARNING" : "INFO",
+        workflow: flow.workflow,
+        step: blocked?.step ?? null,
+        code: blocked ? blocked.verdict : flow.result,
+        current: flow.count,
+        previous: 0,
+        threshold: 1,
+        unit: "COUNT",
+        sampleRunIds: flow.recentRunIds,
+      })
+    }
+  }
+
+  for (const step of now.steps) {
+    if (step.calls < MIN_CALLS) continue
+    const rate = (step.rejected + step.failed) / step.calls
+    const severity = rate >= 0.4 ? "CRITICAL" : rate >= 0.2 ? "WARNING" : null
+    if (!severity) continue
+    const earlier = before.steps.find((s) => s.workflow === step.workflow && s.step === step.step)
+    const verdicts = new Map<string, number>()
+    const samples: string[] = []
+    for (const flow of now.flows.filter((f) => f.workflow === step.workflow))
+      for (const s of flow.steps)
+        if (s.step === step.step && s.status !== "PASSED") {
+          verdicts.set(s.verdict ?? "", (verdicts.get(s.verdict ?? "") ?? 0) + flow.count)
+          for (const id of flow.recentRunIds) if (samples.length < 3 && !samples.includes(id)) samples.push(id)
+        }
+    const top = [...verdicts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
+    findings.push({
+      kind: "STEP_BLOCKED",
+      severity,
+      workflow: step.workflow,
+      step: step.step,
+      code: top,
+      current: rate,
+      previous: earlier && earlier.calls >= MIN_CALLS ? (earlier.rejected + earlier.failed) / earlier.calls : null,
+      threshold: 0.2,
+      unit: "RATE",
+      sampleRunIds: samples,
+    })
+  }
+
+  if (comparable) {
+    type Ending = Summary["endings"][number]
+    const key = (ending: Ending) => [ending.workflow, ending.endedBy, ending.reason].join("|")
+    const group = (endings: Ending[]) => {
+      const map = new Map<string, Ending[]>()
+      for (const ending of endings) if (ending.reason) map.set(key(ending), [...(map.get(key(ending)) ?? []), ending])
+      return map
+    }
+    const earlier = group(before.endings)
+    for (const [k, rows] of group(now.endings)) {
+      const total = rows.reduce((sum, ending) => sum + ending.count, 0)
+      if (total < 5) continue
+      const previousCount = (earlier.get(k) ?? []).reduce((sum, ending) => sum + ending.count, 0)
+      if (previousCount > 0 && total / now.totals.runs < (previousCount / before.totals.runs) * 2) continue
+      const [wf, endedBy, reason] = k.split("|")
+      if (findings.some((f) => f.workflow === wf && f.step === endedBy && f.code === reason)) continue
+      findings.push({
+        kind: "REASON_SURGE",
+        severity: rows.some((ending) => ending.path === "GUIDED" || ending.path === "FAILED") ? "WARNING" : "INFO",
+        workflow: wf as Workflow,
+        step: endedBy || null,
+        code: reason,
+        current: total,
+        previous: previousCount,
+        threshold: 2,
+        unit: "COUNT",
+        sampleRunIds: rows.flatMap((ending) => ending.recentRunIds).slice(0, 3),
+      })
+    }
+  }
+
+  const roleplay = now.workflows.find((w) => w.workflow === "ROLEPLAY_TURN")
+  if (roleplay && roleplay.runs >= MIN_RUNS) {
+    const earlier = comparable ? before.workflows.find((w) => w.workflow === "ROLEPLAY_TURN") : undefined
+    const previous = earlier && earlier.runs >= MIN_RUNS ? earlier.p95Ms : null
+    const p95 = roleplay.p95Ms
+    const severity =
+      p95 >= budget
+        ? "CRITICAL"
+        : p95 >= budget * 0.8 || (previous !== null && p95 >= previous * 1.5 && p95 >= budget * 0.5)
+          ? "WARNING"
+          : null
+    if (severity)
+      findings.push({
+        kind: "LATENCY",
+        severity,
+        workflow: "ROLEPLAY_TURN",
+        step: null,
+        code: null,
+        current: p95,
+        previous,
+        threshold: budget * 0.8,
+        unit: "MS",
+        sampleRunIds: slowest,
+      })
+  }
+
+  const order = ["FAILURE_RATE", "LATENCY", "STEP_BLOCKED", "NEW_FAILURE_FLOW", "REASON_SURGE"]
+  const rank = { CRITICAL: 0, WARNING: 1, INFO: 2 }
+  return findings
+    .sort((a, b) => rank[a.severity] - rank[b.severity] || order.indexOf(a.kind) - order.indexOf(b.kind))
+    .slice(0, 8)
+}
+
+
 const WORKFLOW_VALUES = ["ROLEPLAY_TURN", "LEARNING_REPORT", "SCENARIO_GENERATION"]
 const PATH_VALUES = ["NORMAL", "RETRIED", "GUIDED", "FAILED"]
 const OUTCOME_PATHS: Record<string, RunPath[]> = { SUCCESS: ["NORMAL", "RETRIED"], FAILURE: ["GUIDED", "FAILED"] }
@@ -612,7 +813,11 @@ const OUTCOME_PATHS: Record<string, RunPath[]> = { SUCCESS: ["NORMAL", "RETRIED"
  * 조회 세 개의 가짜 응답. denied 면 허용 목록에 없는 계정처럼 404 RESOURCE_NOT_FOUND 로 답한다.
  * 기록은 runs 로 바꿀 수 있고, 주지 않으면 지난 7일치 예시 기록을 쓴다.
  */
-export function agentRunHandlers({ denied = false, runs }: { denied?: boolean; runs?: AgentRun[] } = {}) {
+export function agentRunHandlers({
+  denied = false,
+  runs,
+  diagnosis,
+}: { denied?: boolean; runs?: AgentRun[]; diagnosis?: Partial<AgentRunOverview["diagnosis"]> } = {}) {
   const records = runs ?? sampleAgentRuns()
 
   function guard(request: Request): Response | null {
@@ -649,7 +854,8 @@ export function agentRunHandlers({ denied = false, runs }: { denied?: boolean; r
       if (blocked) return blocked
       const filter = filters(request)
       if (filter instanceof Response) return filter
-      return HttpResponse.json(envelope(overviewOf(records, filter.hours, filter.workflow)))
+      const overview = overviewOf(records, filter.hours, filter.workflow)
+      return HttpResponse.json(envelope({ ...overview, diagnosis: { ...overview.diagnosis, ...diagnosis } }))
     }),
     http.get("*/api/v1/ops/agent-runs/:runId", ({ request, params }) => {
       const blocked = guard(request)

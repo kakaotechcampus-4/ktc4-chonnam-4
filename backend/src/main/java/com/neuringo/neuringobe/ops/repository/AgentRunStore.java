@@ -298,7 +298,8 @@ public class AgentRunStore {
         return jdbc.query(
                 """
                 select r.workflow, r.path, r.result, coalesce(r.ended_by, '') as ended_by,
-                    coalesce(r.reason, '') as reason, count(*) as runs
+                    coalesce(r.reason, '') as reason, count(*) as runs,
+                    (array_agg(r.run_id order by r.started_at desc, r.run_id))[1:3] as recent
                 from agent_run r where r.path <> 'NORMAL' and
                 """
                         + window.where()
@@ -311,8 +312,30 @@ public class AgentRunStore {
                                 rs.getString("result"),
                                 rs.getString("ended_by"),
                                 rs.getString("reason"),
-                                rs.getLong("runs")),
+                                rs.getLong("runs"),
+                                runIds(rs.getArray("recent"))),
                 args.toArray());
+    }
+
+    /** 걸린 시간이 긴 순서의 실행 번호. 응답 시간 진단의 예시로 쓴다. */
+    public List<UUID> slowest(Window window, String workflow, int limit) {
+        var args = window.args();
+        args.add(workflow);
+        args.add(limit);
+        return jdbc.query(
+                "select r.run_id from agent_run r where"
+                        + window.where()
+                        + " and r.workflow = ? order by r.duration_ms desc, r.run_id limit ?",
+                (rs, row) -> rs.getObject("run_id", UUID.class),
+                args.toArray());
+    }
+
+    private static List<UUID> runIds(java.sql.Array array) throws SQLException {
+        var ids = new ArrayList<UUID>();
+        if (array == null) return ids;
+        for (Object id : (Object[]) array.getArray())
+            ids.add(id instanceof UUID uuid ? uuid : UUID.fromString(id.toString()));
+        return List.copyOf(ids);
     }
 
     /** 역할극 턴의 구간별 자체 시간. 다른 워크플로우는 호출 구간뿐이라 단계별 통계로 충분하다. */
@@ -360,9 +383,6 @@ public class AgentRunStore {
                         + " order by runs desc, r.workflow, r.path limit ?",
                 (rs, row) -> {
                     String path = rs.getString("path");
-                    var recent = new ArrayList<UUID>();
-                    for (Object id : (Object[]) rs.getArray("recent").getArray())
-                        recent.add(id instanceof UUID uuid ? uuid : UUID.fromString(id.toString()));
                     return new Flow(
                             rs.getString("workflow"),
                             AgentRun.Path.valueOf(path).outcome().name(),
@@ -371,7 +391,7 @@ public class AgentRunStore {
                             flowSteps(rs.getString("signature")),
                             rs.getLong("runs"),
                             Math.round(rs.getDouble("p50")),
-                            List.copyOf(recent));
+                            runIds(rs.getArray("recent")));
                 },
                 args.toArray());
     }

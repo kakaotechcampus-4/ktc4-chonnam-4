@@ -114,9 +114,39 @@ export type AgentRunOverview = {
     endedBy: string
     reason: string
     count: number
+    recentRunIds: string[]
   }[]
   stages: { stage: string; avgMs: number; p95Ms: number }[]
   flows: AgentRunFlow[]
+  diagnosis: AgentRunDiagnosis
+}
+
+export type DiagnosisKind = 'FAILURE_RATE' | 'NEW_FAILURE_FLOW' | 'STEP_BLOCKED' | 'REASON_SURGE' | 'LATENCY'
+
+export type DiagnosisSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
+
+/** 진단 하나. current·previous·threshold 의 단위는 unit(RATE 는 0~1). previous 가 null 이면 비교할 앞 기간 표본이 없다. */
+export type DiagnosisFinding = {
+  kind: DiagnosisKind
+  severity: DiagnosisSeverity
+  workflow: Workflow | null
+  step: string | null
+  code: string | null
+  current: number
+  previous: number | null
+  threshold: number
+  unit: 'RATE' | 'COUNT' | 'MS'
+  sampleRunIds: string[]
+}
+
+/** 바로 앞 같은 길이 기간(previousFrom~previousTo)과 비교한 자동 진단. */
+export type AgentRunDiagnosis = {
+  previousFrom: string
+  previousTo: string
+  previousRuns: number
+  failureRate: number | null
+  previousFailureRate: number | null
+  findings: DiagnosisFinding[]
 }
 
 /** 같은 단계 순서·판정으로 흘러간 실행끼리 묶은 흐름 패턴. recentRunIds 는 최근 실행 번호(역할극 턴은 X-Trace-Id). */
