@@ -224,6 +224,7 @@ Playwright 로 실제 백엔드(local 프로필)·PostgreSQL·프론트 빌드�
   - `e2e/deployed/screens.spec.ts`: 로그인·가입·아동 코드 화면이 HTTP/2 이상·가로 넘침 없음·스크립트 오류 없음·섞인 내용(http) 없음, 보호 경로, 키패드 44px, 다크 모드 기기에서 체크박스가 체크 전에 비어 보이는지
   - `e2e/deployed/speed.spec.ts`: 빈 캐시 PC LCP 2.5초·첫 바이트 0.8초, 태블릿·10Mbps·지연 60ms·CPU 4배에서 LCP 4초, API 왕복 p95 300ms, JS 압축 300KB 이하·다음 화면은 캐시. 기획안에 웹 속도 숫자가 없어 Core Web Vitals 경계를 쓴다. 숫자는 통과해도 목록에 찍힌다
   - `e2e/deployed/instructor-flow.spec.ts`: 학급 → 아동 → 활동(목표·배정) → 리포트 빈 상태 → 학급 삭제로 정리, 새 탭은 다시 로그인(DEC-002)·로그아웃. 배포 주소에서는 테스트 강사 계정(`DEPLOYED_INSTRUCTOR_EMAIL`·`_PASSWORD`)으로 돌거나, `DEPLOYED_ALLOW_SIGNUP=1` 이면 실행마다 임의 값으로 새로 가입한다(`localhost` 는 늘 새로 가입). 학급·아동·활동은 테스트가 지우지만 강사 계정은 지우는 API 가 없어 dev DB 에 남는다
+  - `e2e/deployed/agent-cost.spec.ts`: `AGENT_COST=1` 일 때만. 에이전트 워크플로우(시나리오 생성·역할극 턴·학습 리포트)의 경로별 시간·비용을 실행 기록(`/ops/agent-runs`)의 호출별 토큰 × 엘리스 단가로 낸다. "지난 기록"은 쌓인 기록만 읽고, "사람 유형별"(`DEPLOYED_ALLOW_SIGNUP=1`)은 정상 아동 N명(`AGENT_COST_NORMAL`)과 비정상 아동 6명을 실제로 돌린 뒤 강사 탈퇴로 지운다. 결과와 읽는 법은 [에이전트 워크플로우 비용·시간 측정](agent-workflow-cost-2026-11-11.md)
   - `e2e/deployed/outside-korea.spec.ts`: `EXPECT_GEO_BLOCK=1` 일 때만. 한국 밖(GitHub 러너)에서 화면·API 가 CloudFront 403(`x-cache: Error`)이고 서버 응답이 섞이지 않는지
 - 서버와 같은 구성을 로컬에 띄워(`deploy/compose.dev.yml`) `DEPLOYED_BASE_URL=http://localhost:<포트>` 로 돌리면 앞단 검사(edge)는 건너뛰고 화면·흐름만 돈다.
 
