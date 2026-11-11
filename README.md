@@ -27,7 +27,7 @@
 
 <br><br>
 
-<img src="docs/images/readme/landing.png" width="700" alt="느링고 시작 화면">
+<img src="docs/images/readme/hero.png" width="700" alt="느링고 대표 이미지 — 느린 학습자를 가르치는 강사를 위한 AI 수업 지원 서비스">
 
 </div>
 
