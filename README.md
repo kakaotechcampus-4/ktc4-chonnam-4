@@ -265,7 +265,7 @@ flowchart LR
 |---|---|---|
 | 역할극 · 입력 검사 · 시나리오 생성 | google/gemini-3.8-flash | 엘리스 ML API(OpenAI 호환)로 호출. Spring AI로 연결해 주소와 모델 이름만 바꿔 교체 가능 |
 | 리포트 작성 | google/gemini-3.8-flash | |
-| 리포트 검토 | google/gemini-3.8-flash | 작성과 검토를 다른 프롬프트로 분리 |
+| 리포트 검토 | google/gemini-4-argon | 초안과 다른 모델로 검토합니다. 같은 모델은 자기 초안을 한 번도 돌려보내지 않았습니다(회귀 세트 40건) |
 | 음성 인식 (STT) | OpenAI gpt-4o-mini-transcribe | 인식 신뢰도가 낮으면 다시 말해 달라고 합니다 |
 | 음성 합성 (TTS) | 타입캐스트 ssfm-v30 / OpenAI gpt-4o-mini-tts | 설정으로 선택 |
 | 표정 인식 | face-api (TensorFlow.js) | 브라우저에서 실행, 서버 호출 없음 |
@@ -279,7 +279,7 @@ flowchart LR
   E["활동 기록 → 근거 E1, E2…"] --> D["초안 작성<br/>gemini-3.8-flash"]
   D --> R{"코드 규칙<br/>근거 ID · 칸 배치 · 진단 낱말 · 길이"}
   R -- "위반" --> D
-  R -- "통과" --> V{"검토 모델<br/>gemini-3.8-flash"}
+  R -- "통과" --> V{"검토 모델<br/>gemini-4-argon"}
   V -- "고칠 점 전달" --> D
   V -- "통과" --> OK["✅ 강사에게 표시"]
 ```
@@ -331,7 +331,7 @@ flowchart LR
 |---|---|
 | **Frontend** | ![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white) ![React Router](https://img.shields.io/badge/React%20Router-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white) ![TanStack Query](https://img.shields.io/badge/TanStack%20Query-FF4154?style=for-the-badge&logo=reactquery&logoColor=white) ![Zustand](https://img.shields.io/badge/Zustand-443E38?style=for-the-badge&logoColor=white) ![React Hook Form](https://img.shields.io/badge/React%20Hook%20Form-EC5990?style=for-the-badge&logo=reacthookform&logoColor=white) ![Zod](https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white) ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white) |
 | **Backend** | ![Java](https://img.shields.io/badge/Java%2021-007396?style=for-the-badge&logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=for-the-badge&logo=springboot&logoColor=white) ![Spring Security](https://img.shields.io/badge/Spring%20Security-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white) ![Spring Data JPA](https://img.shields.io/badge/Spring%20Data%20JPA-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Flyway](https://img.shields.io/badge/Flyway-CC0200?style=for-the-badge&logo=flyway&logoColor=white) ![Gradle](https://img.shields.io/badge/Gradle-02303A?style=for-the-badge&logo=gradle&logoColor=white) |
-| **AI** | ![Spring AI](https://img.shields.io/badge/Spring%20AI-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Elice](https://img.shields.io/badge/Elice%20ML%20API-6E3BFF?style=for-the-badge&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini%203.8%20Flash-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI%20STT·TTS-412991?style=for-the-badge&logo=openai&logoColor=white) ![Typecast](https://img.shields.io/badge/Typecast%20TTS-FF6B6B?style=for-the-badge&logoColor=white) ![TensorFlow.js](https://img.shields.io/badge/face--api-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white) |
+| **AI** | ![Spring AI](https://img.shields.io/badge/Spring%20AI-6DB33F?style=for-the-badge&logo=spring&logoColor=white) ![Elice](https://img.shields.io/badge/Elice%20ML%20API-6E3BFF?style=for-the-badge&logoColor=white) ![Gemini](https://img.shields.io/badge/Gemini%203.8%20Flash-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![Gemini Argon](https://img.shields.io/badge/Gemini%204%20Argon-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI%20STT·TTS-412991?style=for-the-badge&logo=openai&logoColor=white) ![Typecast](https://img.shields.io/badge/Typecast%20TTS-FF6B6B?style=for-the-badge&logoColor=white) ![TensorFlow.js](https://img.shields.io/badge/face--api-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white) |
 | **Database** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL%2018-4169E1?style=for-the-badge&logo=postgresql&logoColor=white) |
 | **Infrastructure** | ![Amazon EC2](https://img.shields.io/badge/Amazon%20EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white) ![CloudFront](https://img.shields.io/badge/CloudFront-8C4FFF?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon ECR](https://img.shields.io/badge/Amazon%20ECR-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white) ![Amazon S3](https://img.shields.io/badge/Amazon%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white) ![AWS Lambda](https://img.shields.io/badge/AWS%20Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white) ![Docker](https://img.shields.io/badge/Docker%20Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white) |
 | **CI/CD · 보안** | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2F4F4F?style=for-the-badge&logo=github&logoColor=white) ![Gitleaks](https://img.shields.io/badge/Gitleaks-DC143C?style=for-the-badge&logoColor=white) |
@@ -512,6 +512,28 @@ API 문서는 [`contracts/api/v1`](contracts/api/v1)에서 관리합니다. 응�
 
 2026년 11월 11일 테스트 주소(EC2 t3.medium 1대)에서 측정했습니다. 가상 사용자는 한 명당 역할극을 6턴씩 진행했습니다. 설정 방법과 시험 코드는 [역할극 운영 설정 문서](backend/docs/roleplay-runtime-config.md#worker-스레드-수와-동시-사용자-dev-2026-11-11-측정)에 있습니다.
 
+### 에이전트 워크플로우 비용과 시간
+
+에이전트 실행 대시보드는 호출마다 모델과 입력, 출력 토큰 수를 남깁니다. 여기에 엘리스 ML API 단가를 곱해서 시나리오 생성, 역할극 턴, 학습 리포트가 정상으로 끝날 때와 재시도나 안내, 실패로 끝날 때 드는 시간과 비용을 쟀습니다. 정상 아동 3명과 비정상 아동 6명이 동시에 퀴즈부터 리포트까지 진행했습니다. 같은 시험은 두 번 돌렸습니다. 비정상 아동은 모르겠다고 하거나 엉뚱한 말, 뜻 없는 입력, 위험한 말을 합니다. 중간에 나가거나 같은 요청을 여러 번 보내는 아동도 넣었습니다.
+
+아동 한 명이 활동 하나를 끝까지 하는 데 370~460원이 들었습니다. 그중 95% 안팎이 역할극 턴입니다. 역할극 턴은 앞 대화가 프롬프트에 쌓여서 대화가 길어질수록 비싸집니다. 첫 말은 22원, 아홉 번째 말은 77원이었습니다. 반면 뜻 없는 입력이나 위험한 말은 입력 검사 한 번으로 끝나 1원 안팎이었습니다. 같은 `Idempotency-Key`로 동시에 보낸 요청은 AI를 한 번만 불렀습니다.
+
+비용을 키우는 경로는 따로 있습니다. 응답 검수가 대사를 돌려보내 다시 만들면 정상 턴의 1.6배가 듭니다. 동시 사용자가 많아 60초 timeout으로 끝난 턴은 아이에게 답을 주지 못하면서도 평균 38원을 씁니다. 위 동시 사용 시험과 함께 보면 30명까지는 timeout 턴이 없어 비용이 정상 경로대로 나옵니다. 50명에서는 턴의 10%가 답 없이 비용만 씁니다.
+
+| 경로 | 시간 | 비용 |
+|---|---|---|
+| 정상 활동 1건 (시나리오 생성, 역할극 6~10턴, 리포트) | 턴당 평균 18~21초 | 370~460원 |
+| 역할극 n번째 턴 | 평균 20초, 최대 37초 | 약 16원 + 6.8원 × n |
+| 시나리오 새로 생성 / 승인본 재사용 | 8.6초 / 0.3초 | 8.3원 / 0원 |
+| 학습 리포트 (Flash 초안, Argon 검토) | 역할극이 끝나고 10~31초 뒤 표시 | 14.2원 |
+| 뜻 없는 입력, 위험한 말 | 약 2초 | 1원 안팎 |
+| 200자 넘는 입력, 같은 키 중복 요청 | 바로 응답 | 0원 |
+| 응답 검수 REGENERATE 뒤 전달 | 31.6초 | 80.1원 |
+| 60초 timeout (동시 50명) | 60초, 답 없음 | 38.3원 |
+| BUSY (queue가 가득 참) | 바로 응답 | 0원 |
+
+2026년 11월 11일 테스트 주소에서 측정했습니다. 비용은 1M 토큰당 단가(Gemini 3.8 Flash 입력 1,063원과 출력 5,315원, Gemini 4 Argon 입력 2,835원과 출력 14,175원)를 곱한 값입니다. 캐시 할인은 넣지 않았습니다. timeout과 BUSY 행은 위 동시 사용 시험 기록에서 뽑았습니다. 측정 방법과 전체 표는 [에이전트 워크플로우 비용·시간 측정](docs/agent-workflow-cost-2026-11-11.md)에, 시험 코드는 [`agent-cost.spec.ts`](frontend/e2e/deployed/agent-cost.spec.ts)에 있습니다.
+
 ---
 
 ## 📊 측정 지표
@@ -519,11 +541,11 @@ API 문서는 [`contracts/api/v1`](contracts/api/v1)에서 관리합니다. 응�
 | 지표 | 측정값 |
 |---|---|
 | 잘못된 AI 응답이 아이에게 보인 횟수 | 목표 0건 · 검수 통과한 대사만 전달 |
-| 턴당 응답 시간 | 약 17초 (11/9 측정, 개선 전 27초) |
-| 턴당 AI 호출 수 · 비용 | 4회 · 약 $0.003 |
+| 턴당 응답 시간 | 약 17초 (11/9 측정, 개선 전 27초), 동시 9명일 때 평균 20초 (11/11) |
+| 턴당 AI 호출 수 · 비용 | 4회 · 22~77원 (대화가 길수록 늘어남, 11/11 실측) |
 | 음성 인식 · 합성 시간 | STT 0.9초 · TTS 0.7초 |
-| 시나리오 생성 성공률 | 100% (재시도 포함) · 1개당 약 $0.002 |
-| 리포트 생성 성공률 | 14건 중 14건 · 1건당 약 11원 |
+| 시나리오 생성 성공률 | 100% (재시도 포함) · 1개당 8.3원 (승인본 재사용 시 0원) |
+| 리포트 생성 성공률 | 실서버 34건 중 34건 · Argon 검토 1건당 14.2원 (Flash 검토는 7.7원) |
 
 서비스 목표 지표로는 **같은 난이도 반복 시 목표 도달률 상승**, **난이도 승급 아동 수**, **스탬프(활동 완주) 수**를 봅니다.
 
